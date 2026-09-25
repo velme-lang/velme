@@ -32,8 +32,9 @@ against a current lock) — INV-7.
 writer of `thela.lock` (D-12). Without `--build`, those commands never synthesize — no surprise LLM cost (D-28).
 **R-CLI-04** `--locked` forbids synthesis and any write to the lock; a missing or stale entry fails with `TL0702
 LockStale` naming the goal. CI always passes `--locked`.
-**R-CLI-05** `--offline` forbids network access. When a build needs synthesis, a stale goal fails with
-`TL0404 ProviderUnavailable` instead of attempting a request.
+**R-CLI-05** `--offline` forbids network access and constructs no provider at all, including the local `ollama`
+and `external` ones (D-41). When a build needs synthesis, a stale goal fails with `TL0404 ProviderUnavailable`
+instead of attempting a request.
 **R-CLI-06** `--goal` names must match a declared goal exactly; otherwise `TL0903 GoalNotFound` with the nearest
 spelling suggestion.
 
@@ -43,8 +44,9 @@ spelling suggestion.
 |---|---|---|
 | `--json` | off | machine-readable output on stdout: diagnostics array, result value, trace (schemas in §4) |
 | `--color auto\|always\|never` | `auto` | ANSI colour; `auto` disables when stdout is not a TTY or `NO_COLOR` is set |
-| `--provider NAME` | `thela.toml` → `anthropic` | synthesis provider: `anthropic`, `replay`, `scripted` (test builds only) |
-| `--model ID` | `thela.toml` / `THELA_MODEL` | provider model id; never a code constant (D-14) |
+| `--provider NAME` | `thela.toml` → `anthropic` | synthesis provider: `anthropic`, `ollama`, `external`, `replay`, `scripted` (test builds only) |
+| `--model ID` | `thela.toml` / `THELA_MODEL` | model id for `anthropic` / `ollama`; never a code constant (D-14) |
+| `--external-command CMD` | `THELA_EXTERNAL_COMMAND` / user config | the `external` backend's command line (`compiler/22` §3.2); see R-CLI-13 |
 | `--locked` | off | see R-CLI-04 |
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); ignored with `--locked` |
@@ -154,10 +156,15 @@ with "The answer is <binding>."
 language = "thela/0.1"          # default when the file has no header (language/10)
 
 [synthesis]
-provider = "anthropic"          # anthropic | replay
-model = "…"                     # required for anthropic; no built-in default constant
-max_retries = 3                 # §21; 0..=5
+provider = "anthropic"          # anthropic | ollama | external | replay
+model = "…"                     # required for anthropic and ollama; no built-in default constant
+max_retries = 3                 # 0..=3 (compiler/22 R-SYNTH-11); external defaults to 0 (R-SYNTH-30)
+timeout_secs = 60               # per provider request
+max_output_tokens = 8192        # LLM providers only
+max_calls_per_build = 50        # hard stop across the whole build (compiler/22 R-SYNTH-21)
 replay_dir = "tests/fixtures/synth"   # replay provider only
+ollama_url = "http://127.0.0.1:11434" # ollama provider only
+external_timeout_secs = 30      # external provider only; the command itself is never set here (R-CLI-13)
 
 [budget]                        # project defaults; can only tighten system caps (D-8)
 cpu = "50ms"
@@ -171,6 +178,10 @@ dir = ".thela/artifacts"
 
 **R-CLI-11** Unknown keys are an error (`TL0902`), not ignored. Precedence: flag > environment > `thela.toml` > built-in
 system caps (`runtime/30`).
+**R-CLI-13** The `external` command is read only from `--external-command`, `THELA_EXTERNAL_COMMAND`, or
+`external_command` in the user-level config (`$XDG_CONFIG_HOME/thela/config.toml`, or the platform equivalent).
+A project file can't name a program for `thela build` to run, so building a cloned project never executes code from
+it (`tooling/41` T-10). `external_command` in a project `thela.toml` is an unknown key (`TL0902`).
 
 ### 5.2 Environment variables
 
@@ -179,6 +190,7 @@ system caps (`runtime/30`).
 | `THELA_API_KEY` | provider API key (preferred); read only at request time |
 | `ANTHROPIC_API_KEY` | fallback for the `anthropic` provider |
 | `THELA_MODEL` | model id override |
+| `THELA_EXTERNAL_COMMAND` | the `external` backend's command line (R-CLI-13) |
 | `THELA_LIVE_LLM=1` | enables live-provider tests (`delivery/51`, D-13); ignored by the CLI itself |
 | `NO_COLOR` | disables colour |
 

@@ -22,7 +22,7 @@ means an `architect-review` (Opus, high) runs before the phase gate.
 | M2 | Semantics: names, types, call graph | Opus · high | TODO | | | |
 | M3 | IR, validator, interpreter, check evaluator | Opus · high | TODO | | | defines reference semantics (P-4) |
 | M4 | VibeVM: DAG scheduler, budgets, trace, explain | Sonnet · medium → Opus review | TODO | | | determinism review (D-9, D-10) |
-| M5 | Spellbook: providers, prompt, retry, verification | Sonnet · medium → Opus review | TODO | | | security review (prompt injection, secrets) |
+| M5 | Spellbook: providers, prompt, retry, verification | Sonnet · medium → Opus review | TODO | | | security review (prompt injection, secrets, external command) |
 | M6 | Artifacts, lockfile, full CLI | Sonnet · medium | TODO | | | |
 | M7 | WASM backend + Wasmtime sandbox | Opus · high | TODO | | | sandbox is security-critical |
 | M8 | MVP gate: success criteria, examples, docs | Opus · medium | TODO | | | |
@@ -116,14 +116,17 @@ in the interpreter, calls, depth, list/output size, watchdog (D-10) · M4c trace
 
 ### M5 — Spellbook
 
-**Read:** `compiler/22` (all), `tooling/41` §threat model + secrets, `compiler/21` §validation.
-**Slices:** M5a `SynthProvider` trait, `scripted` + `replay` providers, request builder, prompt template v1 ·
-M5b retry loop with diagnostics feedback, verification pipeline, test-input generation · M5c Anthropic provider
-(config, key from env, structured output, timeouts), recorded replay fixtures for every `examples/` goal.
+**Read:** `compiler/22` (all), `tooling/41` §threat model + secrets, `compiler/21` §validation, `tooling/40` §5.
+**Slices:** M5a `SynthProvider` trait, `SynthRequest` + its JSON Schema, `scripted` + `replay` providers, prompt
+template v1 · M5b retry loop with diagnostics feedback, verification pipeline, test-input generation · M5c Anthropic
+provider (config, key from env, structured output, timeouts), recorded replay fixtures for every `examples/` goal ·
+M5d `ollama` provider (digest resolution, mock-server tests) and `external` backend (protocol, command sourcing,
+env scrubbing, `TL0406`) with a small test backend in `thela-test-support` (D-41, D-42).
 **Exit:** all `AC-SYNTH-*` green on scripted/replay; one opt-in live run per example recorded as fixtures;
 AC-RDM-01 green on replay.
 **User verifies:** with an API key, `thela build examples/beginner/add.thela` synthesizes and verifies; without one,
-`TL0405` explains how to configure it.
+`TL0405` explains how to configure it. With Ollama running, `thela build --provider ollama --model <model> …` does
+the same with no key; `thela build --provider external --external-command "<backend>" …` builds from a backend's IR.
 
 ### M6 — Artifacts, lockfile, full CLI
 

@@ -20,7 +20,7 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 |---|---|---|
 | `signature` | goal name, param names + types, output type, every reachable record type | `Call.goal_signature`; parents' keys |
 | `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + `ir_version` major + `builtins_version` | lock staleness (§5); generated-input seed (22 §7) |
-| `synthesis_key` | `contract_key` + `prompt_version` + compiler `MAJOR.MINOR` + provider id + model id | artifact-store lookup; replay fixture name |
+| `synthesis_key` | `contract_key` + provider `input_version` (the `prompt_version`, or the external `request_version`) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `backend_version`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
 | `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces (§25) |
 
@@ -55,6 +55,9 @@ hash.
 **R-ART-06** `stdlib_version` (§43.8) is `builtins_version` in v0.1 — there is no separate standard library.
 **R-ART-07** Wired goals (D-4) produce artifacts too, with `"provider": "compiler"` and no `model_version`, so every
 goal resolves through the lock the same way.
+**R-ART-21** An `external` artifact records `"provider": "external"`, the backend name, `model_version` =
+`backend_version` and `prompt_version` = `request_version`; an `ollama` artifact records `model_version` =
+`<model>@<digest>` (D-41, D-42).
 **R-ART-08** `children` lists `{binding, goal, signature}` in source order, mirroring the IR `calls`.
 
 ## 4. Local store layout (§26 MVP)

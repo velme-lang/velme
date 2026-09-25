@@ -1,18 +1,21 @@
 # 22 — Spellbook: Synthesis & Verification
 
 **Status:** v0.1 · **Area:** SYNTH
-**Read when:** touching the LLM provider interface, a provider, the prompt, the retry loop, the verification pipeline, generated test inputs, or synthesis cost/config.
+**Read when:** touching the provider interface, a provider (LLM or external backend), the synthesis request, the prompt, the retry loop, the verification pipeline, generated test inputs, or synthesis cost/config.
 **Depends on:** [SPEC](../SPEC.md), [20-compiler-architecture](20-compiler-architecture.md), [21-ir](21-ir.md), [runtime/32](../runtime/32-artifacts-cache.md), [tooling/41](../tooling/41-security-privacy.md)
 **Source:** §3.1, §3.2, §20, §21, §22, §23, §42 (LLM)
 
 ## 1. Purpose & boundaries
 
 Spellbook turns one goal's typed HIR into a **verified** IR artifact. It owns: the provider-neutral interface, the
-prompt contract, structured output, the retry loop, the verification pipeline and generated test inputs. It does not
+synthesis request and its external protocol, the prompt contract, structured output, the retry loop, the verification
+pipeline and generated test inputs. It does not
 own IR validity (that is [21](21-ir.md) §6), execution semantics ([runtime/30](../runtime/30-execution-vibevm.md)) or
 the artifact store and lockfile ([runtime/32](../runtime/32-artifacts-cache.md)).
 
-Principle: the LLM proposes, the deterministic pipeline disposes (INV-1, INV-2).
+Principle: the provider proposes, the deterministic pipeline disposes (INV-1, INV-2). A provider is an LLM
+(`anthropic`, `ollama`) or any program speaking the external protocol (§3.2, D-42); the pipeline treats every
+candidate the same way, whoever wrote it.
 
 ## 2. When synthesis happens
 
@@ -29,23 +32,33 @@ store by `synthesis_key` (D-11, runtime/32 §2), (3) provider. A hit at (1) or (
 **R-SYNTH-03** `--locked` and `--offline` never construct a provider (20 R-CMP-19). A goal that would need synthesis
 fails with `TL0702 LockStale` (`--locked`) or `TL0404 ProviderUnavailable` (`--offline`).
 
-## 3. Provider interface (D-13, D-14, INV-7)
+## 3. Provider interface (D-13, D-14, D-41, D-42, INV-7)
+
+### 3.1 Trait and providers
 
 ```rust
 #[async_trait]
 pub trait SynthProvider: Send + Sync {
-    fn id(&self) -> &str;                    // "anthropic" | "replay" | "scripted" | …
-    fn model(&self) -> &str;                 // provider-reported model id → manifest model_version
-    async fn complete(&self, prompt: &SynthPrompt, limits: &SynthLimits)
+    fn id(&self) -> &str;                    // "anthropic" | "ollama" | "external" | "replay" | "scripted"
+    fn model(&self) -> &str;                 // model id, Ollama digest or external backend_version → manifest model_version
+    fn input_version(&self) -> &str;         // prompt_version (LLM providers) or request_version (external)
+    async fn complete(&self, request: &SynthRequest, limits: &SynthLimits)
         -> Result<SynthReply, ProviderError>;
 }
 
-pub struct SynthPrompt { pub prompt_version: String, pub system: String, pub turns: Vec<Turn>,
-                         pub output_schema: serde_json::Value }          // IR JSON Schema (21 R-IR-20)
+pub struct SynthRequest { pub request_version: String, pub task: TaskKind, pub goal: String,
+                          pub signature: Signature, pub types: Vec<RecordType>, pub locals: Vec<LocalBinding>,
+                          pub plan: String, pub checks: Vec<CheckItem>, pub examples: Vec<Example>,
+                          pub budget: Budget, pub builtins: Vec<BuiltinSig>,
+                          pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
+                          pub output_schema: serde_json::Value }             // IR JSON Schema (21 R-IR-20)
 pub struct SynthReply  { pub ir_json: String, pub usage: Usage, pub latency: Duration }
 pub enum  ProviderError { NotConfigured, Unavailable(String), RateLimited { retry_after: Option<Duration> },
-                          Refused(String), Timeout, Malformed(String) }
+                          Refused(String), Timeout, Malformed(String), BackendFailed(String) }
 ```
+
+`SynthRequest` is the structured form of the §4 table. LLM providers render it into a prompt with the versioned
+template (§4); the `external` provider sends it as JSON (§3.2); `replay` and `scripted` ignore it except for keying.
 
 **R-SYNTH-04** The trait and its types are plain Rust + `serde_json`. Vendor SDK/HTTP types never appear in a
 signature; each provider is a module in `thela-synth` behind a Cargo feature (`provider-anthropic`).
@@ -53,18 +66,56 @@ signature; each provider is a module in `thela-synth` behind a Cargo feature (`p
 
 | Provider | Use | Behaviour |
 |---|---|---|
-| `anthropic` | the MVP's real provider (D-14) | Messages API, output constrained to the IR JSON Schema (tool/structured output), temperature 0 |
+| `anthropic` | hosted LLM (D-14) | Messages API, output constrained to the IR JSON Schema (tool/structured output), temperature 0 |
+| `ollama` | local LLM (D-41) | Ollama chat API at the configured URL, `format` set to the IR JSON Schema, temperature 0, no streaming; no API key |
+| `external` | human- or tool-written IR (D-42) | runs the user's command and speaks the §3.2 protocol over stdin/stdout; no network of its own |
 | `replay` | integration tests, golden builds, CI | reads `tests/fixtures/synth/<synthesis-key>.json` (prompt hash + ordered replies); missing fixture → `TL0404` naming the key; `THELA_SYNTH_RECORD=1` with a live provider writes fixtures |
 | `scripted` | unit tests of the retry loop and pipeline | in-memory queue of replies/errors |
 
 **R-SYNTH-06** Live-provider tests run only with `THELA_LIVE_LLM=1` and are never part of the default gate (D-13).
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `TL0405`; `Unavailable`/`Timeout`/`RateLimited` after
-transport retries → `TL0404`; `Refused`/`Malformed` count as a failed attempt (§5).
+transport retries → `TL0404`; `Refused`/`Malformed` count as a failed attempt (§5); `BackendFailed` → `TL0406`,
+not retried.
+**R-SYNTH-24** `ollama` resolves the configured model's digest from the server once per build, before any store
+lookup, and reports `<model>@<digest>` as `model()`. A tag that now points at different weights therefore changes
+`synthesis_key` but never `contract_key` (runtime/32 R-ART-03). A model missing on the server is `NotConfigured`
+(`TL0405`, help: `ollama pull <model>`); an unreachable server is `Unavailable` (`TL0404`).
+**R-SYNTH-25** Every provider that makes a request is constructed only when a goal misses both the lock and the store
+(R-SYNTH-02 step 3), so an `ollama` server or an `external` command is never contacted for a fully cached build.
+
+### 3.2 External backend protocol (D-42)
+
+The `external` provider lets a person or any tool supply the implementation instead of an LLM. Thela starts the
+configured command once per message, writes one JSON document to its stdin, closes stdin, and reads one JSON document
+from its stdout. Both documents follow the committed `thela-synth-request` JSON Schema, generated from the Rust types
+like the IR schema (21 R-IR-20).
+
+| Message | Thela sends | Backend replies |
+|---|---|---|
+| `describe` | `{"request_version": "0.1", "kind": "describe"}` | `{"backend": "<name>", "backend_version": "<version>"}` |
+| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}` or `{"error": "<reason>"}` |
+
+**R-SYNTH-26** `describe` runs once per build; its `backend_version` is `model()` and enters `synthesis_key`, so a new
+backend version is a cache miss but never makes a lock stale (runtime/32 R-ART-03).
+**R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
+verification (§6). The backend gets no trust the LLM doesn't get (INV-1).
+**R-SYNTH-28** Non-zero exit, exceeding `external_timeout_secs`, stdout that is not one JSON document, stdout above
+2 MiB, or an `{"error"}` reply is `BackendFailed` → `TL0406` naming the goal and backend, with up to 4 KiB of stderr
+in the notes. Nothing is written to the store or the lock.
+**R-SYNTH-29** The command runs in the project root with the user's own permissions, outside the sandbox (tooling/41
+T-10). Its environment is the user's minus every provider API key variable (`tooling/40` §5.2). The command itself
+comes only from the `--external-command` flag, `THELA_EXTERNAL_COMMAND` or the user-level config, never from the
+project's `thela.toml` (`tooling/40` R-CLI-13).
+**R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
+again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
+retry turn does (R-SYNTH-11).
 
 ## 4. Prompt contract (§20.1)
 
-The prompt is rendered from a versioned template in `crates/thela-synth/prompts/`. `prompt_version` =
-template id + BLAKE3 of the template bytes, so any edit changes synthesis keys (D-11).
+The prompt is rendered from `SynthRequest` (§3) with a versioned template in `crates/thela-synth/prompts/`.
+`prompt_version` = template id + BLAKE3 of the template bytes, so any edit changes synthesis keys (D-11). Both LLM
+providers share the template. The table below is also the content of `SynthRequest`; the external protocol (§3.2)
+sends the same fields as structured JSON.
 
 | Section | Contents | From |
 |---|---|---|
@@ -140,16 +191,8 @@ when `players` is `[]`"), so they can refine the check; the message suggests the
 
 ## 8. Configuration & secrets
 
-```toml
-# thela.toml (project root; all keys optional)
-[synth]
-provider          = "anthropic"
-model             = "<model id>"      # or THELA_MODEL; never a code constant (D-14)
-max_retries       = 3                 # 0..=3
-timeout_secs      = 60
-max_output_tokens = 8192
-max_calls_per_build = 50              # hard stop across the whole build
-```
+Synthesis settings live in the `[synthesis]` section of `thela.toml`, defined in `tooling/40` §5.1 (provider,
+model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_per_build`).
 
 **R-SYNTH-20** API keys come only from the environment (`ANTHROPIC_API_KEY`). A key-like value in `thela.toml` is an
 error. Keys never appear in logs, traces, fixtures, artifacts, diagnostics or `--verbose` output; the replay recorder
@@ -183,3 +226,12 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-08 | `--locked` with a stale entry fails with `TL0702`; `--offline` with a cache miss fails with `TL0404`; neither constructs a provider. |
 | AC-SYNTH-09 | No API key string appears in any output, log, fixture or artifact after a recorded build (grep test with a sentinel key). |
 | AC-SYNTH-10 | `replay` provider reproduces a recorded build byte-for-byte (same artifacts, same lock). |
+| AC-SYNTH-11 | Against a mock Ollama server, the `ollama` provider sends the IR JSON Schema as `format` with temperature 0 and no streaming, and an accepted artifact records `"provider": "ollama"` and `<model>@<digest>` as `model_version`. |
+| AC-SYNTH-12 | Changing the digest behind the same Ollama tag, with an up-to-date lock, makes zero requests; after deleting the store entry, the next build misses on the new `synthesis_key`. |
+| AC-SYNTH-13 | An unreachable Ollama server yields `TL0404`; a model the server doesn't have yields `TL0405` with an `ollama pull` hint. |
+| AC-SYNTH-14 | The `external` `synthesize` message for a golden goal matches its snapshot, validates against the committed request schema, and contains no file paths, environment values or API keys. |
+| AC-SYNTH-15 | An `external` backend returning hostile IR (a `call` node, an unknown builtin) is rejected with `TL0402` / `TL0801`; nothing is stored. |
+| AC-SYNTH-16 | Non-zero exit, timeout, non-JSON stdout, stdout over the cap, and an `{"error"}` reply each fail with `TL0406` naming the goal and backend; the lock is unchanged and no retry is made. |
+| AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
+| AC-SYNTH-18 | With sentinel values in `THELA_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; a `command` key in the project `thela.toml` fails with `TL0902`. |
+| AC-SYNTH-19 | A fully cached build with `--provider ollama` or `--provider external` sends no request to the server and never starts the command. |
