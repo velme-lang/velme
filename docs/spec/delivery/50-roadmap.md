@@ -28,7 +28,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | **M2** | Semantics | name resolution, type checking incl. check DSL narrowing, call rules, cycle detection, wired goals (D-4), JSON input mapping | `language/11..14`, `compiler/20` | `thela check` fully validates a program | AC-TYP-*, AC-GOAL-* (static), AC-CHK-* (typing), AC-RDM-04, AC-RDM-05 |
 | **M3** | IR, interpreter, checks | IR types + JSON Schema + validator; builtins incl. `random`/`range`; reference interpreter for leaf goals; check and example evaluation; hand-written IR fixtures | `compiler/21`, `language/13..14`, `runtime/30` | `thela test` on a leaf goal with fixture IR | AC-IR-*, AC-BLT-*, AC-CHK-* (eval), AC-RDM-06 |
 | **M4** | DAG runtime | composite goals, wave scheduling on Tokio, deterministic failure (D-9), budgets (fuel in interpreter, calls, depth, sizes), trace, `run`/`trace`/`explain` | `runtime/30`, `tooling/40` | `thela run multi_goal.thela` | AC-RUN-*, AC-RDM-02, AC-RDM-03, AC-CLI-06/07 |
-| **M5** | Spellbook | `SynthProvider` trait, `anthropic`/`replay`/`scripted`, prompt contract, structured output, retry with diagnostics, verification pipeline, generated test inputs | `compiler/22`, `tooling/41` | plan → runnable goal via `thela build` | AC-SYNTH-*, AC-SEC-02/03/05/06, AC-RDM-01 |
+| **M5** | Spellbook | `SynthProvider` trait, `anthropic`/`ollama`/`external`/`replay`/`scripted`, external protocol, prompt contract, structured output, retry with diagnostics, verification pipeline, generated test inputs | `compiler/22`, `tooling/41` | plan → runnable goal via `thela build` | AC-SYNTH-*, AC-SEC-02/03/05/06, AC-RDM-01 |
 | **M6** | Artifacts & CLI | fingerprints (D-11, D-21), content-addressed store, `thela.lock`, `--locked`/`--offline`, `artifact` command, config file | `runtime/32`, `tooling/40` | warm cached run with zero synthesis | AC-ART-*, AC-CLI-*, AC-RDM-08, AC-RDM-09 |
 | **M7** | WASM backend | IR → core WASM for leaf goals, `wasmparser` validation, Wasmtime with fuel + epoch + `ResourceLimiter`, host-function allowlist, differential tests vs interpreter | `runtime/31`, `delivery/51` | `thela run --backend wasm` equals interpreter | AC-SBX-*, AC-SEC-01/07, AC-RDM-07 |
 | **M8** | MVP gate | all success criteria end-to-end, examples tree, fuzz smoke, perf targets, security baseline, docs, release dry run | all | `v0.1.0-alpha` release candidate | §5 all green; `delivery/51` §6 targets met |
@@ -43,7 +43,8 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | Compiler | parser, AST, symbol resolution, type checking | M1–M2 | v0.1 |
 | Compiler | call graph, cycle detection | M2 | v0.1 |
 | Compiler | Thela IR, IR validation | M3 | v0.1 |
-| AI | one real provider, structured IR output, retry with diagnostics | M5 | v0.1 |
+| AI | real providers `anthropic` + `ollama` (D-41), structured IR output, retry with diagnostics | M5 | v0.1 |
+| AI | `external` backend protocol for human/tool-written IR (D-42) | M5 | v0.1 |
 | AI | replay + scripted providers (D-13) | M5 | v0.1 |
 | Runtime | reference interpreter | M3 | v0.1 |
 | Runtime | composite-goal DAG executor, parallel waves | M4 | v0.1 |
@@ -62,7 +63,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | Networking, filesystem, databases inside goals | Future | INV-4 |
 | User-defined effects | Future | `effects` reserved |
 | Automatic production hot swap | Future | Coach, `runtime/32` |
-| Multiple LLM agents, fine-tuning, local models | Future | provider trait allows later |
+| Multiple LLM agents, fine-tuning | Future | provider trait allows later |
 | Package ecosystem, modules/imports | Future | D-18 single file |
 | Full Component Model composition / WIT | Future | `runtime/31` |
 | Distributed execution, remote artifact store | Future | `runtime/32` |

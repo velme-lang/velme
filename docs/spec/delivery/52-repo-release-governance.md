@@ -49,8 +49,9 @@ their enforcement. `thela-test-support` is a dev-dependency only.
 **R-REL-03** `xtask layering` reads `cargo metadata` and fails if any crate depends on one to its right or on
 `thela-cli`; `thela-synth` is the only crate allowed an HTTP client; no core crate depends on a vendor SDK (INV-7).
 `deny.toml` bans duplicate/unsafe sources as a second line.
-**R-REL-04** Provider implementations live behind cargo features of `thela-synth` (`provider-anthropic` default on in
-the CLI); core crates compile with no provider feature enabled.
+**R-REL-04** Provider implementations live behind cargo features of `thela-synth` (`provider-anthropic`,
+`provider-ollama` and `provider-external`, all default on in the CLI); core crates compile with no provider feature
+enabled.
 
 ## 4. Branches, reviews and CI (§43.6, §43.7)
 

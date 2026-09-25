@@ -61,7 +61,7 @@ Changing a decision: edit its row (keep the id, add "revised YYYY-MM-DD"), then 
 | **D-11** | Synthesis cache key = hash(normalized goal source, **child signature** fingerprints, language/compiler/IR/builtins/prompt versions, provider+model id). Execution identity (the artifact graph) pins concrete child artifacts separately. | Regenerating a leaf doesn't re-synthesize its ancestors; saves LLM cost and keeps locks stable. |
 | **D-12** | `thela.lock` (TOML, committed) maps each goal to its accepted IR artifact hash; artifacts live in `.thela/artifacts/` (content-addressed, committable). `--locked` never synthesizes and fails if the lock is stale; CI uses `--locked`. WASM modules are a derived local cache, not locked (deterministic from IR + compiler version). | F-12; offline use (INV-7); reviewable diffs of generated code. |
 | **D-13** | `SynthProvider` trait with providers `anthropic` (MVP real), `replay` (reads recorded exchanges from fixture files), `scripted` (unit tests). Live-LLM tests are opt-in (`THELA_LIVE_LLM=1`) and never part of the default gate. | Deterministic, free, fast CI; the repo's own test suite never depends on a vendor. |
-| **D-14** | MVP ships one real provider: Anthropic Messages API with JSON-schema-constrained output; model id is configuration (`thela.toml` / `THELA_MODEL`), never a code constant. Second provider after MVP. | §37 "one LLM provider"; vendor-neutral trait keeps INV-7. Owner may pick another (Q-2). |
+| **D-14** | MVP ships one real provider: Anthropic Messages API with JSON-schema-constrained output; model id is configuration (`thela.toml` / `THELA_MODEL`), never a code constant. Second provider after MVP. **Amended by D-41:** Ollama also ships in the MVP. | §37 "one LLM provider"; vendor-neutral trait keeps INV-7. Owner may pick another (Q-2). |
 | **D-15** | Right-sized workspace: `thela-syntax`, `thela-diagnostics`, `thela-sema`, `thela-ir`, `thela-check`, `thela-builtins`, `thela-interp`, `thela-synth`, `thela-runtime`, `thela-wasm`, `thela-cli`, `thela-test-support`. No top-level `compiler/`, `runtime/`, `stdlib/` trees in v0.1. Split a crate only for a real API/ownership boundary. | F-16. |
 | **D-16** | Roadmap order: M0 repo → M1 syntax → M2 semantics → M3 IR + interpreter + checks (hand-written IR) → M4 DAG runtime + budgets + trace → M5 Spellbook → M6 artifacts, lockfile, full CLI → M7 WASM + Wasmtime → M8 MVP gate. Playground and Coach are post-MVP. | F-15; each phase is testable without the next. Details: `delivery/50`. |
 | **D-17** | Error codes are `TL` + 4 digits: `TL01xx` syntax · `TL02xx` names/types · `TL03xx` calls/graph · `TL04xx` IR/synthesis · `TL05xx` checks/examples · `TL06xx` runtime/budgets · `TL07xx` artifacts/lock · `TL08xx` capabilities · `TL09xx` CLI/IO. Original `A001…A014` map in `reference/90`. | F-23; INV-10. |
@@ -88,11 +88,14 @@ Changing a decision: edit its row (keep the id, add "revised YYYY-MM-DD"), then 
 | **D-38** | Code is `MIT OR Apache-2.0`; spec and docs CC BY 4.0; the name and logo are trademarks, not licensed. Name clearance screened 2026-09-25 (`delivery/52` §11): *Nela* dropped (clash with an existing LLM language using `.nela`); *Thela* chosen — `thela` free on crates.io, PyPI, npm; org `thela-lang` free; no software mark found by web search. An official USPTO/TMview search (classes 9, 41, 42) is still owed before public launch. Diagnostic prefix follows the name (`TL`, D-17). | Answers Q-5. Dual licence is the Rust ecosystem norm. |
 | **D-39** | No `assume:` block in v0.1; a check failing on a generated input shows the counterexample and suggests the `if … then …` rewrite (`compiler/22` R-SYNTH-19). `assume` is reserved (D-24) so adding it later breaks no program. | Answers Q-7. The check language already expresses preconditions (D-6). |
 | **D-40** | Contributor instructions are split by audience: `CONTRIBUTING.md` holds every rule that applies to all contributors; `AGENTS.md` adds agent-only workflow (token budget, Stop & Verify Gate, slices); `CLAUDE.md` imports both and adds Claude Code specifics (review sequence, subagent tiers). A rule lives in exactly one of the three. | Keeps the public repo readable for human contributors and tool-neutral for agents other than Claude Code, without duplicating rules. |
+| **D-41** | The MVP ships a second real provider, `ollama` (local models), next to `anthropic`: Ollama chat API, IR JSON Schema as `format`, temperature 0, no key. `model()` is `<model>@<digest>` resolved from the server once per build. `--offline` stays strict and constructs no provider, local ones included. Amends D-14; moves "local models" from Future to v0.1. | Owner request 2026-09-26: synthesis without an account or sending plans off the machine. The provider trait already made it cheap (INV-7); validation and checks keep weaker models safe (INV-1, INV-2). |
+| **D-42** | Human-written implementations come through an `external` provider, not through Thela source: Thela sends each synthesis request as JSON to a user-chosen command and validates and verifies the IR it returns like any LLM reply. The command comes only from a flag, env var or user-level config; it gets no API keys; `max_retries` defaults to 0. No `impl:` block or other source syntax is added. | Owner request 2026-09-26: keep the language free of implementation code (P-1) while letting people or tools replace the LLM per project. One protocol also lets any other LLM stack plug in without core changes. |
 
 ## 4. Open questions
 
-The spec uses the **default** until the owner answers. Record the answer here and in the cited rules. All seven were
-answered on 2026-09-25 (owner accepted the recommendations).
+The spec uses the **default** until the owner answers. Record the answer here and in the cited rules. Q-1..Q-7 were
+answered on 2026-09-25 (owner accepted the recommendations). Q-8..Q-15 (2026-09-26) come from the prior-art review in
+§5 and later owner questions; their default is the current spec, so none blocks v0.1.
 
 | ID | Question | Status |
 |---|---|---|
@@ -103,3 +106,31 @@ answered on 2026-09-25 (owner accepted the recommendations).
 | **Q-5** | Confirm Apache-2.0 + CC BY 4.0, and run the naming/trademark clearance for **Thela** (crates `thela`, `thela-cli`, `thela-runtime`; domains; npm/PyPI; trademarks). | **Resolved** → D-38 (name clearance is an M0 prerequisite) |
 | **Q-7** | Generated test inputs can violate assumptions the author never stated (e.g. negative prices make `result >= 0` fail). Add an `assume:` block (input preconditions) in v0.1, or keep showing the counterexample to the learner? | **Resolved** → D-39 |
 | **Q-6** | Is `examples:` (D-7) the right learner-facing word, or `tests:` / `try:`? | **Resolved** → D-7 confirmed (`examples:`) |
+| **Q-8** | Shrink a failing generated input to a minimal counterexample before reporting it (R-SYNTH-15, R-SYNTH-19) and before adding it to the retry turn (R-SYNTH-11)? Shrinking must stay a pure function of the input and the candidate (R-SYNTH-17). | Open · default: report the first failing case unshrunk |
+| **Q-9** | Keep inputs that ever made a candidate fail as extra permanent test inputs for the goal? They would have to be committed with the lock (runtime/32) so every machine still verifies against the same set (R-SYNTH-17, INV-3), and count toward the 64-input cap (R-SYNTH-18). | Open · default: no; the input set is derived from `contract_key` alone |
+| **Q-10** | Add input preconditions (`assume:`, reserved by D-39) so generation skips invalid inputs instead of forcing every check into `if … then` form? Needs an RFC (R-REL-11). | Open · default: D-39 (no `assume:` in v0.1) |
+| **Q-11** | Request several candidates per attempt and keep the first (in a fixed order) that verifies, instead of strictly sequential retries (R-SYNTH-11)? Cheap with local models (D-41); must stay within `max_calls_per_build` (R-SYNTH-21). | Open · default: one candidate per attempt |
+| **Q-12** | When two verified candidates disagree on some generated input, show that input and ask the author which result is right, so they can add an example or check? Only meaningful together with Q-11. | Open · default: no; the first verified candidate is locked |
+| **Q-13** | A shared remote artifact store keyed by `synthesis_key` (runtime/32 §2), so one synthesis serves a team and CI? | Open · default: local store only (v0.1) |
+| **Q-14** | For effectful goals (the post-v0.1 connector design), base grants on WASI component capabilities rather than a Thela-specific permission scheme, keeping INV-4? | Open · default: undecided; no effects in v0.1 |
+| **Q-15** | Export a verified program to another language (`thela export FILE --lang py\|ts\|rs`)? If yes: a deterministic lowering from the locked IR, never LLM output from the plan (that bypasses INV-1); refuses a stale or missing lock; ships a small builtin runtime plus a test file generated from the goal's verification inputs and interpreter outputs (R-SYNTH-17) to prove parity (INV-3). Open points: exact decimal in the target (D-36), `Text` and `sort_by` semantics, and budgets (INV-5) no longer apply outside the runtime. Design after M4, reusing the WASM emitter's parity tests. | Open · default: Future, not v0.1 |
+
+## 5. Prior art
+
+Reviewed 2026-09-25/26 to position Thela and harvest lessons. No single system combines build-time LLM synthesis into a
+small IR, a validator as trust boundary (INV-1), deterministic checks (INV-2) and a lock; each piece has precedent.
+
+| Family | Examples | Shared with Thela | Difference | Lesson |
+|---|---|---|---|---|
+| Program synthesis | Sketch, Rosette, SyGuS, Synquid | small target language, spec with holes, external checker | solver/enumerative search, tiny programs; Thela proposes with an LLM and verifies by testing | counterexample-guided retry is R-SYNTH-11 |
+| Programming by example | FlashFill / PROSE | examples drive synthesis (D-7) | fixed per-domain DSLs with ranking | examples underspecify: Q-12 |
+| Verified languages | Dafny, F\*, Liquid Haskell, Verus, Eiffel | pre/postconditions (`check` ≈ `ensures`) | they prove for all inputs; Thela tests a bounded set (§7 of `compiler/22`) | preconditions: Q-10 |
+| Property-based testing | QuickCheck, Hypothesis, proptest | Thela's verification is PBT | they test human code | shrinking Q-8, failure database Q-9 |
+| LLM frameworks | DSPy, BAML, Marvin, Instructor, Outlines, LMQL | declarative typed goals sent to a model | they call the model on every run; Thela once per build, then runs locked code | schema-constrained output, already R-SYNTH-09 and the `ollama` `format` field (D-41) |
+| AI coding assistants | Copilot, Cursor, Claude Code, Kiro, Spec Kit | describe intent, get code | emit general source a human must own; no trust boundary or lock | best-of-n sampling (CodeT, AlphaCodium): Q-11 |
+| Reproducible builds | Nix, Bazel, Cargo.lock, Unison | content-addressed keys and lock (R-ART-03) | they lock human inputs; Thela also locks model output | remote cache: Q-13 |
+| Capabilities | Deno permissions, WASI components | no ambient authority (INV-4) | — | effect grants: Q-14 |
+
+Two cautions: a spec that is as hard to write as the code sank adoption of Sketch and Dafny, so `plan` plus checks must
+stay much shorter than the code it replaces; and English-like syntax invites ambiguity (AppleScript, Inform 7), so the
+grammar stays strict (`language/10`).

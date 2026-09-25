@@ -45,6 +45,7 @@ source, an RFC, and appear in the artifact manifest. `effects` is reserved (D-24
 | T-7 | Secret leakage | API key in trace, artifact, crash log | §4 | R-SEC-05..07 |
 | T-8 | Learner data leaves the machine | child's plan + examples sent to a provider | §5; only prompt contents go to the chosen provider; no telemetry | R-SEC-08..10, R-SEC-12, D-37 |
 | T-9 | Untrusted input JSON | 1 GB input, deep nesting | input size/depth caps before decoding; typed decode (D-23) | `tooling/40` R-CLI-07, `runtime/30` |
+| T-10 | Build runs an attacker's program | a cloned repo's config names `./evil.sh` as the external backend | the command comes only from a flag, env var or user-level config; it gets no API keys; its output is untrusted IR | D-42, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-13 |
 
 **R-SEC-11** Any change that adds a host function, relaxes a validator rule or raises a system cap is an
 architecture-review change (INV-4/INV-5), with a threat-table update in the same PR.
@@ -62,14 +63,15 @@ body and the response body. A fixture-scrub test fails the gate if a key-shaped 
 
 **R-SEC-08** The CLI sends data to exactly one place: the synthesis provider the user configured, only during
 synthesis, and only the prompt contents defined in `compiler/22` (signature, schemas, plan, checks, examples).
-Inputs passed to `run` are never sent.
+Inputs passed to `run` are never sent. With `ollama` that place is the configured server (the local machine by
+default); with `external` it is the user's own command.
 **R-SEC-09** No telemetry, analytics or crash report leaves the machine in the open-source distribution. Local
 telemetry (timings, cache hits) is written only under `.thela/` and only with `-v`/`--json` or when the user opts in.
 **R-SEC-10** Before any hosted, classroom or child-directed product ships, a consent and retention policy (COPPA,
 GDPR-K) must be approved after legal review (D-37); not a v0.1 CLI concern beyond R-SEC-08/09/12.
 **R-SEC-12** Every `thela build` that makes at least one live provider request prints one line to stderr before the
 first request, naming the provider and what is sent ("Sending your plans, types, checks and examples to Anthropic to
-write the code."). `--json` puts it in the output's `notices` array instead. Builds served entirely from the cache print nothing.
+write the code."). For `ollama` it names the model and server; for `external` it names the command. `--json` puts it in the output's `notices` array instead. Builds served entirely from the cache print nothing.
 
 ## 6. Security baseline before first public release (§43.11)
 

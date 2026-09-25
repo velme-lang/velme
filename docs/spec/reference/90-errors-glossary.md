@@ -48,7 +48,8 @@ diagnostic's data.
 | TL0402 | IRInvalid | IR/synthesis | IR schema-valid but fails validation (names, types, capabilities, `Call`) | The generated program broke a rule: {rule}. | A007 |
 | TL0403 | SynthesisFailed | IR/synthesis | no accepted IR after max retries | Thela couldn't build `{goal}` from its plan. Try making the plan more specific. | A008 |
 | TL0404 | ProviderUnavailable | IR/synthesis | provider unreachable, rate-limited, or `--offline` | Thela couldn't reach the AI helper to build `{goal}`. | — |
-| TL0405 | ProviderNotConfigured | IR/synthesis | no provider/model/API key configured | To build `{goal}`, set `{env_var}` to your API key. | — |
+| TL0405 | ProviderNotConfigured | IR/synthesis | no provider/model/API key configured, or the Ollama server lacks the model | To build `{goal}`, set `{env_var}` to your API key. | — |
+| TL0406 | BackendFailed | IR/synthesis | `external` backend exited non-zero, timed out, replied with non-JSON or oversized output, or returned `{"error"}` (D-42) | The backend `{backend}` couldn't build `{goal}`: {reason} | — |
 | TL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | TL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | TL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is TL0403) | The generated program didn't pass `{check}` for {input}. | A009 |
@@ -129,7 +130,8 @@ Exact lexical rules (which words are contextual) are owned by `language/10`.
 | **fingerprint** | BLAKE3 hash over canonical inputs identifying a synthesis request or artifact (D-11, D-21) |
 | **signature fingerprint** | hash of a goal's name, parameter and output types only |
 | **lock / `thela.lock`** | committed map from goal to accepted artifact hash (D-12) |
-| **provider** | an implementation of `SynthProvider` (`anthropic`, `replay`, `scripted`) |
+| **provider** | an implementation of `SynthProvider` (`anthropic`, `ollama`, `external`, `replay`, `scripted`) |
+| **external backend** | a user-chosen program that answers synthesis requests with IR over the `compiler/22` §3.2 protocol (D-42) |
 | **replay fixture** | recorded prompt/response pair served by the `replay` provider |
 | **verification** | the pipeline a candidate IR must pass before it is accepted (`compiler/22`) |
 | **budget** | per-goal resource limits; `budget` lines only tighten system caps (D-8) |
