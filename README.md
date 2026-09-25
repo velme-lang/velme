@@ -13,7 +13,7 @@ goal Add(a: Number, b: Number) -> Number:
         - result == a + b
 ```
 
-**Status:** specification phase — no code yet.
+**Status:** specification complete for v0.1; implementation is at plan phase M0 (workspace and quality gate).
 
 - Specification: [`docs/spec/SPEC.md`](docs/spec/SPEC.md)
 - Design decisions and open questions: [`docs/spec/reference/92-decisions-questions.md`](docs/spec/reference/92-decisions-questions.md)
@@ -23,3 +23,15 @@ goal Add(a: Number, b: Number) -> Number:
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md). `AGENTS.md`, `CLAUDE.md` and `.claude/` are instructions for AI coding
 agents; you can ignore them if you don't use one.
+
+## Build
+
+```sh
+cargo xtask verify            # the full quality gate
+cargo run -p thela-cli -- --version
+```
+
+## License
+
+Code is `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`); the spec and docs are CC BY 4.0
+(`LICENSE-CC-BY`). The name and logo are trademarks and not licensed by these.
