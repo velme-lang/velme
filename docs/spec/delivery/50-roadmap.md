@@ -64,7 +64,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | User-defined effects | Future | `effects` reserved |
 | Automatic production hot swap | Future | Coach, `runtime/32` |
 | Multiple LLM agents, fine-tuning | Future | provider trait allows later |
-| Package ecosystem, modules/imports | Future | D-18 single file |
+| Package ecosystem, modules/imports | Future | D-18 single file; design: Q-16 |
 | Full Component Model composition / WIT | Future | `runtime/31` |
 | Distributed execution, remote artifact store | Future | `runtime/32` |
 | Mathematical proof of checks | Future | checks are properties, not proofs |
