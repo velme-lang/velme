@@ -1,0 +1,167 @@
+# 30 — Execution: VibeVM & Reference Interpreter
+
+**Status:** v0.1 · **Area:** RUN
+**Read when:** working on the interpreter, the composite-goal scheduler, budgets, failure handling, determinism, traces or `thela explain`.
+**Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [language/12](../language/12-goals-calls.md), [language/13](../language/13-check-dsl.md), [32-artifacts-cache](32-artifacts-cache.md)
+**Source:** §3.4, §9–§11, §24, §28 (Calls), §29, §30, §31, §33, §34, §39
+
+## 1. Purpose & boundaries
+
+VibeVM runs verified IR artifacts: it plans a composite goal's calls as a DAG, runs independent calls concurrently,
+enforces budgets, evaluates checks and records a deterministic trace. The **reference interpreter** in `thela-interp`
+defines what IR means (P-4); the WASM backend ([31](31-wasm-sandbox.md)) must agree with it (INV-3). Artifact
+identity and loading are in [32](32-artifacts-cache.md).
+
+## 2. Components (§24.1)
+
+| Component | Responsibility | Crate |
+|---|---|---|
+| GoalRegistry | goal id → signature, kind, artifact hash (from `thela.lock`), dependencies (§24.2 fields, minus hashes now held by the manifest, 32 §3) | `thela-runtime` |
+| ArtifactStore | load + re-validate artifacts by hash (32) | `thela-runtime` |
+| CallPlanner | per composite goal: binding DAG → waves (static, from HIR/IR `args`) | `thela-runtime` |
+| Scheduler | runs ready bindings on a bounded worker pool; applies D-9 on failure | `thela-runtime` |
+| Executor | evaluates one goal body: interpreter (default) or WASM (M7) | `thela-interp`, `thela-wasm` |
+| CheckRunner | evaluates lowered checks on every run (D-20) | `thela-check` |
+| BudgetManager | static call/depth limits, per-invocation fuel/memory/size, wall-clock watchdog | `thela-runtime` |
+| Trace | ordered execution record; source of `thela trace`, debugging and telemetry | `thela-runtime` |
+
+## 3. Interpreter semantics (reference)
+
+**R-RUN-01** Values: `Number` (exact decimal, D-36), `Text` (UTF-8), `Boolean`, `Nothing`, `List` (immutable), `Record` (fields
+in declared order). Values are immutable and structurally compared.
+**R-RUN-02** Evaluation is strict and left-to-right: `binary` left then right (except short-circuit `and`/`or`),
+record fields in declared order, list items in order, `let` binds in order, collection lambdas over elements in list
+order. Evaluation order is observable only through which error is reported first, and it is fixed.
+**R-RUN-03** Arithmetic follows `language/11` R-TYP-04..06: exact decimal, half-to-even rounding; division by zero or
+overflow is `TL0602`; `-0` results are normalized to `0` (D-36).
+**R-RUN-04** Every IR node evaluation costs 1 fuel unit; each element visited by `map`/`filter`/`find`/`reduce` costs
+1 more; `sort` costs `n·⌈log2 n⌉`; builtins cost what their catalog entry says (language/14). This **Thela fuel** cost
+model is part of the semantics — both backends meter it identically (31 R-SBX-05).
+**R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
+builtin of its arguments (D-22).
+
+## 4. Composite goal execution (§29)
+
+```
+run(goal, input)
+  1  look up artifact via lock → load + validate (32)          fail → Unavailable / ValidationFailed
+  2  validate input against the signature (D-23)               fail → TL0902
+  3  build waves from `calls` args (R-IR-10)
+  4  for each wave: run all its bindings concurrently (each = recursive run of the child)
+  5  collect results in source order; on failure apply D-9
+  6  evaluate the tail `body` with inputs + bindings as locals
+  7  run checks on (inputs, bindings, result)                  fail → TL0501
+  8  enforce output size; return value + trace
+```
+
+**R-RUN-06** Waves are computed statically: a binding's wave is 1 + the max wave of the bindings its args reference
+(inputs are wave 0). Source order never implies execution order (§9); the learner-visible model is the wave list.
+**R-RUN-07** Concurrency runs on Tokio; interpreter evaluation (CPU-bound) runs on a bounded blocking pool sized by
+`--jobs` (default: available CPUs). Results are identical for every `--jobs` value, including 1 (INV-3).
+**R-RUN-08** No memoization across calls in v0.1: the same child called twice with equal arguments runs twice (keeps
+call counts and traces simple and static).
+
+Worked example (§11) — `CreateLevelSummary`:
+
+| Wave | Bindings |
+|---|---|
+| 1 | `enemies = FindEnemies(level)`, `treasures = FindTreasures(level)`, `score = CalculateScore(player)` |
+| 2 | `difficulty = EstimateDifficulty(enemies)`, `reward = CalculateReward(treasures, score)` |
+| tail | `CreateLevelSummary` body over all five bindings |
+
+## 5. Failure semantics (§30)
+
+| Outcome | Meaning | Codes |
+|---|---|---|
+| `Success(value)` | body and checks passed | — |
+| `Failure(error)` | the goal ran and failed | `TL0501`, `TL0602`, `TL0902`, `TL0607` |
+| `BudgetExceeded` | a deterministic limit was hit | `TL0601` fuel, `TL0604` memory, `TL0605` calls, `TL0606` size |
+| `Timeout` | wall-clock watchdog fired — **non-reproducible** (D-10) | `TL0603` |
+| `ValidationFailed` | a loaded artifact failed re-validation or its hash | `TL0402`, `TL0703` |
+| `Unavailable` | no artifact for the goal (not built / not locked) | `TL0701` |
+
+**R-RUN-09** A required child failure fails the parent (§30). The reported failure is that of the **lowest
+source-order** binding that failed among those that ran; other in-flight siblings are cancelled and appear in the trace
+as `cancelled` (D-9).
+**R-RUN-10** The parent's failure wraps the child's: `BuildPlayerSummary failed because FindBadge failed: …`, keeping the
+child's code as the root cause. The top-level exit status uses the root cause's code (tooling/40).
+**R-RUN-11** `fallback`, `retry` and optional calls are Future (reserved, D-24).
+
+## 6. Determinism (§31, INV-3)
+
+**R-RUN-12** Same source + input + locked artifacts + seed ⇒ same result value, same outcome code and same trace
+(modulo timing fields) — across runs, `--jobs` values, OSes and backends.
+**R-RUN-13** Pure goals have no implicit clock, network, environment or randomness; seeds are explicit inputs (D-22).
+**R-RUN-14** Only `Timeout` may differ between runs; it is flagged `reproducible: false` in the trace and is never
+cached or used as a verification verdict (D-10).
+**R-RUN-15** Failure messages render values with the canonical number format and sorted-by-declaration record fields,
+so diagnostic text is itself deterministic.
+
+## 7. Budgets (§3.4, §28, D-8)
+
+| Field | Default (system cap) | Scope | Checked | Code |
+|---|---|---|---|---|
+| `max_fuel` | 10 000 000 Thela fuel | per goal invocation | runtime, deterministic | `TL0601` |
+| `max_memory` | 64 MiB | per goal invocation (value bytes, §7.1) | runtime, deterministic | `TL0604` |
+| `max_goal_calls` | 128 | whole run tree | **statically** at `thela check` (call graph is static) | `TL0605` |
+| `max_call_depth` | 32 | whole run tree | statically | `TL0605` |
+| `max_list_size` | 10 000 items | any list value | runtime | `TL0606` |
+| `max_output_bytes` | 1 MiB | canonical JSON of a goal's result | runtime | `TL0606` |
+| `max_wall_clock` | 2 s | whole top-level run | watchdog | `TL0603` |
+
+**R-RUN-16** A goal's `budget` line (language/12) can only tighten these caps for that goal's own invocation:
+`cpu=Nms` → `max_fuel = N × 100 000` (fixed conversion constant `FUEL_PER_MS`, not measured, so deterministic);
+`memory=` → `max_memory`; `calls=`/`depth=` → limits for the subtree rooted at that goal. A value above the system cap
+is rejected by `thela check` with `TL0308 InvalidBudget` (language/12 R-GOAL-20).
+**R-RUN-17** Fuel and memory are per invocation, not a shared pool, so concurrent siblings cannot affect each other's
+outcome (INV-3). The whole tree is still bounded: ≤ 128 invocations × per-invocation limits, plus the watchdog.
+**R-RUN-18** Budget constants are defined once in `thela-runtime` and referenced by name by the CLI, the prompt
+builder (22 §4) and tests.
+
+### 7.1 Memory accounting
+
+The interpreter charges each value it creates by a fixed size function (Number 8, Boolean 1, Nothing 0, Text 16 +
+bytes, List 16 + Σ items, Record 16 + Σ fields) and tracks the peak of live bytes in the invocation. The function is
+part of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not its linear-memory size.
+
+## 8. Trace (§33)
+
+A trace is a tree of events, ordered by **source order**, never by completion time:
+
+| Event | Fields |
+|---|---|
+| `goal` | goal, artifact hash, kind, inputs, outcome, fuel used, peak memory, duration (non-deterministic, excluded from comparisons) |
+| `call` | binding, child goal, wave, args, outcome (`ok` / `failed` / `cancelled`), value, nested `goal` |
+| `check` | source text, span, passed, values of every sub-expression referenced in a failure |
+| `failure` | code, message, root-cause path (`BuildPlayerSummary › FindBadge`) |
+
+**R-RUN-19** Trace JSON is versioned and additive-only; `thela trace --json` emits it; `thela run` renders the human
+view on failure (§33 layout: each call with ✓/✗ and value, then the failed check with expected vs received).
+**R-RUN-20** Values in the human view are truncated (lists > 10 items, text > 80 chars) with a count of what was
+elided; the JSON form is complete up to `max_output_bytes`.
+**R-RUN-21** Traces are local. Telemetry is a local aggregation of traces (counts, durations); nothing is sent
+anywhere in v0.1 (tooling/41).
+
+## 9. Explain mode (§34)
+
+**R-RUN-22** `thela explain` renders a goal from its waves, deterministically and without an LLM:
+one binding in a wave → "First: …" / "Then: …"; several → "At the same time: …"; the tail → "Finally: " + the plan's
+first sentence. Binding lines use the child's plan first sentence, or "run `Child`" if it has none.
+**R-RUN-23** Correction to §34: all three bindings of `BuildPlayerSummary` are in wave 1, so the explanation is a
+single "At the same time:" group, not "First … At the same time …".
+
+## 10. Acceptance criteria
+
+| ID | Criterion |
+|---|---|
+| AC-RUN-01 | Three independent children with equal heavy workloads are all in wave 1 and their executions overlap in time with `--jobs 3` — §52 Test 3. |
+| AC-RUN-02 | `Main` → `Double` then `AddOne` runs in 2 waves and returns `2x + 1` — §52 Test 2. |
+| AC-RUN-03 | Two siblings both fail: the reported failure is always the lower source-order binding, across 100 runs with random scheduling delays (D-9). |
+| AC-RUN-04 | Result and trace (excluding durations) are byte-identical for `--jobs 1` and `--jobs 8` on the golden programs. |
+| AC-RUN-05 | An infinite-cost leaf (reduce over `range(1e7)`) fails with `TL0601` deterministically, with the same fuel figure every run — §52 Test 7. |
+| AC-RUN-06 | A call tree needing 129 invocations is rejected by `thela check` with `TL0605` before any execution. |
+| AC-RUN-07 | A failing check reports the assertion text, the expected and received values — §52 Test 6. |
+| AC-RUN-08 | `x / 0` in a leaf yields `TL0602`; no partial or special value appears in any output. |
+| AC-RUN-09 | `budget cpu=1ms` on a goal whose run needs more than 100 000 fuel yields `TL0601`; the same goal without the line succeeds. |
+| AC-RUN-10 | `thela explain` output for `BuildPlayerSummary` and `CreateLevelSummary` matches the golden text; no provider is constructed. |
+| AC-RUN-11 | A wall-clock timeout produces `TL0603` with `reproducible: false` in the trace and no artifact or cache write. |

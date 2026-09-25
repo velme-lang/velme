@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+*.pending-snap
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json

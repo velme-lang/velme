@@ -1,0 +1,105 @@
+# 92 — Design Review: Decisions & Open Questions
+
+**Status:** Reference · **Area:** —
+**Read when:** you need the *why* behind a rule, a rule cites a `D-n`, or you hit a gap the spec doesn't cover.
+**Depends on:** [SPEC](../SPEC.md)
+**Source:** review of the original design doc (deleted after the split) (2026-09-25)
+
+## 1. Purpose
+
+The original design doc is a strong direction but not yet buildable: its examples contradict its own rules in places,
+and several mechanisms it relies on (test inputs, literals, inputs to `run`, number semantics) are undefined. Each
+problem found is resolved here as a **decision** `D-n` — binding unless the owner overrides it — or, where the choice
+is the owner's to make, an **open question** `Q-n` with the default the spec uses until answered.
+
+Changing a decision: edit its row (keep the id, add "revised YYYY-MM-DD"), then update the rules that cite it.
+
+## 2. Findings in the original doc
+
+| # | Finding | Where | Resolution |
+|---|---|---|---|
+| F-1 | The IR example binds `"CalculateRank"` instead of `rank`, and its result record omits `badge`. | §15 | corrected example in `compiler/21` |
+| F-2 | CLI output prints `GenerateScore`; the program calls `CalculateScore`. | §47 | corrected in `tooling/40` |
+| F-3 | The two checks `players.length == 0 or result is empty` and `players.length > 0 and result is not empty` cannot both hold for an empty list. | §6 | D-6 (`if … then …`) |
+| F-4 | Beginner example `goal FindHighestPlayer(players):` has an untyped parameter; v0.1 requires explicit types. | §1A | D-3 |
+| F-5 | `pure` and `budget cpu=10ms memory=4mb` appear in an example but not in the v0.1 declaration list. | §1A, §4 | D-8 |
+| F-6 | `FindMaximum(valid, by=jump_height)` needs named arguments and field references as values — neither is in the type system. | §1A | Future (reference/90 reserved) |
+| F-7 | Test 2 declares `goal Double(x: Number) -> Number` with no body, and binds a call to `result`, which is also the implicit output name in checks. | §52 | D-4, R-GOAL rules on bodiless goals |
+| F-8 | Explicit examples are listed as test source #1 but no syntax exists for them, and there are no literal forms for records/lists. | §23 | D-7 |
+| F-9 | `Number` is unspecified (integer? float? decimal?) though INV-3 needs bit-exact results across interpreter and WASM, and one example is money. | §5, §1A | D-36 |
+| F-10 | Runtime seed derivation (`goal_seed = hash(invocation_seed, …)`) contradicts the v0.1 model where seeds are explicit inputs. | §32 vs §3.3 | D-22 |
+| F-11 | Including child *implementation* fingerprints in a parent's cache key re-synthesizes every ancestor (paid LLM calls) whenever a leaf is regenerated. | §25 | D-11 |
+| F-12 | LLM output is not reproducible, so "same source ⇒ same result" only holds if accepted artifacts are pinned; there is no lockfile. | §31, §25 | D-12 |
+| F-13 | Parallel siblings can fail in any order; "first failure" is then non-deterministic, breaking INV-3 for error results. | §30 | D-9 |
+| F-14 | Wall-clock timeouts are inherently non-reproducible but are listed beside deterministic limits. | §3.4, §28 | D-10 |
+| F-15 | Roadmap Phase 2 builds the DAG executor before any leaf goal can execute (interpreter is Phase 4). | §51 | D-16 |
+| F-16 | 15 crates plus parallel top-level `compiler/`, `runtime/`, `stdlib/` trees duplicate each other; §43.4 itself warns against directory-driven crates. | §43.3 | D-15 |
+| F-17 | Composite-goal synthesis is unspecified: may the LLM emit `Call` nodes? to which goals? | §17.2, §20 | D-5 |
+| F-18 | The check scope is undefined (can checks see call bindings? `result`?). Checks use arithmetic (`a + b`, Test 1) and list projection (`players.jump_height`) not listed in §7. | §7, §52 | D-6 |
+| F-19 | Field access on a nullable result inside a check has no defined behaviour. | §7 | D-6 (narrowing) |
+| F-20 | How `thela run` receives inputs is undefined. | §47 | D-23 |
+| F-21 | `thela test` appears in §42A.3 but not in the CLI list; `max_list_size` appears in §3.4 but not in `GoalBudget`. | §47, §3.4 | `tooling/40`, `runtime/30` |
+| F-22 | Plan text is untrusted input to the LLM (prompt injection), and learners' plans leave the machine — neither is addressed. | §49 | `tooling/41`, D-37 |
+| F-23 | Error codes `A001…` have no grouping and no room to grow per phase. | §50 | D-17 |
+| F-24 | Name changed from Neya (via Nela, dropped after clearance) to Thela; the naming-clearance pass in §43.15 was done for the old name. | §43.15 | D-1, D-38 |
+| F-25 | The explain-mode example says "First: score … At the same time: rank, badge" though all three calls are independent (one wave). | §34 | corrected in `runtime/30` R-RUN-23 |
+
+## 3. Decisions
+
+| ID | Decision | Rationale |
+|---|---|---|
+| **D-1** | Name **Thela**. File extension `.thela`; CLI `thela`; crates `thela-*`; GitHub org `thela-lang`, repo `thela-lang/thela`; optional file header `language: thela/0.1`. | Owner's rename. |
+| **D-2** | **Retired** — superseded by D-36 (was: `Number` is IEEE-754 binary64). | Owner chose exact decimal (Q-1). |
+| **D-3** | All goal parameters and outputs carry explicit types in v0.1. The untyped beginner form is Future (inference or playground templates, Q-3). | Keeps sema and the IR contract simple (P-3, P-5). |
+| **D-4** | `result` is reserved. In checks it names the goal's output. In a `call` block, a binding named `result` makes it the goal's output (type must match): the goal is **wired** — no synthesis, the plan is documentation. A goal must have a `plan`, a `result` binding, or both. | Makes Test 2 (§52) meaningful and gives learners a fully deterministic composite goal with zero LLM cost. |
+| **D-5** | The call DAG is compiled from source by the compiler. For a composite goal, the LLM synthesizes only the **tail**: an IR expression over the inputs and call bindings (as `Local`s). Synthesized IR may not contain `Call` nodes; the IR validator rejects them. | Enforces INV-6 structurally: the LLM can't change what is called. Simplifies the prompt and the validator. |
+| **D-6** | Check DSL additions: arithmetic `+ - * /`; `if A then B` (≡ `not A or B`); `some x in xs has P` beside `every`; list projection `xs.field` → `List<F>`; `and`/`or`/`if-then` short-circuit and **narrow** `T?` to `T` after `is not empty`/`is empty`. Field access on an un-narrowed `T?` is a type error (`TL0207`). Check scope: inputs, call bindings, `result`. | Fixes F-3, F-18, F-19 with the smallest additions a learner can read aloud. |
+| **D-7** | New `examples:` block: each item is an equality between a call of the goal itself and an expected value, using literal syntax — `Player(name: "Lina", jump_height: 3, score: 820)`, `[1, 2]`, `nothing`, `true`, `"text"`, numbers. Examples run first in verification and in `thela test`. | Fills F-8; reuses the check expression grammar; literals are needed for `thela test` anyway. |
+| **D-8** | `budget` is v0.1: optional line `budget cpu=10ms memory=4mb calls=16 depth=4`, keys optional, can only tighten system caps (never raise). `pure` is reserved (v0.1-ready); every v0.1 goal is pure. | F-5. Budgets exist in the runtime anyway; exposing them costs little. |
+| **D-9** | When a required child fails, the parent fails with the failure of the **lowest source-order** failed binding among those that ran; still-running siblings are cancelled. Traces list calls in source order, not completion order. | Deterministic error results and traces (INV-3). |
+| **D-10** | Fuel (deterministic) is the primary CPU limit and yields `BudgetExceeded`. Epoch/wall-clock is a safety net and yields `Timeout`, which is marked non-reproducible in the trace and never cached as a verification outcome. Reproducibility tests use fuel. | F-14. |
+| **D-11** | Synthesis cache key = hash(normalized goal source, **child signature** fingerprints, language/compiler/IR/builtins/prompt versions, provider+model id). Execution identity (the artifact graph) pins concrete child artifacts separately. | Regenerating a leaf doesn't re-synthesize its ancestors; saves LLM cost and keeps locks stable. |
+| **D-12** | `thela.lock` (TOML, committed) maps each goal to its accepted IR artifact hash; artifacts live in `.thela/artifacts/` (content-addressed, committable). `--locked` never synthesizes and fails if the lock is stale; CI uses `--locked`. WASM modules are a derived local cache, not locked (deterministic from IR + compiler version). | F-12; offline use (INV-7); reviewable diffs of generated code. |
+| **D-13** | `SynthProvider` trait with providers `anthropic` (MVP real), `replay` (reads recorded exchanges from fixture files), `scripted` (unit tests). Live-LLM tests are opt-in (`THELA_LIVE_LLM=1`) and never part of the default gate. | Deterministic, free, fast CI; the repo's own test suite never depends on a vendor. |
+| **D-14** | MVP ships one real provider: Anthropic Messages API with JSON-schema-constrained output; model id is configuration (`thela.toml` / `THELA_MODEL`), never a code constant. Second provider after MVP. | §37 "one LLM provider"; vendor-neutral trait keeps INV-7. Owner may pick another (Q-2). |
+| **D-15** | Right-sized workspace: `thela-syntax`, `thela-diagnostics`, `thela-sema`, `thela-ir`, `thela-check`, `thela-builtins`, `thela-interp`, `thela-synth`, `thela-runtime`, `thela-wasm`, `thela-cli`, `thela-test-support`. No top-level `compiler/`, `runtime/`, `stdlib/` trees in v0.1. Split a crate only for a real API/ownership boundary. | F-16. |
+| **D-16** | Roadmap order: M0 repo → M1 syntax → M2 semantics → M3 IR + interpreter + checks (hand-written IR) → M4 DAG runtime + budgets + trace → M5 Spellbook → M6 artifacts, lockfile, full CLI → M7 WASM + Wasmtime → M8 MVP gate. Playground and Coach are post-MVP. | F-15; each phase is testable without the next. Details: `delivery/50`. |
+| **D-17** | Error codes are `TL` + 4 digits: `TL01xx` syntax · `TL02xx` names/types · `TL03xx` calls/graph · `TL04xx` IR/synthesis · `TL05xx` checks/examples · `TL06xx` runtime/budgets · `TL07xx` artifacts/lock · `TL08xx` capabilities · `TL09xx` CLI/IO. Original `A001…A014` map in `reference/90`. | F-23; INV-10. |
+| **D-18** | A v0.1 program is one file. `type` and `goal` declarations are order-independent within the file; bindings inside a `call` block must be defined before use (§12.5). | Modules are Future (RFC). |
+| **D-19** | Indentation: spaces only (a tab in leading whitespace is `TL0103`); any consistent width, 4 recommended. `plan: \|` starts a block scalar that ends at the first line indented at or below the `plan` key. | Python/YAML-like layout children already meet; deterministic lexing. |
+| **D-20** | Checks run on every `thela run` in v0.1, not only during verification. A failure is `TL0501 CheckFailed` with the assertion and the values involved. | Teaching value; they are also the goal's runtime contract. |
+| **D-21** | Hashing: BLAKE3 over canonical JSON (sorted keys, no insignificant whitespace, shortest-round-trip numbers). Plan text normalization: LF newlines, trailing whitespace trimmed per line, common indentation removed — internal spacing preserved. | Stable fingerprints across platforms. |
+| **D-22** | No implicit randomness. Builtin `random(seed, index) -> Number` in `[0, 1)`, SplitMix64 over (seed, index), 53-bit mantissa; `seed`/`index` must be integer-valued (else `TL0602`). `range(n) -> List<Number>` provides indices. Runtime seed derivation (§32) is Future, with `effects: random`. | F-10; reproducible procedural generation with explicit data flow. |
+| **D-23** | Inputs: `thela run FILE --goal G --input FILE.json` (or `-` for stdin), or repeated `--arg name=<json>`. JSON mapping: Number↔number, Text↔string, Boolean↔bool, Nothing↔null, `List`↔array, record↔object with exactly the declared fields (unknown/missing → `TL0902`). Output: same mapping. | F-20; one mapping shared by CLI, examples, fixtures and IR literals. |
+| **D-24** | Reserved words for Future features: `pure effects when choose otherwise import module fallback retry optional assume` (`assume` added by D-39). Using one is `TL0104 ReservedWord` ("coming in a later Thela version"). | Keeps later additions non-breaking. |
+| **D-25** | Tree-sitter grammar is post-MVP; when added, it must parse the whole `tests/golden/parser` corpus with the same accept/reject outcome as the Chumsky parser. | Prevents two-grammar drift. |
+| **D-26** | Two keys refine D-11: `contract_key` (goal source, child signatures, language version, IR major, builtins version) decides lock staleness and seeds generated test inputs; `synthesis_key` = `contract_key` + prompt version + compiler MAJOR.MINOR + provider + model is the store/replay-fixture key. | Switching model/prompt or a compiler patch release never forces a locked project to re-synthesize (`runtime/32` R-ART-03/04). |
+| **D-27** | Budgets are per invocation, not a shared pool; `max_goal_calls`/`max_call_depth` are checked statically by `thela check` (the call graph is static). Thela fuel is a fixed per-IR-node cost table and memory a fixed value-size function, metered identically on both backends; Wasmtime's own limits are backstops. `budget cpu=Nms` converts to fuel by a fixed constant. | Budget failures are deterministic and backend-independent (INV-3, INV-5); `runtime/30` R-RUN-04/16/17. |
+| **D-28** | `thela run`/`test`/`trace` never synthesize unless `--build` is passed; a stale/missing entry is `TL0702`/`TL0701` with a hint. Only `thela build` (or `--build`) writes the lock. | No surprise LLM cost; `runtime/32` R-ART-16, `tooling/40` R-CLI-03. |
+| **D-29** | IR has an expression-level `if` (`Condition`) in v0.1; conditional *calls* remain Future. | Leaf goals like `FindBadge` (§44) need it; `compiler/21` R-IR-06. |
+| **D-30** | WASM: only leaf goals compile to WASM in v0.1 (composite tails stay on the interpreter); values cross in a fixed type-directed linear-memory layout (no JSON inside WASM); builtins are host imports backed by the same `thela-builtins` code. v0.1 has no effectful host functions. | Smallest ABI; one builtin implementation for both backends; `runtime/31`. |
+| **D-31** | `call` arguments are paths or literals only — no arithmetic or builtin calls (`TL0303`). | Keeps the call block pure wiring; computation belongs in plans; `language/12` R-GOAL-08. |
+| **D-32** | A runtime error while evaluating a check item fails that item with `TL0501` (cause attached); exhausting the budget during checks reports the budget failure. | `language/13` R-CHK-07/08. |
+| **D-33** | Record types are nominal; record values compare structurally; a record literal names every field, nullable ones included. `is empty` on a non-nullable record is `TL0206` with a hint. | `language/11`. |
+| **D-34** | `maximum`/`minimum` return `Number?` and narrowing does not flow through builtin calls — "biggest" checks are written with `every`. Extra v0.1 builtins: `sum abs floor ceil round clamp concat to_text range`; IR-only `map filter find reduce sort_by all any`. | `language/14`. |
+| **D-35** | Identifiers are ASCII in v0.1; numbers have no exponent form; naming conventions are uncoded lint warnings. | `language/10`. |
+| **D-36** | `Number` is an exact decimal (coefficient `< 2^96`, scale ≤ 28, half-to-even rounding; `language/11` §3). Division by zero and overflow are `TL0602`. **Not configurable**: a project or flag switch would give the same source two meanings — fingerprints, locks, examples and checks would depend on config, the LLM contract would be ambiguous, and every backend would need both. A separate opt-in binary `Float` type is Future. The implementation may wrap `rust_decimal` only if property tests show it matches R-TYP-04 exactly. WASM uses host imports for arithmetic (`runtime/31` R-SBX-06). | Answers Q-1. Kids-first and money examples need `0.1 + 0.2 == 0.3`; changing `Number` after launch would silently change existing results. One shared Rust implementation makes interpreter/WASM parity (INV-3) simpler. |
+| **D-37** | Learner privacy for v0.1: CLI only, user's own key, no telemetry leaves the machine, plus a one-line notice on each build that calls a live provider (`tooling/41` R-SEC-12). Any hosted, classroom or child-directed product needs legal review and an approved consent/retention policy (COPPA, GDPR-K) first. | Answers Q-4. |
+| **D-38** | Code is `MIT OR Apache-2.0`; spec and docs CC BY 4.0; the name and logo are trademarks, not licensed. Name clearance screened 2026-09-25 (`delivery/52` §11): *Nela* dropped (clash with an existing LLM language using `.nela`); *Thela* chosen — `thela` free on crates.io, PyPI, npm; org `thela-lang` free; no software mark found by web search. An official USPTO/TMview search (classes 9, 41, 42) is still owed before public launch. Diagnostic prefix follows the name (`TL`, D-17). | Answers Q-5. Dual licence is the Rust ecosystem norm. |
+| **D-39** | No `assume:` block in v0.1; a check failing on a generated input shows the counterexample and suggests the `if … then …` rewrite (`compiler/22` R-SYNTH-19). `assume` is reserved (D-24) so adding it later breaks no program. | Answers Q-7. The check language already expresses preconditions (D-6). |
+| **D-40** | Contributor instructions are split by audience: `CONTRIBUTING.md` holds every rule that applies to all contributors; `AGENTS.md` adds agent-only workflow (token budget, Stop & Verify Gate, slices); `CLAUDE.md` imports both and adds Claude Code specifics (review sequence, subagent tiers). A rule lives in exactly one of the three. | Keeps the public repo readable for human contributors and tool-neutral for agents other than Claude Code, without duplicating rules. |
+
+## 4. Open questions
+
+The spec uses the **default** until the owner answers. Record the answer here and in the cited rules. All seven were
+answered on 2026-09-25 (owner accepted the recommendations).
+
+| ID | Question | Status |
+|---|---|---|
+| **Q-1** | Should `Number` be exact decimal (money, education — `0.1 + 0.2 == 0.3`) instead of binary64? Decimal is friendlier for children and money but costs a custom WASM arithmetic runtime. | **Resolved** → D-36 (exact decimal, not configurable) |
+| **Q-2** | Which LLM provider is the MVP's one real provider? | **Resolved** → D-14 confirmed (Anthropic) |
+| **Q-3** | Support the untyped beginner form (§1A) in v0.1 via inference, or leave it to playground templates? | **Resolved** → D-3 confirmed; `TL0101` help suggests a type (R-TYP-01) |
+| **Q-4** | Learner privacy: plans and example data from children are sent to a third-party LLM. What consent/data-retention policy applies before any hosted or school use (COPPA, GDPR-K)? The CLI MVP uses the user's own API key. | **Resolved** → D-37 |
+| **Q-5** | Confirm Apache-2.0 + CC BY 4.0, and run the naming/trademark clearance for **Thela** (crates `thela`, `thela-cli`, `thela-runtime`; domains; npm/PyPI; trademarks). | **Resolved** → D-38 (name clearance is an M0 prerequisite) |
+| **Q-7** | Generated test inputs can violate assumptions the author never stated (e.g. negative prices make `result >= 0` fail). Add an `assume:` block (input preconditions) in v0.1, or keep showing the counterexample to the learner? | **Resolved** → D-39 |
+| **Q-6** | Is `examples:` (D-7) the right learner-facing word, or `tests:` / `try:`? | **Resolved** → D-7 confirmed (`examples:`) |

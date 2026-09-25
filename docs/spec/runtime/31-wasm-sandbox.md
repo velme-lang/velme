@@ -1,0 +1,132 @@
+# 31 — WASM Backend & Wasmtime Sandbox
+
+**Status:** v0.1 (roadmap M7, the last MVP phase) · **Area:** SBX
+**Read when:** working on IR → WASM code generation, the value layout, Wasmtime configuration, host imports, or interpreter/WASM differential tests.
+**Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [30-execution-vibevm](30-execution-vibevm.md), [language/14](../language/14-builtins.md), [tooling/41](../tooling/41-security-privacy.md)
+**Source:** §27, §28, §39, §40, §41, §42 (Runtime)
+
+## 1. Purpose & boundaries
+
+The WASM backend compiles a verified IR goal body to a core WebAssembly module and runs it in Wasmtime with no
+ambient capabilities. It is an **optimization backend** (P-4): the interpreter ([30](30-execution-vibevm.md) §3)
+defines semantics and WASM must produce the same value, outcome code, fuel and memory figures (INV-3). Composite-goal
+scheduling stays in the host runtime (§17.2); only goal bodies become modules.
+
+## 2. Strategy (§39–§41)
+
+| Stage | v0.1 | Later |
+|---|---|---|
+| Unit of compilation | one **leaf** goal body → one core module; composite tails stay on the interpreter | composite tails, whole-program modules |
+| Interface | fixed Thela value layout in linear memory (§3) | Component Model + WIT records/lists (Future) |
+| Composition | host-managed DAG (30 §4) | component composition (Future) |
+| Emission | `wasm-encoder` | — |
+| Validation | `wasmparser` with a fixed feature set (§4) | — |
+| Runtime | Wasmtime, embedded, no WASI | WASI components with explicit capabilities (Future, `effects`) |
+
+**R-SBX-01** WASM is never produced by an LLM (INV-1); only `thela-wasm` emits it, only from validated IR.
+**R-SBX-02** Backend selection: `--backend interp|wasm|auto`. Default is `interp` until the M7 gate passes, then
+`auto` (WASM for leaf goals with a compiled module, interpreter otherwise). Results are identical for all three.
+
+## 3. Value layout (ABI)
+
+Chosen: a **type-directed in-memory layout** that both sides share. The host writes inputs directly into the module's
+linear memory in this layout and reads the result back; the module never parses JSON or a tagged format.
+
+| Type | Layout (little-endian, 8-byte aligned slots) |
+|---|---|
+| `Number` | 16-byte slot holding the canonical 128-bit decimal encoding of `thela-builtins` (coefficient + scale + sign) |
+| `Boolean` | `i32` 0/1 |
+| `Nothing` | zero-size |
+| `T?` | `i32` tag (0 = nothing, 1 = present) + `T` slot |
+| `Text` | `i32 ptr, i32 len` → UTF-8 bytes |
+| `List<T>` | `i32 ptr, i32 len` → `len` contiguous `T` slots |
+| record | fields in declared order, each in its slot |
+
+Why: the types are statically known on both sides, so tags and a decoder inside WASM are unnecessary; emitting
+typed loads/stores is simpler than emitting a parser, and the encoding is canonical by construction (deterministic).
+
+**R-SBX-03** Module exports exactly: `memory`, `thela_alloc(size: i32) -> i32`, `thela_run(input_ptr: i32) -> i32`
+(pointer to the result slot). Allocation is a bump allocator; nothing is freed — each invocation gets a fresh instance.
+**R-SBX-04** The host validates every pointer/length it reads back against memory bounds; an out-of-range result is
+`TL0607` (a backend bug, never user-visible data corruption).
+
+## 4. Code generation & validation
+
+**R-SBX-05** The emitter instruments Thela fuel and memory explicitly: each IR node decrements a global fuel counter by
+its cost from the shared cost table (30 R-RUN-04); each value creation adds the §7.1 size to a live-bytes counter.
+Crossing a limit traps with a reason code the host maps to `TL0601`/`TL0604`. The cost table is one constant set in
+`thela-interp`, imported by `thela-wasm`.
+**R-SBX-06** `Number` arithmetic and comparison are host imports (`thela.num_add`, `num_sub`, `num_mul`, `num_div`,
+`num_neg`, `num_cmp`) implemented by the same `thela-builtins` code as the interpreter, so results match bit for bit
+(D-36). Division by zero or overflow returns the `TL0602` reason and the module traps.
+**R-SBX-07** The emitter uses only: MVP instructions except any `f32`/`f64` operation (`Number` is decimal, D-36), multi-value, bulk
+memory, mutable globals. No threads, SIMD,
+relaxed SIMD, reference types, exceptions or tail calls in v0.1. `wasmparser` validates every module with exactly this
+feature set before it is cached or instantiated.
+**R-SBX-08** Builtins are **host imports** under module `thela`, implemented by `thela-builtins` — the same Rust code the
+interpreter calls — so their semantics cannot diverge. Collection nodes (`map`, `filter`, `find`, `reduce`, `sort`)
+are emitted in WASM; `sort` is an emitted stable merge sort.
+
+## 5. Host imports (whitelist)
+
+| Import | v0.1 | Notes |
+|---|---|---|
+| `thela.<builtin>` for each catalog entry of `builtins_version` (language/14), incl. `random(seed, index)` | yes | pure; deterministic; charged fuel per catalog |
+| `thela.num_*` decimal arithmetic (R-SBX-06) | yes | pure; charged as the IR node that uses it |
+| `thela.log` | Future | would be an effect |
+| `thela.now` | Future | requires `effects: clock` |
+| `thela.call` | Future | composite goals stay host-scheduled |
+
+**R-SBX-09** Because `random` is a pure builtin (D-22), no effectful host function exists in v0.1. The `Linker`
+defines only the `thela.*` catalog imports; a module importing anything else fails instantiation with `TL0801` (INV-4).
+**R-SBX-10** No WASI is linked: no filesystem, network, environment, clock or process (§27, INV-4).
+
+## 6. Wasmtime configuration (§28)
+
+| Setting | Value | Why |
+|---|---|---|
+| `consume_fuel` | on, set to 20 × the Thela fuel budget | backstop only; Thela fuel (R-SBX-05) is the deterministic limit |
+| `epoch_interruption` | on; ticker thread increments every 10 ms; deadline = `max_wall_clock` | wall-clock safety net → `TL0603` (D-10) |
+| `wasm_threads`, `wasm_simd`, `wasm_relaxed_simd` | off | determinism (R-SBX-07) |
+| `StoreLimits` | memory ≤ 2 × `max_memory` + 1 MiB, 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `TL0604` |
+| Instantiation | `InstancePre` per module, fresh `Store` + instance per invocation | no state shared between calls |
+
+**R-SBX-11** A Wasmtime trap is mapped by reason: Thela fuel/memory/arithmetic reason codes → their `TL06xx`;
+Wasmtime fuel exhaustion → `TL0601`; epoch deadline → `TL0603`; `ResourceLimiter` denial → `TL0604`; anything else →
+`TL0607 InternalError` (and is a bug).
+**R-SBX-12** Only the deterministic limits (Thela fuel, Thela memory) can produce reproducible outcomes; if a backstop
+fires first, the run is reported as that backstop's code and flagged as a backend bug in `--verbose`.
+
+## 7. Compiled-module cache
+
+**R-SBX-13** Compiled modules are a **derived** local cache (D-12): `.thela/cache/wasm/<artifact-hash>-<key>.cwasm`,
+where `key` = BLAKE3 of (`thela-wasm` version, Wasmtime version, engine config). They are never locked, never committed
+and may be deleted at any time.
+**R-SBX-14** `Module::deserialize` is used only on files under the project's own cache directory written by this
+process's engine configuration; a key mismatch or read error falls back to recompiling from IR.
+
+## 8. Differential testing (INV-3)
+
+**R-SBX-15** Every golden program and every IR in the fuzz/property corpus runs on both backends; the gate compares
+result value (canonical JSON), outcome code, Thela fuel used and peak Thela memory. Any difference fails the gate
+(`delivery/51`).
+**R-SBX-16** A new IR node kind or builtin is not released for the WASM backend until it passes the differential suite;
+until then the emitter declines the goal and `auto` uses the interpreter.
+
+## 9. Future: Component Model
+
+Goals as WASM components with WIT interfaces (records/lists natural across languages), component composition for
+composite goals, and WASI capabilities tied to declared `effects`. Tracked by RFC; must not weaken INV-3/INV-4.
+
+## 10. Acceptance criteria
+
+| ID | Criterion |
+|---|---|
+| AC-SBX-01 | Every golden leaf goal gives identical value, outcome code, fuel and peak memory on `interp` and `wasm`. |
+| AC-SBX-02 | A module importing a non-whitelisted function (e.g. `wasi_snapshot_preview1.fd_write`) fails with `TL0801` and never runs. |
+| AC-SBX-03 | An expensive leaf is stopped with `TL0601` on WASM with the same fuel figure as the interpreter — §52 Test 7. |
+| AC-SBX-04 | A leaf that allocates past `max_memory` fails with `TL0604` on both backends at the same point. |
+| AC-SBX-05 | Division by zero traps with `TL0602` on WASM; a module containing any `f32`/`f64` instruction is rejected by validation. |
+| AC-SBX-06 | Every emitted module in the golden set validates with `wasmparser` under exactly the R-SBX-07 feature set. |
+| AC-SBX-07 | Deleting `.thela/cache/wasm/` changes no result; the next run recompiles. |
+| AC-SBX-08 | An epoch-deadline test (watchdog set to 1 ms) yields `TL0603` flagged non-reproducible. |
