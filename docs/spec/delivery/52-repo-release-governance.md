@@ -160,7 +160,9 @@ README order: 1 What is Thela? · 2 Why is it different? · 3 a 10-line example 
 Screened 2026-09-25 for **Thela** (D-38): registries, org and domains free; web trademark screen clean. Still owed before public launch: official USPTO/TMview search. The checklist: GitHub org `thela-lang` (held) and
 repo `thela`; crates `thela`, `thela-cli`, `thela-runtime` and every `thela-*` crate in §2; domains (`thela.dev`,
 `thela-lang.org`, `thela-lang.dev`); npm and PyPI names; trademarks in US, EU and target markets. Reserve crate names
-with placeholder releases once cleared.
+with placeholder releases once cleared. `thela` and `thela-cli` were claimed 2026-09-25 as `0.0.0` placeholders
+(owners: the maintainer and `github:thela-lang:owners`); the other `thela-*` crates are claimed at M0, when they have
+real content.
 
 ## 12. Acceptance criteria
 
