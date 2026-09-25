@@ -17,7 +17,7 @@ means an `architect-review` (Opus, high) runs before the phase gate.
 
 | Phase | Name | Model | Status | Started | Verified | Notes |
 |---|---|---|---|---|---|---|
-| M0 | Workspace, conventions, verify gate | Sonnet · medium | TODO | | | |
+| M0 | Workspace, conventions, verify gate | Sonnet · medium | DONE | 2026-09-25 | 2026-09-25 | |
 | M1 | Syntax: lexer, parser, AST, diagnostics | Opus · high | TODO | | | grammar is a language decision |
 | M2 | Semantics: names, types, call graph | Opus · high | TODO | | | |
 | M3 | IR, validator, interpreter, check evaluator | Opus · high | TODO | | | defines reference semantics (P-4) |

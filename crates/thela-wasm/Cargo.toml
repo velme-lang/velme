@@ -1,0 +1,12 @@
+[package]
+name = "thela-wasm"
+description = "Thela: wasm crate (see docs/spec/compiler/20-compiler-architecture.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

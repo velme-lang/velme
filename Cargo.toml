@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/thela-lang/thela"
+authors = ["The Thela contributors"]
+
+[workspace.dependencies]
+anyhow = "1"
+insta = "1"
+serde_json = "1"
+
+# CC-ERR-01, CC-STY-03. `unsafe_code` is forbidden per crate (`#![forbid(unsafe_code)]`), not here, because
+# `thela-wasm` is the one crate that may use it (CC-API-04).
+[workspace.lints.rust]
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+indexing_slicing = "warn"
+panic = "warn"
+unreachable = "warn"
