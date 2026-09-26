@@ -50,7 +50,7 @@ diagnostic's data.
 | TL0404 | ProviderUnavailable | IR/synthesis | provider unreachable, rate-limited, or `--offline` | Thela couldn't reach the AI helper to build `{goal}`. | — |
 | TL0405 | ProviderNotConfigured | IR/synthesis | no provider/model/API key configured, or the Ollama server lacks the model | To build `{goal}`, set `{env_var}` to your API key. | — |
 | TL0406 | BackendFailed | IR/synthesis | `external` backend exited non-zero, timed out, replied with non-JSON or oversized output, or returned `{"error"}` (D-42) | The backend `{backend}` couldn't build `{goal}`: {reason} | — |
-| TL0407 | PlanUnclear | IR/synthesis | the AI helper or `external` backend replied with a question instead of IR (`compiler/22` R-SYNTH-32, D-43) | Thela needs more detail to build `{goal}`. Add the answer to the plan and build again. | — |
+| TL0407 | PlanUnclear | IR/synthesis | the AI helper or `external` backend replied with a question instead of IR (`compiler/22` R-SYNTH-32, D-43) | Thela needs more detail to build `{goal}`. Add the answer as an example, or to the plan, and build again. | — |
 | TL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | TL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | TL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is TL0403) | The generated program didn't pass `{check}` for {input}. | A009 |

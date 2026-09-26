@@ -174,9 +174,10 @@ shared by the most attempts, ties going to the later attempt, says how many atte
 The message and notes quote only what Thela produced: codes, rule names, check and example source, inputs and
 computed values. Reply text from the provider never appears in them (R-SYNTH-22).
 **R-SYNTH-32** A question reply ends synthesis of that goal at once, with no further retry, and the goal fails with
-`TL0407` showing the question. The build never waits for an answer: the learner writes it into the `plan`, which
-changes the goal's `contract_key` (runtime/32 §2), so the next build synthesizes it again and the choice stays in
-reviewed source (INV-3). Other goals in the build continue. A question is never written to the store or the lock
+`TL0407` showing the question. The build never waits for an answer: the learner writes it into the goal, as an
+example that shows it or else in the `plan` (language/12 §8.4). Either changes the goal's `contract_key` (runtime/32
+§2), so the next build synthesizes it again and the choice stays in reviewed source (INV-3); an example is also
+verified. Other goals in the build continue. A question is never written to the store or the lock
 and is never cached.
 **R-SYNTH-33** The question is untrusted text (R-SYNTH-22). Control characters, newlines and ANSI escapes included,
 become spaces and whitespace runs collapse to one; the result must then be 1..=280 Unicode scalar values, or the reply
