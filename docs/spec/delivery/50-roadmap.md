@@ -69,6 +69,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | Distributed execution, remote artifact store | Future | `runtime/32` |
 | Mathematical proof of checks | Future | checks are properties, not proofs |
 | Maps, enums, tuples, generics, binary `Float` | Future | D-36 |
+| `Date`, `DateTime`, `Instant`, `Duration` | Future | design: Q-18 |
 | Untyped beginner parameters | Future | D-3 |
 
 ## 5. MVP success criteria (§52)
