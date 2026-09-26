@@ -1,7 +1,7 @@
 # 12 — Goals, Calls & the Call DAG
 
 **Status:** v0.1 · **Area:** GOAL
-**Read when:** changing goal declarations, call-block checking, the call graph, cycle detection, `budget` or `examples`, or deciding what gets synthesized.
+**Read when:** changing goal declarations, call-block checking, the call graph, cycle detection, `budget` or `examples`, deciding what gets synthesized, or writing a plan (§8.4).
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md), [11-types](11-types.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-4, D-5, D-7, D-8, D-9, D-18)
 **Source:** §4, §6, §8, §8.1, §9, §10, §11, §12, §13, §14, §17, §44, §45, §46, §52
 
@@ -210,6 +210,108 @@ goal Main(x: Number) -> Number:
 ```
 
 `Main` makes no LLM request; its plan is documentation.
+
+### 8.4 Good and bad plans
+
+Guidance, not a rule: nothing here is enforced. The plan is the one part of a goal that is read but never verified
+(INV-2), so it says **what the goal is for**; exact behaviour belongs in `examples` and `check`, which are verified,
+and several steps belong in several goals.
+
+| The goal needs… | Put it in |
+|---|---|
+| its purpose, in the learner's words | `plan`, one to three sentences |
+| a rule that decides the result (threshold, tie, edge case) | `examples` at the boundary, or a `check` |
+| several steps | smaller goals joined by a `call` block (§3) |
+
+A plan that has turned into code has step numbers, variable names, "for each … if … then", or names an algorithm, and
+grows after each `TL0403`/`TL0407`. It is as long as code and checked by nothing.
+
+**Code written as prose.** Bad: the plan is an algorithm, and nothing checks that it handles ties the way the learner
+means.
+
+```text
+goal Rank(score: Number, scores: List<Number>) -> Number:
+    plan: |
+        Set rank to 1. For each s in scores, if s is bigger
+        than score, add 1 to rank. Return rank.
+```
+
+Good: the plan states the intent; the examples pin ties down and are verified.
+
+```text
+goal Rank(score: Number, scores: List<Number>) -> Number:
+    plan: |
+        The score's place on the leaderboard, highest first.
+        Equal scores share a place.
+    check:
+        - result >= 1
+    examples:
+        - Rank(100, [70, 90, 90, 100]) == 1
+        - Rank(90, [70, 90, 90, 100]) == 2
+        - Rank(70, [70, 90, 90, 100]) == 4
+```
+
+**Several steps in one plan.** Bad: three rules in one sentence, and a failure can't say which one is wrong. (`Item`
+has `price: Number` and `quantity: Number`.)
+
+```text
+goal OrderTotal(items: List<Item>) -> Number:
+    plan: |
+        Add up price times quantity for every item, take 10% off
+        if that is over 100, then add 5 for shipping unless the
+        total is over 50.
+```
+
+Good: one goal per rule, each with its own boundary examples; `OrderTotal` is wired (§8.3) and makes no LLM request.
+
+```text
+goal Subtotal(items: List<Item>) -> Number:
+    plan: "Add up price times quantity for every item."
+    examples:
+        - Subtotal([]) == 0
+        - Subtotal([Item(price: 10, quantity: 3), Item(price: 5, quantity: 1)]) == 35
+
+goal Discount(total: Number) -> Number:
+    plan: "Take 10% off totals over 100."
+    examples:
+        - Discount(100) == 100
+        - Discount(200) == 180
+
+goal Shipping(total: Number) -> Number:
+    plan: "Add 5 for shipping unless the total is over 50."
+    examples:
+        - Shipping(50) == 55
+        - Shipping(51) == 51
+
+goal OrderTotal(items: List<Item>) -> Number:
+    call:
+        subtotal = Subtotal(items)
+        discounted = Discount(subtotal)
+        result = Shipping(discounted)
+    plan: "Price the items, then apply the discount, then shipping."
+```
+
+**Too little.** Bad: the result depends on a choice the plan leaves open, so the AI helper asks (`TL0407`) or, worse,
+guesses a rule that passes the check.
+
+```text
+goal FindBadge(player: Player) -> Text:
+    plan: "Give the player a badge."
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+```
+
+Good: the thresholds are domain rules, so they are stated in the plan (§8.1), and examples on both sides of each
+threshold make them verified. When `TL0407` asks a question, an example like these is the best answer
+(compiler/22 R-SYNTH-32).
+
+```text
+    examples:
+        - FindBadge(Player(name: "Tom", jump_height: 5, score: 1000)) == "Gold"
+        - FindBadge(Player(name: "Ana", jump_height: 4, score: 999)) == "Silver"
+        - FindBadge(Player(name: "Lina", jump_height: 3, score: 500)) == "Silver"
+        - FindBadge(Player(name: "Sam", jump_height: 2, score: 499)) == "Bronze"
+```
 
 ## 9. Acceptance criteria
 
