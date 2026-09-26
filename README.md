@@ -13,6 +13,27 @@ goal Add(a: Number, b: Number) -> Number:
         - result == a + b
 ```
 
+## Why not just ask an AI to write the code?
+
+You can, and for many jobs you should. Thela is for when you want the AI's help but not its judgement: you decide
+what the program does, and a deterministic compiler decides whether the AI got it right.
+
+| | AI writes the code | Thela |
+|---|---|---|
+| What you keep and review | code you didn't write, every line of it | the goal: its purpose, its calls and its examples |
+| Who decides it works | tests, often written by the same AI | your `check`s and `examples`, run by the runtime, never by an LLM (INV-2) |
+| What the AI output can do | anything the language can: files, network, endless loops | only typed IR that passes the validator (INV-1), in a sandbox with no files, network or clock (INV-4) and fixed budgets (INV-5) |
+| Program structure | whatever the AI chose | fixed by your `call` blocks; the AI fills in single goals and can't add calls (INV-6) |
+| Running it again | new chat, possibly different code | same source, inputs and lockfile give the same result, offline (INV-3, INV-7); an unchanged goal is never re-synthesized (AC-RDM-08) |
+| When it fails | read the code to find out why | the failed example or check, with the values, names the goal that is wrong (AC-RDM-06) |
+
+For learners this moves the effort to the parts of programming that stay a person's job: breaking a problem into
+goals, saying precisely what each one should do, and giving examples that prove it.
+
+It is not the right tool for everything. v0.1 goals can't read files, use the network, loop or recurse in source
+(`delivery/50`), and a one-line rule is no shorter as a plan plus examples than as code plus a test. Thela saves the
+most on goals that are quick to describe but long to implement.
+
 **Status:** specification complete for v0.1; implementation is at plan phase M0 (workspace and quality gate).
 
 - Specification: [`docs/spec/SPEC.md`](docs/spec/SPEC.md)
