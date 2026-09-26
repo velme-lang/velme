@@ -118,7 +118,8 @@ in the interpreter, calls, depth, list/output size, watchdog (D-10) · M4c trace
 
 **Read:** `compiler/22` (all), `tooling/41` §threat model + secrets, `compiler/21` §validation, `tooling/40` §5.
 **Slices:** M5a `SynthProvider` trait, `SynthRequest` + its JSON Schema, `scripted` + `replay` providers, prompt
-template v1 · M5b retry loop with diagnostics feedback, verification pipeline, test-input generation · M5c Anthropic
+template v1 · M5b retry loop with diagnostics feedback, verification pipeline, test-input generation,
+`TL0403` cause summary and question replies (`TL0407`, R-SYNTH-31..33, D-43) · M5c Anthropic
 provider (config, key from env, structured output, timeouts), recorded replay fixtures for every `examples/` goal ·
 M5d `ollama` provider (digest resolution, mock-server tests) and `external` backend (protocol, command sourcing,
 env scrubbing, `TL0406`) with a small test backend in `thela-test-support` (D-41, D-42).
