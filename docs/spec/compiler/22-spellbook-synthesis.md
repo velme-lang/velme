@@ -40,8 +40,8 @@ fails with `TL0702 LockStale` (`--locked`) or `TL0404 ProviderUnavailable` (`--o
 #[async_trait]
 pub trait SynthProvider: Send + Sync {
     fn id(&self) -> &str;                    // "anthropic" | "ollama" | "external" | "replay" | "scripted"
-    fn model(&self) -> &str;                 // model id, Ollama digest or external backend_version → manifest model_version
-    fn input_version(&self) -> &str;         // prompt_version (LLM providers) or request_version (external)
+    fn model(&self) -> &str;                 // model id (or model+retry_model, R-SYNTH-39), Ollama digest or external backend_version → manifest model_version
+    fn input_version(&self) -> &str;         // prompt_version + request options (LLM providers, R-SYNTH-40) or request_version (external)
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits)
         -> Result<SynthReply, ProviderError>;
 }
@@ -120,16 +120,16 @@ sends the same fields as structured JSON.
 
 | Section | Contents | From |
 |---|---|---|
-| Header | `prompt_version`, `ir_version`, `builtins_version`, task kind (`leaf` / `composite-tail`) | constants |
-| Goal | signature `Name(params) -> Output` | HIR |
+| Header | `prompt_version`, `ir_version`, `builtins_version` | constants |
+| Output contract | "return one IR goal JSON matching the schema; omit `calls`; use only listed builtins; only if the plan leaves open a choice that changes the result, return `{"question": …}` instead" + the reply schema or its summary (R-SYNTH-35) | `thela-ir` / `thela-synth` |
+| Allowed builtins | name + signature of each catalog entry | `thela-builtins` |
+| Goal | task kind (`leaf` / `composite-tail`) and signature `Name(params) -> Output` | HIR |
 | Types | every reachable record type with fields | HIR |
 | Locals | composite only: each call binding `name: Type = Child(args)` — child **signatures** only, never child IR | HIR (D-5, D-11) |
 | Plan | normalized plan text (D-21), fenced and labelled as untrusted user description (§9) | HIR |
 | Checks | source text of each check + its lowered form | HIR / `thela-check` |
-| Examples | each `examples:` item with literal values | HIR (D-7) |
+| Examples | the first `max_prompt_examples` `examples:` items in source order, with literal values (R-SYNTH-38) | HIR (D-7) |
 | Budget | effective budget (runtime/30 §7) | HIR + system caps |
-| Allowed builtins | name + signature of each catalog entry | `thela-builtins` |
-| Output contract | "return one IR goal JSON matching the schema; omit `calls`; use only listed builtins; only if the plan leaves open a choice that changes the result, return `{"question": …}` instead" + the reply schema | `thela-ir` / `thela-synth` |
 
 **R-SYNTH-08** The prompt contains nothing outside this table: no file paths, no other goals' plans, no environment,
 no user identity (tooling/41).
@@ -138,6 +138,37 @@ the provider supports it; Thela still runs its own full validator on every reply
 guarantee is never trusted.
 **R-SYNTH-10** The reply is one IR goal or one question object `{"question": "<text>"}` (R-SYNTH-32). Any prose,
 markdown fence, partial JSON or other shape is a failed attempt with `TL0401`.
+
+### 4.1 Token cost (D-44)
+
+The options below live in `[synthesis]` (`tooling/40` §5.1) and apply to the LLM providers only; `external` always
+gets the full request (§3.2, R-SYNTH-30). None of them changes which IR is accepted: every reply still passes the full
+validator and verification (INV-1, INV-2).
+
+**R-SYNTH-34** The template renders the sections in the order of the §4 table. Header, output contract and allowed
+builtins are the same for every goal and attempt with the same options, so they form a fixed prefix. With
+`prompt_cache = true` (default) `anthropic` marks the end of that prefix as a cache breakpoint; a prefix below the
+model's minimum cacheable length is simply sent uncached. Caching changes price, never the reply, so it does not enter
+any key.
+**R-SYNTH-35** `schema_in_prompt = "summary"` (default) puts one generated line per IR node kind and the question
+object into the output contract and sends the reply schema only through the provider's constraint (R-SYNTH-05,
+R-SYNTH-09); `"full"` also puts the whole schema in the prompt, for models that follow it better when they can read it.
+**R-SYNTH-36** `reply_format = "ir-json"` (default) asks for canonical IR JSON. `"compact"` asks for the same tree with
+every property name and node `kind` tag replaced by a short alias from a fixed table in `thela-synth`, generated
+together with the reply schema and versioned with it. `thela-synth` expands a compact reply into canonical IR (a pure
+renaming; an unknown alias is `TL0401`) before validation, so the validator, fingerprints, artifacts and lock only ever
+see canonical IR (D-21). Retry turns show earlier replies and diagnostic JSON paths in the requested format.
+**R-SYNTH-37** `retry_history = "latest"` (default): a retry turn carries only the latest failed reply plus the primary
+diagnostic (R-SYNTH-31) of every earlier attempt, so later attempts cost about as much as the second. `"all"` carries
+every earlier reply, as R-SYNTH-11 describes. With `stop_on_repeat = true` (default), the loop stops when two attempts
+in a row share a cause (R-SYNTH-31), and the goal fails with `TL0403` at once.
+**R-SYNTH-38** `max_prompt_examples` (default 8, 0..=64) bounds the examples sent. Every example still runs locally
+(§6); a candidate that fails one left out gets it, with its values, in the next retry turn.
+**R-SYNTH-39** `retry_model` (optional) is the model used for retries; attempt 0 uses `model`. When set, `model()` is
+`<model>+<retry_model>` (Ollama: each with its digest), so the pair enters `synthesis_key` (runtime/32 §2).
+**R-SYNTH-40** For LLM providers, `input_version` is `prompt_version` + BLAKE3 of `schema_in_prompt`,
+`reply_format`, `retry_history` and `max_prompt_examples`, because they change what is sent. Changing an option only
+changes `synthesis_key`; lock staleness uses `contract_key` (D-26), so it never re-synthesizes a locked goal.
 
 ## 5. Retry loop (§21)
 
@@ -148,7 +179,8 @@ attempt 0 ─► validate (21 §6) ─► verify (§6) ─► accepted
 ```
 
 **R-SYNTH-11** On a validation or verification failure, the diagnostics (code, message, JSON path, and for check
-failures the input, the assertion and the actual values) are appended as a new turn and the provider is asked again.
+failures the input, the assertion and the actual values) are appended as a new turn and the provider is asked again
+(which earlier replies the turn carries, and when the loop stops early: R-SYNTH-37).
 At most `max_retries` (default and cap: 3) retries follow the first attempt.
 **R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried with exponential backoff up to 2
 times per attempt and do not consume a synthesis retry.
@@ -170,6 +202,7 @@ shared by the most attempts, ties going to the later attempt, says how many atte
 | `TL0602` | the operation and input | say in the plan what should happen in that case |
 | `TL0601`, `TL0603`..`TL0606` | the limit and the input | make the plan do less work per input, or split the goal |
 | `max_calls_per_build` reached (R-SYNTH-21) | the limit and its value | raise it in `[synthesis]`, or build fewer goals at once |
+| stopped early: two attempts in a row with the same cause (R-SYNTH-37) | that cause, as in its row above, and "stopped after N attempts" | as that cause's row; `stop_on_repeat = false` retries anyway |
 
 The message and notes quote only what Thela produced: codes, rule names, check and example source, inputs and
 computed values. Reply text from the provider never appears in them (R-SYNTH-22).
@@ -229,7 +262,8 @@ model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_p
 error. Keys never appear in logs, traces, fixtures, artifacts, diagnostics or `--verbose` output; the replay recorder
 stores no headers.
 **R-SYNTH-21** `max_calls_per_build` bounds cost: when reached, remaining goals fail with `TL0403` and a message
-naming the limit. The build summary reports calls, tokens in/out and cache hits.
+naming the limit. The build summary reports calls, tokens in/out, prompt-cache tokens read and written
+(R-SYNTH-34) and store/lock hits.
 
 ## 9. Untrusted plan text
 
@@ -248,8 +282,8 @@ machine (tooling/41) and is git-ignored.
 | ID | Criterion |
 |---|---|
 | AC-SYNTH-01 | With a matching lock entry or store hit, a build makes zero provider calls (asserted with a panicking provider). |
-| AC-SYNTH-02 | `scripted` provider returning invalid IR twice then valid IR: build succeeds after 2 retries; each retry turn contains the previous diagnostics. |
-| AC-SYNTH-03 | Four consecutive invalid replies → `TL0403`; no artifact written, lock unchanged, source unchanged. |
+| AC-SYNTH-02 | `scripted` provider returning invalid IR twice, with different causes, then valid IR: build succeeds after 2 retries; each retry turn contains the previous diagnostics. |
+| AC-SYNTH-03 | Four consecutive invalid replies, no two in a row with the same cause → `TL0403`; no artifact written, lock unchanged, source unchanged. |
 | AC-SYNTH-04 | A reply with a `call` node fails validation and the retry turn cites `TL0402` (INV-6). |
 | AC-SYNTH-05 | A candidate that passes validation but fails an example is rejected with `TL0502` and never cached. |
 | AC-SYNTH-06 | Generated inputs for a fixed goal are byte-identical across two runs and two OSes. |
@@ -266,8 +300,14 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
 | AC-SYNTH-18 | With sentinel values in `THELA_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; a `command` key in the project `thela.toml` fails with `TL0902`. |
 | AC-SYNTH-19 | A fully cached build with `--provider ollama` or `--provider external` sends no request to the server and never starts the command. |
-| AC-SYNTH-20 | Four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `TL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
+| AC-SYNTH-20 | With `stop_on_repeat = false`, four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `TL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
 | AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `TL0403` reports attempt 4's cause. |
 | AC-SYNTH-22 | A scripted `{"question"}` reply with `max_retries = 3` fails the goal with `TL0407` showing the question after exactly one provider call; nothing is stored, the lock is unchanged, and another goal in the same file still builds. |
 | AC-SYNTH-23 | A question containing a newline and an ANSI escape is shown with both replaced by spaces; an empty question and a 281-character question are each a failed attempt with `TL0401`. |
 | AC-SYNTH-24 | An `external` backend replying `{"question"}` fails the goal with `TL0407`. |
+| AC-SYNTH-25 | The rendered prompts for two different golden goals share a byte-identical prefix up to the end of the allowed builtins; the mocked `anthropic` request marks a cache breakpoint there, and with `prompt_cache = false` marks none. Both give the same `synthesis_key`. |
+| AC-SYNTH-26 | A scripted `compact` reply expands to IR whose artifact bytes and hash equal those of the same IR sent as `ir-json`; a reply with an unknown alias is a failed attempt with `TL0401`. |
+| AC-SYNTH-27 | Three scripted failures with different causes: with `retry_history = "latest"` the third request carries only reply 2 and the primary diagnostics of attempts 1 and 2; with `"all"` it carries replies 1 and 2. |
+| AC-SYNTH-28 | Two scripted replies failing the same check on different inputs: `TL0403` after exactly 2 calls, naming the check and "stopped after 2 attempts"; with `stop_on_repeat = false`, 4 calls. |
+| AC-SYNTH-29 | With `max_prompt_examples = 2` and 3 examples, the prompt shows the first two; a candidate failing the third is rejected with `TL0502` and the next retry turn shows the third with its values. |
+| AC-SYNTH-30 | With `retry_model` set, attempt 0 uses `model` and retries use `retry_model`; the accepted artifact records `<model>+<retry_model>`. Changing `retry_model`, `reply_format` or `max_prompt_examples` changes `synthesis_key`, not `contract_key`, and a build with an up-to-date lock makes zero calls. |
