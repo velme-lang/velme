@@ -46,10 +46,11 @@ diagnostic's data.
 | TL0308 | InvalidBudget | calls/graph | `budget` line has an unknown key or unit, a bad or repeated value, or a value above the system cap (D-8, `language/12` R-GOAL-20) | `budget` can only make limits smaller — `{key}` can be at most `{cap}`. | — |
 | TL0401 | IRSchemaInvalid | IR/synthesis | IR JSON fails the schema | The generated program wasn't in the right shape. | A007 |
 | TL0402 | IRInvalid | IR/synthesis | IR schema-valid but fails validation (names, types, capabilities, `Call`) | The generated program broke a rule: {rule}. | A007 |
-| TL0403 | SynthesisFailed | IR/synthesis | no accepted IR after max retries | Thela couldn't build `{goal}` from its plan. Try making the plan more specific. | A008 |
+| TL0403 | SynthesisFailed | IR/synthesis | no accepted IR after max retries, or `max_calls_per_build` reached; states the cause (`compiler/22` R-SYNTH-31) | Thela couldn't build `{goal}`: {cause} ({count} of {tries} tries). | A008 |
 | TL0404 | ProviderUnavailable | IR/synthesis | provider unreachable, rate-limited, or `--offline` | Thela couldn't reach the AI helper to build `{goal}`. | — |
 | TL0405 | ProviderNotConfigured | IR/synthesis | no provider/model/API key configured, or the Ollama server lacks the model | To build `{goal}`, set `{env_var}` to your API key. | — |
 | TL0406 | BackendFailed | IR/synthesis | `external` backend exited non-zero, timed out, replied with non-JSON or oversized output, or returned `{"error"}` (D-42) | The backend `{backend}` couldn't build `{goal}`: {reason} | — |
+| TL0407 | PlanUnclear | IR/synthesis | the AI helper or `external` backend replied with a question instead of IR (`compiler/22` R-SYNTH-32, D-43) | Thela needs more detail to build `{goal}`. Add the answer to the plan and build again. | — |
 | TL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | TL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | TL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is TL0403) | The generated program didn't pass `{check}` for {input}. | A009 |

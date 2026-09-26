@@ -51,8 +51,8 @@ pub struct SynthRequest { pub request_version: String, pub task: TaskKind, pub g
                           pub plan: String, pub checks: Vec<CheckItem>, pub examples: Vec<Example>,
                           pub budget: Budget, pub builtins: Vec<BuiltinSig>,
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
-                          pub output_schema: serde_json::Value }             // IR JSON Schema (21 R-IR-20)
-pub struct SynthReply  { pub ir_json: String, pub usage: Usage, pub latency: Duration }
+                          pub output_schema: serde_json::Value }             // reply schema: IR goal or question (R-SYNTH-10)
+pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
 pub enum  ProviderError { NotConfigured, Unavailable(String), RateLimited { retry_after: Option<Duration> },
                           Refused(String), Timeout, Malformed(String), BackendFailed(String) }
 ```
@@ -93,12 +93,13 @@ like the IR schema (21 R-IR-20).
 | Message | Thela sends | Backend replies |
 |---|---|---|
 | `describe` | `{"request_version": "0.1", "kind": "describe"}` | `{"backend": "<name>", "backend_version": "<version>"}` |
-| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}` or `{"error": "<reason>"}` |
+| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}`, `{"question": "<text>"}` or `{"error": "<reason>"}` |
 
 **R-SYNTH-26** `describe` runs once per build; its `backend_version` is `model()` and enters `synthesis_key`, so a new
 backend version is a cache miss but never makes a lock stale (runtime/32 R-ART-03).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
-verification (§6). The backend gets no trust the LLM doesn't get (INV-1).
+verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
+R-SYNTH-32..33, as an LLM's does.
 **R-SYNTH-28** Non-zero exit, exceeding `external_timeout_secs`, stdout that is not one JSON document, stdout above
 2 MiB, or an `{"error"}` reply is `BackendFailed` → `TL0406` naming the goal and backend, with up to 4 KiB of stderr
 in the notes. Nothing is written to the store or the lock.
@@ -128,13 +129,15 @@ sends the same fields as structured JSON.
 | Examples | each `examples:` item with literal values | HIR (D-7) |
 | Budget | effective budget (runtime/30 §7) | HIR + system caps |
 | Allowed builtins | name + signature of each catalog entry | `thela-builtins` |
-| Output contract | "return one IR goal JSON matching the schema; omit `calls`; use only listed builtins" + the schema | `thela-ir` |
+| Output contract | "return one IR goal JSON matching the schema; omit `calls`; use only listed builtins; only if the plan leaves open a choice that changes the result, return `{"question": …}` instead" + the reply schema | `thela-ir` / `thela-synth` |
 
 **R-SYNTH-08** The prompt contains nothing outside this table: no file paths, no other goals' plans, no environment,
 no user identity (tooling/41).
-**R-SYNTH-09** Output is constrained to the IR JSON Schema where the provider supports it; Thela still runs its own
-full validator on every reply (§20.2) — a provider's schema guarantee is never trusted.
-**R-SYNTH-10** The reply is the IR only. Any prose, markdown fence or partial JSON is a failed attempt with `TL0401`.
+**R-SYNTH-09** Output is constrained to the reply schema (the IR JSON Schema or a question object, R-SYNTH-10) where
+the provider supports it; Thela still runs its own full validator on every reply (§20.2) — a provider's schema
+guarantee is never trusted.
+**R-SYNTH-10** The reply is one IR goal or one question object `{"question": "<text>"}` (R-SYNTH-32). Any prose,
+markdown fence, partial JSON or other shape is a failed attempt with `TL0401`.
 
 ## 5. Retry loop (§21)
 
@@ -149,9 +152,36 @@ failures the input, the assertion and the actual values) are appended as a new t
 At most `max_retries` (default and cap: 3) retries follow the first attempt.
 **R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried with exponential backoff up to 2
 times per attempt and do not consume a synthesis retry.
-**R-SYNTH-13** After the last retry the goal fails with `TL0403`: "Thela could not build this goal." plus the last
-attempt's diagnostics in `--verbose`. The source `plan` is never modified; nothing is written to the artifact store
-or the lock.
+**R-SYNTH-13** After the last retry the goal fails with `TL0403`, whose message states the cause (R-SYNTH-31);
+`--verbose` adds every attempt's diagnostics. The source `plan` is never modified; nothing is written to the artifact
+store or the lock.
+**R-SYNTH-31** The learner never needs `--verbose` to know what to fix. Each failed attempt has one primary diagnostic
+(R-SYNTH-15 for verification, otherwise the first in R-CMP-16 order). Two attempts share a cause when that diagnostic
+has the same code and names the same check, example or validator rule, whatever the input. `TL0403` reports the cause
+shared by the most attempts, ties going to the later attempt, says how many attempts it covers, and takes its details
+(input, values) from the latest attempt with that cause. Each other cause is one note, in first-seen order.
+
+| Cause | Message names | Help suggests |
+|---|---|---|
+| `TL0502` | the example: given, got, expected | check the example, or say in the plan how that case is handled |
+| `TL0501` / `TL0503` | the check and its counterexample (R-SYNTH-19) | say in the plan what happens for that input, or narrow the check with `if … then …` (D-6) |
+| `TL0401` / `TL0402` | the validator rule that kept breaking | the plan may need more than the listed builtins can do: simplify it or split the goal |
+| `TL0801` | the capability asked for | goals can't use it (INV-4): take the need out of the plan |
+| `TL0602` | the operation and input | say in the plan what should happen in that case |
+| `TL0601`, `TL0603`..`TL0606` | the limit and the input | make the plan do less work per input, or split the goal |
+| `max_calls_per_build` reached (R-SYNTH-21) | the limit and its value | raise it in `[synthesis]`, or build fewer goals at once |
+
+The message and notes quote only what Thela produced: codes, rule names, check and example source, inputs and
+computed values. Reply text from the provider never appears in them (R-SYNTH-22).
+**R-SYNTH-32** A question reply ends synthesis of that goal at once, with no further retry, and the goal fails with
+`TL0407` showing the question. The build never waits for an answer: the learner writes it into the `plan`, which
+changes the goal's `contract_key` (runtime/32 §2), so the next build synthesizes it again and the choice stays in
+reviewed source (INV-3). Other goals in the build continue. A question is never written to the store or the lock
+and is never cached.
+**R-SYNTH-33** The question is untrusted text (R-SYNTH-22). Control characters, newlines and ANSI escapes included,
+become spaces and whitespace runs collapse to one; the result must then be 1..=280 Unicode scalar values, or the reply
+is a failed attempt with `TL0401`. It is shown only as a note, quoted and labelled as the AI helper's question, and as
+a plain string in `--json`.
 
 ## 6. Verification pipeline (§22)
 
@@ -235,3 +265,8 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
 | AC-SYNTH-18 | With sentinel values in `THELA_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; a `command` key in the project `thela.toml` fails with `TL0902`. |
 | AC-SYNTH-19 | A fully cached build with `--provider ollama` or `--provider external` sends no request to the server and never starts the command. |
+| AC-SYNTH-20 | Four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `TL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
+| AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `TL0403` reports attempt 4's cause. |
+| AC-SYNTH-22 | A scripted `{"question"}` reply with `max_retries = 3` fails the goal with `TL0407` showing the question after exactly one provider call; nothing is stored, the lock is unchanged, and another goal in the same file still builds. |
+| AC-SYNTH-23 | A question containing a newline and an ANSI escape is shown with both replaced by spaces; an empty question and a 281-character question are each a failed attempt with `TL0401`. |
+| AC-SYNTH-24 | An `external` backend replying `{"question"}` fails the goal with `TL0407`. |
