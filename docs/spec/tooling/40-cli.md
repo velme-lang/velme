@@ -165,6 +165,14 @@ max_calls_per_build = 50        # hard stop across the whole build (compiler/22 
 replay_dir = "tests/fixtures/synth"   # replay provider only
 ollama_url = "http://127.0.0.1:11434" # ollama provider only
 external_timeout_secs = 30      # external provider only; the command itself is never set here (R-CLI-13)
+# token cost, LLM providers only (compiler/22 §4.1, D-44)
+prompt_cache = true             # anthropic: cache the fixed prompt prefix (R-SYNTH-34)
+schema_in_prompt = "summary"    # summary | full (R-SYNTH-35)
+reply_format = "ir-json"        # ir-json | compact (R-SYNTH-36)
+retry_history = "latest"        # latest | all (R-SYNTH-37)
+stop_on_repeat = true           # stop when two attempts in a row share a cause (R-SYNTH-37)
+max_prompt_examples = 8         # 0..=64 (R-SYNTH-38)
+# retry_model = "…"             # optional model for retries (R-SYNTH-39)
 
 [budget]                        # project defaults; can only tighten system caps (D-8)
 cpu = "50ms"
