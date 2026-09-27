@@ -69,8 +69,8 @@ Each phase: read the listed spec sections only. A phase with slices is built sli
 
 ### M0 — Workspace, conventions, verify gate
 
-**Before:** name screened (D-38) ✓; claim `velme` and the `velme-*` crates on crates.io
-when the workspace is created (`delivery/52` §11).
+**Before:** name screened (D-38) ✓; names claimed on crates.io, npm (`@velme`), PyPI and `velme.dev`
+(`delivery/52` §11) ✓.
 **Read:** `delivery/52` (layout, CI), `delivery/51` (gate), `docs/code-conventions.md`.
 **Build:** Cargo workspace with the D-15 crates as empty libs (+ `velme-cli` bin printing version), `rust-toolchain.toml`,
 `rustfmt.toml`, workspace lint table (CC-ERR-01, CC-API-04), `deny.toml`, `xtask` with `verify` (fmt, clippy, test,
