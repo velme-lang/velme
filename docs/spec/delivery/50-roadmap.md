@@ -13,9 +13,11 @@ definition it tracks.
 
 **R-RDM-01** Build only the current phase. Don't scaffold later phases; `Future` items are never built in v0.1.
 **R-RDM-02** Each phase ends at a Stop & Verify Gate with its exit criteria green and its `AC-*` ids covered by
-tests (R-QA-01), before the next phase starts.
+tests (R-QA-01), before the next phase starts. Every `AC-*` id in the spec is owned by exactly one phase's exit criteria
+in §2 (a criterion split across backends names each part); the coverage audit (`delivery/51` §5) uses that ownership.
 **R-RDM-03** Every phase is testable without the phases after it: before M5 there is no LLM — IR is hand-written in
-fixtures; before M7 the interpreter is the only backend.
+fixtures, installed into the store and `velme.lock` by a `velme-test-support` helper (D-16), so `velme run` works from
+M3; before M7 the interpreter is the only backend.
 
 ## 2. Phases
 
@@ -23,15 +25,15 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 
 | Phase | Goal | Scope | Specs touched | Deliverable | Exit criteria |
 |---|---|---|---|---|---|
-| **M0** | Repository & gate | Cargo workspace with the D-15 crates as empty libs, pinned toolchain, `cargo xtask verify`, CI skeleton, license files, `README`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md` (D-40) | `delivery/51`, `delivery/52` | `cargo xtask verify` green | AC-REL-01, AC-REL-02, AC-QA-01 |
-| **M1** | Syntax | indentation-aware lexer, Chumsky parser for the whole v0.1 grammar incl. literals, `examples`, `budget`, header; AST with spans; diagnostics crate + ariadne rendering; parser golden corpus | `language/10`, `compiler/20`, `reference/90` | `velme check` reports parse errors | AC-SYN-*, `VL01xx` golden tests, AC-CLI-01 (parse part) |
-| **M2** | Semantics | name resolution, type checking incl. check DSL narrowing, call rules, cycle detection, wired goals (D-4), JSON input mapping | `language/11..14`, `compiler/20` | `velme check` fully validates a program | AC-TYP-*, AC-GOAL-* (static), AC-CHK-* (typing), AC-RDM-04, AC-RDM-05 |
-| **M3** | IR, interpreter, checks | IR types + JSON Schema + validator; builtins incl. `random`/`range`; reference interpreter for leaf goals; check and example evaluation; hand-written IR fixtures | `compiler/21`, `language/13..14`, `runtime/30` | `velme test` on a leaf goal with fixture IR | AC-IR-*, AC-BLT-*, AC-CHK-* (eval), AC-RDM-06 |
-| **M4** | DAG runtime | composite goals, wave scheduling on Tokio, deterministic failure (D-9), budgets (fuel in interpreter, calls, depth, sizes), trace, `run`/`trace`/`explain` | `runtime/30`, `tooling/40` | `velme run multi_goal.velme` | AC-RUN-*, AC-RDM-02, AC-RDM-03, AC-CLI-06/07 |
-| **M5** | Spellbook | `SynthProvider` trait, `anthropic`/`ollama`/`external`/`replay`/`scripted`, external protocol, prompt contract, structured output, retry with diagnostics, verification pipeline, generated test inputs | `compiler/22`, `tooling/41` | plan → runnable goal via `velme build` | AC-SYNTH-*, AC-SEC-02/03/05/06, AC-RDM-01 |
-| **M6** | Artifacts & CLI | fingerprints (D-11, D-21), content-addressed store, `velme.lock`, `--locked`/`--offline`, `artifact` command, config file | `runtime/32`, `tooling/40` | warm cached run with zero synthesis | AC-ART-*, AC-CLI-*, AC-RDM-08, AC-RDM-09 |
-| **M7** | WASM backend | IR → core WASM for leaf goals, `wasmparser` validation, Wasmtime with fuel + epoch + `ResourceLimiter`, host-function allowlist, differential tests vs interpreter | `runtime/31`, `delivery/51` | `velme run --backend wasm` equals interpreter | AC-SBX-*, AC-SEC-01/07, AC-RDM-07 |
-| **M8** | MVP gate | all success criteria end-to-end, examples tree, fuzz smoke, perf targets, security baseline, docs, release dry run | all | `v0.1.0-alpha` release candidate | §5 all green; `delivery/51` §6 targets met |
+| **M0** | Repository & gate | Cargo workspace with the D-15 crates as empty libs, pinned toolchain, `cargo xtask verify`, CI skeleton, license files, `README`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md` (D-40) | `delivery/51`, `delivery/52` | `cargo xtask verify` green | AC-REL-01, AC-REL-02, AC-QA-01, AC-QA-03, AC-CMP-01 |
+| **M1** | Syntax | indentation-aware lexer, Chumsky parser for the whole v0.1 grammar incl. literals, `examples`, `budget`, header; AST with spans; diagnostics crate + ariadne rendering; parser golden corpus | `language/10`, `compiler/20`, `reference/90` | `velme check` reports parse errors | AC-SYN-*, AC-ERR-*, `VL01xx` golden tests, AC-CLI-01 (parse part) |
+| **M2** | Semantics | name resolution, type checking incl. check DSL narrowing, call rules, cycle detection, wired goals (D-4), JSON input mapping | `language/11..14`, `compiler/20` | `velme check` fully validates a program | AC-TYP-*, AC-GOAL-* (static), AC-CHK-* (typing), AC-CMP-03, AC-CMP-04, AC-RDM-04, AC-RDM-05 |
+| **M3** | IR, interpreter, checks, store & lock | IR types + JSON Schema + validator; builtins incl. `random`/`range`; reference interpreter for leaf goals; check and example evaluation; fingerprints (D-11, D-21), content-addressed store + manifest, `velme.lock` read/write and staleness (D-12); fixture installer in `velme-test-support` | `compiler/21`, `language/13..14`, `runtime/30`, `runtime/32` | `velme run`/`velme test` on a leaf goal with fixture IR from the lock | AC-IR-*, AC-BLT-*, AC-CHK-* (eval), AC-ART-04, AC-ART-06, AC-ART-08, AC-ART-12, AC-CMP-02, AC-SEC-04, AC-RDM-06 |
+| **M4** | DAG runtime | composite goals, wave scheduling on Tokio, deterministic failure (D-9), budgets (fuel in interpreter, calls, depth, sizes), trace, `run`/`trace`/`explain` | `runtime/30`, `tooling/40` | `velme run multi_goal.velme` | AC-RUN-*, AC-RDM-02, AC-RDM-03, AC-RDM-09 (interpreter), AC-CLI-06/07, AC-QA-05 |
+| **M5** | Spellbook | `SynthProvider` trait, `anthropic`/`ollama`/`external`/`replay`/`scripted`, external protocol, prompt contract, structured output, retry with diagnostics, verification pipeline, generated test inputs | `compiler/22`, `tooling/41` | plan → runnable goal via `velme build`; a second build makes no provider call | AC-SYNTH-*, AC-ART-01/02/03/09/10, AC-CMP-05, AC-CMP-06, AC-CMP-08, AC-SEC-02/03/05/06/09, AC-QA-02, AC-REL-03, AC-REL-05, AC-RDM-01, AC-RDM-08 |
+| **M6** | CLI completion | `--locked`/`--offline`, `artifact` command, config file, input/output mapping (D-23), exit codes, cache commands | `runtime/32`, `tooling/40` | `velme run --locked --offline` on a cloned project | AC-ART-05, AC-ART-07, AC-ART-11, AC-CLI-* (except 06/07), AC-SEC-08 |
+| **M7** | WASM backend | IR → core WASM for leaf goals, `wasmparser` validation, Wasmtime with fuel + epoch + `ResourceLimiter`, host-function allowlist, differential tests vs interpreter | `runtime/31`, `delivery/51` | `velme run --backend wasm` equals interpreter | AC-SBX-*, AC-SEC-01/07, AC-RDM-07, AC-RDM-09 (WASM), AC-QA-06 |
+| **M8** | MVP gate | all success criteria end-to-end, examples tree, fuzz smoke, perf targets, security baseline, docs, release dry run | all | `v0.1.0-alpha` release candidate | §5 all green; `delivery/51` §6 targets met; AC-CMP-07, AC-QA-04, AC-QA-07, AC-REL-04 |
 
 ## 3. MVP scope (§37)
 
@@ -51,7 +53,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 | Runtime | CPU (fuel), memory, call, depth, size budgets | M4, M7 | v0.1 |
 | Runtime | WASM backend for leaf goals, Wasmtime sandbox | M7 | v0.1 |
 | Validation | deterministic check DSL, generated test values, check runner | M3, M5 | v0.1 |
-| Validation | artifact cache + lockfile (D-12) | M6 | v0.1 |
+| Validation | artifact cache + lockfile (D-12) | M3 (`--locked`/`--offline`: M6) | v0.1 |
 | DevEx | CLI, source errors, execution trace, IR view (`artifact`), local telemetry | M1–M6 | v0.1 |
 
 ## 4. Not in the MVP (§38)
@@ -74,8 +76,9 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 
 ## 5. MVP success criteria (§52)
 
-**R-RDM-04** The MVP gate passes only when each criterion below passes reliably: 20 consecutive runs of its test in
-the replay/scripted configuration, plus one recorded live run per synthesis criterion.
+**R-RDM-04** The MVP gate passes only when each criterion below passes reliably: 20 consecutive runs of its test in the
+replay/scripted configuration, plus one recorded live run per synthesis criterion. The live run is a manual gate step,
+never part of `cargo xtask verify` (D-13).
 
 | ID | Criterion | Program / check | Phase |
 |---|---|---|---|
@@ -86,8 +89,8 @@ the replay/scripted configuration, plus one recorded live run per synthesis crit
 | AC-RDM-05 | **Cycle** — `A → B → A` fails compilation | → `VL0304` naming the cycle | M2 |
 | AC-RDM-06 | **Check failure** — shows the exact failed assertion and the values | → `VL0501` with expected/got | M3 |
 | AC-RDM-07 | **Timeout** — deliberately expensive program terminated | fuel → `VL0601`; watchdog → `VL0603` | M4 (interp), M7 (WASM) |
-| AC-RDM-08 | **Cache** — unchanged source performs zero synthesis | provider call count = 0 on second `build` | M6 |
-| AC-RDM-09 | **Reproducibility** — same source + inputs + lock + seed ⇒ byte-identical result and trace (excluding durations, `runtime/30` §8), interpreter and WASM | 100 runs, both backends | M6, M7 |
+| AC-RDM-08 | **Cache** — unchanged source performs zero synthesis | provider call count = 0 on second `build` | M5 |
+| AC-RDM-09 | **Reproducibility** — same source + inputs + lock + seed ⇒ byte-identical result and trace (excluding durations, `runtime/30` §8), interpreter and WASM | 100 runs, both backends | M4 (interpreter), M7 (WASM) |
 
 AC-RDM-02 program (legal per D-4 — every goal has a body):
 

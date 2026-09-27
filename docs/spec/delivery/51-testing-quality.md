@@ -73,8 +73,8 @@ fuzz smoke and the benchmark budgets of §6.
 
 `xtask ac-audit` greps every `AC-[A-Z]+-\d+` defined in `docs/spec/**` (the acceptance tables) and every test function
 name under `crates/**` and `tests/**`, lowercasing ids. It fails when a criterion has no test, and lists tests citing
-unknown criteria. Criteria owned by a later phase are allowed to be missing only while that phase's row in
-`docs/plan/mvp-plan.md` is `TODO`.
+unknown criteria. Criteria owned by a later phase (the phase whose exit criteria name them, `delivery/50` §2) are
+allowed to be missing only while that phase's row in `docs/plan/mvp-plan.md` is `TODO`.
 
 ## 6. Performance targets
 
