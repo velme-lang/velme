@@ -111,7 +111,9 @@ in the notes. Nothing is written to the store or the lock.
 **R-SYNTH-29** The command runs in the project root with the user's own permissions, outside the sandbox (tooling/41
 T-10). Its environment is the user's minus every provider API key variable (`tooling/40` §5.2). The command itself
 comes only from the `--external-command` flag, `VELME_EXTERNAL_COMMAND` or the user-level config, never from the
-project's `velme.toml` (`tooling/40` R-CLI-13).
+project's `velme.toml` (`tooling/40` R-CLI-13). It is run directly with no shell (`tooling/41` T-10, D-50): the
+program is either an absolute path or a bare name resolved on `PATH`, with the current directory, `.` entries and the
+project directory excluded from that lookup; any other relative path is `VL0902` before the command is run.
 **R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
 again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
 retry turn does (R-SYNTH-11).
@@ -340,3 +342,4 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-33 | `BuildPlayerSummary` calls `FindBadge`, which fails with `VL0403`: `BuildPlayerSummary` ends with `VL0409` naming `FindBadge` and its code as a note, with no provider call made for `BuildPlayerSummary` (D-56). |
 | AC-SYNTH-34 | A build with several lock misses sends exactly one Ollama digest resolution (or `external` `describe`) request, on the first miss, reused for every later request in the build (D-57). |
 | AC-SYNTH-35 | A scripted watchdog timeout (`VL0603`) during verification is reported as an infrastructure error, consumes no retry, and does not reject the candidate (D-51). |
+| AC-SYNTH-36 | An `external_command` naming a relative path (e.g. `./evil.sh`) fails with `VL0902` before any process is started; a bare name found via `PATH` still runs (D-50). |

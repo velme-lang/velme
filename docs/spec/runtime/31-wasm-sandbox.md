@@ -99,11 +99,15 @@ fires first, the run is reported as that backstop's code and flagged as a backen
 
 ## 7. Compiled-module cache
 
-**R-SBX-13** Compiled modules are a **derived** local cache (D-12): `.velme/cache/wasm/<artifact-hash>-<key>.cwasm`,
-where `key` = BLAKE3 of (`velme-wasm` version, Wasmtime version, engine config). They are never locked, never committed
-and may be deleted at any time.
-**R-SBX-14** `Module::deserialize` is used only on files under the project's own cache directory written by this
-process's engine configuration; a key mismatch or read error falls back to recompiling from IR.
+**R-SBX-13** Compiled modules are a **derived** cache (D-12) kept in a **user-level** directory, never inside the
+project: `$XDG_CACHE_HOME/velme/wasm/<artifact-hash>-<key>.cwasm` (or the platform equivalent), where `key` = BLAKE3
+of (`velme-wasm` version, Wasmtime version, engine config). They are never locked, never committed and may be deleted
+at any time (D-48).
+**R-SBX-14** `Module::deserialize` is used only on files under that user-level cache directory, written by this
+process's engine configuration; a key mismatch or read error falls back to recompiling from IR. Files anywhere under
+the project — including `.velme/` — are never passed to `Module::deserialize` (D-48, T-11): a `.cwasm` planted in a
+cloned project is simply ignored and the goal is compiled fresh from its validated IR. CI must not restore this cache
+across a trust boundary (e.g. from a fork's PR onto a shared runner).
 
 ## 8. Differential testing (INV-3)
 
@@ -129,5 +133,6 @@ composite goals, and WASI capabilities tied to declared `effects`. Tracked by RF
 | AC-SBX-04 | A leaf that allocates past `max_memory` fails with `VL0604` on both backends at the same point. |
 | AC-SBX-05 | Division by zero traps with `VL0602` on WASM; a module containing any `f32`/`f64` instruction is rejected by validation. |
 | AC-SBX-06 | Every emitted module in the golden set validates with `wasmparser` under exactly the R-SBX-07 feature set. |
-| AC-SBX-07 | Deleting `.velme/cache/wasm/` changes no result; the next run recompiles. |
+| AC-SBX-07 | Deleting the user-level `velme/wasm/` cache directory changes no result; the next run recompiles. |
 | AC-SBX-08 | An epoch-deadline test (watchdog set to 1 ms) yields `VL0603` flagged non-reproducible. |
+| AC-SBX-09 | A crafted `.cwasm` file planted anywhere under the project (including `.velme/`) is never passed to `Module::deserialize`; the goal compiles from IR instead and runs normally (D-48). |
