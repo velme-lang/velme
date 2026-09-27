@@ -27,6 +27,9 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 **R-ART-01** Nothing is cached, looked up or pinned by goal name alone (INV-8, §25).
 **R-ART-02** Child **signatures**, not child artifacts, enter a parent's keys (D-11): regenerating `CalculateScore`
 leaves `BuildPlayerSummary`'s keys and artifact unchanged; only its `execution_id` changes.
+**R-ART-22** When `velme build` changes a child's artifact, it re-runs every ancestor composite's `examples` and
+`check`s against the new children, with no LLM call (D-55). An ancestor that now fails is stale and goes through
+ordinary synthesis (`compiler/22`); its diagnostic names the child that changed.
 **R-ART-03** A verified artifact stays valid when only the prompt, compiler patch/minor, provider or model changes:
 those enter `synthesis_key` (cache reuse) but not `contract_key` (validity). Switching models never forces
 re-synthesis of a locked project.
@@ -155,3 +158,4 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 | AC-ART-07 | Cloning a built project to another OS and running offline gives the same result and trace — §52 Test 9. |
 | AC-ART-08 | Artifact documents contain no timestamps, usernames or hostnames (schema test). |
 | AC-ART-09 | A wired goal gets a lock entry and an artifact with `"provider": "compiler"`. |
+| AC-ART-10 | Regenerating `FindBadge` so its behaviour changes, then rebuilding `BuildPlayerSummary`: `BuildPlayerSummary` is re-verified against the new `FindBadge` with no provider call; if it now fails a check, it is re-synthesized with a diagnostic naming `FindBadge` (D-55). |

@@ -53,9 +53,9 @@ typed loads/stores is simpler than emitting a parser, and the encoding is canoni
 ## 4. Code generation & validation
 
 **R-SBX-05** The emitter instruments Velme fuel and memory explicitly: each IR node decrements a global fuel counter by
-its cost from the shared cost table (30 R-RUN-04); each value creation adds the §7.1 size to a live-bytes counter.
-Crossing a limit traps with a reason code the host maps to `VL0601`/`VL0604`. The cost table is one constant set in
-`velme-interp`, imported by `velme-wasm`.
+its cost from the shared cost table (30 R-RUN-04); each value creation adds the §7.1 size to a cumulative
+bytes-allocated counter (30 §7.1, D-53). Crossing a limit traps with a reason code the host maps to `VL0601`/`VL0604`.
+The cost table is one constant set in `velme-builtins`, depended on by both `velme-interp` and `velme-wasm` (D-54).
 **R-SBX-06** `Number` arithmetic and comparison are host imports (`velme.num_add`, `num_sub`, `num_mul`, `num_div`,
 `num_neg`, `num_cmp`) implemented by the same `velme-builtins` code as the interpreter, so results match bit for bit
 (D-36). Division by zero or overflow returns the `VL0602` reason and the module traps.
@@ -88,7 +88,7 @@ defines only the `velme.*` catalog imports; a module importing anything else fai
 | `consume_fuel` | on, set to 20 × the Velme fuel budget | backstop only; Velme fuel (R-SBX-05) is the deterministic limit |
 | `epoch_interruption` | on; ticker thread increments every 10 ms; deadline = `max_wall_clock` | wall-clock safety net → `VL0603` (D-10) |
 | `wasm_threads`, `wasm_simd`, `wasm_relaxed_simd` | off | determinism (R-SBX-07) |
-| `StoreLimits` | memory ≤ 2 × `max_memory` + 1 MiB, 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` |
+| `StoreLimits` | memory ≤ `max_memory` + 1 MiB fixed overhead, 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` (D-53) |
 | Instantiation | `InstancePre` per module, fresh `Store` + instance per invocation | no state shared between calls |
 
 **R-SBX-11** A Wasmtime trap is mapped by reason: Velme fuel/memory/arithmetic reason codes → their `VL06xx`;
@@ -108,7 +108,8 @@ process's engine configuration; a key mismatch or read error falls back to recom
 ## 8. Differential testing (INV-3)
 
 **R-SBX-15** Every golden program and every IR in the fuzz/property corpus runs on both backends; the gate compares
-result value (canonical JSON), outcome code, Velme fuel used and peak Velme memory. Any difference fails the gate
+result value (canonical JSON), outcome code, Velme fuel used and Velme memory used (cumulative bytes allocated,
+D-53). Any difference fails the gate
 (`delivery/51`).
 **R-SBX-16** A new IR node kind or builtin is not released for the WASM backend until it passes the differential suite;
 until then the emitter declines the goal and `auto` uses the interpreter.
@@ -122,7 +123,7 @@ composite goals, and WASI capabilities tied to declared `effects`. Tracked by RF
 
 | ID | Criterion |
 |---|---|
-| AC-SBX-01 | Every golden leaf goal gives identical value, outcome code, fuel and peak memory on `interp` and `wasm`. |
+| AC-SBX-01 | Every golden leaf goal gives identical value, outcome code, fuel and memory used (cumulative bytes allocated) on `interp` and `wasm`. |
 | AC-SBX-02 | A module importing a non-whitelisted function (e.g. `wasi_snapshot_preview1.fd_write`) fails with `VL0801` and never runs. |
 | AC-SBX-03 | An expensive leaf is stopped with `VL0601` on WASM with the same fuel figure as the interpreter — §52 Test 7. |
 | AC-SBX-04 | A leaf that allocates past `max_memory` fails with `VL0604` on both backends at the same point. |

@@ -29,6 +29,8 @@ candidate the same way, whoever wrote it.
 has an accepted artifact, because verification executes the real children (§6).
 **R-SYNTH-02** Lookup order before any provider call: (1) `velme.lock` entry whose `contract_key` matches (runtime/32 §5), (2) artifact
 store by `synthesis_key` (D-11, runtime/32 §2), (3) provider. A hit at (1) or (2) makes no network call.
+`velme-runtime` performs this lookup and calls into `velme-synth` only for goals that reach (3) (D-54); `velme-synth`
+itself owns nothing about the lock or store.
 **R-SYNTH-03** `--locked` and `--offline` never construct a provider (20 R-CMP-19). A goal that would need synthesis
 fails with `VL0702 LockStale` (`--locked`) or `VL0404 ProviderUnavailable` (`--offline`).
 
@@ -76,12 +78,14 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5); `BackendFailed` → `VL0406`,
 not retried; `Pending` → `VL0408`, not retried (R-SYNTH-41).
-**R-SYNTH-24** `ollama` resolves the configured model's digest from the server once per build, before any store
-lookup, and reports `<model>@<digest>` as `model()`. A tag that now points at different weights therefore changes
+**R-SYNTH-24** `ollama` resolves the configured model's digest from the server **on the first lock miss in a build**,
+not unconditionally, and reports `<model>@<digest>` as `model()`; the result is reused for every store lookup and
+request in that build (D-57). A tag that now points at different weights therefore changes
 `synthesis_key` but never `contract_key` (runtime/32 R-ART-03). A model missing on the server is `NotConfigured`
 (`VL0405`, help: `ollama pull <model>`); an unreachable server is `Unavailable` (`VL0404`).
 **R-SYNTH-25** Every provider that makes a request is constructed only when a goal misses both the lock and the store
-(R-SYNTH-02 step 3), so an `ollama` server or an `external` command is never contacted for a fully cached build.
+(R-SYNTH-02 step 3), so an `ollama` server or an `external` command is never contacted for a fully cached build — one
+where every goal is fresh in the lock (D-57).
 
 ### 3.2 External backend protocol (D-42)
 
@@ -95,8 +99,9 @@ like the IR schema (21 R-IR-20).
 | `describe` | `{"request_version": "0.1", "kind": "describe"}` | `{"backend": "<name>", "backend_version": "<version>"}` |
 | `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
 
-**R-SYNTH-26** `describe` runs once per build; its `backend_version` is `model()` and enters `synthesis_key`, so a new
-backend version is a cache miss but never makes a lock stale (runtime/32 R-ART-03).
+**R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
+cached build; its `backend_version` is `model()` and enters `synthesis_key`, so a new backend version is a cache miss
+but never makes a lock stale (runtime/32 R-ART-03).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
 verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
 R-SYNTH-32..33, as an LLM's does.
@@ -120,6 +125,11 @@ way; the LLM reply schema never includes it (R-SYNTH-10).
 
 *Informative:* a queue backend stores answers under a hash of the `request` document. An edited goal sends a
 different request, so an answer is never reused for a goal it wasn't written for.
+
+**R-SYNTH-42** When a goal ends with no artifact (`VL0403`, `VL0407`, `VL0408`, or `VL0409` itself), none of its
+ancestors is synthesized (D-56): each ancestor ends instead with `VL0409 SynthesisBlocked`, "`{goal}` wasn't built
+because `{child}` {reason}.", with the child's failure code as a note. `VL04xx` exits with status 2 as before
+(`tooling/40`).
 
 ## 4. Prompt contract (§20.1)
 
@@ -239,8 +249,11 @@ A candidate becomes an artifact only after every step passes, in order:
 | 9 | all `check`s hold for every example and generated input | `VL0501` |
 
 **R-SYNTH-14** Verification executes on the reference interpreter with the goal's effective budget; composite goals
-run their real, already-accepted children (R-SYNTH-01). A `Timeout` (D-10) is re-run once; a second `Timeout` counts
-as a failed attempt but is never recorded as a cached outcome.
+run their real, already-accepted children (R-SYNTH-01) through the `ChildRunner` trait `velme-runtime` implements and
+passes in, so `velme-synth` never depends on the artifact store directly (D-54, `compiler/20` R-CMP-20). A `Timeout`
+(D-10) is re-run once; a second `Timeout` counts as a failed attempt but is never recorded as a cached outcome. A
+`VL0603` from the watchdog is never treated as a rejected candidate: it is reported as an infrastructure error and the
+attempt is not consumed, since the watchdog is a safety net, not a verification verdict (D-51).
 **R-SYNTH-15** Any failure in steps 8–9 wraps as `VL0503 VerificationFailed` with the first failing case (examples
 before generated inputs, then generation order) as the primary cause.
 **R-SYNTH-16** Only a fully verified candidate is eligible for the artifact store (§22, runtime/32 R-ART-11).
@@ -272,7 +285,8 @@ model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_p
 `tooling/40` §5.2). A key-like value in `velme.toml` is an error. Keys never appear in logs, traces, fixtures,
 artifacts, diagnostics or `--verbose` output; the replay recorder stores no headers.
 **R-SYNTH-21** `max_calls_per_build` bounds cost: when reached, remaining goals fail with `VL0403` and a message
-naming the limit. The build summary reports calls, tokens in/out, prompt-cache tokens read and written
+naming the limit. Every provider exchange counts toward it, including a `{"pending"}` or `{"question"}` reply
+(D-56). The build summary reports calls, tokens in/out, prompt-cache tokens read and written
 (R-SYNTH-34) and store/lock hits.
 
 ## 9. Untrusted plan text
@@ -309,7 +323,7 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-16 | Non-zero exit, timeout, non-JSON stdout, stdout over the cap, and an `{"error"}` reply each fail with `VL0406` naming the goal and backend; the lock is unchanged and no retry is made. |
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
 | AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; an `external_command` key in the project `velme.toml` fails with `VL0902`. |
-| AC-SYNTH-19 | A fully cached build with `--provider ollama` or `--provider external` sends no request to the server and never starts the command. |
+| AC-SYNTH-19 | A fully cached build (every goal fresh in the lock) with `--provider ollama` or `--provider external` sends no request to the server, never starts the command, and resolves no model digest / runs no `describe` (D-57). |
 | AC-SYNTH-20 | With `stop_on_repeat = false`, four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `VL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
 | AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `VL0403` reports attempt 4's cause. |
 | AC-SYNTH-22 | A scripted `{"question"}` reply with `max_retries = 3` fails the goal with `VL0407` showing the question after exactly one provider call; nothing is stored, the lock is unchanged, and another goal in the same file still builds. |
@@ -323,3 +337,6 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-30 | With `retry_model` set, attempt 0 uses `model` and retries use `retry_model`; the accepted artifact records `<model>+<retry_model>`. Changing `retry_model`, `reply_format` or `max_prompt_examples` changes `synthesis_key`, not `contract_key`, and a build with an up-to-date lock makes zero calls. |
 | AC-SYNTH-31 | An `external` backend replying `{"pending": "ticket 42"}` with `max_retries = 3` fails the goal with `VL0408` showing "ticket 42" after exactly one `synthesize` message; nothing is stored, the lock is unchanged, another goal in the same file still builds, and the exit code is 2. When the backend then replies `{"ir"}` to the same request, the next build accepts and locks it. |
 | AC-SYNTH-32 | With `max_retries = 1`, a first `external` reply whose IR fails a check and a second reply `{"pending"}` give `VL0408` with a note naming the failed check. An empty pending text gives `VL0406`. |
+| AC-SYNTH-33 | `BuildPlayerSummary` calls `FindBadge`, which fails with `VL0403`: `BuildPlayerSummary` ends with `VL0409` naming `FindBadge` and its code as a note, with no provider call made for `BuildPlayerSummary` (D-56). |
+| AC-SYNTH-34 | A build with several lock misses sends exactly one Ollama digest resolution (or `external` `describe`) request, on the first miss, reused for every later request in the build (D-57). |
+| AC-SYNTH-35 | A scripted watchdog timeout (`VL0603`) during verification is reported as an infrastructure error, consumes no retry, and does not reject the candidate (D-51). |

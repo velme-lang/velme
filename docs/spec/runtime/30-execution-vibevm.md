@@ -34,9 +34,11 @@ record fields in declared order, list items in order, `let` binds in order, coll
 order. Evaluation order is observable only through which error is reported first, and it is fixed.
 **R-RUN-03** Arithmetic follows `language/11` R-TYP-04..06: exact decimal, half-to-even rounding; division by zero or
 overflow is `VL0602`; `-0` results are normalized to `0` (D-36).
-**R-RUN-04** Every IR node evaluation costs 1 fuel unit; each element visited by `map`/`filter`/`find`/`reduce` costs
-1 more; `sort` costs `n·⌈log2 n⌉`; builtins cost what their catalog entry says (language/14). This **Velme fuel** cost
-model is part of the semantics — both backends meter it identically (31 R-SBX-05).
+**R-RUN-04** Every IR node evaluation costs 1 fuel unit; each element visited by
+`map`/`filter`/`find`/`reduce`/`all`/`any` costs 1 more; `==`/`!=` on a `List`/`Record` value costs 1 + the scalar
+leaves compared, stopping at the first difference; `sort_by` and every value/text builtin cost what their catalog
+entry says (language/14 §2, §4, D-52). This **Velme fuel** cost model is part of the semantics — both backends
+meter it identically (31 R-SBX-05).
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
 builtin of its arguments (D-22).
 
@@ -80,9 +82,10 @@ Worked example (§11) — `CreateLevelSummary`:
 | `ValidationFailed` | a loaded artifact failed re-validation or its hash | `VL0402`, `VL0703` |
 | `Unavailable` | no artifact for the goal (not built / not locked) | `VL0701` |
 
-**R-RUN-09** A required child failure fails the parent (§30). The reported failure is that of the **lowest
-source-order** binding that failed among those that ran; other in-flight siblings are cancelled and appear in the trace
-as `cancelled` (D-9).
+**R-RUN-09** A required child failure fails the parent (§30), but every sibling in that binding's wave still runs to
+completion — no cancellation — and no later wave starts (D-9). The reported failure is that of the **lowest
+source-order** binding that failed among the wave(s) that ran; every other failure in those waves is listed as a note,
+in source order. A binding in a wave that never started appears in the trace as `skipped`, not `cancelled`.
 **R-RUN-10** The parent's failure wraps the child's: `BuildPlayerSummary failed because FindBadge failed: …`, keeping the
 child's code as the root cause. The top-level exit status uses the root cause's code (tooling/40).
 **R-RUN-11** `fallback`, `retry` and optional calls are Future (reserved, D-24).
@@ -107,7 +110,7 @@ so diagnostic text is itself deterministic.
 | `max_call_depth` | 32 | whole run tree | statically | `VL0605` |
 | `max_list_size` | 10 000 items | any list value | runtime | `VL0606` |
 | `max_output_bytes` | 1 MiB | canonical JSON of a goal's result | runtime | `VL0606` |
-| `max_wall_clock` | 2 s | whole top-level run | watchdog | `VL0603` |
+| `max_wall_clock` | 60 s | whole top-level run | watchdog, safety net only (D-51) | `VL0603` |
 
 **R-RUN-16** A goal's `budget` line (language/12) can only tighten these caps for that goal's own invocation:
 `cpu=Nms` → `max_fuel = N × 100 000` (fixed conversion constant `FUEL_PER_MS`, not measured, so deterministic);
@@ -117,12 +120,20 @@ is rejected by `velme check` with `VL0308 InvalidBudget` (language/12 R-GOAL-20)
 outcome (INV-3). The whole tree is still bounded: ≤ 128 invocations × per-invocation limits, plus the watchdog.
 **R-RUN-18** Budget constants are defined once in `velme-runtime` and referenced by name by the CLI, the prompt
 builder (22 §4) and tests.
+**R-RUN-24** The static bound of R-RUN-17 (at most `max_goal_calls` × `max_fuel` = 1.28 × 10⁹ fuel, about 12.8 s at
+`FUEL_PER_MS`) is the whole run's deterministic limit; `max_wall_clock` sits well above it and guards only against a
+Velme bug or an overloaded host, never a verification verdict (D-51). Its clock is injectable, so tests drive it with
+a fake clock instead of real time (R-QA-02).
 
 ### 7.1 Memory accounting
 
-The interpreter charges each value it creates by a fixed size function (Number 8, Boolean 1, Nothing 0, Text 16 +
-bytes, List 16 + Σ items, Record 16 + Σ fields) and tracks the peak of live bytes in the invocation. The function is
-part of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not its linear-memory size.
+The interpreter charges each value it creates by a fixed size function (Number 16, Boolean 8, Nothing 0, `T?` 8 +
+`T`, Text 16 + bytes, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes in the WASM ABI's
+8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first) and tracks
+the **cumulative bytes allocated** during the invocation, not the peak of live bytes (D-53). The function is part
+of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not its linear-memory size. Building a
+value one item at a time with `reduce` + `concat` therefore allocates `O(n²)` bytes; the synthesis prompt steers
+plans toward `map`/`filter`/`range` instead (compiler/22 §4).
 
 ## 8. Trace (§33)
 
@@ -130,8 +141,8 @@ A trace is a tree of events, ordered by **source order**, never by completion ti
 
 | Event | Fields |
 |---|---|
-| `goal` | goal, artifact hash, kind, inputs, outcome, fuel used, peak memory, duration (non-deterministic, excluded from comparisons) |
-| `call` | binding, child goal, wave, args, outcome (`ok` / `failed` / `cancelled`), value, nested `goal` |
+| `goal` | goal, artifact hash, kind, inputs, outcome, fuel used, memory used (cumulative bytes allocated, §7.1), duration (non-deterministic, excluded from comparisons) |
+| `call` | binding, child goal, wave, args, outcome (`ok` / `failed` / `skipped`), value, nested `goal` |
 | `check` | source text, span, passed, values of every sub-expression referenced in a failure |
 | `failure` | code, message, root-cause path (`BuildPlayerSummary › FindBadge`) |
 
@@ -156,8 +167,8 @@ single "At the same time:" group, not "First … At the same time …".
 |---|---|
 | AC-RUN-01 | Three independent children with equal heavy workloads are all in wave 1 and their executions overlap in time with `--jobs 3` — §52 Test 3. |
 | AC-RUN-02 | `Main` → `Double` then `AddOne` runs in 2 waves and returns `2x + 1` — §52 Test 2. |
-| AC-RUN-03 | Two siblings both fail: the reported failure is always the lower source-order binding, across 100 runs with random scheduling delays (D-9). |
-| AC-RUN-04 | Result and trace (excluding durations) are byte-identical for `--jobs 1` and `--jobs 8` on the golden programs. |
+| AC-RUN-03 | Two siblings both fail: the reported failure is always the lower source-order binding, and both siblings' real outcomes (not `skipped`) appear in the trace, across 100 runs with random scheduling delays (D-9). |
+| AC-RUN-04 | Result and trace (excluding durations) are byte-identical for `--jobs 1` and `--jobs 8` on the golden programs, including two failing siblings where the slower one is first in source order (D-9). |
 | AC-RUN-05 | An over-budget leaf (a `reduce` over `range(10000)` whose lambda reduces over `range(10000)`) fails with `VL0601` deterministically, with the same fuel figure every run — §52 Test 7. |
 | AC-RUN-06 | A call tree needing 129 invocations is rejected by `velme check` with `VL0605` before any execution. |
 | AC-RUN-07 | A failing check reports the assertion text, the expected and received values — §52 Test 6. |
@@ -165,3 +176,4 @@ single "At the same time:" group, not "First … At the same time …".
 | AC-RUN-09 | `budget cpu=1ms` on a goal whose run needs more than 100 000 fuel yields `VL0601`; the same goal without the line succeeds. |
 | AC-RUN-10 | `velme explain` output for `BuildPlayerSummary` and `CreateLevelSummary` matches the golden text; no provider is constructed. |
 | AC-RUN-11 | A wall-clock timeout produces `VL0603` with `reproducible: false` in the trace and no artifact or cache write. |
+| AC-RUN-12 | With an injected fake clock, a run is stopped with `VL0603` (`reproducible: false`) only once the clock passes 60 s; a run of 128 invocations each using its full `max_fuel` under a clock advancing at `FUEL_PER_MS` completes without `VL0603` (D-51). |

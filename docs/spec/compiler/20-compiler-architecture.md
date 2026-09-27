@@ -137,7 +137,7 @@ pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>);   
 pub fn lower_goal(p: &hir::Program, g: GoalId) -> ir::GoalSkeleton;                     // velme-ir (call section / wired body)
 pub fn validate(p: &hir::Program, g: GoalId, ir: &ir::Goal) -> Result<ValidIr, Vec<Diagnostic>>; // velme-ir
 pub async fn build(p: &hir::Program, opts: BuildOptions, store: &dyn ArtifactStore,
-                   provider: Option<&dyn SynthProvider>) -> BuildReport;                // velme-synth / runtime
+                   provider: Option<&dyn SynthProvider>) -> BuildReport;                // velme-runtime (D-54)
 pub async fn run(p: &hir::Program, lock: &Lockfile, goal: GoalId, input: Value,
                  opts: RunOptions) -> RunOutcome;                                       // velme-runtime
 pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                             // velme-runtime (no LLM)
@@ -147,6 +147,10 @@ pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                     
 (target: < 50 ms for a 1 000-line file, `delivery/51`).
 **R-CMP-19** Everything that can reach the network takes the provider as an explicit argument; passing `None` (the
 `--locked`/offline path) makes synthesis impossible by construction (INV-7).
+**R-CMP-20** `build` lives in `velme-runtime`, which owns lock/store staleness and the `compiler/22` R-SYNTH-02 lookup
+order, calling `velme-synth` only for goals that need synthesis (D-54). `velme-synth` exposes a `ChildRunner` trait
+that `velme-runtime` implements and passes into synthesis, so verification (`compiler/22` R-SYNTH-14) can run a
+composite goal's real, already-accepted children without `velme-synth` depending on the artifact store.
 
 ## 7. Acceptance criteria
 
@@ -159,3 +163,4 @@ pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                     
 | AC-CMP-05 | Editing only a leaf goal's `plan` changes that goal's synthesis key and no ancestor's (D-11). |
 | AC-CMP-06 | A `wired` goal (D-4) builds and runs with no provider configured. |
 | AC-CMP-07 | `analyze` on a generated 1 000-line program completes in < 50 ms on the reference machine (bench). |
+| AC-CMP-08 | `velme-synth`'s public API takes no `&dyn ArtifactStore`; a `cargo xtask deps` check confirms no new dependency edge outside §2 (D-54). |

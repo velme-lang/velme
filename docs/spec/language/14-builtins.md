@@ -21,22 +21,25 @@ callable from a `call` block (R-GOAL-08).
 
 ## 2. Value built-ins
 
-| Name | Signature | checks | IR | Behaviour / errors |
-|---|---|---|---|---|
-| `length` | `(List<T>) -> Number`, `(Text) -> Number` | ✓ | ✓ | surface `x.length`; Text counts Unicode scalar values |
-| `is_empty` | `(T?) / (List<T>) / (Text) -> Boolean` | ✓ | ✓ | surface `is empty` |
-| `maximum` | `(List<Number>) -> Number?` | ✓ | ✓ | `nothing` for `[]` |
-| `minimum` | `(List<Number>) -> Number?` | ✓ | ✓ | `nothing` for `[]` |
-| `sum` | `(List<Number>) -> Number` | ✓ | ✓ | `0` for `[]`; strict left-to-right addition; overflow `VL0602` |
-| `contains` | `(List<T>, T) -> Boolean` | ✓ | ✓ | structural equality (R-TYP-20) |
-| `abs` | `(Number) -> Number` | ✓ | ✓ | |
-| `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | |
-| `round` | `(Number) -> Number` | ✓ | ✓ | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
-| `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | `low > high` → `VL0602` |
-| `concat` | `(Text, Text) -> Text` | ✓ | ✓ | |
-| `to_text` | `(Number) -> Text` | ✓ | ✓ | plain decimal rendering (R-TYP-08) |
-| `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `VL0602`; `n` above the list limit → `VL0606` |
-| `random` | `(seed: Number, index: Number) -> Number` | ✓ | ✓ | §3 |
+Fuel costs are size-proportional, not flat (D-52): `n` is the length of a `List` argument, `bytes` the UTF-8 byte
+length of a `Text` argument (or the larger of input/output where noted). `⌈x⌉` is the ceiling function.
+
+| Name | Signature | checks | IR | Fuel | Behaviour / errors |
+|---|---|---|---|---|---|
+| `length` | `(List<T>) -> Number`, `(Text) -> Number` | ✓ | ✓ | 1 | surface `x.length`; Text counts Unicode scalar values |
+| `is_empty` | `(T?) / (List<T>) / (Text) -> Boolean` | ✓ | ✓ | 1 | surface `is empty` |
+| `maximum` | `(List<Number>) -> Number?` | ✓ | ✓ | 1 + n | `nothing` for `[]` |
+| `minimum` | `(List<Number>) -> Number?` | ✓ | ✓ | 1 + n | `nothing` for `[]` |
+| `sum` | `(List<Number>) -> Number` | ✓ | ✓ | 1 + n | `0` for `[]`; strict left-to-right addition; overflow `VL0602` |
+| `contains` | `(List<T>, T) -> Boolean` | ✓ | ✓ | 1 + items scanned up to and including the match (n if no match) | structural equality (R-TYP-20) |
+| `abs` | `(Number) -> Number` | ✓ | ✓ | 1 | |
+| `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | 1 | |
+| `round` | `(Number) -> Number` | ✓ | ✓ | 1 | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
+| `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | 1 | `low > high` → `VL0602` |
+| `concat` | `(Text, Text) -> Text` | ✓ | ✓ | 1 + ⌈bytes/64⌉ of both inputs (and of the output where larger) | |
+| `to_text` | `(Number) -> Text` | ✓ | ✓ | 1 + ⌈output bytes/64⌉ | plain decimal rendering (R-TYP-08) |
+| `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | 1 + n | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `VL0602`; `n` above the list limit → `VL0606` |
+| `random` | `(seed: Number, index: Number) -> Number` | ✓ | ✓ | 1 | §3 |
 
 **R-BLT-03** Remainder/modulo, transcendental functions (`sqrt`, `sin`, `pow`, `log`) and Text
 ordering/searching are not in v0.1 (D-36). Adding one is a `builtins_version` bump (§5) and, for any whose decimal
@@ -83,15 +86,15 @@ A plan such as "create `count` bounce strengths from 5 through 10 using the seed
 These take an IR lambda ([21-ir](../compiler/21-ir.md)) and are how synthesized code iterates — learners never write
 loops (§14). Lambdas are non-recursive and may read enclosing inputs, locals and lambda parameters.
 
-| Name | Signature | Behaviour |
-|---|---|---|
-| `map` | `(List<T>, T -> U) -> List<U>` | in order |
-| `filter` | `(List<T>, T -> Boolean) -> List<T>` | keeps order |
-| `find` | `(List<T>, T -> Boolean) -> T?` | first match, else `nothing` |
-| `reduce` | `(List<T>, U, (U, T) -> U) -> U` | left fold from the initial value |
-| `sort_by` | `(List<T>, T -> Number, descending: Boolean) -> List<T>` | **stable**; keys compared as Numbers |
-| `all` | `(List<T>, T -> Boolean) -> Boolean` | short-circuits at first `false`; `true` for `[]` (lowers `every`) |
-| `any` | `(List<T>, T -> Boolean) -> Boolean` | short-circuits at first `true`; `false` for `[]` (lowers `some`) |
+| Name | Signature | Fuel (excl. lambda body) | Behaviour |
+|---|---|---|---|
+| `map` | `(List<T>, T -> U) -> List<U>` | 1 + n (30 R-RUN-04) | in order |
+| `filter` | `(List<T>, T -> Boolean) -> List<T>` | 1 + n (30 R-RUN-04) | keeps order |
+| `find` | `(List<T>, T -> Boolean) -> T?` | 1 + elements visited to the match (n if none, 30 R-RUN-04) | first match, else `nothing` |
+| `reduce` | `(List<T>, U, (U, T) -> U) -> U` | 1 + n (30 R-RUN-04) | left fold from the initial value |
+| `sort_by` | `(List<T>, T -> Number, descending: Boolean) -> List<T>` | 1 + n·⌈log2(n+1)⌉, plus 1 per key evaluation (fixed formula, never counted comparisons) | **stable**; keys compared as Numbers |
+| `all` | `(List<T>, T -> Boolean) -> Boolean` | 1 + elements visited to the first `false` (n if none, 30 R-RUN-04) | short-circuits at first `false`; `true` for `[]` (lowers `every`) |
+| `any` | `(List<T>, T -> Boolean) -> Boolean` | 1 + elements visited to the first `true` (n if none, 30 R-RUN-04) | short-circuits at first `true`; `false` for `[]` (lowers `some`) |
 
 **R-BLT-07** Element visit order is list order for every primitive; a failing lambda (`VL0602`) fails the whole
 primitive at the first failing element in that order. Every element visit consumes fuel
@@ -107,7 +110,7 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | Change | Version effect |
 |---|---|
 | add a built-in | MINOR bump — existing artifacts stay valid |
-| change any observable behaviour, signature or error of an existing built-in (including float formatting or rounding) | MAJOR bump — artifacts built against the old version are re-verified before reuse |
+| change any observable behaviour, signature, error or fuel cost of an existing built-in (including float formatting or rounding) | MAJOR bump — enters `contract_key` (D-55), so every artifact built against the old version is stale and goes through ordinary synthesis |
 | remove a built-in | only with a new language version (P-1) |
 | fix an implementation bug so a backend matches this spec | no bump; differential tests ([51-testing-quality](../delivery/51-testing-quality.md)) must catch the mismatch first |
 
@@ -129,3 +132,4 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | AC-BLT-09 | `to_text(820) == "820"`, `to_text(0.1) == "0.1"`, `to_text(-0) == "0"`. |
 | AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `velme run --locked` rejects artifacts built on an older MAJOR with `VL0702 LockStale`. |
 | AC-BLT-11 | `clamp(5, 10, 1)` yields `VL0602`; `contains([Player(…)], same Player(…))` is `true`. |
+| AC-BLT-12 | `sum(range(1000))` costs `1 + 1000` fuel for `sum` plus `1 + 1000` for `range`, deterministically on every run; `contains` that matches at index 4 of a 100-item list costs `1 + 5` (D-52). |
