@@ -140,7 +140,7 @@ with "The answer is <binding>."
 | `0` | success (and all checks/examples passed) |
 | `1` | the program is invalid: `VL01xx`–`VL03xx` |
 | `2` | build could not produce an accepted artifact: `VL04xx`, `VL0503` |
-| `3` | execution failed: check/example failure `VL0501/0502` or runtime failure `VL06xx`, `VL0801` |
+| `3` | execution failed: check/example failure `VL0501/0502` or runtime failure `VL06xx` except `VL0607`, `VL0801` |
 | `4` | artifact/lock problem: `VL07xx` |
 | `64` | usage or input error: `VL09xx`, bad flags |
 | `70` | internal error `VL0607` (a Velme bug — message asks the user to report it) |
@@ -210,7 +210,7 @@ name to set.
 
 | ID | Criterion |
 |---|---|
-| AC-CLI-01 | `velme check` on a valid file prints the five ✓ lines and exits 0; on a type error exits 1 with the `TL` code and a source caret. |
+| AC-CLI-01 | `velme check` on a valid file prints the five ✓ lines and exits 0; on a type error exits 1 with the `VL` code and a source caret. |
 | AC-CLI-02 | `velme run --locked` with a current lock performs zero provider calls and no network I/O. |
 | AC-CLI-03 | `velme run --locked` with a stale entry exits 4 with `VL0702` naming the goal, and leaves `velme.lock` unchanged. |
 | AC-CLI-04 | `--arg` overrides a key from `--input`; a missing record field exits 64 with `VL0902` naming the field and expected type. |

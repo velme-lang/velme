@@ -11,7 +11,7 @@ word, or checking what a term means.
 The single catalog of diagnostic codes (D-17), runtime failure kinds, reserved words and project vocabulary. Rules that
 *raise* a code live in the owning spec; this file owns the code, its name and its learner-facing message.
 
-**R-ERR-01** Codes are `TL` + 4 digits, grouped by phase (D-17). A released code is never reused or renamed to a
+**R-ERR-01** Codes are `VL` + 4 digits, grouped by phase (D-17). A released code is never reused or renamed to a
 different meaning (INV-10); a retired code stays in the table marked `retired`.
 **R-ERR-02** Each code is defined once in `velme-diagnostics` (name, severity, message template, help template) and
 referenced by name everywhere, tests included (CC-CONST).

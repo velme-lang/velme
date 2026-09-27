@@ -158,7 +158,7 @@ single "At the same time:" group, not "First … At the same time …".
 | AC-RUN-02 | `Main` → `Double` then `AddOne` runs in 2 waves and returns `2x + 1` — §52 Test 2. |
 | AC-RUN-03 | Two siblings both fail: the reported failure is always the lower source-order binding, across 100 runs with random scheduling delays (D-9). |
 | AC-RUN-04 | Result and trace (excluding durations) are byte-identical for `--jobs 1` and `--jobs 8` on the golden programs. |
-| AC-RUN-05 | An infinite-cost leaf (reduce over `range(1e7)`) fails with `VL0601` deterministically, with the same fuel figure every run — §52 Test 7. |
+| AC-RUN-05 | An over-budget leaf (a `reduce` over `range(10000)` whose lambda reduces over `range(10000)`) fails with `VL0601` deterministically, with the same fuel figure every run — §52 Test 7. |
 | AC-RUN-06 | A call tree needing 129 invocations is rejected by `velme check` with `VL0605` before any execution. |
 | AC-RUN-07 | A failing check reports the assertion text, the expected and received values — §52 Test 6. |
 | AC-RUN-08 | `x / 0` in a leaf yields `VL0602`; no partial or special value appears in any output. |

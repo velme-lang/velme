@@ -78,7 +78,7 @@ write the code."). For `ollama` it names the model and server; for `external` it
 | Item | Where |
 |---|---|
 | `SECURITY.md` with private reporting address and supported versions | repo root |
-| `CODEOWNERS` covering `crates/velme-ir`, `crates/velme-runtime`, `crates/velme-wasm`, `crates/velme-synth`, `docs/spec` | `.github/` |
+| `CODEOWNERS` covering the paths listed in `delivery/52` §4 | `.github/` |
 | Dependency scanning (Dependabot + `cargo-deny advisories`) | CI, `delivery/52` |
 | Secret scanning + push protection | GitHub settings |
 | Code scanning (CodeQL for workflows; `cargo clippy` in gate) | CI |

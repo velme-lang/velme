@@ -69,11 +69,11 @@ that needs randomness takes a `seed` parameter.
 
 | seed | index | `mix(z)` | `random` |
 |---|---|---|---|
-| 0 | 0 | `0xe220a8397b1dcdaf` | `0.8833108082136426` |
-| 0 | 1 | `0x6e789e6aa1b965f4` | `0.43152799704850997` |
-| 42 | 0 | `0xbdd732262feb6e95` | `0.7415648787718233` |
-| 42 | 7 | `0xccf635ee9e9e2fa4` | `0.8006318767135033` |
-| -1 | 0 | `0xe4d971771b652c20` | `0.8939429202831845` |
+| 0 | 0 | `0xe220a8397b1dcdaf` | `0.883310808213642685` |
+| 0 | 1 | `0x6e789e6aa1b965f4` | `0.431527997048510052` |
+| 42 | 0 | `0xbdd732262feb6e95` | `0.741564878771823401` |
+| 42 | 7 | `0xccf635ee9e9e2fa4` | `0.800631876713503438` |
+| -1 | 0 | `0xe4d971771b652c20` | `0.893942920283184507` |
 
 A plan such as "create `count` bounce strengths from 5 through 10 using the seed" is synthesized as
 `map(range(count), i -> 5 + random(seed, i) * 5)`.

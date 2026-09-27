@@ -42,7 +42,7 @@ human and JSON rendering.
 
 | Test | Assertion |
 |---|---|
-| repeat-run | 100 runs of each success-criteria program: byte-identical result JSON and trace |
+| repeat-run | 100 runs of each success-criteria program: byte-identical result JSON and trace (excluding durations) |
 | parallel-vs-sequential | scheduler with 1 worker vs N workers: identical result, trace, failure code (D-9) |
 | cross-backend | interpreter vs WASM: identical result and failure code (differential layer) |
 | fingerprint stability | fixed program → fixed hash, committed as a snapshot; changes only with a version bump |

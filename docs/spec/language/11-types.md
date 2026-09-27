@@ -163,7 +163,7 @@ applies the same limits before a goal starts.
 | AC-TYP-05 | `type Node:` with field `next: Node?` yields `VL0208` naming `Node → Node`. |
 | AC-TYP-06 | `1 / 0` evaluated at run time yields `VL0602`, in the interpreter and the WASM backend alike. |
 | AC-TYP-07 | `0 * -1` renders `0`, and its canonical hash equals that of `0`. |
-| AC-TYP-08 | `0.1 + 0.2 == 0.3` evaluates to `false` on every backend; `820` renders without a fraction. |
+| AC-TYP-08 | `820` renders without a fraction. |
 | AC-TYP-09 | `"b" < "a"` yields `VL0206`; `"a" + "b"` yields `VL0206` with a hint to use `concat`. |
 | AC-TYP-10 | Two record values with equal fields compare `==` true; records of two types with identical fields cannot be compared (`VL0206`). |
 | AC-TYP-11 | JSON input with an extra field for a record yields `VL0902` naming the field; `null` for a non-nullable field yields `VL0902`. |
