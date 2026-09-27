@@ -1,0 +1,20 @@
+name: Task
+description: A scoped piece of work, usually tied to a plan phase or spec id.
+labels: [task]
+body:
+  - type: input
+    id: ids
+    attributes:
+      label: Spec ids or plan phase
+      description: e.g. `AC-SYN-03`, `R-IR-07`, M1.
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: The test or command that shows it is finished.

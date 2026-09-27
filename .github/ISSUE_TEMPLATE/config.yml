@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or language idea
+    url: https://github.com/velme-lang/velme/discussions
+    about: Questions, beginner help and language ideas go to Discussions (delivery/52 §8).
+  - name: Security vulnerability
+    url: https://github.com/velme-lang/velme/security/advisories/new
+    about: Report privately; see SECURITY.md.
