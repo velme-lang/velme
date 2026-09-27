@@ -1,0 +1,12 @@
+# R-REL-05: paths that need the maintainer's review.
+/docs/spec/                 @rey5137
+/crates/velme-ir/           @rey5137
+/crates/velme-sema/         @rey5137
+/crates/velme-runtime/      @rey5137
+/crates/velme-wasm/         @rey5137
+/crates/velme-synth/        @rey5137
+/xtask/                     @rey5137
+/.github/workflows/         @rey5137
+/deny.toml                  @rey5137
+/rust-toolchain.toml        @rey5137
+/Cargo.lock                 @rey5137
