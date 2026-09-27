@@ -159,10 +159,12 @@ README order: 1 What is Velme? · 2 Why is it different? · 3 a 10-line example 
 
 ## 11. Naming clearance (D-38)
 
-Screened 2026-09-27 for **Velme** (D-38): registries, org and domains free; no exact mark in USPTO or WIPO. Still owed before public launch: official USPTO/TMview search. The checklist: GitHub org `velme-lang` and
-repo `velme`; crates `velme`, `velme-cli`, `velme-runtime` and every `velme-*` crate in §2; domains (`velme.dev`,
-`velme-lang.org`, `velme-lang.dev`); npm and PyPI names; trademarks in US, EU and target markets. Reserve crate names
-by publishing the workspace crates (owners: the maintainer and `github:velme-lang:owners`); not yet claimed.
+Screened 2026-09-27 for **Velme** (D-38): registries, org and domains free; USPTO and TMview show no live VELME mark in
+classes 9 or 42, near marks low risk. Still owed before filing a mark: an attorney's clearance opinion. The checklist:
+GitHub org `velme-lang` and repo `velme`; crates `velme`, `velme-cli`, `velme-runtime` and every `velme-*` crate in §2;
+domains (`velme.dev`, `velme-lang.org`, `velme-lang.dev`); npm and PyPI names; trademarks in US, EU and target markets.
+Reserve crate names by publishing the workspace crates (owners: the maintainer and `github:velme-lang:owners`); not yet
+claimed.
 
 ## 12. Acceptance criteria
 
