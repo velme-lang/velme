@@ -122,7 +122,7 @@ template v1 · M5b retry loop with diagnostics feedback, verification pipeline, 
 `VL0403` cause summary and question replies (`VL0407`, R-SYNTH-31..33, D-43), token-cost options (R-SYNTH-34..40, D-44) · M5c Anthropic
 provider (config, key from env, structured output, timeouts), recorded replay fixtures for every `examples/` goal ·
 M5d `ollama` provider (digest resolution, mock-server tests) and `external` backend (protocol, command sourcing,
-env scrubbing, `VL0406`) with a small test backend in `velme-test-support` (D-41, D-42).
+env scrubbing, `VL0406`, pending replies `VL0408`) with a small test backend in `velme-test-support` (D-41, D-42, D-45).
 **Exit:** all `AC-SYNTH-*` green on scripted/replay; one opt-in live run per example recorded as fixtures;
 AC-RDM-01 green on replay.
 **User verifies:** with an API key, `velme build examples/beginner/add.velme` synthesizes and verifies; without one,

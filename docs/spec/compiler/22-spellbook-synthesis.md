@@ -54,7 +54,7 @@ pub struct SynthRequest { pub request_version: String, pub task: TaskKind, pub g
                           pub output_schema: serde_json::Value }             // reply schema: IR goal or question (R-SYNTH-10)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
 pub enum  ProviderError { NotConfigured, Unavailable(String), RateLimited { retry_after: Option<Duration> },
-                          Refused(String), Timeout, Malformed(String), BackendFailed(String) }
+                          Refused(String), Timeout, Malformed(String), BackendFailed(String), Pending(String) }
 ```
 
 `SynthRequest` is the structured form of the §4 table. LLM providers render it into a prompt with the versioned
@@ -75,7 +75,7 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 **R-SYNTH-06** Live-provider tests run only with `VELME_LIVE_LLM=1` and are never part of the default gate (D-13).
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5); `BackendFailed` → `VL0406`,
-not retried.
+not retried; `Pending` → `VL0408`, not retried (R-SYNTH-41).
 **R-SYNTH-24** `ollama` resolves the configured model's digest from the server once per build, before any store
 lookup, and reports `<model>@<digest>` as `model()`. A tag that now points at different weights therefore changes
 `synthesis_key` but never `contract_key` (runtime/32 R-ART-03). A model missing on the server is `NotConfigured`
@@ -93,7 +93,7 @@ like the IR schema (21 R-IR-20).
 | Message | Velme sends | Backend replies |
 |---|---|---|
 | `describe` | `{"request_version": "0.1", "kind": "describe"}` | `{"backend": "<name>", "backend_version": "<version>"}` |
-| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}`, `{"question": "<text>"}` or `{"error": "<reason>"}` |
+| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
 
 **R-SYNTH-26** `describe` runs once per build; its `backend_version` is `model()` and enters `synthesis_key`, so a new
 backend version is a cache miss but never makes a lock stale (runtime/32 R-ART-03).
@@ -110,6 +110,16 @@ project's `velme.toml` (`tooling/40` R-CLI-13).
 **R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
 again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
 retry turn does (R-SYNTH-11).
+**R-SYNTH-41** A `{"pending": "<text>"}` reply means the request is queued for a person or tool and has no answer
+yet (D-45). It is `Pending` → `VL0408` for that goal at once, with no retry even when `max_retries` > 0. Other goals
+continue. Nothing is written to the store or the lock or cached, so the next build sends the request again. The text
+is untrusted and cleaned as in R-SYNTH-33; an empty or over-long text is `BackendFailed` (`VL0406`). It is shown only
+as a note, quoted and labelled as the backend's, and as a plain string in `--json`. If an earlier attempt of the same
+goal failed in this build, a note gives that attempt's primary diagnostic (R-SYNTH-31). Only `external` replies this
+way; the LLM reply schema never includes it (R-SYNTH-10).
+
+*Informative:* a queue backend stores answers under a hash of the `request` document. An edited goal sends a
+different request, so an answer is never reused for a goal it wasn't written for.
 
 ## 4. Prompt contract (§20.1)
 
@@ -311,3 +321,5 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-28 | Two scripted replies failing the same check on different inputs: `VL0403` after exactly 2 calls, naming the check and "stopped after 2 attempts"; with `stop_on_repeat = false`, 4 calls. |
 | AC-SYNTH-29 | With `max_prompt_examples = 2` and 3 examples, the prompt shows the first two; a candidate failing the third is rejected with `VL0502` and the next retry turn shows the third with its values. |
 | AC-SYNTH-30 | With `retry_model` set, attempt 0 uses `model` and retries use `retry_model`; the accepted artifact records `<model>+<retry_model>`. Changing `retry_model`, `reply_format` or `max_prompt_examples` changes `synthesis_key`, not `contract_key`, and a build with an up-to-date lock makes zero calls. |
+| AC-SYNTH-31 | An `external` backend replying `{"pending": "ticket 42"}` with `max_retries = 3` fails the goal with `VL0408` showing "ticket 42" after exactly one `synthesize` message; nothing is stored, the lock is unchanged, another goal in the same file still builds, and the exit code is 2. When the backend then replies `{"ir"}` to the same request, the next build accepts and locks it. |
+| AC-SYNTH-32 | With `max_retries = 1`, a first `external` reply whose IR fails a check and a second reply `{"pending"}` give `VL0408` with a note naming the failed check. An empty pending text gives `VL0406`. |
