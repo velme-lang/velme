@@ -149,7 +149,7 @@ Full MVP list and exclusions: `delivery/50`.
 | Reproducibility | `velme.lock` + `.velme/artifacts/` content-addressed store | D-12 |
 | Hashing | BLAKE3 over canonical JSON | D-21 |
 | Tests without an LLM | `replay` + `scripted` providers; live LLM tests opt-in only | D-13 |
-| MVP providers | Anthropic and Ollama (structured output, model configurable); `external` protocol for human/tool-written IR | D-14, D-41, D-42 |
+| MVP providers | Anthropic and Ollama (structured output, model configurable); `external` protocol for human/tool-written IR | D-14, D-41, D-42, D-45 |
 | Runtime | Tokio scheduler; Wasmtime fuel + epoch + `ResourceLimiter` | `runtime/30..31` |
 | Error codes | `TL` + 4 digits, grouped by phase | D-17 |
 | License | MIT OR Apache-2.0 code, CC BY 4.0 spec/docs, trademark kept separate | D-38, `delivery/52` |

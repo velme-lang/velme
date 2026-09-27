@@ -51,6 +51,7 @@ diagnostic's data.
 | VL0405 | ProviderNotConfigured | IR/synthesis | no provider/model/API key configured, or the Ollama server lacks the model | To build `{goal}`, set `{env_var}` to your API key. | — |
 | VL0406 | BackendFailed | IR/synthesis | `external` backend exited non-zero, timed out, replied with non-JSON or oversized output, or returned `{"error"}` (D-42) | The backend `{backend}` couldn't build `{goal}`: {reason} | — |
 | VL0407 | PlanUnclear | IR/synthesis | the AI helper or `external` backend replied with a question instead of IR (`compiler/22` R-SYNTH-32, D-43) | Velme needs more detail to build `{goal}`. Add the answer as an example, or to the plan, and build again. | — |
+| VL0408 | SynthesisPending | IR/synthesis | the `external` backend replied `{"pending"}`: the request is queued for a person or tool and has no answer yet (`compiler/22` R-SYNTH-41, D-45) | `{goal}` is waiting for an implementation from `{backend}`. Build again once it's ready. | — |
 | VL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | VL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | VL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is VL0403) | The generated program didn't pass `{check}` for {input}. | A009 |
