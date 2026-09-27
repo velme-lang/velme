@@ -20,7 +20,7 @@ check:
     - if players is not empty then result is not empty
 ```
 
-**R-CHK-01** Each `- expr` item must have type `Boolean`; otherwise `TL0204` ("a check must be true or false").
+**R-CHK-01** Each `- expr` item must have type `Boolean`; otherwise `VL0204` ("a check must be true or false").
 
 ## 2. Scope
 
@@ -33,10 +33,10 @@ check:
 | `result` | goal output type | always |
 | quantifier variable | element type | inside its `has` body |
 
-A quantifier variable that repeats a visible name is `TL0306 DuplicateBinding`. Unknown names are `TL0202 UnknownName`.
+A quantifier variable that repeats a visible name is `VL0306 DuplicateBinding`. Unknown names are `VL0202 UnknownName`.
 
 **R-CHK-03** Checks call only built-ins marked "checks" in [14-builtins](14-builtins.md). Calling a goal from a check is
-`TL0303 InvalidCall`: a check observes one execution, it never starts another.
+`VL0303 InvalidCall`: a check observes one execution, it never starts another.
 
 ## 3. Constructs
 
@@ -47,7 +47,7 @@ A quantifier variable that repeats a visible name is `TL0306 DuplicateBinding`. 
 | `a and b`, `a or b`, `not a` | Boolean logic | short-circuit, left to right |
 | `if a then b` | implication, ≡ `not a or b` | D-6; `b` not evaluated when `a` is false |
 | `x is empty`, `x is not empty` | emptiness of `T?`, `List`, `Text` | R-TYP-20 |
-| `x.field` | field access | `TL0205` if unknown; `TL0207` on un-narrowed `T?` |
+| `x.field` | field access | `VL0205` if unknown; `VL0207` on un-narrowed `T?` |
 | `xs.field` | projection → `List<F>` | R-TYP-14 |
 | `xs.length`, `t.length` | length | |
 | `maximum(xs)`, `minimum(xs)`, `sum(xs)`, `contains(xs, v)` | collection helpers | `maximum`/`minimum` return `Number?` |
@@ -71,20 +71,20 @@ input. Every item is evaluated, in source order; each item is independent (narro
 order and stop at the first element that decides the answer (first counterexample for `every`, first witness for
 `some`).
 
-**R-CHK-07** Errors raised while evaluating a check item — `TL0602 ArithmeticError` (e.g. division by zero), or any
-other value error — make **that item fail**. The goal fails with `TL0501 CheckFailed`, and the report attaches the
-underlying code as the cause ("could not evaluate `a / b`: TL0602 division by zero"). Rationale: a check that cannot be
+**R-CHK-07** Errors raised while evaluating a check item — `VL0602 ArithmeticError` (e.g. division by zero), or any
+other value error — make **that item fail**. The goal fails with `VL0501 CheckFailed`, and the report attaches the
+underlying code as the cause ("could not evaluate `a / b`: VL0602 division by zero"). Rationale: a check that cannot be
 shown true is not satisfied, and learners see one failure kind for a broken contract.
 
 **R-CHK-08** Check evaluation is charged to the goal invocation's budget. Exhausting a budget during checks is the
-budget failure (`TL0601`, `TL0603`, `TL0604`), not `TL0501` — the run was stopped, the check did not fail.
+budget failure (`VL0601`, `VL0603`, `VL0604`), not `VL0501` — the run was stopped, the check did not fail.
 
 **R-CHK-09** If several items fail, all are reported in source order; the goal's failure (and its trace entry, D-9)
 cites the first.
 
 ## 5. Failure report (§33)
 
-**R-CHK-10** A `TL0501` report contains:
+**R-CHK-10** A `VL0501` report contains:
 
 | Part | Example |
 |---|---|
@@ -93,11 +93,11 @@ cites the first.
 | for `==` / `!=` / ordering: Expected / Received | Expected `4`, Received `3` |
 | for `every` / `some`: the deciding element's index and value | `result[2] = Ball(bounce: 3)` fails `ball.bounce >= 5` |
 | for short-circuited operands: marked "not evaluated" | |
-| cause code, if R-CHK-07 applied | `TL0602` |
+| cause code, if R-CHK-07 applied | `VL0602` |
 | the goal's inputs and binding values (via the trace) | [30-execution-vibevm](../runtime/30-execution-vibevm.md) |
 
 Values render in the canonical JSON form ([11-types](11-types.md) §10), truncated for display with the full value
-available in `thela trace --json`.
+available in `velme trace --json`.
 
 ## 6. Lowering
 
@@ -124,15 +124,15 @@ truth is decided only here.
 
 | ID | Criterion |
 |---|---|
-| AC-CHK-01 | `- result + 1` (a `Number`) as a check item yields `TL0204`. |
-| AC-CHK-02 | A check using a `call` binding (`result.score == score`) type-checks; using an undefined name yields `TL0202`. |
-| AC-CHK-03 | `- CalculateScore(player) > 0` in a check yields `TL0303`. |
+| AC-CHK-01 | `- result + 1` (a `Number`) as a check item yields `VL0204`. |
+| AC-CHK-02 | A check using a `call` binding (`result.score == score`) type-checks; using an undefined name yields `VL0202`. |
+| AC-CHK-03 | `- CalculateScore(player) > 0` in a check yields `VL0303`. |
 | AC-CHK-04 | For `BuildPlayerSummary` returning `rank: 3` when `rank = 4`, the report shows the assertion `result.rank == rank`, Expected `4`, Received `3`, and the binding values. |
 | AC-CHK-05 | `every x in [] has false` is true; `some x in [] has true` is false. |
 | AC-CHK-06 | `every b in result has b.bounce >= 5` failing on the third element reports index 2 and that element's value, and does not evaluate later elements. |
 | AC-CHK-07 | `if players is empty then result is empty` holds when `players` is non-empty regardless of `result`; its `then` side is reported "not evaluated". |
-| AC-CHK-08 | A check `- total / count > 1` with `count = 0` fails with `TL0501` citing cause `TL0602`; the goal's output is not returned. |
+| AC-CHK-08 | A check `- total / count > 1` with `count = 0` fails with `VL0501` citing cause `VL0602`; the goal's output is not returned. |
 | AC-CHK-09 | Two failing items are both reported in source order; the trace cites the first. |
-| AC-CHK-10 | A check that exhausts fuel yields `TL0601`, not `TL0501`. |
+| AC-CHK-10 | A check that exhausts fuel yields `VL0601`, not `VL0501`. |
 | AC-CHK-11 | The same failing check produces an identical report (values, index, order) on the interpreter and the WASM backend. |
-| AC-CHK-12 | Quantifier variable `player` inside a goal with parameter `player` yields `TL0306`. |
+| AC-CHK-12 | Quantifier variable `player` inside a goal with parameter `player` yields `VL0306`. |

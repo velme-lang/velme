@@ -12,9 +12,9 @@ functions a check may call. They are pure, deterministic and total except for th
 node shapes that invoke them are in [21-ir](../compiler/21-ir.md); host-function exposure in the WASM sandbox is in
 [31-wasm-sandbox](../runtime/31-wasm-sandbox.md).
 
-**R-BLT-01** The catalog below is the single source of truth, defined once as data in `thela-builtins` and consumed by
+**R-BLT-01** The catalog below is the single source of truth, defined once as data in `velme-builtins` and consumed by
 sema, the IR validator, the synthesis prompt, the interpreter and the WASM backend (CC-CONST). A name not in the catalog
-is `TL0202` in a check and `TL0402 IRInvalid` in IR.
+is `VL0202` in a check and `VL0402 IRInvalid` in IR.
 
 **R-BLT-02** "checks" = callable from `check` items (and lowered checks); "IR" = callable from synthesized IR. Nothing is
 callable from a `call` block (R-GOAL-08).
@@ -27,15 +27,15 @@ callable from a `call` block (R-GOAL-08).
 | `is_empty` | `(T?) / (List<T>) / (Text) -> Boolean` | ✓ | ✓ | surface `is empty` |
 | `maximum` | `(List<Number>) -> Number?` | ✓ | ✓ | `nothing` for `[]` |
 | `minimum` | `(List<Number>) -> Number?` | ✓ | ✓ | `nothing` for `[]` |
-| `sum` | `(List<Number>) -> Number` | ✓ | ✓ | `0` for `[]`; strict left-to-right addition; overflow `TL0602` |
+| `sum` | `(List<Number>) -> Number` | ✓ | ✓ | `0` for `[]`; strict left-to-right addition; overflow `VL0602` |
 | `contains` | `(List<T>, T) -> Boolean` | ✓ | ✓ | structural equality (R-TYP-20) |
 | `abs` | `(Number) -> Number` | ✓ | ✓ | |
 | `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | |
 | `round` | `(Number) -> Number` | ✓ | ✓ | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
-| `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | `low > high` → `TL0602` |
+| `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | `low > high` → `VL0602` |
 | `concat` | `(Text, Text) -> Text` | ✓ | ✓ | |
 | `to_text` | `(Number) -> Text` | ✓ | ✓ | plain decimal rendering (R-TYP-08) |
-| `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `TL0602`; `n` above the list limit → `TL0606` |
+| `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `VL0602`; `n` above the list limit → `VL0606` |
 | `random` | `(seed: Number, index: Number) -> Number` | ✓ | ✓ | §3 |
 
 **R-BLT-03** Remainder/modulo, transcendental functions (`sqrt`, `sin`, `pow`, `log`) and Text
@@ -62,7 +62,7 @@ random = r × 10^-18                       # exact Number (scale 18), in [0, 1)
 ```
 
 **R-BLT-05** `seed` must be integer-valued (R-TYP-07); `index` must be integer-valued and `≥ 0`. Otherwise
-`TL0602 ArithmeticError`. There is no zero-argument `random()` and no runtime-supplied seed in v0.1 (D-22): a goal
+`VL0602 ArithmeticError`. There is no zero-argument `random()` and no runtime-supplied seed in v0.1 (D-22): a goal
 that needs randomness takes a `seed` parameter.
 
 **R-BLT-06** Reference vectors (binding on every backend):
@@ -93,9 +93,9 @@ loops (§14). Lambdas are non-recursive and may read enclosing inputs, locals an
 | `all` | `(List<T>, T -> Boolean) -> Boolean` | short-circuits at first `false`; `true` for `[]` (lowers `every`) |
 | `any` | `(List<T>, T -> Boolean) -> Boolean` | short-circuits at first `true`; `false` for `[]` (lowers `some`) |
 
-**R-BLT-07** Element visit order is list order for every primitive; a failing lambda (`TL0602`) fails the whole
+**R-BLT-07** Element visit order is list order for every primitive; a failing lambda (`VL0602`) fails the whole
 primitive at the first failing element in that order. Every element visit consumes fuel
-([30-execution-vibevm](../runtime/30-execution-vibevm.md)); result lists are subject to the list-size limit (`TL0606`).
+([30-execution-vibevm](../runtime/30-execution-vibevm.md)); result lists are subject to the list-size limit (`VL0606`).
 
 **R-BLT-08** `Group` (§14) needs maps and is Future. Counting is `length(filter(…))`; no separate `count`.
 
@@ -119,13 +119,13 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | ID | Criterion |
 |---|---|
 | AC-BLT-01 | `random` returns the §3 reference vectors bit-exactly in the interpreter and the WASM backend. |
-| AC-BLT-02 | `random(1.5, 0)` and `random(1, -1)` fail with `TL0602`. |
+| AC-BLT-02 | `random(1.5, 0)` and `random(1, -1)` fail with `VL0602`. |
 | AC-BLT-03 | `maximum([])` is `nothing`; `sum([])` is `0`; `maximum([3, 9, 2])` is `9`. |
 | AC-BLT-04 | `round(2.5) == 3`, `round(-2.5) == -3`, `round(2.4) == 2` on every backend. |
-| AC-BLT-05 | `range(3) == [0, 1, 2]`; `range(-1)` yields `TL0602`; `range` above the list limit yields `TL0606`. |
+| AC-BLT-05 | `range(3) == [0, 1, 2]`; `range(-1)` yields `VL0602`; `range` above the list limit yields `VL0606`. |
 | AC-BLT-06 | `sort_by` keeps the original order of equal keys, in both directions. |
 | AC-BLT-07 | `find` on a list with two matches returns the first; on no match returns `nothing`. |
-| AC-BLT-08 | IR calling an unknown built-in, or `map` from a check, is rejected (`TL0402` / `TL0202`). |
+| AC-BLT-08 | IR calling an unknown built-in, or `map` from a check, is rejected (`VL0402` / `VL0202`). |
 | AC-BLT-09 | `to_text(820) == "820"`, `to_text(0.1) == "0.1"`, `to_text(-0) == "0"`. |
-| AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `thela run --locked` rejects artifacts built on an older MAJOR with `TL0702 LockStale`. |
-| AC-BLT-11 | `clamp(5, 10, 1)` yields `TL0602`; `contains([Player(…)], same Player(…))` is `true`. |
+| AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `velme run --locked` rejects artifacts built on an older MAJOR with `VL0702 LockStale`. |
+| AC-BLT-11 | `clamp(5, 10, 1)` yields `VL0602`; `contains([Player(…)], same Player(…))` is `true`. |

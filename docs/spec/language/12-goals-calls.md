@@ -32,11 +32,11 @@ goal Name(param: Type, ...) -> OutputType:
 | **Composite** | yes | none | required | only the **tail**: an IR expression over inputs and bindings (D-5) |
 | **Wired** | yes | yes | optional (documentation) | nothing — output is the `result` binding (D-4) |
 
-**R-GOAL-01** A goal needs a non-empty `plan`, a `result` binding, or both. Otherwise `TL0307 GoalHasNoBody`
-("tell Thela what this goal should do in `plan:`"). Bodiless signature-only goals do not exist in v0.1.
+**R-GOAL-01** A goal needs a non-empty `plan`, a `result` binding, or both. Otherwise `VL0307 GoalHasNoBody`
+("tell Velme what this goal should do in `plan:`"). Bodiless signature-only goals do not exist in v0.1.
 
-**R-GOAL-02** Goal names are unique in the file (`TL0203`) and share the declaration namespace with types
-([11-types](11-types.md) R-TYP-19). Parameters are unique within a goal (`TL0203`).
+**R-GOAL-02** Goal names are unique in the file (`VL0203`) and share the declaration namespace with types
+([11-types](11-types.md) R-TYP-19). Parameters are unique within a goal (`VL0203`).
 
 **R-GOAL-03** Every v0.1 goal is pure: its output depends only on its inputs and the goals it calls (INV-4). `pure` is
 reserved for the explicit form (D-8).
@@ -49,16 +49,16 @@ cannot cause a call.
 
 | Rule | Violation | Code |
 |---|---|---|
-| **R-GOAL-05** The callee is a goal declared in this file. | `score = Unknown(x)` | `TL0301 UnknownGoal` |
-| **R-GOAL-06** Argument count equals the callee's parameter count. | | `TL0302 CallArityMismatch` |
-| **R-GOAL-07** Each argument is assignable to its parameter type (R-TYP-20). Message: "Cannot call CalculateScore: expected Player, received Text". | `CalculateScore("hello")` | `TL0204 TypeMismatch` |
-| **R-GOAL-08** An argument is a path (input, earlier binding, and field accesses on them) or a literal — no arithmetic, no built-ins. Computation belongs in a goal (P-3). A type name used as a callee is also rejected here. | `s = Score(x + 1)` | `TL0303 InvalidCall` |
-| **R-GOAL-09** A binding may reference only inputs and bindings defined on **earlier lines** (§12.5). | `b = Second(a)` above `a = First(x)` | `TL0305 BindingUsedBeforeDefinition` |
-| **R-GOAL-10** Binding names are unique and do not reuse a parameter name. | | `TL0306 DuplicateBinding` |
-| **R-GOAL-11** The whole-file goal graph is acyclic, including self-calls and mutual recursion. The diagnostic prints the cycle path `A → B → A`. | `value = A(x)` inside `A` | `TL0304 CallCycle` |
+| **R-GOAL-05** The callee is a goal declared in this file. | `score = Unknown(x)` | `VL0301 UnknownGoal` |
+| **R-GOAL-06** Argument count equals the callee's parameter count. | | `VL0302 CallArityMismatch` |
+| **R-GOAL-07** Each argument is assignable to its parameter type (R-TYP-20). Message: "Cannot call CalculateScore: expected Player, received Text". | `CalculateScore("hello")` | `VL0204 TypeMismatch` |
+| **R-GOAL-08** An argument is a path (input, earlier binding, and field accesses on them) or a literal — no arithmetic, no built-ins. Computation belongs in a goal (P-3). A type name used as a callee is also rejected here. | `s = Score(x + 1)` | `VL0303 InvalidCall` |
+| **R-GOAL-09** A binding may reference only inputs and bindings defined on **earlier lines** (§12.5). | `b = Second(a)` above `a = First(x)` | `VL0305 BindingUsedBeforeDefinition` |
+| **R-GOAL-10** Binding names are unique and do not reuse a parameter name. | | `VL0306 DuplicateBinding` |
+| **R-GOAL-11** The whole-file goal graph is acyclic, including self-calls and mutual recursion. The diagnostic prints the cycle path `A → B → A`. | `value = A(x)` inside `A` | `VL0304 CallCycle` |
 
 **R-GOAL-12** A binding's type is the callee's output type. A binding named `result` makes the goal **wired**; its type
-must be assignable to the goal's output (`TL0204`).
+must be assignable to the goal's output (`VL0204`).
 
 **R-GOAL-13** Every binding is **required**: it executes even if the tail doesn't use it, and if it fails the goal
 fails ([30-execution-vibevm](../runtime/30-execution-vibevm.md), D-9). `fallback`, `retry` and `optional` calls are
@@ -92,7 +92,7 @@ goal BuildPlayerSummary(player: Player) -> PlayerSummary:
 Sequential (`BuildReceipt`): `order` wave 1 → `total` wave 2 → `receipt` wave 3. Mixed (`CreateLevelSummary`, §11 of
 the original): `enemies`, `treasures`, `score` wave 1; `difficulty`, `reward` wave 2; tail last.
 
-**R-GOAL-16** `thela explain` renders waves as "First / At the same time / Finally" directly from this DAG, with no LLM
+**R-GOAL-16** `velme explain` renders waves as "First / At the same time / Finally" directly from this DAG, with no LLM
 call ([40-cli](../tooling/40-cli.md)).
 
 **R-GOAL-17** Conditional calls (`when`), `choose`, loops and recursion are Future (P-5). Iteration inside a goal is
@@ -102,7 +102,7 @@ expressed by collection primitives in IR ([14-builtins](14-builtins.md) §4), ne
 
 **R-GOAL-18** Leaf goal: the LLM returns an IR body over the parameters. Composite goal: the LLM returns a tail IR
 expression over the parameters and bindings (bindings appear as `Local`s with their types). In both cases the IR may use
-whitelisted built-ins and must not contain goal calls; the validator rejects them (`TL0402 IRInvalid`). Wired goals
+whitelisted built-ins and must not contain goal calls; the validator rejects them (`VL0402 IRInvalid`). Wired goals
 make no LLM request.
 
 **R-GOAL-19** The LLM sees only child **signatures**, never child implementations (D-11).
@@ -118,16 +118,16 @@ make no LLM request.
 
 **R-GOAL-20** The effective limit is the minimum of the system cap, the caller's remaining allowance and the declared
 value — a `budget` can only tighten (D-8). A declared value above the system cap, an unknown key, a wrong or missing
-unit, a non-positive or non-integer count, or a repeated key is `TL0308 InvalidBudget`.
+unit, a non-positive or non-integer count, or a repeated key is `VL0308 InvalidBudget`.
 
 ## 7. `examples` (D-7)
 
 **R-GOAL-21** Each item is `Goal(literal, …) == literal` where `Goal` is the enclosing goal — the only place a goal
-names itself. Calling any other goal is `TL0303`; argument/expected types follow R-TYP-20 (`TL0204`); arity `TL0302`.
+names itself. Calling any other goal is `VL0303`; argument/expected types follow R-TYP-20 (`VL0204`); arity `VL0302`.
 
 **R-GOAL-22** Examples run before generated inputs during verification
-([22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md)) and by `thela test`. A mismatch is
-`TL0502 ExampleFailed` showing the call, expected and received values. The goal's checks are also evaluated on every
+([22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md)) and by `velme test`. A mismatch is
+`VL0502 ExampleFailed` showing the call, expected and received values. The goal's checks are also evaluated on every
 example input.
 
 ## 8. Worked examples
@@ -224,7 +224,7 @@ and several steps belong in several goals.
 | several steps | smaller goals joined by a `call` block (§3) |
 
 A plan that has turned into code has step numbers, variable names, "for each … if … then", or names an algorithm, and
-grows after each `TL0403`/`TL0407`. It is as long as code and checked by nothing.
+grows after each `VL0403`/`VL0407`. It is as long as code and checked by nothing.
 
 **Code written as prose.** Bad: the plan is an algorithm, and nothing checks that it handles ties the way the learner
 means.
@@ -291,7 +291,7 @@ goal OrderTotal(items: List<Item>) -> Number:
     plan: "Price the items, then apply the discount, then shipping."
 ```
 
-**Too little.** Bad: the result depends on a choice the plan leaves open, so the AI helper asks (`TL0407`) or, worse,
+**Too little.** Bad: the result depends on a choice the plan leaves open, so the AI helper asks (`VL0407`) or, worse,
 guesses a rule that passes the check.
 
 ```text
@@ -302,7 +302,7 @@ goal FindBadge(player: Player) -> Text:
 ```
 
 Good: the thresholds are domain rules, so they are stated in the plan (§8.1), and examples on both sides of each
-threshold make them verified. When `TL0407` asks a question, an example like these is the best answer
+threshold make them verified. When `VL0407` asks a question, an example like these is the best answer
 (compiler/22 R-SYNTH-32).
 
 ```text
@@ -317,16 +317,16 @@ threshold make them verified. When `TL0407` asks a question, an example like the
 
 | ID | Criterion |
 |---|---|
-| AC-GOAL-01 | A goal with neither `plan` nor `result` binding yields `TL0307`. |
-| AC-GOAL-02 | `score = CalculateScore("hello")` with parameter type `Player` yields `TL0204` with "expected Player, received Text", before any synthesis. |
-| AC-GOAL-03 | `value = A(x)` inside goal `A` yields `TL0304`; `A → B → A` yields `TL0304` printing that path. |
-| AC-GOAL-04 | `b = Second(a)` written above `a = First(x)` yields `TL0305`, even though a topological order exists. |
-| AC-GOAL-05 | `s = Score(x + 1)` yields `TL0303`; `s = Score(player.stats)` type-checks. |
-| AC-GOAL-06 | A call to an undeclared goal yields `TL0301`; a wrong argument count yields `TL0302`. |
+| AC-GOAL-01 | A goal with neither `plan` nor `result` binding yields `VL0307`. |
+| AC-GOAL-02 | `score = CalculateScore("hello")` with parameter type `Player` yields `VL0204` with "expected Player, received Text", before any synthesis. |
+| AC-GOAL-03 | `value = A(x)` inside goal `A` yields `VL0304`; `A → B → A` yields `VL0304` printing that path. |
+| AC-GOAL-04 | `b = Second(a)` written above `a = First(x)` yields `VL0305`, even though a topological order exists. |
+| AC-GOAL-05 | `s = Score(x + 1)` yields `VL0303`; `s = Score(player.stats)` type-checks. |
+| AC-GOAL-06 | A call to an undeclared goal yields `VL0301`; a wrong argument count yields `VL0302`. |
 | AC-GOAL-07 | For §4 `CreateLevelSummary`, the computed waves are `{enemies, treasures, score}`, `{difficulty, reward}`. |
 | AC-GOAL-08 | §8.3 `Main` builds and runs with the `scripted` provider receiving zero requests for `Main` and passes `Main(4) == 9`. |
-| AC-GOAL-09 | Synthesized IR for a composite goal that contains a goal call is rejected with `TL0402`. |
-| AC-GOAL-10 | `budget cpu=10ms calls=999` where the system call cap is 128 yields `TL0308`; `budget depth=2` lowers the effective depth to 2. |
-| AC-GOAL-11 | An example calling a different goal yields `TL0303`; a wrong expected value at run time yields `TL0502` showing expected and received. |
-| AC-GOAL-12 | A binding named `result` whose type isn't assignable to the goal's output yields `TL0204`. |
-| AC-GOAL-13 | The §8.1 and §8.2 programs pass `thela check` with no diagnostics. |
+| AC-GOAL-09 | Synthesized IR for a composite goal that contains a goal call is rejected with `VL0402`. |
+| AC-GOAL-10 | `budget cpu=10ms calls=999` where the system call cap is 128 yields `VL0308`; `budget depth=2` lowers the effective depth to 2. |
+| AC-GOAL-11 | An example calling a different goal yields `VL0303`; a wrong expected value at run time yields `VL0502` showing expected and received. |
+| AC-GOAL-12 | A binding named `result` whose type isn't assignable to the goal's output yields `VL0204`. |
+| AC-GOAL-13 | The §8.1 and §8.2 programs pass `velme check` with no diagnostics. |

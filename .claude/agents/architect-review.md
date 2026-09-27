@@ -1,6 +1,6 @@
 ---
 name: architect-review
-description: High-stakes reasoning for Thela — language-semantics and type-system decisions, IR schema and validator design, deciding whether a change breaks an INV-* invariant or crate boundary, determinism questions (interpreter vs WASM parity), and sandbox/security review (Wasmtime limits, host functions, prompt injection, secrets). Use only where a wrong call looks fine now and is expensive later; not for routine implementation once the design is decided.
+description: High-stakes reasoning for Velme — language-semantics and type-system decisions, IR schema and validator design, deciding whether a change breaks an INV-* invariant or crate boundary, determinism questions (interpreter vs WASM parity), and sandbox/security review (Wasmtime limits, host functions, prompt injection, secrets). Use only where a wrong call looks fine now and is expensive later; not for routine implementation once the design is decided.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 model: opus
 effort: high

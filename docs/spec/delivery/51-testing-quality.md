@@ -7,7 +7,7 @@
 
 ## 1. Purpose & boundaries
 
-Defines how the Thela implementation is tested and what "green" means. Testing **generated programs** (examples,
+Defines how the Velme implementation is tested and what "green" means. Testing **generated programs** (examples,
 generated inputs, check runner) is owned by `compiler/22`; this file covers testing **the implementation**.
 
 **R-QA-01** Every `AC-*` in every spec maps to at least one automated test whose name starts with the criterion id:
@@ -21,13 +21,13 @@ assertions, no unseeded randomness, no dependence on test execution order.
 | Layer | Scope | Tooling | Rules |
 |---|---|---|---|
 | **Unit** | lexer rules, type rules, IR validator rules, builtins, fingerprints, scheduler waves | `cargo test` in each crate | pure, no I/O except temp dirs |
-| **Golden** | parser → AST JSON; diagnostics → rendered text + JSON; source → IR; `explain`/`trace` output | `insta` snapshots, inputs under `tests/golden/<kind>/*.thela` | R-QA-03 |
+| **Golden** | parser → AST JSON; diagnostics → rendered text + JSON; source → IR; `explain`/`trace` output | `insta` snapshots, inputs under `tests/golden/<kind>/*.velme` | R-QA-03 |
 | **Property** | parser round-trip (print → parse), canonical-JSON stability, type-checker never panics, interpreter determinism | `proptest` with fixed seeds in CI | failing seeds committed as regression cases |
 | **Fuzz** | parser, IR validator (arbitrary JSON), runtime boundary (arbitrary valid IR + inputs) | `cargo-fuzz` in `fuzz/` | 60 s smoke per target on PR; long runs nightly |
-| **Differential** | interpreter vs WASM on the same IR + inputs: equal result, equal failure code, equal fuel class | `thela-test-support` harness | all golden IR + proptest-generated IR (M7) |
+| **Differential** | interpreter vs WASM on the same IR + inputs: equal result, equal failure code, equal fuel class | `velme-test-support` harness | all golden IR + proptest-generated IR (M7) |
 | **Integration** | CLI end-to-end on `examples/` using the `replay` provider and committed locks | `assert_cmd` + `insta` | covers the AC-RDM set |
-| **Examples-as-tests** | every file in `examples/` passes `thela test --locked` | xtask step | an example that stops working fails the gate |
-| **Live LLM** | real provider synthesis of the success-criteria programs | `THELA_LIVE_LLM=1 cargo test -p thela-synth --test live` | opt-in only (D-13); records fixtures with `--record` |
+| **Examples-as-tests** | every file in `examples/` passes `velme test --locked` | xtask step | an example that stops working fails the gate |
+| **Live LLM** | real provider synthesis of the success-criteria programs | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` | opt-in only (D-13); records fixtures with `--record` |
 | **Benchmarks** | compile time, interpreter throughput, scheduler overhead, WASM compile + run | `criterion` in `benches/` | tracked nightly; not a pass/fail gate except §6 budgets |
 
 **R-QA-03** Golden snapshots are updated only with `cargo insta review` (or `INSTA_UPDATE=always` for a bulk rename),
@@ -82,9 +82,9 @@ Measured on a mid-range laptop (4 performance cores), release build, warm file c
 
 | Operation | Target |
 |---|---|
-| `thela check` on a 1,000-line file | < 100 ms |
+| `velme check` on a 1,000-line file | < 100 ms |
 | Parse only, 1,000 lines | < 10 ms |
-| `thela run --locked`, cache hit, small program (CLI start to exit) | < 50 ms |
+| `velme run --locked`, cache hit, small program (CLI start to exit) | < 50 ms |
 | Interpreter: `reduce` over 1M numbers | < 200 ms |
 | WASM leaf: same workload | ≤ 0.5× interpreter time, excluding first compile |
 | Scheduler overhead per call node | < 20 µs |
@@ -100,7 +100,7 @@ does not block PRs.
 | AC-QA-01 | `cargo xtask verify` runs all §4 steps and exits non-zero if any step fails. |
 | AC-QA-02 | The default test suite passes with networking disabled and no API key set. |
 | AC-QA-03 | `xtask ac-audit` fails when an `AC-*` id is added to a spec with no matching test. |
-| AC-QA-04 | Every `TLnnnn` code in `reference/90` is triggered by a golden test. |
+| AC-QA-04 | Every `VLnnnn` code in `reference/90` is triggered by a golden test. |
 | AC-QA-05 | The determinism tests in §3 pass on Linux, macOS and Windows. |
 | AC-QA-06 | Each fuzz target runs a 60-second smoke without crash in CI. |
 | AC-QA-07 | §6 targets are met at the M8 gate. |
