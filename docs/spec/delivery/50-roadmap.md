@@ -87,7 +87,7 @@ the replay/scripted configuration, plus one recorded live run per synthesis crit
 | AC-RDM-06 | **Check failure** — shows the exact failed assertion and the values | → `VL0501` with expected/got | M3 |
 | AC-RDM-07 | **Timeout** — deliberately expensive program terminated | fuel → `VL0601`; watchdog → `VL0603` | M4 (interp), M7 (WASM) |
 | AC-RDM-08 | **Cache** — unchanged source performs zero synthesis | provider call count = 0 on second `build` | M6 |
-| AC-RDM-09 | **Reproducibility** — same source + inputs + lock + seed ⇒ byte-identical result and trace, interpreter and WASM | 100 runs, both backends | M6, M7 |
+| AC-RDM-09 | **Reproducibility** — same source + inputs + lock + seed ⇒ byte-identical result and trace (excluding durations, `runtime/30` §8), interpreter and WASM | 100 runs, both backends | M6, M7 |
 
 AC-RDM-02 program (legal per D-4 — every goal has a body):
 
@@ -117,7 +117,7 @@ goal Main(x: Number) -> Number:
 | Playground: editor, run button, trace view, goal graph, friendly failures | §51 Phase 5 | consumes library APIs (INV-9); first place D-37 applies |
 | Coach: telemetry → candidate → validate → checks → benchmark → store; later A/B, promotion, rollback | §35, §36, §51 Phase 6 | safety rule in `runtime/32` |
 | Tree-sitter grammar, LSP, VS Code extension | §19, §43.2 | D-25 corpus parity |
-| Second provider, provider routing | §42 | trait already neutral |
+| Further providers, provider routing | §42 | trait already neutral |
 | Component Model + WIT, typed cross-goal components | §40, §41 | v0.2+ |
 | Conditional calls, effects, modules | §13, §49 | each through an RFC (`delivery/52`) |
 | Remote artifact store (Redis + object storage + PostgreSQL), Velme Cloud | §26, §42A.4 | separate private repos |

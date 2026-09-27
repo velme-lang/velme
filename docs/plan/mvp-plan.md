@@ -54,11 +54,11 @@ Append one line per approved gate: `YYYY-MM-DD · Mn · approved by <who> · com
 
 ## 2. Scope
 
-**In the MVP:** everything tagged `v0.1` in the spec — the `delivery/50` must-have list. One file per program, one
-real LLM provider, local artifact store + `velme.lock`, CLI only.
+**In the MVP:** everything tagged `v0.1` in the spec — the `delivery/50` must-have list. One file per program, the
+`anthropic`, `ollama` and `external` providers (D-41, D-42), local artifact store + `velme.lock`, CLI only.
 
 **Not in the MVP** (`delivery/50` NOT-MVP list): recursion, loops, conditional calls, effects, modules, playground,
-Coach, Tree-sitter/VS Code, Component Model, cloud storage, second provider. Reserved keywords (D-24) are lexed and
+Coach, Tree-sitter/VS Code, Component Model, cloud storage, further providers. Reserved keywords (D-24) are lexed and
 rejected with `VL0104`; nothing else is scaffolded.
 
 ---

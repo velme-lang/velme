@@ -77,7 +77,7 @@ underlying code as the cause ("could not evaluate `a / b`: VL0602 division by ze
 shown true is not satisfied, and learners see one failure kind for a broken contract.
 
 **R-CHK-08** Check evaluation is charged to the goal invocation's budget. Exhausting a budget during checks is the
-budget failure (`VL0601`, `VL0603`, `VL0604`), not `VL0501` — the run was stopped, the check did not fail.
+budget failure (`VL0601`, `VL0603`, `VL0604`, `VL0606`), not `VL0501` — the run was stopped, the check did not fail.
 
 **R-CHK-09** If several items fail, all are reported in source order; the goal's failure (and its trace entry, D-9)
 cites the first.

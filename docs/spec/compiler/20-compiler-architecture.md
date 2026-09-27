@@ -153,9 +153,9 @@ pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                     
 | ID | Criterion |
 |---|---|
 | AC-CMP-01 | The dependency check fails the gate if any crate adds a dependency outside §2 (e.g. `velme-ir` → `velme-cli`). |
-| AC-CMP-02 | `velme check` on any golden program performs zero network calls and zero artifact-store reads (asserted with a provider/store that panics on use). |
+| AC-CMP-02 | `velme check` on any golden program performs zero network calls and never invokes a provider (asserted with a provider that panics on use); it reads the store only to validate locked IR (`tooling/40` §2). |
 | AC-CMP-03 | A file with three independent errors (syntax in one goal, unknown type in another, cycle between two others) reports all three in one run, sorted by position. |
-| AC-CMP-04 | `--diagnostics json` output for every golden error file matches its snapshot; each object has `code`, `message`, `file`, `line`, `column`. |
+| AC-CMP-04 | `--json` diagnostics (`tooling/40` R-CLI-08) for every golden error file match their snapshots. |
 | AC-CMP-05 | Editing only a leaf goal's `plan` changes that goal's synthesis key and no ancestor's (D-11). |
 | AC-CMP-06 | A `wired` goal (D-4) builds and runs with no provider configured. |
 | AC-CMP-07 | `analyze` on a generated 1 000-line program completes in < 50 ms on the reference machine (bench). |

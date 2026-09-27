@@ -151,7 +151,7 @@ Full MVP list and exclusions: `delivery/50`.
 | Tests without an LLM | `replay` + `scripted` providers; live LLM tests opt-in only | D-13 |
 | MVP providers | Anthropic and Ollama (structured output, model configurable); `external` protocol for human/tool-written IR | D-14, D-41, D-42, D-45 |
 | Runtime | Tokio scheduler; Wasmtime fuel + epoch + `ResourceLimiter` | `runtime/30..31` |
-| Error codes | `TL` + 4 digits, grouped by phase | D-17 |
+| Error codes | `VL` + 4 digits, grouped by phase | D-17 |
 | License | MIT OR Apache-2.0 code, CC BY 4.0 spec/docs, trademark kept separate | D-38, `delivery/52` |
 
 ## 7. Source of truth
@@ -192,7 +192,7 @@ docs/spec/
     51-testing-quality.md         test layers, golden/fuzz/differential, benches, gates
     52-repo-release-governance.md repo layout, CI, releases, distribution, license, RFCs
   reference/
-    90-errors-glossary.md         TL codes, failure kinds, reserved words, glossary
+    90-errors-glossary.md         VL codes, failure kinds, reserved words, glossary
     91-coverage-map.md            original § → owning file
     92-decisions-questions.md     design review: decisions D-n, open questions Q-n
 ```

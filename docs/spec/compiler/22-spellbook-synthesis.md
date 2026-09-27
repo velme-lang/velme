@@ -268,9 +268,9 @@ when `players` is `[]`"), so they can refine the check; the message suggests the
 Synthesis settings live in the `[synthesis]` section of `velme.toml`, defined in `tooling/40` §5.1 (provider,
 model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_per_build`).
 
-**R-SYNTH-20** API keys come only from the environment (`ANTHROPIC_API_KEY`). A key-like value in `velme.toml` is an
-error. Keys never appear in logs, traces, fixtures, artifacts, diagnostics or `--verbose` output; the replay recorder
-stores no headers.
+**R-SYNTH-20** API keys come only from the environment (`VELME_API_KEY`, or the `ANTHROPIC_API_KEY` fallback;
+`tooling/40` §5.2). A key-like value in `velme.toml` is an error. Keys never appear in logs, traces, fixtures,
+artifacts, diagnostics or `--verbose` output; the replay recorder stores no headers.
 **R-SYNTH-21** `max_calls_per_build` bounds cost: when reached, remaining goals fail with `VL0403` and a message
 naming the limit. The build summary reports calls, tokens in/out, prompt-cache tokens read and written
 (R-SYNTH-34) and store/lock hits.
@@ -308,7 +308,7 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-15 | An `external` backend returning hostile IR (a `call` node, an unknown builtin) is rejected with `VL0402` / `VL0801`; nothing is stored. |
 | AC-SYNTH-16 | Non-zero exit, timeout, non-JSON stdout, stdout over the cap, and an `{"error"}` reply each fail with `VL0406` naming the goal and backend; the lock is unchanged and no retry is made. |
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
-| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; a `command` key in the project `velme.toml` fails with `VL0902`. |
+| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; an `external_command` key in the project `velme.toml` fails with `VL0902`. |
 | AC-SYNTH-19 | A fully cached build with `--provider ollama` or `--provider external` sends no request to the server and never starts the command. |
 | AC-SYNTH-20 | With `stop_on_repeat = false`, four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `VL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
 | AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `VL0403` reports attempt 4's cause. |
