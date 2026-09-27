@@ -111,14 +111,15 @@ make no LLM request.
 
 | Key | Unit | Meaning |
 |---|---|---|
-| `cpu` | `ms`, `s` | CPU allowance for one invocation of this goal including its calls (converted to fuel + watchdog by [30-execution-vibevm](../runtime/30-execution-vibevm.md)) |
-| `memory` | `kb`, `mb` (1 mb = 2^20 bytes) | peak memory for one invocation |
-| `calls` | none | max goal invocations in this goal's subtree, itself included |
-| `depth` | none | max call depth below this goal |
+| `cpu` | `ms` (whole integer only) | fuel allowance for **this goal's own invocation** (converted to fuel by [30-execution-vibevm](../runtime/30-execution-vibevm.md) §7); does not cover its calls, which carry their own budgets |
+| `memory` | `kb`, `mb` (1 mb = 2^20 bytes) | memory allowance for this goal's own invocation (bytes allocated, [30-execution-vibevm](../runtime/30-execution-vibevm.md) §7.1) |
+| `calls` | none | max goal invocations in this goal's subtree, itself included — checked statically at `velme check` ([30-execution-vibevm](../runtime/30-execution-vibevm.md) §7, `VL0605`) |
+| `depth` | none | max call depth below this goal — checked statically at `velme check` (same) |
 
-**R-GOAL-20** The effective limit is the minimum of the system cap, the caller's remaining allowance and the declared
-value — a `budget` can only tighten (D-8). A declared value above the system cap, an unknown key, a wrong or missing
-unit, a non-positive or non-integer count, or a repeated key is `VL0308 InvalidBudget`.
+**R-GOAL-20** The effective limit for this goal's own invocation is the minimum of the system cap and the declared
+value — a `budget` can only tighten its own invocation's caps, never a caller's or a callee's (D-8, revised
+2026-09-27; `runtime/30` R-RUN-17). A declared value above the system cap, an unknown key, a wrong or missing unit, a
+non-positive, non-integer or fractional (for `cpu`) count, or a repeated key is `VL0308 InvalidBudget`.
 
 ## 7. `examples` (D-7)
 
@@ -330,3 +331,4 @@ threshold make them verified. When `VL0407` asks a question, an example like the
 | AC-GOAL-11 | An example calling a different goal yields `VL0303`; a wrong expected value at run time yields `VL0502` showing expected and received. |
 | AC-GOAL-12 | A binding named `result` whose type isn't assignable to the goal's output yields `VL0204`. |
 | AC-GOAL-13 | The §8.1 and §8.2 programs pass `velme check` with no diagnostics. |
+| AC-GOAL-14 | `budget cpu=1.5ms` (fractional) and `budget cpu=10s` (wrong unit) each yield `VL0308`. |
