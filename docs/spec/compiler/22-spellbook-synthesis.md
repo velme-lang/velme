@@ -319,7 +319,7 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-12 | Changing the digest behind the same Ollama tag, with an up-to-date lock, makes zero requests; after deleting the store entry, the next build misses on the new `synthesis_key`. |
 | AC-SYNTH-13 | An unreachable Ollama server yields `VL0404`; a model the server doesn't have yields `VL0405` with an `ollama pull` hint. |
 | AC-SYNTH-14 | The `external` `synthesize` message for a golden goal matches its snapshot, validates against the committed request schema, and contains no file paths, environment values or API keys. |
-| AC-SYNTH-15 | An `external` backend returning hostile IR (a `call` node, an unknown builtin) is rejected with `VL0402` / `VL0801`; nothing is stored. |
+| AC-SYNTH-15 | An `external` backend returning hostile IR (a `call` node, an unknown builtin) is rejected with `VL0402` in both cases (D-63); nothing is stored. |
 | AC-SYNTH-16 | Non-zero exit, timeout, non-JSON stdout, stdout over the cap, and an `{"error"}` reply each fail with `VL0406` naming the goal and backend; the lock is unchanged and no retry is made. |
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
 | AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; an `external_command` key in the project `velme.toml` fails with `VL0902`. |

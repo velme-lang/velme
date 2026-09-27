@@ -22,7 +22,7 @@ diagnostic's data.
 
 | Code | Name | Raised in | Meaning | Learner message (sample) | Was |
 |---|---|---|---|---|---|
-| VL0101 | UnexpectedToken | syntax | parser met a token it can't use here | I didn't expect `{found}` here — I was looking for {expected}. | A001 |
+| VL0101 | UnexpectedToken | syntax | parser met a token it can't use here, incl. `result` named before a goal's last call binding or used as a call argument (D-62, `language/12` R-GOAL-23) | I didn't expect `{found}` here — I was looking for {expected}. / `result` can only name the last binding. | A001 |
 | VL0102 | InconsistentIndentation | syntax | dedent to a width no enclosing block uses | This line's indentation doesn't line up with the lines above it. | A001 |
 | VL0103 | TabIndentation | syntax | tab in leading whitespace (D-19) | Please indent with spaces, not tabs. | A001 |
 | VL0104 | ReservedWord | syntax | reserved future word used (D-24) | `{word}` is saved for a later Velme version — try another name. | — |
