@@ -1,6 +1,6 @@
 [package]
-name = "thela-runtime"
-description = "Thela: runtime crate (see docs/spec/compiler/20-compiler-architecture.md)"
+name = "velme-runtime"
+description = "Velme: runtime crate (see docs/spec/compiler/20-compiler-architecture.md)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

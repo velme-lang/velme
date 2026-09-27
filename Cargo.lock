@@ -216,61 +216,61 @@ dependencies = [
 ]
 
 [[package]]
-name = "thela-builtins"
+name = "unicode-ident"
+version = "1.0.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "velme-builtins"
 version = "0.1.0"
 
 [[package]]
-name = "thela-check"
+name = "velme-check"
 version = "0.1.0"
 
 [[package]]
-name = "thela-cli"
+name = "velme-cli"
 version = "0.1.0"
 dependencies = [
  "insta",
 ]
 
 [[package]]
-name = "thela-diagnostics"
+name = "velme-diagnostics"
 version = "0.1.0"
 
 [[package]]
-name = "thela-interp"
+name = "velme-interp"
 version = "0.1.0"
 
 [[package]]
-name = "thela-ir"
+name = "velme-ir"
 version = "0.1.0"
 
 [[package]]
-name = "thela-runtime"
+name = "velme-runtime"
 version = "0.1.0"
 
 [[package]]
-name = "thela-sema"
+name = "velme-sema"
 version = "0.1.0"
 
 [[package]]
-name = "thela-syntax"
+name = "velme-syntax"
 version = "0.1.0"
 
 [[package]]
-name = "thela-synth"
+name = "velme-synth"
 version = "0.1.0"
 
 [[package]]
-name = "thela-test-support"
+name = "velme-test-support"
 version = "0.1.0"
 
 [[package]]
-name = "thela-wasm"
+name = "velme-wasm"
 version = "0.1.0"
-
-[[package]]
-name = "unicode-ident"
-version = "1.0.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "windows-link"

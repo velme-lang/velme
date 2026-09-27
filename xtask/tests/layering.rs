@@ -5,7 +5,7 @@ mod common;
 use xtask::layering::{self, ALLOWED, XTASK};
 use xtask::workspace_root;
 
-/// Writes a two-crate workspace where `thela-syntax` depends on `dependency` and returns its violations.
+/// Writes a two-crate workspace where `velme-syntax` depends on `dependency` and returns its violations.
 fn violations_for_syntax_depending_on(test: &str, dependency: &str, dev: bool) -> anyhow::Result<Vec<String>> {
     let dir = common::fresh_dir(test)?;
     common::write(
@@ -16,12 +16,12 @@ fn violations_for_syntax_depending_on(test: &str, dependency: &str, dev: bool) -
     let section = if dev { "dev-dependencies" } else { "dependencies" };
     common::write(
         &dir,
-        "crates/thela-syntax/Cargo.toml",
+        "crates/velme-syntax/Cargo.toml",
         &format!(
-            "[package]\nname = \"thela-syntax\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[{section}]\n{dependency} = {{ path = \"../{dependency}\" }}\n"
+            "[package]\nname = \"velme-syntax\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[{section}]\n{dependency} = {{ path = \"../{dependency}\" }}\n"
         ),
     )?;
-    common::write(&dir, "crates/thela-syntax/src/lib.rs", "")?;
+    common::write(&dir, "crates/velme-syntax/src/lib.rs", "")?;
     common::write(
         &dir,
         &format!("crates/{dependency}/Cargo.toml"),
@@ -34,28 +34,28 @@ fn violations_for_syntax_depending_on(test: &str, dependency: &str, dev: bool) -
 // Also covers AC-CMP-01.
 #[test]
 fn ac_rel_02_layering_fails_on_syntax_to_runtime() {
-    let violations = violations_for_syntax_depending_on("layering_syntax_runtime", "thela-runtime", false)
+    let violations = violations_for_syntax_depending_on("layering_syntax_runtime", "velme-runtime", false)
         .expect("fixture workspace");
     assert_eq!(violations.len(), 1, "{violations:?}");
     assert!(
-        violations[0].contains("`thela-syntax` -> `thela-runtime`"),
+        violations[0].contains("`velme-syntax` -> `velme-runtime`"),
         "{violations:?}"
     );
 }
 
 #[test]
 fn ac_rel_02_layering_accepts_syntax_to_diagnostics() {
-    let violations = violations_for_syntax_depending_on("layering_syntax_diagnostics", "thela-diagnostics", false)
+    let violations = violations_for_syntax_depending_on("layering_syntax_diagnostics", "velme-diagnostics", false)
         .expect("fixture workspace");
     assert!(violations.is_empty(), "{violations:?}");
 }
 
 #[test]
 fn ac_rel_02_layering_allows_test_support_only_as_dev_dependency() {
-    let dev = violations_for_syntax_depending_on("layering_test_support_dev", "thela-test-support", true)
+    let dev = violations_for_syntax_depending_on("layering_test_support_dev", "velme-test-support", true)
         .expect("fixture workspace");
     assert!(dev.is_empty(), "{dev:?}");
-    let normal = violations_for_syntax_depending_on("layering_test_support_normal", "thela-test-support", false)
+    let normal = violations_for_syntax_depending_on("layering_test_support_normal", "velme-test-support", false)
         .expect("fixture workspace");
     assert_eq!(normal.len(), 1, "{normal:?}");
 }
@@ -63,13 +63,13 @@ fn ac_rel_02_layering_allows_test_support_only_as_dev_dependency() {
 #[test]
 fn ac_rel_02_layering_rejects_http_client_outside_synth() {
     let json = r#"{"packages":[
-        {"name":"thela-sema","dependencies":[{"name":"reqwest","kind":null}]},
+        {"name":"velme-sema","dependencies":[{"name":"reqwest","kind":null}]},
         {"name":"xtask","dependencies":[{"name":"ureq","kind":null}]},
-        {"name":"thela-synth","dependencies":[{"name":"reqwest","kind":null}]}]}"#;
+        {"name":"velme-synth","dependencies":[{"name":"reqwest","kind":null}]}]}"#;
     let violations = layering::check(&layering::packages_from_metadata(json).expect("valid metadata"));
     assert_eq!(violations.len(), 2, "{violations:?}");
     assert!(
-        violations[0].contains("`thela-sema` depends on HTTP client `reqwest`"),
+        violations[0].contains("`velme-sema` depends on HTTP client `reqwest`"),
         "{violations:?}"
     );
 }

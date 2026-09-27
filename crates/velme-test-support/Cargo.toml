@@ -1,6 +1,6 @@
 [package]
-name = "thela-test-support"
-description = "Thela: test-support crate (see docs/spec/compiler/20-compiler-architecture.md)"
+name = "velme-test-support"
+description = "Velme: test-support crate (see docs/spec/compiler/20-compiler-architecture.md)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,2 +1,2 @@
-//! Thela `test-support` crate: see `compiler/20` §2 for its responsibility.
+//! Velme `test-support` crate: see `compiler/20` §2 for its responsibility.
 #![forbid(unsafe_code)]

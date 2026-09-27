@@ -1,4 +1,4 @@
-//! `thela` binary: the only crate that prints, reads the environment and picks exit codes (R-CMP-03).
+//! `velme` binary: the only crate that prints, reads the environment and picks exit codes (R-CMP-03).
 #![forbid(unsafe_code)]
 
 use std::process::ExitCode;
@@ -7,7 +7,7 @@ use std::process::ExitCode;
 const EXIT_USAGE: u8 = 64;
 
 fn version_line() -> String {
-    format!("thela {}", env!("CARGO_PKG_VERSION"))
+    format!("velme {}", env!("CARGO_PKG_VERSION"))
 }
 
 fn main() -> ExitCode {
@@ -18,7 +18,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         _ => {
-            eprintln!("usage: thela --version");
+            eprintln!("usage: velme --version");
             ExitCode::from(EXIT_USAGE)
         }
     }
@@ -30,6 +30,6 @@ mod tests {
 
     #[test]
     fn version_line_is_snapshotted() {
-        insta::assert_snapshot!(version_line(), @"thela 0.1.0");
+        insta::assert_snapshot!(version_line(), @"velme 0.1.0");
     }
 }
