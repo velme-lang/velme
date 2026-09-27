@@ -77,8 +77,11 @@ goal resolves through the lock the same way.
 
 **R-ART-09** The store is append-only and write-once: a file is written to a temp name and atomically renamed; an
 existing file with the same name is never rewritten.
-**R-ART-10** Every load re-hashes the file and re-runs IR validation (21 §6, cached per hash for the process). A hash
-mismatch is `VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`.
+**R-ART-10** Every load re-hashes the file, re-runs IR validation (21 §6, cached per hash for the process), and
+cross-checks the manifest's `goal`, `signature` and `contract_key` against the lock entry and against the key computed
+from current source (D-46): the manifest's claims are informational, never trusted on their own. A hash mismatch is
+`VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a manifest/lock/computed mismatch or a
+re-validation failure makes the entry stale (R-ART-14).
 **R-ART-11** Only candidates that passed the full verification pipeline (22 §6) are written (§22). A failed or
 timed-out candidate leaves no file.
 **R-ART-12** Artifacts not referenced by `velme.lock` may be garbage-collected by a CLI command (tooling/40); nothing is
@@ -108,9 +111,11 @@ artifact      = "b3:e2f7…"
 
 **R-ART-13** Entries are sorted by (`file`, `name`); the file is rewritten byte-deterministically, so an unchanged
 build produces no diff.
-**R-ART-14** An entry is **stale** when its `contract_key` differs from the one computed from current source, or its
-artifact is missing/corrupt. The CLI names the cause by comparing key components ("the plan changed", "`Player` gained
-a field", "built for language 0.1, file says 0.2").
+**R-ART-14** An entry is **stale** when its `contract_key` differs from the one computed from current source, when its
+artifact is missing/corrupt, or when the R-ART-10 cross-check finds the manifest's `goal`/`signature`/`contract_key`
+disagreeing with the lock entry or fails re-validation (D-46). The CLI names the cause by comparing key components
+("the plan changed", "`Player` gained a field", "built for language 0.1, file says 0.2", "the stored artifact doesn't
+match its own lock entry").
 **R-ART-15** `velme build` re-synthesizes only stale or missing goals (post-order, 22 R-SYNTH-01), updates their entries
 and prunes entries for deleted goals. `--locked` performs no synthesis and fails with `VL0702 LockStale` listing every
 stale goal and its cause. CI runs with `--locked`.
@@ -159,3 +164,5 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 | AC-ART-08 | Artifact documents contain no timestamps, usernames or hostnames (schema test). |
 | AC-ART-09 | A wired goal gets a lock entry and an artifact with `"provider": "compiler"`. |
 | AC-ART-10 | Regenerating `FindBadge` so its behaviour changes, then rebuilding `BuildPlayerSummary`: `BuildPlayerSummary` is re-verified against the new `FindBadge` with no provider call; if it now fails a check, it is re-synthesized with a diagnostic naming `FindBadge` (D-55). |
+| AC-ART-11 | Editing a locked goal's IR to break one of its own `examples:` while keeping a hash-consistent artifact file: `velme test --locked` fails on that example (D-46); `velme run` with the same artifact does not detect it (no example re-run). |
+| AC-ART-12 | A lock entry whose `contract_key` differs from its artifact's manifest `contract_key` is stale with `VL0702`, even though the artifact file's own hash still matches (D-46). |

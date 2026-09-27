@@ -57,7 +57,8 @@ enabled.
 
 **R-REL-05** `main` is protected: changes land by pull request with green required checks and one approving review;
 no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/velme-sema/`, `crates/velme-runtime/`,
-`crates/velme-wasm/`, `crates/velme-synth/`.
+`crates/velme-wasm/`, `crates/velme-synth/`, `xtask/`, `.github/workflows/`, `deny.toml`, `rust-toolchain.toml`,
+`Cargo.lock`.
 
 | Workflow | Trigger | Runs |
 |---|---|---|
