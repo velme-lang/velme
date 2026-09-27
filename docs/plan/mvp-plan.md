@@ -30,7 +30,7 @@ means an `architect-review` (Opus, high) runs before the phase gate.
 ### Open questions
 
 None open — Q-1..Q-7 resolved 2026-09-25 (`reference/92` §4 → D-36..D-39). Name screened and set to **Velme**
-(D-38); the official trademark search is owed before public launch, not before M0.
+(D-38); trademark search done 2026-09-27; an attorney's clearance opinion is owed before filing a mark.
 
 ### MVP gate checklist (`delivery/50` success criteria)
 
