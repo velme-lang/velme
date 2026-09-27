@@ -72,11 +72,20 @@ distinct and both allowed.
 **R-TYP-12** Field access, arithmetic, ordering, projection and quantification on an operand of type `T?` are
 `VL0207 NullableAccess` unless the operand is narrowed (§9). `==`/`!=` against `T?` are always allowed.
 
+**R-TYP-25** On an **optional collection** — `List<T>?` or `Text?` — `is empty` is `true` for `nothing` and for a
+present but empty value (`[]` / `""`); `is not empty` is its negation and narrows the operand to the non-optional
+`List<T>` / `Text` (§9). This differs from a bare `T?` for a non-collection `T`, where only `nothing` counts as empty
+(D-60); the `is_empty` IR node ([compiler/21](../compiler/21-ir.md)) implements the same rule.
+
 ## 6. Lists
 
 **R-TYP-13** `List<T>` is invariant: `List<Number>` is not assignable to `List<Number?>`. An empty list literal `[]`
 takes its element type from the expected type; with no expected type it is `VL0204` ("can't tell what kind of list
 this is").
+
+**R-TYP-26** A non-empty list literal's element type, absent a wider expected type, is the **least common type** of
+its elements under assignability (R-TYP-20): `[1, nothing]` is `List<Number?>`. Elements with no common type (e.g.
+`[1, "a"]`) are `VL0204`.
 
 **R-TYP-14** On `List<R>` where `R` is a record, `xs.field` is a **projection** of type `List<F>` (D-6); chains
 `xs.a.b` project through nested records. `.length` on a list is always the list's length, even if `R` has a field
@@ -107,7 +116,7 @@ record-literal fields, example values and JSON inputs.
 
 | Operator | Operands | Result |
 |---|---|---|
-| `==` `!=` | same type, or one assignable to the other | `Boolean`; structural for lists (length + elementwise) and records (fieldwise); `nothing == nothing` |
+| `==` `!=` | same type, or one assignable to the other | `Boolean`; structural for lists (length + elementwise) and records (fieldwise); `nothing == nothing`; a present value compared with `nothing` is `false` for `==`, `true` for `!=` (D-61) |
 | `<` `<=` `>` `>=` | `Number`, `Number` | `Boolean` |
 | `+ - * /`, unary `-` | `Number` | `Number` (R-TYP-04..06) |
 | `and` `or` `not` | `Boolean` | `Boolean`, short-circuit |
@@ -129,6 +138,11 @@ accesses. Paths are immutable, so their type can be narrowed:
 
 Narrowing reaches into nested expressions (including quantifier bodies) inside that scope. It does not flow through
 `not`, through built-in calls (`maximum(xs)` stays `Number?`), or across separate check items.
+
+**R-TYP-27** Compound conditions combine the narrowings of their operands: in `if a and b then X`, the narrowings `a`
+and `b` each establish (per the table above) both apply within `X`. In `if a or b then X else Y`, the narrowings that
+`not a` and `not b` establish both apply within `Y`. A leading `not c` swaps which side of `c`'s own narrowing applies,
+per the table.
 
 ## 10. JSON value mapping (D-23)
 
@@ -172,3 +186,8 @@ applies the same limits before a goal starts.
 | AC-TYP-14 | Output of a `Player` record lists fields in declaration order. |
 | AC-TYP-15 | `0.1 + 0.2 == 0.3` is `true`; `to_text(2.50)` is `"2.5"`; `1 / 3` renders `0.3333333333333333333333333333`; JSON input `0.1` round-trips to output `0.1` — interpreter and WASM alike. |
 | AC-TYP-16 | JSON input `1e-29` or a number with more than 28 fractional digits yields `VL0902`; a goal parameter written without a type yields `VL0101` whose help names that parameter. |
+| AC-TYP-17 | `type Bad: value: Nothing` and a field typed `Nothing?` both yield `VL0204`. |
+| AC-TYP-18 | `type Empty:` with no fields yields `VL0203`; two fields both named `x` yield `VL0203`; accessing an undeclared field yields `VL0205`. |
+| AC-TYP-19 | `type Number: …` (a type reusing a built-in type name) yields `VL0203`; a goal parameter typed `Unknown` yields `VL0201`. |
+| AC-TYP-20 | With `a: Player?` and `b: Player?`, `if a is empty or b is empty then 0 else a.score + b.score` type-checks (both narrowed in the `else` branch, R-TYP-22, R-TYP-27); `if a is not empty and b is not empty then a.score + b.score else 0` also type-checks. |
+| AC-TYP-21 | For `xs: List<Number>?`, `xs is empty` is `true` for `nothing` and for `[]`, and `false` for `[1]`; `xs is not empty` narrows `xs` to `List<Number>`. For `t: Text?`, `t is empty` is `true` for `nothing` and for `""`. |

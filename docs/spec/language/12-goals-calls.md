@@ -60,6 +60,10 @@ cannot cause a call.
 **R-GOAL-12** A binding's type is the callee's output type. A binding named `result` makes the goal **wired**; its type
 must be assignable to the goal's output (`VL0204`).
 
+**R-GOAL-23** `result` may only name the **last** binding of a `call` block (D-62). Naming an earlier binding `result`,
+or using `result` as a call argument (it cannot yet refer to anything), is `VL0101` ("`result` can only name the last
+binding") — a plain syntax error, not `VL0104` (`language/10` R-SYN-05).
+
 **R-GOAL-13** Every binding is **required**: it executes even if the tail doesn't use it, and if it fails the goal
 fails ([30-execution-vibevm](../runtime/30-execution-vibevm.md), D-9). `fallback`, `retry` and `optional` calls are
 Future (D-24).
@@ -89,8 +93,8 @@ goal BuildPlayerSummary(player: Player) -> PlayerSummary:
         - result.badge == badge
 ```
 
-Sequential (`BuildReceipt`): `order` wave 1 → `total` wave 2 → `receipt` wave 3. Mixed (`CreateLevelSummary`, §11 of
-the original): `enemies`, `treasures`, `score` wave 1; `difficulty`, `reward` wave 2; tail last.
+Sequential (`BuildReceipt`): `order` wave 1 → `total` wave 2 → `receipt` wave 3.
+Mixed (`CreateLevelSummary`, §8.4): `enemies`, `treasures`, `score` wave 1; `difficulty`, `reward` wave 2; tail last.
 
 **R-GOAL-16** `velme explain` renders waves as "First / At the same time / Finally" directly from this DAG, with no LLM
 call ([40-cli](../tooling/40-cli.md)).
@@ -212,7 +216,68 @@ goal Main(x: Number) -> Number:
 
 `Main` makes no LLM request; its plan is documentation.
 
-### 8.4 Good and bad plans
+### 8.4 Mixed waves (`CreateLevelSummary`)
+
+```text
+type Level:
+    enemy_count: Number
+    treasure_count: Number
+    base_score: Number
+
+type LevelSummary:
+    score: Number
+    difficulty: Text
+    reward: Number
+
+goal CountEnemies(level: Level) -> Number:
+    plan: "Return the level's enemy_count."
+    check:
+        - result == level.enemy_count
+
+goal CountTreasures(level: Level) -> Number:
+    plan: "Return the level's treasure_count."
+    check:
+        - result == level.treasure_count
+
+goal CalculateLevelScore(level: Level) -> Number:
+    plan: "Return the level's base_score."
+    check:
+        - result == level.base_score
+
+goal RateDifficulty(enemies: Number, treasures: Number) -> Text:
+    plan: |
+        Rate the level Hard for at least 10 enemies,
+        Medium for at least 5, Easy otherwise.
+    examples:
+        - RateDifficulty(10, 2) == "Hard"
+        - RateDifficulty(5, 2) == "Medium"
+        - RateDifficulty(4, 2) == "Easy"
+
+goal CalculateReward(score: Number, treasures: Number) -> Number:
+    plan: "The reward is the score plus 50 for every treasure."
+    examples:
+        - CalculateReward(100, 0) == 100
+        - CalculateReward(100, 2) == 200
+
+goal CreateLevelSummary(level: Level) -> LevelSummary:
+    call:
+        enemies = CountEnemies(level)
+        treasures = CountTreasures(level)
+        score = CalculateLevelScore(level)
+        difficulty = RateDifficulty(enemies, treasures)
+        reward = CalculateReward(score, treasures)
+    plan: |
+        Combine the score, difficulty, and reward into one level summary.
+    check:
+        - result.score == score
+        - result.difficulty == difficulty
+        - result.reward == reward
+```
+
+`enemies`, `treasures` and `score` depend only on `level` (wave 1); `difficulty` depends on `enemies`/`treasures` and
+`reward` depends on `score`/`treasures` (both wave 2); the tail runs last (AC-GOAL-07).
+
+### 8.5 Good and bad plans
 
 Guidance, not a rule: nothing here is enforced. The plan is the one part of a goal that is read but never verified
 (INV-2), so it says **what the goal is for**; exact behaviour belongs in `examples` and `check`, which are verified,
@@ -324,7 +389,7 @@ threshold make them verified. When `VL0407` asks a question, an example like the
 | AC-GOAL-04 | `b = Second(a)` written above `a = First(x)` yields `VL0305`, even though a topological order exists. |
 | AC-GOAL-05 | `s = Score(x + 1)` yields `VL0303`; `s = Score(player.stats)` type-checks. |
 | AC-GOAL-06 | A call to an undeclared goal yields `VL0301`; a wrong argument count yields `VL0302`. |
-| AC-GOAL-07 | For §4 `CreateLevelSummary`, the computed waves are `{enemies, treasures, score}`, `{difficulty, reward}`. |
+| AC-GOAL-07 | For §8.4 `CreateLevelSummary`, the computed waves are `{enemies, treasures, score}`, `{difficulty, reward}`. |
 | AC-GOAL-08 | §8.3 `Main` builds and runs with the `scripted` provider receiving zero requests for `Main` and passes `Main(4) == 9`. |
 | AC-GOAL-09 | Synthesized IR for a composite goal that contains a goal call is rejected with `VL0402`. |
 | AC-GOAL-10 | `budget cpu=10ms calls=999` where the system call cap is 128 yields `VL0308`; `budget depth=2` lowers the effective depth to 2. |
@@ -332,3 +397,7 @@ threshold make them verified. When `VL0407` asks a question, an example like the
 | AC-GOAL-12 | A binding named `result` whose type isn't assignable to the goal's output yields `VL0204`. |
 | AC-GOAL-13 | The §8.1 and §8.2 programs pass `velme check` with no diagnostics. |
 | AC-GOAL-14 | `budget cpu=1.5ms` (fractional) and `budget cpu=10s` (wrong unit) each yield `VL0308`. |
+| AC-GOAL-15 | Two goals named `Score` in the same file yield `VL0203`; two parameters named `x` on one goal yield `VL0203`. |
+| AC-GOAL-16 | Two `call` bindings named `total`, and a binding reusing a parameter's name, each yield `VL0306`. |
+| AC-GOAL-17 | `velme test` runs a goal's `examples` before any generated verification input, and evaluates that goal's `check` items on every example's result too; a check failing on an example's input is reported the same way as on a generated one. |
+| AC-GOAL-18 | A binding named `result` written before the goal's last binding, or `result` used as a call argument, yields `VL0101` (D-62); a binding named `result` that is the last binding wires the goal (D-4). |

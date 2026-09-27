@@ -102,6 +102,18 @@ primitive at the first failing element in that order. Every element visit consum
 
 **R-BLT-08** `Group` (§14) needs maps and is Future. Counting is `length(filter(…))`; no separate `count`.
 
+**R-BLT-11** `sort_by`'s key lambda is evaluated exactly once per element, in list order, before any comparison; the
+sort itself is stable, and `descending` keeps elements with equal keys in their input-list order (D-59). Ordering by a
+`Text` key stays out of v0.1 until collation is decided (R-TYP-09, R-BLT-03) — it is deliberately deferred, not an
+oversight.
+
+**R-BLT-12** A `type` or `goal` name equal to a built-in's name is allowed but is a lint warning suggesting a rename
+(the naming-convention mechanism of R-SYN-06, not a new diagnostic code), because it cannot actually collide: goals are
+never called from checks (R-CHK-03) and built-ins are never called from a `call` block (R-BLT-02). A parameter,
+`call` binding or lambda parameter lives in a separate value namespace and never shadows a built-in in call position —
+`sum(xs)` always calls the built-in `sum`, even when a parameter named `sum` is in scope (D-64). This keeps adding
+built-ins additive (R-BLT-09): a program never breaks because a later `builtins_version` reused one of its names.
+
 ## 5. `builtins_version`
 
 **R-BLT-09** The catalog has a version `builtins_version` (`MAJOR.MINOR`, starting `0.1`), recorded in every artifact
@@ -133,3 +145,6 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `velme run --locked` rejects artifacts built on an older MAJOR with `VL0702 LockStale`. |
 | AC-BLT-11 | `clamp(5, 10, 1)` yields `VL0602`; `contains([Player(…)], same Player(…))` is `true`. |
 | AC-BLT-12 | `sum(range(1000))` costs `1 + 1000` fuel for `sum` plus `1 + 1000` for `range`, deterministically on every run; `contains` that matches at index 4 of a 100-item list costs `1 + 5` (D-52). |
+| AC-BLT-13 | `sort_by([Item(k:2),Item(k:1),Item(k:1)], i -> i.k, descending: false)` keeps the two `k:1` items in their original relative order; the same with `descending: true` also keeps them in original order. |
+| AC-BLT-14 | Inside a goal with parameter `sum: Number`, the check `- sum(scores) > 0` still calls the built-in `sum`, not the parameter; a `goal sum(x: Number) -> Number:` declaration compiles with a lint warning, not an error. |
+| AC-BLT-15 | `map(xs, p -> 1 / p)` over `[2, 0, 3]` fails with `VL0602` attributing the second element (index 1); the third element is never evaluated. |

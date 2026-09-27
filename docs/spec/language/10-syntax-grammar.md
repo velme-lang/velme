@@ -25,6 +25,7 @@ UTF-8 is `VL0901 FileError`. A leading BOM is ignored.
 | `NAME` | ASCII letter or `_`, then letters, digits, `_` | ASCII only in v0.1; Unicode identifiers Future. Text and plans are full Unicode. |
 | `NUMBER` | `digits [ "." digits ]`, `_` allowed between digits | no exponent, no leading `.`, no sign (unary `-` is an operator). |
 | `UNIT` | `ms` `s` `kb` `mb` written directly after a `NUMBER` (no space) | only valid inside `budget` (§4.5). |
+| `VERSION` | `digits "." digits` | only valid after `language: velme/` in the header (§4); compared as text, not decoded as a `Number` (R-SYN-21). |
 | `TEXT` | `"` … `"` on one line | escapes in §2.3. |
 | `BLOCK_TEXT` | lines of a `plan: \|` block scalar | §3.2. |
 | punctuation | `( ) [ ] < > , : . = - + * / ? \| ->` and `== != <= >=` | longest match first. |
@@ -46,7 +47,8 @@ where `#` is ordinary text.
 
 **R-SYN-05** Using a reserved word as a name, or as a block/modifier, is `VL0104 ReservedWord` with the message "`when`
 is coming in a later Velme version". Using a keyword as a name is `VL0101`. `result` as a parameter, field or quantifier
-variable is `VL0104` (D-4).
+variable is `VL0101` (D-4): unlike a truly reserved word, `result` is already meaningful in v0.1 (D-62), so misusing it
+is an ordinary syntax error, not "coming in a later version" — `VL0104` stays reserved for the D-24 words.
 
 **R-SYN-06** Naming conventions — `PascalCase` for types and goals, `snake_case` for fields, parameters and bindings —
 are lint warnings, never errors (P-3 applies to meaning, not style).
@@ -58,7 +60,9 @@ surrogate code point, is `VL0101`. A line end before the closing quote is `VL010
 
 ## 3. Layout
 
-**R-SYN-08** Indentation uses spaces only. A tab anywhere in leading whitespace is `VL0103 TabIndentation` (D-19).
+**R-SYN-08** Indentation uses spaces only. A tab anywhere in leading whitespace is `VL0103 TabIndentation` (D-19). This
+governs the layout pass's own indentation (§3), not the content of a `BLOCK_TEXT` plan (§3.2): a tab appearing inside
+the text a `plan: |` block carries is ordinary text and is preserved, never `VL0103` (R-SYN-12).
 
 **R-SYN-09** The layout pass keeps a stack of indentation widths. A line indented deeper than the top emits `INDENT`
 and pushes; a shallower line emits one `DEDENT` per popped width and must land exactly on a width in the stack,
@@ -85,13 +89,18 @@ whitespace trimmed, common indentation removed). No escapes or comments are proc
 **R-SYN-13** An empty inline or block plan is `VL0307 GoalHasNoBody` unless the goal is wired (D-4,
 [12-goals-calls](12-goals-calls.md) §2).
 
+**R-SYN-22** A Unicode bidi control character (U+202A–U+202E, U+2066–U+2069) inside a `plan` (inline or block) or a
+`TEXT` literal is a lint warning, using the naming-convention mechanism of R-SYN-06 (no new diagnostic code): these
+characters can make displayed and lexed order differ ("Trojan Source"), which matters most in text an LLM reads (D-43,
+[compiler/22](../compiler/22-spellbook-synthesis.md) R-SYNTH-22).
+
 ## 4. Grammar (EBNF)
 
 Terminals are quoted or upper-case tokens from §2. `{ x }` = zero or more, `[ x ]` = optional. Layout tokens come from §3.
 
 ```text
 program        = [ header ] { declaration } EOF ;
-header         = "language" ":" NAME "/" NUMBER NEWLINE ;          (* NAME must be "velme" *)
+header         = "language" ":" NAME "/" VERSION NEWLINE ;         (* NAME must be "velme" *)
 declaration    = type_decl | goal_decl ;
 
 (* ---- types ---- *)
@@ -110,7 +119,7 @@ budget_line    = "budget" budget_item { budget_item } NEWLINE ;
 budget_item    = NAME "=" NUMBER [ UNIT ] ;
 
 call_block     = "call" ":" NEWLINE INDENT binding { binding } DEDENT ;
-binding        = NAME "=" NAME "(" [ call_arg { "," call_arg } [ "," ] ] ")" NEWLINE ;
+binding        = ( NAME | "result" ) "=" NAME "(" [ call_arg { "," call_arg } [ "," ] ] ")" NEWLINE ;
 call_arg       = path | literal ;
 path           = NAME { "." NAME } ;
 
@@ -153,6 +162,10 @@ A block out of order or repeated is `VL0101` with a hint naming the expected ord
 **R-SYN-15** `T??` is `VL0101`. A header naming another language or a version this compiler doesn't support is
 `VL0106 UnsupportedLanguageVersion`. Without a header the compiler's current language version applies and is recorded in
 the artifact (INV-8).
+
+**R-SYN-21** The header's `VERSION` is compared to the compiler's supported versions as text, never decoded as a
+`Number`: `velme/0.10` and `velme/0.1` are different versions even though `0.10 == 0.1` numerically. A version the
+compiler doesn't support is `VL0106` (R-SYN-15).
 
 ### 4.1 Precedence (lowest → highest)
 
@@ -211,3 +224,8 @@ on the whole corpus (D-25).
 | AC-SYN-11 | A parameter list split across lines inside `( )` parses as if written on one line. |
 | AC-SYN-12 | `check:` placed before `plan:` yields `VL0101` with a hint listing the block order. |
 | AC-SYN-13 | The parser terminates without panic on every input in the fuzz corpus. |
+| AC-SYN-14 | A file with a UTF-8 BOM followed by valid source compiles with no diagnostics; a byte sequence that isn't valid UTF-8 yields `VL0901`. |
+| AC-SYN-15 | A file containing a lone `\r` not followed by `\n` yields `VL0101`; a file using only `\r\n` line endings parses identically to the same source with `\n`. |
+| AC-SYN-16 | A `NUMBER` literal with 29 fractional digits yields `VL0101` ("too many decimal places"); one whose coefficient exceeds `2^96` yields `VL0101` ("too big"). |
+| AC-SYN-17 | `Player??` yields `VL0101`; on a compiler that supports only `0.1`, `language: velme/0.10` yields `VL0106` while `language: velme/0.1` compiles (R-SYN-21). |
+| AC-SYN-18 | `Player(name: "A", 3)` (mixed named and positional arguments) yields `VL0101`; `sum(1, 2)` in a check parses as a built-in call and `Player(name: "A", jump_height: 3, score: 1)` as a record literal. |
