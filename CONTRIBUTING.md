@@ -1,6 +1,6 @@
-# Contributing to Thela
+# Contributing to Velme
 
-Thanks for helping. Thela is in the **specification phase**: the spec in `docs/spec/` is complete for v0.1 and code
+Thanks for helping. Velme is in the **specification phase**: the spec in `docs/spec/` is complete for v0.1 and code
 starts at plan phase M0 (`docs/plan/mvp-plan.md`). Spec feedback, questions and typo fixes are welcome now; code
 contributions open once the workspace exists.
 
@@ -29,7 +29,7 @@ Questions and language ideas go to GitHub Discussions; bugs and tasks to Issues 
   never LLM-judged (INV-2); interpreter and WASM give identical results (INV-3); no ambient authority (INV-4);
   everything is budgeted (INV-5); synthesized IR never adds calls (INV-6, D-5).
 - **Crate boundaries** (`compiler/20`, INV-9): `syntax → sema → ir → (interp, wasm) → runtime → cli`. Core crates never
-  depend on `thela-cli` or on a concrete provider; vendor SDK types stay inside `thela-synth`'s provider module.
+  depend on `velme-cli` or on a concrete provider; vendor SDK types stay inside `velme-synth`'s provider module.
 - **Determinism**: no `HashMap` iteration order, wall-clock time, thread scheduling or unseeded randomness may reach a
   result, a trace, a fingerprint or a diagnostic ordering. Use `BTreeMap`/`IndexMap` or sort explicitly.
 - **Diagnostic codes** (`reference/90`): a code is never reused or renumbered (INV-10). A new code is added there
@@ -45,7 +45,7 @@ Questions and language ideas go to GitHub Discussions; bugs and tasks to Issues 
 - **Comments explain *why*,** at the line they guard, once and tightly.
 - **Tests** follow `delivery/51`: test names carry the criterion id (`ac_goal_04_self_call_is_rejected`); parser,
   diagnostics and IR outputs are golden snapshots (`insta`); every language rule gets a rejecting test with the
-  expected `TLnnnn`; interpreter/WASM parity is a differential test; **never call a live LLM from a test**. Use the
+  expected `VLnnnn`; interpreter/WASM parity is a differential test; **never call a live LLM from a test**. Use the
   `scripted` or `replay` provider (D-13).
 - **Snapshot changes are reviewed, not blessed blindly**: after `cargo insta review`, say in the PR which snapshots
   changed and why.
@@ -59,8 +59,8 @@ Available from M0 (`delivery/51` §4, `tooling/40`):
 | Full gate (fmt, clippy `-D warnings`, tests + snapshots, docs, cargo-deny, layering, AC audit) | `cargo xtask verify` |
 | Inner loop | `cargo xtask verify --quick`, or `cargo test -p <crate> [filter]` |
 | Snapshots | `cargo insta test -p <crate>`, then `cargo insta review` |
-| CLI | `cargo run -p thela-cli -- check examples/beginner/hello.thela` |
-| Live LLM tests (opt-in, cost money, never in the gate) | `THELA_LIVE_LLM=1 cargo test -p thela-synth --test live` |
+| CLI | `cargo run -p velme-cli -- check examples/beginner/hello.velme` |
+| Live LLM tests (opt-in, cost money, never in the gate) | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` |
 
 Every change keeps `cargo xtask verify` green (R-QA-07).
 

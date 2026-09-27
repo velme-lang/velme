@@ -1,17 +1,17 @@
-# Thela — Specification Index
+# Velme — Specification Index
 
-**Thela** is an intent-driven programming language that a child can start with and a professional can choose
+**Velme** is an intent-driven programming language that a child can start with and a professional can choose
 deliberately. A program declares typed **goals**; each goal states its intent in a natural-language `plan`, the other
 goals it may use in a `call` block, and executable `check` assertions. An LLM (**Spellbook**) synthesizes a typed
-**Thela IR** implementation from the plan; a deterministic validator, a reference interpreter and a sandboxed runtime
+**Velme IR** implementation from the plan; a deterministic validator, a reference interpreter and a sandboxed runtime
 (**VibeVM**) decide whether that implementation is accepted and run it.
 
-> **Thela is a language and compiler first; the LLM is a synthesis backend, not the language runtime.**
+> **Velme is a language and compiler first; the LLM is a synthesis backend, not the language runtime.**
 
 - **Implementation:** Rust workspace — Chumsky parser, serde IR + JSON Schema, reference interpreter, Tokio DAG
   scheduler, Wasmtime sandbox (WASM backend after the interpreter is stable).
 - **Surface (v0.1):** `type`, `goal`, `call`, `plan`, `check`, `examples`, optional `budget`.
-- **Works offline:** with a committed lockfile, `thela check/run/test` need no network and no account (INV-7).
+- **Works offline:** with a committed lockfile, `velme check/run/test` need no network and no account (INV-7).
 - **Open core:** language, compiler, runtime, CLI and spec are open source; hosted services are separate products.
 
 ---
@@ -32,7 +32,7 @@ Each child file states what it is for in its first five lines, so you can route 
 | The `check` assertion language | `language/13` |
 | Built-in functions, `random`, builtins versioning | `language/14` |
 | Crate layout, compiler phases, diagnostics, error reporting | `compiler/20` |
-| Thela IR nodes, JSON schema, IR validation | `compiler/21` |
+| Velme IR nodes, JSON schema, IR validation | `compiler/21` |
 | Spellbook: provider trait, prompt contract, retry, verification pipeline, test inputs | `compiler/22` |
 | Interpreter semantics, DAG scheduler, failure semantics, determinism, trace | `runtime/30` |
 | WASM backend, Wasmtime sandbox, fuel/epoch/memory limits, host functions | `runtime/31` |
@@ -56,7 +56,7 @@ Each child file states what it is for in its first five lines, so you can route 
 | `Q-n` | open question for the project owner | `reference/92` |
 | `R-<AREA>-nn` | binding rule | the owning child file |
 | `AC-<AREA>-nn` | testable acceptance criterion | the owning child file |
-| `TLnnnn` | stable diagnostic / error code | `reference/90` |
+| `VLnnnn` | stable diagnostic / error code | `reference/90` |
 | `CC-*` | code convention | `docs/code-conventions.md` |
 | `§n` | section of the original design doc (deleted; the spec replaces it) | `reference/91` |
 
@@ -76,7 +76,7 @@ These hold for the life of the language. A change that breaks one is an architec
 
 | ID | Invariant |
 |---|---|
-| **INV-1** | The LLM never produces executable code. It produces Thela IR, and nothing executes until that IR passes the deterministic validator (`compiler/21`). The validator — not the prompt — is the trust boundary. |
+| **INV-1** | The LLM never produces executable code. It produces Velme IR, and nothing executes until that IR passes the deterministic validator (`compiler/21`). The validator — not the prompt — is the trust boundary. |
 | **INV-2** | `check` assertions are evaluated by the runtime with deterministic semantics; an LLM never decides whether a result passes. |
 | **INV-3** | Same source + same inputs + same locked artifacts + same seed ⇒ same result and same trace, on every backend. The reference interpreter defines the semantics; any other backend must match it. |
 | **INV-4** | Goals have no ambient authority: no filesystem, network, environment, clock or process access. A goal can use only its inputs, its declared calls and whitelisted built-ins/host functions. |
@@ -85,13 +85,13 @@ These hold for the life of the language. A change that breaks one is an architec
 | **INV-7** | The language core works without a network or an account when artifacts are locked. Synthesis providers sit behind one provider-neutral trait; no vendor type or SDK leaks into core crates. |
 | **INV-8** | Artifacts are content-addressed and immutable; nothing is cached or looked up by goal name alone. Every artifact records the language, compiler, IR, builtins, prompt and model versions that produced it. |
 | **INV-9** | Crate dependencies flow one way: `syntax → sema → ir → (interp, wasm) → runtime → cli` (`diagnostics` and `builtins` are leaf crates any layer may use); core crates never depend on the CLI or on a concrete LLM provider (`compiler/20`). |
-| **INV-10** | Diagnostic codes are stable: once released, an `TLnnnn` code is never reused for a different meaning. |
+| **INV-10** | Diagnostic codes are stable: once released, an `VLnnnn` code is never reused for a different meaning. |
 
 ## 3. Design principles
 
 | ID | Principle |
 |---|---|
-| **P-1** | **Language first** — the spec defines Thela; the implementation and the LLM never silently become the definition. |
+| **P-1** | **Language first** — the spec defines Velme; the implementation and the LLM never silently become the definition. |
 | **P-2** | **Progressive disclosure** — one semantic model from the first beginner goal to professional code; advanced features add to it, never replace it. |
 | **P-3** | **Reject rather than guess** — prefer a simple rule with a friendly diagnostic over clever inference (e.g. call bindings in source order, §12.5). |
 | **P-4** | **Interpreter first** — the reference interpreter stabilizes semantics; WASM is an optimization backend. |
@@ -111,7 +111,7 @@ These hold for the life of the language. A change that breaks one is an architec
 | Synthesis | `anthropic` + local `ollama` providers, `external` backend for human/tool-written IR, structured IR output, retry with diagnostics, replay provider | provider routing fields in manifest | multiple agents, fine-tuning |
 | Execution | reference interpreter, parallel DAG scheduler, budgets, trace | — | distributed execution |
 | Backend | core-WASM for leaf goals via Wasmtime (last MVP phase) | — | Component Model + WIT |
-| Artifacts | local content-addressed store + `thela.lock` | remote store fields | Redis/object storage/PostgreSQL, Coach, hot swap |
+| Artifacts | local content-addressed store + `velme.lock` | remote store fields | Redis/object storage/PostgreSQL, Coach, hot swap |
 | Tooling | CLI: `check build run test explain trace artifact` | — | playground, LSP, Tree-sitter grammar, VS Code |
 
 Full MVP list and exclusions: `delivery/50`.
@@ -120,25 +120,25 @@ Full MVP list and exclusions: `delivery/50`.
 
 | Component | Crate | Owner spec | Status |
 |---|---|---|---|
-| Syntax (lexer, parser, AST, spans) | `thela-syntax` | `language/10` | v0.1 |
-| Diagnostics (codes, rendering) | `thela-diagnostics` | `compiler/20`, `reference/90` | v0.1 |
-| Semantic analysis (names, types, call graph) | `thela-sema` | `language/11..13`, `compiler/20` | v0.1 |
-| Thela IR + schema + validator | `thela-ir` | `compiler/21` | v0.1 |
-| Check DSL lowering + evaluation | `thela-check` | `language/13` | v0.1 |
-| Built-ins | `thela-builtins` | `language/14` | v0.1 |
-| Reference interpreter | `thela-interp` | `runtime/30` | v0.1 |
-| Spellbook (synthesis, providers, verification) | `thela-synth` | `compiler/22` | v0.1 |
-| VibeVM (scheduler, budgets, trace, artifact store) | `thela-runtime` | `runtime/30`, `runtime/32` | v0.1 |
-| WASM backend + Wasmtime sandbox | `thela-wasm` | `runtime/31` | v0.1 (last MVP phase) |
-| CLI | `thela-cli` (binary `thela`) | `tooling/40` | v0.1 |
-| Test support (fixtures, golden runner) | `thela-test-support` | `delivery/51` | v0.1 |
-| Coach, Playground, Thela Cloud | — | `runtime/32` §Future, `delivery/50` | Future |
+| Syntax (lexer, parser, AST, spans) | `velme-syntax` | `language/10` | v0.1 |
+| Diagnostics (codes, rendering) | `velme-diagnostics` | `compiler/20`, `reference/90` | v0.1 |
+| Semantic analysis (names, types, call graph) | `velme-sema` | `language/11..13`, `compiler/20` | v0.1 |
+| Velme IR + schema + validator | `velme-ir` | `compiler/21` | v0.1 |
+| Check DSL lowering + evaluation | `velme-check` | `language/13` | v0.1 |
+| Built-ins | `velme-builtins` | `language/14` | v0.1 |
+| Reference interpreter | `velme-interp` | `runtime/30` | v0.1 |
+| Spellbook (synthesis, providers, verification) | `velme-synth` | `compiler/22` | v0.1 |
+| VibeVM (scheduler, budgets, trace, artifact store) | `velme-runtime` | `runtime/30`, `runtime/32` | v0.1 |
+| WASM backend + Wasmtime sandbox | `velme-wasm` | `runtime/31` | v0.1 (last MVP phase) |
+| CLI | `velme-cli` (binary `velme`) | `tooling/40` | v0.1 |
+| Test support (fixtures, golden runner) | `velme-test-support` | `delivery/51` | v0.1 |
+| Coach, Playground, Velme Cloud | — | `runtime/32` §Future, `delivery/50` | Future |
 
 ## 6. Architecture decisions (summary)
 
 | Decision | Choice | Ref |
 |---|---|---|
-| LLM output boundary | typed Thela IR (JSON), never WASM | INV-1, `compiler/21` |
+| LLM output boundary | typed Velme IR (JSON), never WASM | INV-1, `compiler/21` |
 | Implementation language | Rust (stable toolchain pinned) | `compiler/20` |
 | Parser | Chumsky + hand-written indentation-aware lexer; Tree-sitter later, sharing the golden corpus | D-25 |
 | Semantics owner | reference interpreter; WASM must match (differential tests) | P-4, `delivery/51` |
@@ -146,7 +146,7 @@ Full MVP list and exclusions: `delivery/50`.
 | Randomness | explicit seed input only; SplitMix64-based `random(seed, index)` | D-22 |
 | Composite goals | call DAG compiled from source; LLM synthesizes only the final combination | D-5 |
 | Cache key for synthesis | child *signatures*, not child implementations | D-11 |
-| Reproducibility | `thela.lock` + `.thela/artifacts/` content-addressed store | D-12 |
+| Reproducibility | `velme.lock` + `.velme/artifacts/` content-addressed store | D-12 |
 | Hashing | BLAKE3 over canonical JSON | D-21 |
 | Tests without an LLM | `replay` + `scripted` providers; live LLM tests opt-in only | D-13 |
 | MVP providers | Anthropic and Ollama (structured output, model configurable); `external` protocol for human/tool-written IR | D-14, D-41, D-42 |

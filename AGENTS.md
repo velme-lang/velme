@@ -3,8 +3,7 @@
 Instructions for AI coding agents working in this repo. **`CONTRIBUTING.md` applies to you in full**: read it first
 (Claude Code imports it via `CLAUDE.md`). This file adds only what is specific to agents.
 
-The language is **Thela** (styled **ThéLa**, from Greek *thélō*, "I want"; D-1). It was renamed Neya → Nela → Thela;
-never write "Neya" or "Nela" anywhere.
+The language is **Velme** (Latvian *vēlme*, "wish"; D-1). Earlier names appear only in git history; never use them.
 
 ---
 
@@ -36,7 +35,7 @@ row and gate log at each Stop & Verify Gate.
    - what was implemented, with the `AC-*` ids now covered (and any still uncovered);
    - commands run and their results (say plainly if something failed or was skipped);
    - which snapshots changed and why;
-   - exact steps for the user to verify locally (usually a `thela …` command on a file in `examples/`), and what they
+   - exact steps for the user to verify locally (usually a `velme …` command on a file in `examples/`), and what they
      should see.
 5. **Approval required.** Wait for explicit confirmation (e.g. "M1 verified, proceed to M2") before the next phase.
    Commit only when asked; follow R-REL-12 (branch per phase, one green commit per slice, PR + rebase-merge +

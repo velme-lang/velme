@@ -1,4 +1,4 @@
-# Thela — Code conventions
+# Velme — Code conventions
 
 **Covers:** how Rust code in `crates/`, `xtask/`, `fuzz/` and `benches/` is written, where the spec doesn't fix it.
 Complements `CONTRIBUTING.md` §Writing code (not repeated here).
@@ -10,7 +10,7 @@ Complements `CONTRIBUTING.md` §Writing code (not repeated here).
 
 **CC-CONST-01** A value that carries meaning — a diagnostic code, keyword, reserved word, builtin name, IR node tag,
 version string, budget default, config key, env var name — is defined **once** and referenced by name everywhere
-else, tests included. Never retype the literal: a typo in a retyped `"TL0204"` compiles and fails silently.
+else, tests included. Never retype the literal: a typo in a retyped `"VL0204"` compiles and fails silently.
 
 **CC-CONST-02** "Once" means one owner, not one global constants module. A constant lives in the crate that owns the
 concept (below). A crate that needs another crate's constant depends on that crate as INV-9 already allows — never
@@ -21,14 +21,14 @@ wire/spelling form comes from one `as_str()`/`serde(rename)` mapping on the enum
 
 | Kind | Form | Home | Example |
 |---|---|---|---|
-| Diagnostic codes (`reference/90`) | `enum Code` with `as_str() -> "TL0204"` and the default message | `thela-diagnostics` | `Code::TypeMismatch` |
-| Keywords + reserved words (`language/10`, D-24) | `enum Keyword` | `thela-syntax` | `Keyword::Goal`, `Keyword::is_reserved()` |
-| Builtin names + signatures (`language/14`) | `enum Builtin` with a signature table | `thela-builtins` | `Builtin::Maximum` |
-| IR node tags (`compiler/21`) | serde enum tag on the IR types; schema derived (schemars) | `thela-ir` | `Node::FieldGet { .. }` |
-| Version strings (language, IR, builtins, prompt) | `pub const` per crate | owning crate (`thela-syntax`, `thela-ir`, `thela-builtins`, `thela-synth`) | `thela_ir::IR_VERSION` |
-| Budget defaults (`runtime/30`) | `GoalBudget::DEFAULT` | `thela-runtime` | `GoalBudget::DEFAULT.max_call_depth` |
-| Config keys, env var names (`tooling/40`) | `pub const` beside the config struct | `thela-cli` (`thela-synth` for provider keys) | `env::API_KEY` |
-| Failure kinds (`runtime/30`) | `enum FailureKind` | `thela-runtime` | `FailureKind::BudgetExceeded` |
+| Diagnostic codes (`reference/90`) | `enum Code` with `as_str() -> "VL0204"` and the default message | `velme-diagnostics` | `Code::TypeMismatch` |
+| Keywords + reserved words (`language/10`, D-24) | `enum Keyword` | `velme-syntax` | `Keyword::Goal`, `Keyword::is_reserved()` |
+| Builtin names + signatures (`language/14`) | `enum Builtin` with a signature table | `velme-builtins` | `Builtin::Maximum` |
+| IR node tags (`compiler/21`) | serde enum tag on the IR types; schema derived (schemars) | `velme-ir` | `Node::FieldGet { .. }` |
+| Version strings (language, IR, builtins, prompt) | `pub const` per crate | owning crate (`velme-syntax`, `velme-ir`, `velme-builtins`, `velme-synth`) | `velme_ir::IR_VERSION` |
+| Budget defaults (`runtime/30`) | `GoalBudget::DEFAULT` | `velme-runtime` | `GoalBudget::DEFAULT.max_call_depth` |
+| Config keys, env var names (`tooling/40`) | `pub const` beside the config struct | `velme-cli` (`velme-synth` for provider keys) | `env::API_KEY` |
+| Failure kinds (`runtime/30`) | `enum FailureKind` | `velme-runtime` | `FailureKind::BudgetExceeded` |
 
 ## 2. Errors and diagnostics
 
@@ -38,7 +38,7 @@ only for true internal invariants, with a message naming the invariant. Clippy e
 `unwrap_used`/`expect_used`/`indexing_slicing` as warnings (→ errors in the gate) in non-test code.
 
 **CC-ERR-02** User-facing problems are `Diagnostic`s (code + span + friendly message + optional help/notes), not
-`Error` strings. Internal/library errors use `thiserror` enums per crate; `anyhow` only in `thela-cli` and `xtask`.
+`Error` strings. Internal/library errors use `thiserror` enums per crate; `anyhow` only in `velme-cli` and `xtask`.
 
 **CC-ERR-03** Friendly messages (P-6) are written for a learner: say what was expected and what was found, point at
 the span, suggest a fix when one is known. No Rust type names, no "IR", no "WASM" in beginner-facing text; those go in
@@ -53,11 +53,11 @@ Don't cascade: a node that already failed is marked erroneous and suppresses fol
 in a defined order: `BTreeMap`/`BTreeSet`, `IndexMap`, or an explicit sort. `HashMap`/`HashSet` are fine for lookups
 only.
 
-**CC-DET-02** No `SystemTime`, `Instant`, thread ids, `rand` or environment reads in `thela-sema`, `thela-ir`,
-`thela-check`, `thela-builtins`, `thela-interp`. Time enters only the runtime watchdog and telemetry, and is never part of
+**CC-DET-02** No `SystemTime`, `Instant`, thread ids, `rand` or environment reads in `velme-sema`, `velme-ir`,
+`velme-check`, `velme-builtins`, `velme-interp`. Time enters only the runtime watchdog and telemetry, and is never part of
 a result or a fingerprint.
 
-**CC-DET-03** All `Number` work goes through the one decimal `Number` type in `thela-builtins` (D-36). No `f64` holds a
+**CC-DET-03** All `Number` work goes through the one decimal `Number` type in `velme-builtins` (D-36). No `f64` holds a
 language value anywhere — including JSON decoding, which reads number text exactly (serde_json `arbitrary_precision`
 or equivalent).
 
@@ -73,10 +73,10 @@ by source order (D-9).
 architect-review. Adding a third-party crate: prefer ones already in the workspace; justify new ones in the PR/gate
 report (purpose, maintenance, license passes `cargo-deny`).
 
-**CC-API-03** Vendor SDK/HTTP types for LLM providers live only in `thela-synth`'s provider modules; the trait and its
-request/response types are Thela types (INV-7).
+**CC-API-03** Vendor SDK/HTTP types for LLM providers live only in `velme-synth`'s provider modules; the trait and its
+request/response types are Velme types (INV-7).
 
-**CC-API-04** `#![forbid(unsafe_code)]` in every crate except `thela-wasm`, where each `unsafe` block carries a
+**CC-API-04** `#![forbid(unsafe_code)]` in every crate except `velme-wasm`, where each `unsafe` block carries a
 `// SAFETY:` comment.
 
 **CC-API-05** Spans are carried from the AST through sema into the IR's source map so every runtime failure can point
@@ -99,7 +99,7 @@ No module-level essays; the spec is the essay.
 A test covering several criteria names the main one and lists the rest in a one-line comment.
 
 **CC-TEST-02** Golden snapshots (`insta`) for token streams, ASTs, diagnostics (rendered text and `--json`), IR and
-traces. Snapshot inputs live beside the test as `.thela` files under `tests/golden/<area>/`; the snapshot is the
+traces. Snapshot inputs live beside the test as `.velme` files under `tests/golden/<area>/`; the snapshot is the
 reviewable output.
 
 **CC-TEST-03** Every rejecting rule has a test asserting the exact `Code`, not just "is error".

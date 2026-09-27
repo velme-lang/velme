@@ -9,20 +9,20 @@ or proposing a language change (RFC).
 ## 1. Purpose & boundaries
 
 Defines where code lives, how dependencies may flow, how changes are reviewed and released, and how the language
-evolves. Thela is open core (P-7): language, compiler, runtime, CLI, spec and examples are public; hosted services are
+evolves. Velme is open core (P-7): language, compiler, runtime, CLI, spec and examples are public; hosted services are
 separate private repositories.
 
 ## 2. Repository layout (v0.1, D-15)
 
 ```
-thela/
+velme/
 ├── Cargo.toml  Cargo.lock  rust-toolchain.toml  rustfmt.toml  deny.toml
 ├── README.md  LICENSE-MIT  LICENSE-APACHE  LICENSE-CC-BY  CONTRIBUTING.md  CODE_OF_CONDUCT.md  SECURITY.md  CHANGELOG.md
 ├── AGENTS.md  CLAUDE.md          agent instructions (D-40)
 ├── crates/
-│   ├── thela-syntax/  thela-diagnostics/  thela-sema/  thela-ir/  thela-check/  thela-builtins/
-│   ├── thela-interp/  thela-synth/  thela-runtime/  thela-wasm/  thela-cli/  thela-test-support/
-├── examples/{beginner,intermediate,games,professional}/   each with thela.lock + .thela/artifacts
+│   ├── velme-syntax/  velme-diagnostics/  velme-sema/  velme-ir/  velme-check/  velme-builtins/
+│   ├── velme-interp/  velme-synth/  velme-runtime/  velme-wasm/  velme-cli/  velme-test-support/
+├── examples/{beginner,intermediate,games,professional}/   each with velme.lock + .velme/artifacts
 ├── tests/
 │   ├── golden/{parser,diagnostics,ir,explain,trace}/
 │   └── fixtures/synth/           replay provider fixtures
@@ -43,21 +43,21 @@ can be imported, Future).
 ## 3. Dependency direction (INV-9)
 
 Layer order: `syntax → sema → ir → (interp, wasm) → runtime → cli`. The exact crate-to-crate edges (where
-`thela-diagnostics`, `thela-builtins`, `thela-check` and `thela-synth` sit) are owned by `compiler/20`; this file owns
-their enforcement. `thela-test-support` is a dev-dependency only.
+`velme-diagnostics`, `velme-builtins`, `velme-check` and `velme-synth` sit) are owned by `compiler/20`; this file owns
+their enforcement. `velme-test-support` is a dev-dependency only.
 
 **R-REL-03** `xtask layering` reads `cargo metadata` and fails if any crate depends on one to its right or on
-`thela-cli`; `thela-synth` is the only crate allowed an HTTP client; no core crate depends on a vendor SDK (INV-7).
+`velme-cli`; `velme-synth` is the only crate allowed an HTTP client; no core crate depends on a vendor SDK (INV-7).
 `deny.toml` bans duplicate/unsafe sources as a second line.
-**R-REL-04** Provider implementations live behind cargo features of `thela-synth` (`provider-anthropic`,
+**R-REL-04** Provider implementations live behind cargo features of `velme-synth` (`provider-anthropic`,
 `provider-ollama` and `provider-external`, all default on in the CLI); core crates compile with no provider feature
 enabled.
 
 ## 4. Branches, reviews and CI (§43.6, §43.7)
 
 **R-REL-05** `main` is protected: changes land by pull request with green required checks and one approving review;
-no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/thela-ir/`, `crates/thela-sema/`, `crates/thela-runtime/`,
-`crates/thela-wasm/`, `crates/thela-synth/`.
+no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/velme-sema/`, `crates/velme-runtime/`,
+`crates/velme-wasm/`, `crates/velme-synth/`.
 
 | Workflow | Trigger | Runs |
 |---|---|---|
@@ -85,7 +85,7 @@ by commit SHA.
 
 | Version | Example | Bumped when |
 |---|---|---|
-| Language | `thela/0.1` | syntax or semantics change (RFC) |
+| Language | `velme/0.1` | syntax or semantics change (RFC) |
 | Compiler/CLI | `0.1.4` (semver) | any release |
 | IR | `ir/0.2` | IR schema changes (`compiler/21`) |
 | Builtins | `builtins/0.1` | builtin added/changed (`language/14`) |
@@ -102,8 +102,8 @@ schema count as public API.
 | Channel | When | Source of truth |
 |---|---|---|
 | GitHub Releases (binaries + checksums + signatures) | v0.1 | release workflow |
-| crates.io (`thela-cli`, library crates) | v0.1 | same tag |
-| `cargo install thela-cli` | v0.1 | crates.io |
+| crates.io (`velme-cli`, library crates) | v0.1 | same tag |
+| `cargo install velme-cli` | v0.1 | crates.io |
 | Homebrew, winget, Scoop, npm installer, OCI image | later | downstream of GitHub Releases only |
 
 Docs live in `docs/` in this repo during the MVP and are published from the same tagged source. Planned hierarchy:
@@ -116,11 +116,11 @@ RFCs · Contributor Guide. The Learn track is written for children; the referenc
 |---|---|
 | Source code | `MIT OR Apache-2.0` (dual, the Rust ecosystem convention; `license` field in every `Cargo.toml`) |
 | Language spec, docs, examples' prose | CC BY 4.0 |
-| Name "Thela" and logo | trademark, not licensed by the above |
+| Name "Velme" and logo | trademark, not licensed by the above |
 
-Commercial boundary: open — language, compiler, runtime, CLI, WASM backend, VibeVM, spec, examples; hosted — Thela
+Commercial boundary: open — language, compiler, runtime, CLI, WASM backend, VibeVM, spec, examples; hosted — Velme
 Cloud (hosted Spellbook, model routing, Coach service, artifact service, telemetry, collaboration, deployment).
-**R-REL-09** The open distribution never requires a Thela account or hosted service (INV-7, §42A.3); the moat is
+**R-REL-09** The open distribution never requires a Velme account or hosted service (INV-7, §42A.3); the moat is
 operations and developer experience, not hidden semantics. Legal review of license and trademark before public
 commercial launch (D-38).
 
@@ -128,11 +128,11 @@ commercial launch (D-38).
 
 | Repo | Visibility | When |
 |---|---|---|
-| `thela-lang/thela` | public | now — compiler, runtime, CLI, spec, examples, tests, docs |
-| `thela-lang/thela-vscode` | public | when editor tooling is substantial |
-| `thela-lang/thela-website` | public | optional; docs stay in main repo first |
-| `thela-lang/thela-cloud` | private | when hosted service development starts |
-| `thela-lang/thela-console`, `thela-lang/thela-infra` | private | later |
+| `velme-lang/velme` | public | now — compiler, runtime, CLI, spec, examples, tests, docs |
+| `velme-lang/velme-vscode` | public | when editor tooling is substantial |
+| `velme-lang/velme-website` | public | optional; docs stay in main repo first |
+| `velme-lang/velme-cloud` | private | when hosted service development starts |
+| `velme-lang/velme-console`, `velme-lang/velme-infra` | private | later |
 
 **R-REL-10** The public repo never contains production secrets, infrastructure credentials, customer code or
 proprietary optimization datasets. Split a repo only for a different release lifecycle, access model, deployment
@@ -153,24 +153,22 @@ new host functions. Reserved words (D-24) mark expected RFC topics: effects, mod
 
 The first public commit contains: README, both licenses, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG,
 workspace `Cargo.toml`, `rust-toolchain.toml`, `crates/`, `examples/`, `tests/`, `docs/`, `rfc/`, `.github/`.
-README order: 1 What is Thela? · 2 Why is it different? · 3 a 10-line example a child can read · 4 run it locally ·
+README order: 1 What is Velme? · 2 Why is it different? · 3 a 10-line example a child can read · 4 run it locally ·
 5 the kid → professional path · 6 architecture · 7 contribute · 8 license.
 
 ## 11. Naming clearance (D-38)
 
-Screened 2026-09-25 for **Thela** (D-38): registries, org and domains free; web trademark screen clean. Still owed before public launch: official USPTO/TMview search. The checklist: GitHub org `thela-lang` (held) and
-repo `thela`; crates `thela`, `thela-cli`, `thela-runtime` and every `thela-*` crate in §2; domains (`thela.dev`,
-`thela-lang.org`, `thela-lang.dev`); npm and PyPI names; trademarks in US, EU and target markets. Reserve crate names
-with placeholder releases once cleared. `thela` and `thela-cli` were claimed 2026-09-25 as `0.0.0` placeholders
-(owners: the maintainer and `github:thela-lang:owners`); the other `thela-*` crates are claimed at M0, when they have
-real content.
+Screened 2026-09-27 for **Velme** (D-38): registries, org and domains free; no exact mark in USPTO or WIPO. Still owed before public launch: official USPTO/TMview search. The checklist: GitHub org `velme-lang` and
+repo `velme`; crates `velme`, `velme-cli`, `velme-runtime` and every `velme-*` crate in §2; domains (`velme.dev`,
+`velme-lang.org`, `velme-lang.dev`); npm and PyPI names; trademarks in US, EU and target markets. Reserve crate names
+by publishing the workspace crates (owners: the maintainer and `github:velme-lang:owners`); not yet claimed.
 
 ## 12. Acceptance criteria
 
 | ID | Criterion |
 |---|---|
 | AC-REL-01 | The workspace builds with exactly the D-15 crates and `xtask`; `rust-toolchain.toml` pins the toolchain. |
-| AC-REL-02 | `xtask layering` fails when a test crate edge violating INV-9 is added (e.g. `thela-syntax → thela-runtime`). |
-| AC-REL-03 | Core crates (all but `thela-cli`) build with `--no-default-features` and no provider SDK in their dependency tree. |
+| AC-REL-02 | `xtask layering` fails when a test crate edge violating INV-9 is added (e.g. `velme-syntax → velme-runtime`). |
+| AC-REL-03 | Core crates (all but `velme-cli`) build with `--no-default-features` and no provider SDK in their dependency tree. |
 | AC-REL-04 | A release dry run produces binaries for the five targets, checksums and signatures, and two builds of the same tag have identical checksums. |
 | AC-REL-05 | Every artifact manifest records language, compiler, IR, builtins, prompt and model versions. |

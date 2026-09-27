@@ -1,6 +1,6 @@
 ---
 name: routine-dev
-description: Routine implementation, refactoring and test-writing on an already-scoped Thela task — implementing a defined parser/sema/IR/runtime change, updating call sites, writing tests and golden snapshots for given AC-* ids. Not for single-file mechanical work with no judgment calls (use mechanical-task) or for language-semantics, INV-*/crate-boundary, sandbox or security decisions (use architect-review).
+description: Routine implementation, refactoring and test-writing on an already-scoped Velme task — implementing a defined parser/sema/IR/runtime change, updating call sites, writing tests and golden snapshots for given AC-* ids. Not for single-file mechanical work with no judgment calls (use mechanical-task) or for language-semantics, INV-*/crate-boundary, sandbox or security decisions (use architect-review).
 model: sonnet
 effort: medium
 ---

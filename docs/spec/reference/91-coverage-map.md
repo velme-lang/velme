@@ -7,7 +7,7 @@
 
 ## Purpose
 
-The original design doc (written under the name *Neya*; renamed via *Nela* to *Thela* per D-1) was split into the `docs/spec/`
+The original design doc was split into the `docs/spec/`
 tree. It is **superseded**: do not read it for implementation — where it and the spec differ, the spec wins, usually
 because of a decision in `reference/92`. This table maps every section to the file that now owns its substance.
 Content in several places is summarised in the owner and cross-referenced elsewhere.
@@ -25,11 +25,11 @@ Content in several places is summarised in the owner and cross-referenced elsewh
 | §2.1 | User goals | `SPEC.md` | |
 | §2.2 | Engineering goals | `SPEC.md` | invariants INV-1..10 |
 | §3 | Important Corrections to the Existing Specification | `SPEC.md` | each correction owned below |
-| §3.1 | LLM-generated WASM → LLM-generated Thela IR | `compiler/21` | INV-1 |
+| §3.1 | LLM-generated WASM → LLM-generated Velme IR | `compiler/21` | INV-1 |
 | §3.2 | `check` must be deterministic | `language/13` | INV-2 |
 | §3.3 | Pure functions conflict with uncontrolled randomness | `language/14` | D-22 |
 | §3.4 | 50 ms limit as part of a resource budget | `runtime/30` | INV-5, D-10; `max_list_size` restored (F-21) |
-| §4 | Thela v0.1 Language Model | `language/12` | + `examples`, `budget` (D-7, D-8) |
+| §4 | Velme v0.1 Language Model | `language/12` | + `examples`, `budget` (D-7, D-8) |
 | §5 | Types | `language/11` | |
 | §5.1 | Primitive types | `language/11` | `Number` semantics D-36 (D-2 retired) |
 | §5.2 | Named record types | `language/11` | |
@@ -48,16 +48,16 @@ Content in several places is summarised in the owner and cross-referenced elsewh
 | §10 | Multi-Function Calls: Sequential Case | `language/12` | |
 | §11 | Multi-Function Calls: Mixed Parallel + Sequential | `language/12` | |
 | §12 | Call Rules | `language/12` | |
-| §12.1 | Calls must be declared | `language/12` | TL0303 |
-| §12.2 | Calls must have compatible types | `language/12` | TL0204 |
-| §12.3 | A goal cannot call itself in v0.1 | `language/12` | TL0304 |
-| §12.4 | Mutual recursion is also rejected | `language/12` | TL0304 |
-| §12.5 | Only earlier bindings can be referenced | `language/12` | TL0305, P-3 |
+| §12.1 | Calls must be declared | `language/12` | VL0303 |
+| §12.2 | Calls must have compatible types | `language/12` | VL0204 |
+| §12.3 | A goal cannot call itself in v0.1 | `language/12` | VL0304 |
+| §12.4 | Mutual recursion is also rejected | `language/12` | VL0304 |
+| §12.5 | Only earlier bindings can be referenced | `language/12` | VL0305, P-3 |
 | §13 | Conditional Calls | `delivery/50` | Future; `when`/`choose` reserved (D-24) |
 | §14 | Loops and Large Lists | `language/14` | collection primitives; IR nodes in `compiler/21` |
-| §15 | Thela Intermediate Representation | `compiler/21` | example corrected (F-1) |
+| §15 | Velme Intermediate Representation | `compiler/21` | example corrected (F-1) |
 | §16 | IR Node Types | `compiler/21` | `Call` compiler-only (D-5) |
-| §17 | Two Kinds of Thela Goals | `language/12` | + wired goals (D-4) |
+| §17 | Two Kinds of Velme Goals | `language/12` | + wired goals (D-4) |
 | §17.1 | Leaf goal | `language/12` | |
 | §17.2 | Composite goal | `language/12` | tail synthesis D-5 |
 | §18 | Compiler Architecture | `compiler/20` | |
@@ -92,11 +92,11 @@ Content in several places is summarised in the owner and cross-referenced elsewh
 | §42A | Open Source Strategy and Project Governance | `delivery/52` | P-7 |
 | §42A.1 | Why the language core should be open source | `delivery/52` | |
 | §42A.2 | Recommended license | `delivery/52` | D-38 |
-| §42A.3 | Keep Thela useful without Thela Cloud | `delivery/52` | INV-7; commands in `tooling/40` |
+| §42A.3 | Keep Velme useful without Velme Cloud | `delivery/52` | INV-7; commands in `tooling/40` |
 | §42A.4 | Commercial boundary | `delivery/52` | |
 | §42A.5 | Kids-to-professional ecosystem | `SPEC.md` | P-2 |
 | §43 | Source Hosting and Repository Structure | `delivery/52` | |
-| §43.1 | Best source-code host: GitHub | `delivery/52` | org `thela-lang` |
+| §43.1 | Best source-code host: GitHub | `delivery/52` | org `velme-lang` |
 | §43.2 | One public core monorepo + separate product repositories | `delivery/52` | §8 |
 | §43.3 | Recommended public monorepo layout | `delivery/52` | right-sized per D-15 (F-16) |
 | §43.4 | Why this structure works | `delivery/52` | golden/fuzz/bench in `delivery/51` |
@@ -110,15 +110,15 @@ Content in several places is summarised in the owner and cross-referenced elsewh
 | §43.12 | Recommended initial repository set | `delivery/52` | |
 | §43.13 | GitHub project setup | `delivery/52` | |
 | §43.14 | Recommended first commit | `delivery/52` | |
-| §43.15 | Naming and repository availability | `delivery/52` | redone for Thela 2026-09-25 (D-38, F-24) |
+| §43.15 | Naming and repository availability | `delivery/52` | redone for Velme 2026-09-27 (D-38, F-24) |
 | — | Repository Structure — Summary | — | pointer only; no content |
-| §44 | Example: Complete Thela Program | `language/12` | also `examples/intermediate` |
+| §44 | Example: Complete Velme Program | `language/12` | also `examples/intermediate` |
 | §45 | Example: Parallel Game Preparation | `language/12` | also `examples/games` |
 | §46 | Example: Multi-Step Game Physics | `language/12` | also `examples/games` |
 | §47 | CLI | `tooling/40` | output corrected (F-2); inputs D-23; `test` added (F-21) |
 | §48 | Language Versioning | `language/10` | header; version set in `delivery/52` §5 |
 | §49 | Security Architecture | `tooling/41` | INV-4 |
-| §50 | Error Taxonomy | `reference/90` | renumbered TLnnnn (D-17) |
+| §50 | Error Taxonomy | `reference/90` | renumbered VLnnnn (D-17) |
 | §51 | MVP Roadmap | `delivery/50` | reordered M0–M8 (D-16, F-15) |
 | §52 | Success Criteria for MVP | `delivery/50` | AC-RDM-01..09; Test 2 fixed (F-7) |
 | §53 | Recommended First Prototype | `delivery/50` | phases M0–M6 |

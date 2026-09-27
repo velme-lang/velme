@@ -1,8 +1,8 @@
-# Thela
+# Velme
 
-**ThéLa** (Greek *thélō*, "I want") is an intent-driven programming language — **kids first, professional by design**. You declare typed goals,
+**Velme™** (Latvian *vēlme*, "wish") is an intent-driven programming language — **kids first, professional by design**. You declare typed goals,
 describe what each should do in plain language, and state checks the result must pass. An LLM proposes an
-implementation as typed Thela IR; a deterministic compiler, validator and sandboxed runtime decide whether it is
+implementation as typed Velme IR; a deterministic compiler, validator and sandboxed runtime decide whether it is
 accepted and run it.
 
 ```text
@@ -15,10 +15,10 @@ goal Add(a: Number, b: Number) -> Number:
 
 ## Why not just ask an AI to write the code?
 
-You can, and for many jobs you should. Thela is for when you want the AI's help but not its judgement: you decide
+You can, and for many jobs you should. Velme is for when you want the AI's help but not its judgement: you decide
 what the program does, and a deterministic compiler decides whether the AI got it right.
 
-| | AI writes the code | Thela |
+| | AI writes the code | Velme |
 |---|---|---|
 | What you keep and review | code you didn't write, every line of it | the goal: its purpose, its calls and its examples |
 | Who decides it works | tests, often written by the same AI | your `check`s and `examples`, run by the runtime, never by an LLM (INV-2) |
@@ -31,7 +31,7 @@ For learners this moves the effort to the parts of programming that stay a perso
 goals, saying precisely what each one should do, and giving examples that prove it.
 
 It is not the right tool for everything. v0.1 goals can't read files, use the network, loop or recurse in source
-(`delivery/50`), and a one-line rule is no shorter as a plan plus examples than as code plus a test. Thela saves the
+(`delivery/50`), and a one-line rule is no shorter as a plan plus examples than as code plus a test. Velme saves the
 most on goals that are quick to describe but long to implement.
 
 **Status:** specification complete for v0.1; implementation is at plan phase M0 (workspace and quality gate).
@@ -49,7 +49,7 @@ agents; you can ignore them if you don't use one.
 
 ```sh
 cargo xtask verify            # the full quality gate
-cargo run -p thela-cli -- --version
+cargo run -p velme-cli -- --version
 ```
 
 ## License
