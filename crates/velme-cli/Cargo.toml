@@ -1,6 +1,6 @@
 [package]
-name = "thela-cli"
-description = "The `thela` command-line interface"
+name = "velme-cli"
+description = "The `velme` command-line interface"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "thela"
+name = "velme"
 path = "src/main.rs"
 
 [dev-dependencies]

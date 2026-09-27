@@ -1,2 +1,2 @@
-//! Thela `diagnostics` crate: see `compiler/20` §2 for its responsibility.
+//! Velme `diagnostics` crate: see `compiler/20` §2 for its responsibility.
 #![forbid(unsafe_code)]

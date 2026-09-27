@@ -1,2 +1,2 @@
-//! Thela `syntax` crate: see `compiler/20` §2 for its responsibility.
+//! Velme `syntax` crate: see `compiler/20` §2 for its responsibility.
 #![forbid(unsafe_code)]

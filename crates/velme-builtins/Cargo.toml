@@ -1,6 +1,6 @@
 [package]
-name = "thela-builtins"
-description = "Thela: builtins crate (see docs/spec/compiler/20-compiler-architecture.md)"
+name = "velme-builtins"
+description = "Velme: builtins crate (see docs/spec/compiler/20-compiler-architecture.md)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

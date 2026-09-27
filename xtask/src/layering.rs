@@ -6,54 +6,54 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-/// Every library crate; the allow-list of `thela-cli` and `thela-test-support`.
+/// Every library crate; the allow-list of `velme-cli` and `velme-test-support`.
 const LIBRARIES: &[&str] = &[
-    "thela-diagnostics",
-    "thela-syntax",
-    "thela-builtins",
-    "thela-sema",
-    "thela-ir",
-    "thela-check",
-    "thela-interp",
-    "thela-synth",
-    "thela-wasm",
-    "thela-runtime",
+    "velme-diagnostics",
+    "velme-syntax",
+    "velme-builtins",
+    "velme-sema",
+    "velme-ir",
+    "velme-check",
+    "velme-interp",
+    "velme-synth",
+    "velme-wasm",
+    "velme-runtime",
 ];
 
 /// The workspace crate each crate may depend on: the table in `compiler/20` §2 (D-15).
 pub const ALLOWED: &[(&str, &[&str])] = &[
-    ("thela-diagnostics", &[]),
-    ("thela-syntax", &["thela-diagnostics"]),
-    ("thela-builtins", &["thela-diagnostics"]),
-    ("thela-sema", &["thela-syntax", "thela-builtins", "thela-diagnostics"]),
-    ("thela-ir", &["thela-sema", "thela-builtins", "thela-diagnostics"]),
-    ("thela-check", &["thela-ir", "thela-sema", "thela-diagnostics"]),
-    ("thela-interp", &["thela-ir", "thela-builtins", "thela-diagnostics"]),
+    ("velme-diagnostics", &[]),
+    ("velme-syntax", &["velme-diagnostics"]),
+    ("velme-builtins", &["velme-diagnostics"]),
+    ("velme-sema", &["velme-syntax", "velme-builtins", "velme-diagnostics"]),
+    ("velme-ir", &["velme-sema", "velme-builtins", "velme-diagnostics"]),
+    ("velme-check", &["velme-ir", "velme-sema", "velme-diagnostics"]),
+    ("velme-interp", &["velme-ir", "velme-builtins", "velme-diagnostics"]),
     (
-        "thela-synth",
+        "velme-synth",
         &[
-            "thela-ir",
-            "thela-check",
-            "thela-interp",
-            "thela-sema",
-            "thela-diagnostics",
+            "velme-ir",
+            "velme-check",
+            "velme-interp",
+            "velme-sema",
+            "velme-diagnostics",
         ],
     ),
-    ("thela-wasm", &["thela-ir", "thela-builtins", "thela-diagnostics"]),
+    ("velme-wasm", &["velme-ir", "velme-builtins", "velme-diagnostics"]),
     (
-        "thela-runtime",
+        "velme-runtime",
         &[
-            "thela-ir",
-            "thela-check",
-            "thela-interp",
-            "thela-wasm",
-            "thela-synth",
-            "thela-diagnostics",
+            "velme-ir",
+            "velme-check",
+            "velme-interp",
+            "velme-wasm",
+            "velme-synth",
+            "velme-diagnostics",
         ],
     ),
-    ("thela-cli", LIBRARIES),
+    ("velme-cli", LIBRARIES),
     // Dev-dependency only; see `TEST_SUPPORT` below.
-    ("thela-test-support", LIBRARIES),
+    ("velme-test-support", LIBRARIES),
 ];
 
 /// The workspace crates `name` may depend on, or `None` if it is not a D-15 crate.
@@ -62,11 +62,11 @@ pub fn allowed_deps(name: &str) -> Option<&'static [&'static str]> {
 }
 
 /// May only be a dev-dependency (`delivery/52` §3).
-pub const TEST_SUPPORT: &str = "thela-test-support";
+pub const TEST_SUPPORT: &str = "velme-test-support";
 /// The automation crate: in the workspace, but not one of the D-15 crates.
 pub const XTASK: &str = "xtask";
 /// The one crate allowed an HTTP client (R-REL-03).
-pub const SYNTH: &str = "thela-synth";
+pub const SYNTH: &str = "velme-synth";
 /// HTTP client crates that may only appear under `SYNTH` (R-REL-03, INV-7).
 pub const HTTP_CLIENTS: &[&str] = &["reqwest", "hyper", "ureq", "isahc", "surf", "attohttpc", "curl"];
 

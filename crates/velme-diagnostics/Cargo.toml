@@ -1,6 +1,6 @@
 [package]
-name = "thela-diagnostics"
-description = "Thela: diagnostics crate (see docs/spec/compiler/20-compiler-architecture.md)"
+name = "velme-diagnostics"
+description = "Velme: diagnostics crate (see docs/spec/compiler/20-compiler-architecture.md)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

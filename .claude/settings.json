@@ -8,7 +8,7 @@
       "Bash(cargo fmt:*)",
       "Bash(cargo insta test:*)",
       "Bash(cargo xtask verify:*)",
-      "Bash(cargo run -p thela-cli:*)",
+      "Bash(cargo run -p velme-cli:*)",
       "Bash(cargo tree:*)",
       "Bash(cargo deny check:*)",
       "Bash(git status:*)",
