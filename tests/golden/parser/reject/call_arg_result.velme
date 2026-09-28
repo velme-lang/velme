@@ -1,0 +1,7 @@
+# covers: call_arg, path
+# `result` as a call argument (R-GOAL-23), an expression as an argument, and a path ending in `.`.
+goal A(p: Player) -> Number:
+    call:
+        x = Score(result)
+        y = Score(p.score + 1)
+        z = Score(p.)

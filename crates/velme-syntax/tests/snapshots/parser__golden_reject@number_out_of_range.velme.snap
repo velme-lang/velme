@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/number_out_of_range.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "Velme numbers keep up to 28 digits after the `.`",
+    "message": "This number has too many decimal places.",
+    "severity": "error",
+    "span": [
+      169,
+      200
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "Velme numbers have at most 28 significant digits (up to 79228162514264337593543950335)",
+    "message": "This number is too big.",
+    "severity": "error",
+    "span": [
+      227,
+      256
+    ]
+  }
+]

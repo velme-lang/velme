@@ -1,0 +1,5 @@
+# covers: base_type
+# Only `List` takes a type argument, and `List<>` needs one.
+type Bag:
+    names: Text<Number>
+    empty: List<>

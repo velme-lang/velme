@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/header_not_first.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "move it to the top of the file",
+    "message": "The `language:` line has to be the first line of the file.",
+    "severity": "error",
+    "span": [
+      86,
+      105
+    ]
+  }
+]

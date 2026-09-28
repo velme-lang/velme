@@ -1,0 +1,37 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/arithmetic_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `*` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      123,
+      124
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `>` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      145,
+      146
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `>` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      161,
+      162
+    ]
+  }
+]

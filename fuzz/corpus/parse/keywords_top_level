@@ -1,0 +1,6 @@
+type
+goal
+plan: |
+  x
+check:
+- -

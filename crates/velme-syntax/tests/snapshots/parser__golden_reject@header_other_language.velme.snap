@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/header_other_language.velme
+---
+[
+  {
+    "code": "VL0106",
+    "help": "change the first line to `language: velme/0.1`",
+    "message": "This file is written for `python/0.1`, but this Velme understands `velme/0.1`.",
+    "severity": "error",
+    "span": [
+      74,
+      84
+    ]
+  }
+]

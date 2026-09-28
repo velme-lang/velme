@@ -1,0 +1,11 @@
+# Three unrelated errors, reported in source order with no cascade (AC-SYN-07).
+type A:
+    x Number
+
+goal B() -> Number:
+    plan: "p"
+    check:
+        - result >
+
+goal C() -> Number
+    plan: "p"

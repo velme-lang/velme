@@ -1,0 +1,990 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/spec_8_1_complete_program.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "type",
+      "name": {
+        "name": "Player",
+        "span": [
+          258,
+          264
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "name",
+            "span": [
+              270,
+              274
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                276,
+                280
+              ]
+            },
+            "optional": false,
+            "span": [
+              276,
+              280
+            ]
+          },
+          "span": [
+            270,
+            280
+          ]
+        },
+        {
+          "name": {
+            "name": "jump_height",
+            "span": [
+              285,
+              296
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                298,
+                304
+              ]
+            },
+            "optional": false,
+            "span": [
+              298,
+              304
+            ]
+          },
+          "span": [
+            285,
+            304
+          ]
+        },
+        {
+          "name": {
+            "name": "score",
+            "span": [
+              309,
+              314
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                316,
+                322
+              ]
+            },
+            "optional": false,
+            "span": [
+              316,
+              322
+            ]
+          },
+          "span": [
+            309,
+            322
+          ]
+        }
+      ],
+      "span": [
+        253,
+        322
+      ]
+    },
+    {
+      "kind": "type",
+      "name": {
+        "name": "PlayerSummary",
+        "span": [
+          329,
+          342
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "name",
+            "span": [
+              348,
+              352
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                354,
+                358
+              ]
+            },
+            "optional": false,
+            "span": [
+              354,
+              358
+            ]
+          },
+          "span": [
+            348,
+            358
+          ]
+        },
+        {
+          "name": {
+            "name": "score",
+            "span": [
+              363,
+              368
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                370,
+                376
+              ]
+            },
+            "optional": false,
+            "span": [
+              370,
+              376
+            ]
+          },
+          "span": [
+            363,
+            376
+          ]
+        },
+        {
+          "name": {
+            "name": "badge",
+            "span": [
+              381,
+              386
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                388,
+                392
+              ]
+            },
+            "optional": false,
+            "span": [
+              388,
+              392
+            ]
+          },
+          "span": [
+            381,
+            392
+          ]
+        }
+      ],
+      "span": [
+        324,
+        392
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "CalculateScore",
+        "span": [
+          399,
+          413
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "player",
+            "span": [
+              414,
+              420
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                422,
+                428
+              ]
+            },
+            "optional": false,
+            "span": [
+              422,
+              428
+            ]
+          },
+          "span": [
+            414,
+            428
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            433,
+            439
+          ]
+        },
+        "optional": false,
+        "span": [
+          433,
+          439
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Return the player's score.",
+        "form": "inline",
+        "span": [
+          451,
+          479
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "span": [
+                501,
+                507
+              ]
+            },
+            "rhs": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "player",
+                "span": [
+                  511,
+                  517
+                ]
+              },
+              "field": {
+                "name": "score",
+                "span": [
+                  518,
+                  523
+                ]
+              },
+              "span": [
+                511,
+                523
+              ]
+            },
+            "span": [
+              501,
+              523
+            ]
+          }
+        ],
+        "span": [
+          484,
+          523
+        ]
+      },
+      "examples": null,
+      "span": [
+        394,
+        523
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "FindBadge",
+        "span": [
+          530,
+          539
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "player",
+            "span": [
+              540,
+              546
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                548,
+                554
+              ]
+            },
+            "optional": false,
+            "span": [
+              548,
+              554
+            ]
+          },
+          "span": [
+            540,
+            554
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            559,
+            563
+          ]
+        },
+        "optional": false,
+        "span": [
+          559,
+          563
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Give the player Gold for a score of at least 1000,\nSilver for a score of at least 500, Bronze otherwise.",
+        "form": "block",
+        "span": [
+          585,
+          697
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "binary",
+              "op": "or",
+              "lhs": {
+                "kind": "binary",
+                "op": "eq",
+                "lhs": {
+                  "kind": "result",
+                  "span": [
+                    719,
+                    725
+                  ]
+                },
+                "rhs": {
+                  "kind": "text",
+                  "value": "Gold",
+                  "span": [
+                    729,
+                    735
+                  ]
+                },
+                "span": [
+                  719,
+                  735
+                ]
+              },
+              "rhs": {
+                "kind": "binary",
+                "op": "eq",
+                "lhs": {
+                  "kind": "result",
+                  "span": [
+                    739,
+                    745
+                  ]
+                },
+                "rhs": {
+                  "kind": "text",
+                  "value": "Silver",
+                  "span": [
+                    749,
+                    757
+                  ]
+                },
+                "span": [
+                  739,
+                  757
+                ]
+              },
+              "span": [
+                719,
+                757
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  761,
+                  767
+                ]
+              },
+              "rhs": {
+                "kind": "text",
+                "value": "Bronze",
+                "span": [
+                  771,
+                  779
+                ]
+              },
+              "span": [
+                761,
+                779
+              ]
+            },
+            "span": [
+              719,
+              779
+            ]
+          }
+        ],
+        "span": [
+          702,
+          779
+        ]
+      },
+      "examples": {
+        "items": [
+          {
+            "goal": {
+              "name": "FindBadge",
+              "span": [
+                804,
+                813
+              ]
+            },
+            "args": [
+              {
+                "kind": "record",
+                "name": {
+                  "name": "Player",
+                  "span": [
+                    814,
+                    820
+                  ]
+                },
+                "fields": [
+                  {
+                    "name": {
+                      "name": "name",
+                      "span": [
+                        821,
+                        825
+                      ]
+                    },
+                    "value": {
+                      "kind": "text",
+                      "value": "Lina",
+                      "span": [
+                        827,
+                        833
+                      ]
+                    },
+                    "span": [
+                      821,
+                      833
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "jump_height",
+                      "span": [
+                        835,
+                        846
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "3",
+                      "span": [
+                        848,
+                        849
+                      ]
+                    },
+                    "span": [
+                      835,
+                      849
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "score",
+                      "span": [
+                        851,
+                        856
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "820",
+                      "span": [
+                        858,
+                        861
+                      ]
+                    },
+                    "span": [
+                      851,
+                      861
+                    ]
+                  }
+                ],
+                "span": [
+                  814,
+                  862
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "text",
+              "value": "Silver",
+              "span": [
+                867,
+                875
+              ]
+            },
+            "span": [
+              804,
+              875
+            ]
+          },
+          {
+            "goal": {
+              "name": "FindBadge",
+              "span": [
+                886,
+                895
+              ]
+            },
+            "args": [
+              {
+                "kind": "record",
+                "name": {
+                  "name": "Player",
+                  "span": [
+                    896,
+                    902
+                  ]
+                },
+                "fields": [
+                  {
+                    "name": {
+                      "name": "name",
+                      "span": [
+                        903,
+                        907
+                      ]
+                    },
+                    "value": {
+                      "kind": "text",
+                      "value": "Tom",
+                      "span": [
+                        909,
+                        914
+                      ]
+                    },
+                    "span": [
+                      903,
+                      914
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "jump_height",
+                      "span": [
+                        916,
+                        927
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "5",
+                      "span": [
+                        929,
+                        930
+                      ]
+                    },
+                    "span": [
+                      916,
+                      930
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "score",
+                      "span": [
+                        932,
+                        937
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "1000",
+                      "span": [
+                        939,
+                        943
+                      ]
+                    },
+                    "span": [
+                      932,
+                      943
+                    ]
+                  }
+                ],
+                "span": [
+                  896,
+                  944
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "text",
+              "value": "Gold",
+              "span": [
+                949,
+                955
+              ]
+            },
+            "span": [
+              886,
+              955
+            ]
+          }
+        ],
+        "span": [
+          784,
+          955
+        ]
+      },
+      "span": [
+        525,
+        955
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "BuildPlayerSummary",
+        "span": [
+          962,
+          980
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "player",
+            "span": [
+              981,
+              987
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                989,
+                995
+              ]
+            },
+            "optional": false,
+            "span": [
+              989,
+              995
+            ]
+          },
+          "span": [
+            981,
+            995
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "PlayerSummary",
+          "span": [
+            1000,
+            1013
+          ]
+        },
+        "optional": false,
+        "span": [
+          1000,
+          1013
+        ]
+      },
+      "budget": null,
+      "call": {
+        "bindings": [
+          {
+            "name": {
+              "name": "score",
+              "span": [
+                1033,
+                1038
+              ]
+            },
+            "callee": {
+              "name": "CalculateScore",
+              "span": [
+                1041,
+                1055
+              ]
+            },
+            "args": [
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "player",
+                    "span": [
+                      1056,
+                      1062
+                    ]
+                  }
+                ],
+                "span": [
+                  1056,
+                  1062
+                ]
+              }
+            ],
+            "span": [
+              1033,
+              1063
+            ]
+          },
+          {
+            "name": {
+              "name": "badge",
+              "span": [
+                1072,
+                1077
+              ]
+            },
+            "callee": {
+              "name": "FindBadge",
+              "span": [
+                1080,
+                1089
+              ]
+            },
+            "args": [
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "player",
+                    "span": [
+                      1090,
+                      1096
+                    ]
+                  }
+                ],
+                "span": [
+                  1090,
+                  1096
+                ]
+              }
+            ],
+            "span": [
+              1072,
+              1097
+            ]
+          }
+        ],
+        "span": [
+          1019,
+          1097
+        ]
+      },
+      "plan": {
+        "text": "Build a player summary using the player's name,\ncalculated score, and badge.",
+        "form": "block",
+        "span": [
+          1118,
+          1202
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "result",
+                "span": [
+                  1224,
+                  1230
+                ]
+              },
+              "field": {
+                "name": "name",
+                "span": [
+                  1231,
+                  1235
+                ]
+              },
+              "span": [
+                1224,
+                1235
+              ]
+            },
+            "rhs": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "player",
+                "span": [
+                  1239,
+                  1245
+                ]
+              },
+              "field": {
+                "name": "name",
+                "span": [
+                  1246,
+                  1250
+                ]
+              },
+              "span": [
+                1239,
+                1250
+              ]
+            },
+            "span": [
+              1224,
+              1250
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "result",
+                "span": [
+                  1261,
+                  1267
+                ]
+              },
+              "field": {
+                "name": "score",
+                "span": [
+                  1268,
+                  1273
+                ]
+              },
+              "span": [
+                1261,
+                1273
+              ]
+            },
+            "rhs": {
+              "kind": "name",
+              "name": "score",
+              "span": [
+                1277,
+                1282
+              ]
+            },
+            "span": [
+              1261,
+              1282
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "result",
+                "span": [
+                  1293,
+                  1299
+                ]
+              },
+              "field": {
+                "name": "badge",
+                "span": [
+                  1300,
+                  1305
+                ]
+              },
+              "span": [
+                1293,
+                1305
+              ]
+            },
+            "rhs": {
+              "kind": "name",
+              "name": "badge",
+              "span": [
+                1309,
+                1314
+              ]
+            },
+            "span": [
+              1293,
+              1314
+            ]
+          }
+        ],
+        "span": [
+          1207,
+          1314
+        ]
+      },
+      "examples": null,
+      "span": [
+        957,
+        1314
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    1315
+  ]
+}

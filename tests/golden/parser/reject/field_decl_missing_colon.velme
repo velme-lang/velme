@@ -1,0 +1,6 @@
+# covers: field_decl
+# A field without `:`; the other fields still parse and the line after is still checked.
+type Player:
+    name Text
+    score: Number
+    jump height: Number

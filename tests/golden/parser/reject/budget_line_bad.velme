@@ -1,0 +1,9 @@
+# covers: budget_line, budget_item
+# A budget item without `=`, and one with an empty budget.
+goal A() -> Number:
+    budget time 5s
+    plan: "p"
+
+goal B() -> Number:
+    budget
+    plan: "p"

@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/nesting_too_deep.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "split it into smaller pieces",
+    "message": "This line nests too deeply for me to read.",
+    "severity": "error",
+    "span": [
+      151,
+      152
+    ]
+  }
+]

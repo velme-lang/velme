@@ -1,0 +1,6 @@
+# covers: quant_expr
+# A quantifier without `has`, and `result` as its variable (R-SYN-05).
+goal G(xs: List<Number>) -> Boolean:
+    check:
+        - every x in xs x > 0
+        - some result in xs has result > 0

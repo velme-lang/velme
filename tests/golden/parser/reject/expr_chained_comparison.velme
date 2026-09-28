@@ -1,0 +1,7 @@
+# covers: expr, cmp_expr, cmp_op
+# `a < b < c` is not associative (AC-SYN-9); `is empty` can't be chained either; `=` is not a comparison.
+goal G(a: Number, b: Number, c: Number) -> Boolean:
+    check:
+        - a < b < c
+        - a is empty is empty
+        - a = b

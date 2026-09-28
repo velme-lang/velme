@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/header_missing_colon.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `velme` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      56,
+      61
+    ]
+  }
+]

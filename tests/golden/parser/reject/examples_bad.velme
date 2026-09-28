@@ -1,0 +1,7 @@
+# covers: examples_block, example_item
+# An example with `=` instead of `==`, and one calling with an expression.
+goal A(n: Number) -> Number:
+    plan: "p"
+    examples:
+        - A(1) = 2
+        - A(1 + 1) == 2

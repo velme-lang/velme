@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/type_expr_double_optional.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "write a single `?`",
+    "message": "A type can be marked optional with `?` only once.",
+    "severity": "error",
+    "span": [
+      82,
+      83
+    ]
+  }
+]

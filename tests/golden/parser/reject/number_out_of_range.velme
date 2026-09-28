@@ -1,0 +1,8 @@
+# covers: literal, primary
+# 29 decimal places and a coefficient of 2^96 (R-SYN-03, AC-SYN-16).
+goal G(n: Number) -> Number:
+    plan: "p"
+    check:
+        - result > 0.12345678901234567890123456789
+    examples:
+        - G(79228162514264337593543950336) == 1

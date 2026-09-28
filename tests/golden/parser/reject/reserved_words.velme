@@ -1,0 +1,9 @@
+# Each reserved word used as a name is VL0104 (R-SYN-05, AC-ERR-02).
+type when:
+    pure: Number
+    effects: Number
+
+goal choose(otherwise: Number, import: Number, module: Number) -> Number:
+    call:
+        fallback = Retry(optional)
+        retry = Assume(assume)

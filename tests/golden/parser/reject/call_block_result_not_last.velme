@@ -1,0 +1,10 @@
+# covers: call_block, binding
+# `result` names a binding that isn't the last (R-GOAL-23), and a binding without `=`.
+goal A(p: Player) -> Number:
+    call:
+        result = Score(p)
+        other = Score(p)
+
+goal B(p: Player) -> Number:
+    call:
+        other Score(p)

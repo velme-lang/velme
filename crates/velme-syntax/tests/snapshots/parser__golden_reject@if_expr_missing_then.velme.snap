@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/if_expr_missing_then.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `b` here — I was looking for `(`, `.`, `and`, `is`, `or` or `then`.",
+    "severity": "error",
+    "span": [
+      160,
+      161
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "put it in parentheses, like `a and (if b then c)`",
+    "message": "I didn't expect `if` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      178,
+      180
+    ]
+  }
+]

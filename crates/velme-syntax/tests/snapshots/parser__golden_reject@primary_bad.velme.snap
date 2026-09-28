@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/primary_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `)` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      102,
+      103
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `)` here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      120,
+      121
+    ]
+  }
+]

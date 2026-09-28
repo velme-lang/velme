@@ -1,0 +1,7 @@
+# covers: literal
+# A record literal with an unnamed field, and a name where a value belongs.
+goal A(p: Player) -> Number:
+    plan: "p"
+    examples:
+        - A(Player(name: "A", 3)) == 1
+        - A(p) == 1

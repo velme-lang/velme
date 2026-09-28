@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/goal_body_order.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
+    "message": "`plan:` has to come before `check:`.",
+    "severity": "error",
+    "span": [
+      157,
+      161
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
+    "message": "This goal already has a `plan:` part.",
+    "severity": "error",
+    "span": [
+      215,
+      219
+    ]
+  }
+]

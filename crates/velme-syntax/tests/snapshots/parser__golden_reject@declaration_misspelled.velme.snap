@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/declaration_misspelled.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "did you mean `type`?",
+    "message": "I didn't expect `tpye` here — I was looking for `goal`, `language` or `type`.",
+    "severity": "error",
+    "span": [
+      125,
+      129
+    ]
+  }
+]

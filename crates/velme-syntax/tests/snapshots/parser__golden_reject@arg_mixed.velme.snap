@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/arg_mixed.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "name every argument to build a record, like `Player(name: \"A\", score: 3)`, or name none to call a built-in, like `sum(1, 2)`",
+    "message": "This mixes named and unnamed arguments.",
+    "severity": "error",
+    "span": [
+      143,
+      144
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "name every argument to build a record, like `Player(name: \"A\", score: 3)`, or name none to call a built-in, like `sum(1, 2)`",
+    "message": "This mixes named and unnamed arguments.",
+    "severity": "error",
+    "span": [
+      173,
+      181
+    ]
+  }
+]

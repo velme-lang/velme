@@ -19,11 +19,11 @@ input_file: tests/golden/lexer/numbers_punct.velme
 56..63 name timeout
 63..64 punct =
 64..67 number 250
-67..69 name ms
+67..69 unit ms
 70..76 name memory
 76..77 punct =
 77..79 number 16
-79..81 name mb
+79..81 unit mb
 81..81 NEWLINE
 86..91 keyword check
 91..92 punct :

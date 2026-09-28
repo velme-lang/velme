@@ -1,0 +1,441 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/examples_literals.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Lits",
+        "span": [
+          164,
+          168
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "n",
+            "span": [
+              169,
+              170
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                172,
+                178
+              ]
+            },
+            "optional": false,
+            "span": [
+              172,
+              178
+            ]
+          },
+          "span": [
+            169,
+            178
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            183,
+            189
+          ]
+        },
+        "optional": false,
+        "span": [
+          183,
+          189
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Echo.",
+        "form": "inline",
+        "span": [
+          201,
+          208
+        ]
+      },
+      "check": null,
+      "examples": {
+        "items": [
+          {
+            "goal": {
+              "name": "Lits",
+              "span": [
+                233,
+                237
+              ]
+            },
+            "args": [
+              {
+                "kind": "number",
+                "text": "-3",
+                "span": [
+                  238,
+                  240
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "number",
+              "text": "-3",
+              "span": [
+                245,
+                247
+              ]
+            },
+            "span": [
+              233,
+              247
+            ]
+          },
+          {
+            "goal": {
+              "name": "Lits",
+              "span": [
+                258,
+                262
+              ]
+            },
+            "args": [
+              {
+                "kind": "number",
+                "text": "1000.25",
+                "span": [
+                  263,
+                  271
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "number",
+              "text": "1000.25",
+              "span": [
+                276,
+                283
+              ]
+            },
+            "span": [
+              258,
+              283
+            ]
+          },
+          {
+            "goal": {
+              "name": "Lits",
+              "span": [
+                294,
+                298
+              ]
+            },
+            "args": [
+              {
+                "kind": "text",
+                "value": "x",
+                "span": [
+                  299,
+                  302
+                ]
+              },
+              {
+                "kind": "bool",
+                "value": true,
+                "span": [
+                  304,
+                  308
+                ]
+              },
+              {
+                "kind": "bool",
+                "value": false,
+                "span": [
+                  310,
+                  315
+                ]
+              },
+              {
+                "kind": "nothing",
+                "span": [
+                  317,
+                  324
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "nothing",
+              "span": [
+                329,
+                336
+              ]
+            },
+            "span": [
+              294,
+              336
+            ]
+          },
+          {
+            "goal": {
+              "name": "Lits",
+              "span": [
+                347,
+                351
+              ]
+            },
+            "args": [
+              {
+                "kind": "list",
+                "items": [
+                  {
+                    "kind": "number",
+                    "text": "1",
+                    "span": [
+                      353,
+                      354
+                    ]
+                  },
+                  {
+                    "kind": "list",
+                    "items": [
+                      {
+                        "kind": "number",
+                        "text": "2",
+                        "span": [
+                          357,
+                          358
+                        ]
+                      },
+                      {
+                        "kind": "number",
+                        "text": "3",
+                        "span": [
+                          360,
+                          361
+                        ]
+                      }
+                    ],
+                    "span": [
+                      356,
+                      362
+                    ]
+                  }
+                ],
+                "span": [
+                  352,
+                  364
+                ]
+              },
+              {
+                "kind": "list",
+                "items": [],
+                "span": [
+                  366,
+                  368
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "list",
+              "items": [],
+              "span": [
+                373,
+                376
+              ]
+            },
+            "span": [
+              347,
+              376
+            ]
+          },
+          {
+            "goal": {
+              "name": "Lits",
+              "span": [
+                387,
+                391
+              ]
+            },
+            "args": [
+              {
+                "kind": "record",
+                "name": {
+                  "name": "Team",
+                  "span": [
+                    392,
+                    396
+                  ]
+                },
+                "fields": [
+                  {
+                    "name": {
+                      "name": "name",
+                      "span": [
+                        397,
+                        401
+                      ]
+                    },
+                    "value": {
+                      "kind": "text",
+                      "value": "A",
+                      "span": [
+                        403,
+                        406
+                      ]
+                    },
+                    "span": [
+                      397,
+                      406
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "captain",
+                      "span": [
+                        408,
+                        415
+                      ]
+                    },
+                    "value": {
+                      "kind": "record",
+                      "name": {
+                        "name": "Player",
+                        "span": [
+                          417,
+                          423
+                        ]
+                      },
+                      "fields": [
+                        {
+                          "name": {
+                            "name": "name",
+                            "span": [
+                              424,
+                              428
+                            ]
+                          },
+                          "value": {
+                            "kind": "text",
+                            "value": "B",
+                            "span": [
+                              430,
+                              433
+                            ]
+                          },
+                          "span": [
+                            424,
+                            433
+                          ]
+                        },
+                        {
+                          "name": {
+                            "name": "score",
+                            "span": [
+                              435,
+                              440
+                            ]
+                          },
+                          "value": {
+                            "kind": "number",
+                            "text": "1",
+                            "span": [
+                              442,
+                              443
+                            ]
+                          },
+                          "span": [
+                            435,
+                            443
+                          ]
+                        }
+                      ],
+                      "span": [
+                        417,
+                        445
+                      ]
+                    },
+                    "span": [
+                      408,
+                      445
+                    ]
+                  }
+                ],
+                "span": [
+                  392,
+                  447
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "record",
+              "name": {
+                "name": "Player",
+                "span": [
+                  452,
+                  458
+                ]
+              },
+              "fields": [
+                {
+                  "name": {
+                    "name": "name",
+                    "span": [
+                      459,
+                      463
+                    ]
+                  },
+                  "value": {
+                    "kind": "text",
+                    "value": "C",
+                    "span": [
+                      465,
+                      468
+                    ]
+                  },
+                  "span": [
+                    459,
+                    468
+                  ]
+                }
+              ],
+              "span": [
+                452,
+                469
+              ]
+            },
+            "span": [
+              387,
+              469
+            ]
+          }
+        ],
+        "span": [
+          213,
+          469
+        ]
+      },
+      "span": [
+        159,
+        469
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    470
+  ]
+}

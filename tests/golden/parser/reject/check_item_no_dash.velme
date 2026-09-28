@@ -1,0 +1,11 @@
+# covers: check_block, check_item
+# A check without its `-`, and an empty check block.
+goal A() -> Number:
+    plan: "p"
+    check:
+        result > 0
+        - result < 10
+
+goal B() -> Number:
+    plan: "p"
+    check:

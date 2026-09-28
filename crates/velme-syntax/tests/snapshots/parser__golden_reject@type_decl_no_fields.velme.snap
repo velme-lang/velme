@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/type_decl_no_fields.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `type` here — I was looking for an indented line.",
+    "severity": "error",
+    "span": [
+      65,
+      65
+    ]
+  }
+]

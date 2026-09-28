@@ -1,0 +1,7 @@
+# covers: budget_item
+# A unit is only valid inside `budget`; `5 s` with a space isn't a unit.
+goal A() -> Number:
+    budget time = 5 s
+    plan: "p"
+    check:
+        - result < 5s

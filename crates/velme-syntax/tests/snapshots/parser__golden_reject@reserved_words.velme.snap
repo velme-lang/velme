@@ -1,0 +1,117 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/reserved_words.velme
+---
+[
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`when` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      74,
+      78
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`pure` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      84,
+      88
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`effects` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      101,
+      108
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`choose` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      123,
+      129
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`otherwise` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      130,
+      139
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`import` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      149,
+      155
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`module` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      165,
+      171
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`fallback` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      210,
+      218
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`optional` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      227,
+      235
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`retry` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      245,
+      250
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`assume` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      260,
+      266
+    ]
+  }
+]

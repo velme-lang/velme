@@ -1,0 +1,306 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/budget.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Quick",
+        "span": [
+          127,
+          132
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "n",
+            "span": [
+              133,
+              134
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                136,
+                142
+              ]
+            },
+            "optional": false,
+            "span": [
+              136,
+              142
+            ]
+          },
+          "span": [
+            133,
+            142
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            147,
+            153
+          ]
+        },
+        "optional": false,
+        "span": [
+          147,
+          153
+        ]
+      },
+      "budget": {
+        "items": [
+          {
+            "name": {
+              "name": "time",
+              "span": [
+                166,
+                170
+              ]
+            },
+            "value": {
+              "text": "500",
+              "span": [
+                173,
+                176
+              ]
+            },
+            "unit": {
+              "unit": "ms",
+              "span": [
+                176,
+                178
+              ]
+            },
+            "span": [
+              166,
+              178
+            ]
+          },
+          {
+            "name": {
+              "name": "memory",
+              "span": [
+                179,
+                185
+              ]
+            },
+            "value": {
+              "text": "64",
+              "span": [
+                188,
+                190
+              ]
+            },
+            "unit": {
+              "unit": "mb",
+              "span": [
+                190,
+                192
+              ]
+            },
+            "span": [
+              179,
+              192
+            ]
+          },
+          {
+            "name": {
+              "name": "calls",
+              "span": [
+                193,
+                198
+              ]
+            },
+            "value": {
+              "text": "3",
+              "span": [
+                201,
+                202
+              ]
+            },
+            "unit": null,
+            "span": [
+              193,
+              202
+            ]
+          },
+          {
+            "name": {
+              "name": "wait",
+              "span": [
+                203,
+                207
+              ]
+            },
+            "value": {
+              "text": "2",
+              "span": [
+                210,
+                211
+              ]
+            },
+            "unit": {
+              "unit": "s",
+              "span": [
+                211,
+                212
+              ]
+            },
+            "span": [
+              203,
+              212
+            ]
+          },
+          {
+            "name": {
+              "name": "size",
+              "span": [
+                213,
+                217
+              ]
+            },
+            "value": {
+              "text": "10",
+              "span": [
+                220,
+                222
+              ]
+            },
+            "unit": {
+              "unit": "kb",
+              "span": [
+                222,
+                224
+              ]
+            },
+            "span": [
+              213,
+              224
+            ]
+          }
+        ],
+        "span": [
+          159,
+          224
+        ]
+      },
+      "call": null,
+      "plan": {
+        "text": "Double it.",
+        "form": "inline",
+        "span": [
+          235,
+          247
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "span": [
+                269,
+                275
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "mul",
+              "lhs": {
+                "kind": "name",
+                "name": "n",
+                "span": [
+                  279,
+                  280
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "2",
+                "span": [
+                  283,
+                  284
+                ]
+              },
+              "span": [
+                279,
+                284
+              ]
+            },
+            "span": [
+              269,
+              284
+            ]
+          }
+        ],
+        "span": [
+          252,
+          284
+        ]
+      },
+      "examples": {
+        "items": [
+          {
+            "goal": {
+              "name": "Quick",
+              "span": [
+                309,
+                314
+              ]
+            },
+            "args": [
+              {
+                "kind": "number",
+                "text": "2",
+                "span": [
+                  315,
+                  316
+                ]
+              }
+            ],
+            "expected": {
+              "kind": "number",
+              "text": "4",
+              "span": [
+                321,
+                322
+              ]
+            },
+            "span": [
+              309,
+              322
+            ]
+          }
+        ],
+        "span": [
+          289,
+          322
+        ]
+      },
+      "span": [
+        122,
+        322
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    323
+  ]
+}

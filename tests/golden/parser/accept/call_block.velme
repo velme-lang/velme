@@ -1,0 +1,7 @@
+# covers: call_block, binding, call_arg, path, literal
+# Bindings with path and literal arguments; `result` as the last binding makes the goal wired (R-GOAL-23).
+goal Wired(player: Player, n: Number) -> Text:
+    call:
+        score = Score(player)
+        label = Label(player.stats.score, n, "x", -2.5, true, false, nothing, [1, 2,], Point(x: 1, y: 2),)
+        result = Pick(label, score)

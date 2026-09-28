@@ -1,0 +1,6 @@
+# covers: primary
+# A stray `)` and an empty `()`.
+goal G(a: Number) -> Boolean:
+    check:
+        - ) == a
+        - () == a

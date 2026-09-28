@@ -1,0 +1,37 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/expr_chained_comparison.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "join two comparisons with `and`, like `a < b and b < c`",
+    "message": "Comparisons can't be chained like this.",
+    "severity": "error",
+    "span": [
+      218,
+      219
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "join two comparisons with `and`, like `a < b and b < c`",
+    "message": "Comparisons can't be chained like this.",
+    "severity": "error",
+    "span": [
+      243,
+      251
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `=` here — I was looking for `(`, `.`, `and`, `is`, `or` or the end of the line.",
+    "severity": "error",
+    "span": [
+      264,
+      265
+    ]
+  }
+]

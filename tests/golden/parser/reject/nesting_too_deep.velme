@@ -1,0 +1,4 @@
+# Nesting past the limit is a diagnostic, not a crash (R-SYN-19, D-71).
+goal G(a: Number) -> Boolean:
+    check:
+        - ((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))) > 0

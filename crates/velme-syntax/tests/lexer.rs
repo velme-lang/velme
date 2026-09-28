@@ -10,6 +10,7 @@ fn render(tokens: &[Token], diags: &[Diagnostic]) -> String {
             TokenKind::Name(n) => format!("name {n}"),
             TokenKind::Keyword(k) => format!("keyword {k}"),
             TokenKind::Number(n) => format!("number {n}"),
+            TokenKind::Unit(u) => format!("unit {}", u.as_str()),
             TokenKind::Text(s) => format!("text {s:?}"),
             TokenKind::BlockText(s) => format!("block_text {s:?}"),
             TokenKind::Punct(p) => format!("punct {}", p.as_str()),

@@ -200,7 +200,8 @@ sema; diagnostics that would only follow from it (e.g. `VL0301` for a goal whose
 hint ("did you mean `check:`?"). Messages never mention tokens by internal name (`INDENT`, `NAME`).
 
 **R-SYN-19** Parsing is deterministic and total: any input terminates with an AST or diagnostics, never a panic (fuzzed,
-[51-testing-quality](../delivery/51-testing-quality.md)).
+[51-testing-quality](../delivery/51-testing-quality.md)). Nesting on one line is capped so that parsing can't overflow
+the stack (D-71).
 
 ## 6. Golden corpus
 

@@ -1,0 +1,8 @@
+# Naming conventions are warnings, never errors (R-SYN-06, D-69).
+type player_stats:
+    jumpHeight: Number
+
+goal find_badge(PlayerName: Text) -> Text:
+    call:
+        BestScore = Score(PlayerName)
+        result = Badge(BestScore)

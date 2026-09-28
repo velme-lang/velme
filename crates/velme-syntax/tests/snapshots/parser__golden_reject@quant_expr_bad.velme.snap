@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/quant_expr_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `x` here — I was looking for `(`, `.` or `has`.",
+    "severity": "error",
+    "span": [
+      164,
+      165
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `result` here — I was looking for a name.",
+    "severity": "error",
+    "span": [
+      185,
+      191
+    ]
+  }
+]

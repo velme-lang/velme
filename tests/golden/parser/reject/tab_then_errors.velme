@@ -1,0 +1,6 @@
+# A tab is VL0103 and parsing goes on (AC-SYN-02).
+type A:
+	x: Number
+
+type B:
+    y Number
