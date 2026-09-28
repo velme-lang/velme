@@ -20,9 +20,9 @@ pub struct Ident {
 pub struct Program {
     /// The `language:` line, if the file has one (R-SYN-15).
     pub header: Option<Header>,
-    /// Declarations that parsed without errors, in source order.
+    /// Declarations holding no error, in source order; warnings don't count (D-76).
     pub decls: Vec<Decl>,
-    /// Declarations that failed to parse; sema skips them and suppresses follow-on errors (R-SYN-17).
+    /// Declarations that failed to parse or hold an error; sema skips them and suppresses follow-on errors (R-SYN-17).
     pub failed: Vec<FailedDecl>,
     /// The whole file.
     pub span: Span,

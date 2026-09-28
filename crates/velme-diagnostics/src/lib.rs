@@ -207,3 +207,8 @@ impl Diagnostic {
         self.severity == Severity::Error
     }
 }
+
+/// Orders one file's diagnostics by start offset, then code, keeping the emit order for ties (R-CMP-16, INV-3).
+pub fn sort(diagnostics: &mut [Diagnostic]) {
+    diagnostics.sort_by_key(|d| (d.span.start, d.code));
+}

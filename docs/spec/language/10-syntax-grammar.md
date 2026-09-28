@@ -12,7 +12,8 @@ Defines the characters, tokens, layout and grammar of a v0.1 `.velme` file. What
 is in [20-compiler-architecture](../compiler/20-compiler-architecture.md).
 
 **R-SYN-01** A v0.1 program is exactly one UTF-8 file with extension `.velme` (D-18). A byte sequence that is not valid
-UTF-8 is `VL0901 FileError`. A leading BOM is ignored.
+UTF-8 is `VL0901 FileError`. A leading BOM is ignored, but spans still count its bytes, so every offset is a byte
+offset into the file as saved (D-75).
 
 **R-SYN-02** Line endings `\n` and `\r\n` are equivalent; a lone `\r` is `VL0101 UnexpectedToken`.
 
@@ -22,7 +23,7 @@ UTF-8 is `VL0901 FileError`. A leading BOM is ignored.
 
 | Token | Form | Notes |
 |---|---|---|
-| `NAME` | ASCII letter or `_`, then letters, digits, `_` | ASCII only in v0.1; Unicode identifiers Future. Text and plans are full Unicode. |
+| `NAME` | ASCII letter or `_`, then letters, digits, `_` | ASCII only in v0.1; Unicode identifiers Future. Text and plans are full Unicode. A word with a non-ASCII letter is one `VL0101` (D-76). |
 | `NUMBER` | `digits [ "." digits ]`, `_` allowed between digits | no exponent, no leading `.`, no sign (unary `-` is an operator). |
 | `UNIT` | `ms` `s` `kb` `mb` written directly after a `NUMBER` (no space) | only valid inside `budget` (§4.5). |
 | `VERSION` | `digits "." digits` | only valid after `language: velme/` in the header (§4); compared as text, not decoded as a `Number` (R-SYN-21). |
@@ -66,8 +67,8 @@ the text a `plan: |` block carries is ordinary text and is preserved, never `VL0
 
 **R-SYN-09** The layout pass keeps a stack of indentation widths. A line indented deeper than the top emits `INDENT`
 and pushes; a shallower line emits one `DEDENT` per popped width and must land exactly on a width in the stack,
-otherwise `VL0102 InconsistentIndentation`. Any consistent width is accepted; 4 is recommended and used by the
-formatter.
+otherwise `VL0102 InconsistentIndentation`; a line that lands between two widths stays in the inner block (D-76). Any
+consistent width is accepted; 4 is recommended and used by the formatter.
 
 **R-SYN-10** Blank lines and comment-only lines produce no tokens. Inside `( )` and `[ ]` newlines and indentation are
 ignored (implicit line joining), so long parameter lists and literals may span lines.
@@ -83,15 +84,16 @@ ignored (implicit line joining), so long parameter lists and literals may span l
 
 **R-SYN-12** `plan: |` followed by a newline starts a block scalar. Its content is every following line indented
 deeper than the column of the `plan` keyword, including blank lines between them; it ends at the first non-blank line
-indented at or below that column. The lexer emits the content as one `BLOCK_TEXT` token, normalized per D-21 (LF, trailing
-whitespace trimmed, common indentation removed). No escapes or comments are processed inside it. Trailing blank
+indented at or below that column. The first content line's indentation is the content column: a later line indented
+less than it, but deeper than `plan`, is `VL0102` (D-73). The lexer emits the content as one `BLOCK_TEXT` token,
+normalized per D-21 (LF, trailing spaces and tabs trimmed, the content column removed). No escapes or comments are processed inside it. Trailing blank
 lines, tabs, a comment after `|` and an empty block follow D-67.
 
 **R-SYN-13** An empty inline or block plan is `VL0307 GoalHasNoBody` unless the goal is wired (D-4,
 [12-goals-calls](12-goals-calls.md) §2).
 
-**R-SYN-22** A Unicode bidi control character (U+202A–U+202E, U+2066–U+2069) inside a `plan` (inline or block) or a
-`TEXT` literal is a lint warning, using the naming-convention mechanism of R-SYN-06 (`VL0107`, D-69): these
+**R-SYN-22** A Unicode bidi control character (U+061C, U+200E, U+200F, U+202A–U+202E, U+2066–U+2069) inside a `plan`
+(inline or block), a `TEXT` literal or a comment is a lint warning, using the naming-convention mechanism of R-SYN-06 (`VL0107`, D-69): these
 characters can make displayed and lexed order differ ("Trojan Source"), which matters most in text an LLM reads (D-43,
 [compiler/22](../compiler/22-spellbook-synthesis.md) R-SYNTH-22).
 
@@ -161,7 +163,7 @@ arg            = [ NAME ":" ] expr ;          (* named ⇒ record literal; sema 
 A block out of order or repeated is `VL0101` with a hint naming the expected order.
 
 **R-SYN-15** `T??` is `VL0101`. A header naming another language or a version this compiler doesn't support is
-`VL0106 UnsupportedLanguageVersion`. Without a header the compiler's current language version applies and is recorded in
+`VL0106 UnsupportedLanguageVersion`, and so is a version written in another form, such as `velme/1`. Without a header the compiler's current language version applies and is recorded in
 the artifact (INV-8).
 
 **R-SYN-21** The header's `VERSION` is compared to the compiler's supported versions as text, never decoded as a
@@ -193,8 +195,8 @@ Goals are never called from checks ([13-check-dsl](13-check-dsl.md) R-CHK-03).
 ## 5. Error recovery
 
 **R-SYN-17** The parser recovers at `NEWLINE` / `DEDENT` boundaries and at the next `type`/`goal` keyword, and reports
-every syntax error in the file (default cap 20, then "…and N more"). A declaration that failed to parse is excluded from
-sema; diagnostics that would only follow from it (e.g. `VL0301` for a goal whose declaration failed) are suppressed.
+every syntax error in the file (default cap 20, then "…and N more"), one per root cause (D-76). A declaration that
+failed to parse, or holds any other error (a lexer error, a reserved word), is excluded from sema; diagnostics that would only follow from it (e.g. `VL0301` for a goal whose declaration failed) are suppressed.
 
 **R-SYN-18** Every syntax diagnostic has a code, a primary span, a learner-friendly message and, where one exists, a
 hint ("did you mean `check:`?"). Messages never mention tokens by internal name (`INDENT`, `NAME`).

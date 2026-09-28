@@ -5,7 +5,7 @@ use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 use serde::Serialize;
-use velme_diagnostics::render::{self, JsonDiagnostic};
+use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_syntax::SourceFile;
 
@@ -30,6 +30,10 @@ const EXIT_PRECEDENCE: [u8; 6] = [
 
 /// The `--json` envelope version (D-49, R-CLI-15).
 const JSON_FORMAT: &str = "velme-cli/1";
+
+/// Stack for the parser thread. The D-71 limits keep parsing within a few MiB even in a debug build; the main thread's
+/// default stack differs by platform (1 MiB on Windows), so the size is set here (R-SYN-19).
+const PARSE_STACK: usize = 64 * 1024 * 1024;
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       velme --version";
 
@@ -84,33 +88,35 @@ fn print_err(s: &str) {
 /// `velme check FILE`: for now, lexing and parsing (M1); name, type and call checks follow in M2.
 fn check(arg: &str, json: bool) -> u8 {
     let path = display_path(arg);
-    let (text, mut diagnostics) = match std::fs::read(arg) {
+    let (text, diagnostics) = match std::fs::read(arg) {
         Err(err) => (None, vec![SourceFile::unreadable(&path, &err)]),
         Ok(bytes) => match SourceFile::from_bytes(path.clone(), bytes.clone()) {
             Ok(file) => {
-                let (_, diagnostics) = velme_syntax::parse(&file);
+                let Some(diagnostics) = parse_on_big_stack(&file) else {
+                    return EXIT_INTERNAL;
+                };
                 (Some(file.text), diagnostics)
             }
             // The span is a byte offset into the raw bytes, which the lossy text keeps up to the bad byte.
             Err(diag) => (Some(String::from_utf8_lossy(&bytes).into_owned()), vec![diag]),
         },
     };
-    render::sort(&mut diagnostics);
     let exit = exit_code(&diagnostics);
 
     if json {
+        let lines = LineIndex::new(text.as_deref().unwrap_or(""));
         let envelope = Envelope {
             format: JSON_FORMAT,
             status: if exit == EXIT_OK { "ok" } else { "failed" },
             results: Vec::new(),
             diagnostics: diagnostics
                 .iter()
-                .map(|d| JsonDiagnostic::new(d, &path, text.as_deref().unwrap_or("")))
+                .map(|d| JsonDiagnostic::new(d, &path, &lines))
                 .collect(),
             notices: Vec::new(),
         };
         match serde_json::to_string_pretty(&envelope) {
-            Ok(out) => print_out(&format!("{out}\n")),
+            Ok(out) => print_out(&format!("{}\n", render::escape_json(&out))),
             Err(_) => return EXIT_INTERNAL,
         }
     } else {
@@ -122,6 +128,18 @@ fn check(arg: &str, json: bool) -> u8 {
         }
     }
     exit
+}
+
+/// Parses on a thread with [`PARSE_STACK`]; `None` only if the thread couldn't start or the parser panicked, which is a
+/// bug (R-SYN-19).
+fn parse_on_big_stack(file: &SourceFile) -> Option<Vec<Diagnostic>> {
+    std::thread::scope(|scope| {
+        let parser = std::thread::Builder::new()
+            .stack_size(PARSE_STACK)
+            .spawn_scoped(scope, || velme_syntax::parse(file).1)
+            .ok()?;
+        parser.join().ok()
+    })
 }
 
 /// The `--json` envelope (`tooling/40` §3.2). `diagnostics` holds the ones that belong to the file rather than to one

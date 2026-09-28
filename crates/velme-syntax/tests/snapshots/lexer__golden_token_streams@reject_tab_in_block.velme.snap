@@ -16,7 +16,7 @@ input_file: tests/golden/lexer/reject_tab_in_block.velme
 28..29 punct :
 30..31 punct |
 31..31 NEWLINE
-38..81 block_text "Inside.\n  Tab before the content column."
+38..81 block_text "Inside.\nTab before the content column."
 86..91 keyword check
 91..92 punct :
 92..92 NEWLINE

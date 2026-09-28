@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
+use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_syntax::ast::{Decl, Expr, ExprKind, GoalDecl, Program};
 use velme_syntax::{Keyword, SourceFile, parse};
@@ -196,16 +197,47 @@ fn ac_syn_02_tab_does_not_stop_parsing() {
     let src = "type A:\n\tx: Number\n\ntype B:\n    y Number\n\ntype C:\n    z: Number\n";
     let (program, diags) = parse_str(src);
     assert_eq!(codes(&diags), [Code::TabIndentation, Code::UnexpectedToken]);
-    let names: Vec<&str> = program
+    // A declaration holding any error is excluded, the tab's included (D-76).
+    assert_eq!(decl_names(&program), ["C"]);
+    assert_eq!(program.failed.len(), 2);
+}
+
+fn decl_names(program: &Program) -> Vec<&str> {
+    program
         .decls
         .iter()
         .map(|d| match d {
             Decl::Type(t) => t.name.name.as_str(),
             Decl::Goal(g) => g.name.name.as_str(),
         })
-        .collect();
-    assert_eq!(names, ["A", "C"]);
-    assert_eq!(program.failed.len(), 1);
+        .collect()
+}
+
+/// D-76: one mistake is one diagnostic, and the declaration holding it is excluded.
+#[test]
+fn ac_syn_07_one_error_per_root_cause() {
+    let one = |src: &str, code: Code| {
+        let (program, diags) = parse_str(src);
+        assert_eq!(codes(&diags), [code], "{src}: {diags:#?}");
+        assert!(program.decls.is_empty(), "{src}");
+        assert_eq!(program.failed.len(), 1, "{src}");
+    };
+    one("type Résumé:\n    x: Number\n", Code::UnexpectedToken);
+    one(
+        "goal A() -> Text:\n    when:\n        - true\n    plan: \"x\"\n",
+        Code::ReservedWord,
+    );
+    one("goal A() -> Text:\n    plan: @\n", Code::UnexpectedToken);
+    one("goal A() -> Text:\n    plan: \"x\" @@@\n", Code::UnexpectedToken);
+    one("goal A() -> Text:\n    plan: \"a\\qb\"\n", Code::UnexpectedToken);
+    // A line between two indentation levels stays in its block, so `check:` isn't lost.
+    let src = "goal A() -> Text:\n        plan: \"x\"\n    check:\n        - result is not empty\n";
+    one(src, Code::InconsistentIndentation);
+    // D-73: a plan line shallower than the first is VL0102, and the plan doesn't swallow it silently.
+    one(
+        "goal A() -> Text:\n    plan: |\n        Hi.\n      check:\n        - true\n",
+        Code::InconsistentIndentation,
+    );
 }
 
 #[test]
@@ -303,6 +335,22 @@ fn ac_syn_13_deep_nesting() {
         diags.first()
     );
 
+    // Past the limit, prefix forms and a type's `<` are rejected too.
+    for src in [format!("{}a", "not ".repeat(40)), format!("{}1", "- ".repeat(40))] {
+        let (_, diags) = parse_str(&format!("goal G() -> Boolean:\n    check:\n        - {src}\n"));
+        assert!(diags.iter().any(|d| d.message.contains("nests too deeply")), "{src}");
+    }
+    let list = |n: usize| format!("{}Number{}", "List<".repeat(n), ">".repeat(n));
+    let (_, diags) = parse_str(&format!("type A:\n    x: {}\n", list(29)));
+    assert!(diags.is_empty(), "{diags:#?}");
+    let (_, diags) = parse_str(&format!("type A:\n    x: {}\n", list(40)));
+    assert!(diags.iter().any(|d| d.message.contains("nests too deeply")));
+    // Flat forms don't nest: side by side, each ends before the next starts (D-71).
+    let _ = check_expr(&vec!["a < 1"; 40].join(" and "));
+    let _ = check_expr(&vec!["not a"; 40].join(" and "));
+    let _ = check_expr(&format!("{} > 0", vec!["-a"; 40].join(" + ")));
+    let _ = check_expr(&format!("{} > 0", vec!["(a)"; 40].join(" + ")));
+
     // A long operator chain builds a tree as deep as the chain.
     let _ = check_expr(&format!("{} > 0", vec!["a"; 250].join(" + ")));
     let chain = vec!["a"; 20_000].join(" + ");
@@ -325,7 +373,14 @@ fn ac_syn_13_fuzz_corpus_replays_without_panic() {
             let path = entry.expect("dir entry").path();
             let bytes = std::fs::read(&path).expect("corpus file");
             if let Ok(file) = SourceFile::from_bytes(path.display().to_string(), bytes) {
-                let _ = parse(&file);
+                // Like the fuzz target: the renderers are total too.
+                let (_, diags) = parse(&file);
+                let _ = render::render_human(&diags, &file.path, Some(&file.text), false);
+                let lines = LineIndex::new(&file.text);
+                let _: Vec<_> = diags
+                    .iter()
+                    .map(|d| JsonDiagnostic::new(d, &file.path, &lines))
+                    .collect();
             }
             count += 1;
         }

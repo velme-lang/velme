@@ -1,0 +1,57 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/one_error_per_cause.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "names use the letters a–z and A–Z, digits and `_` in this version of Velme",
+    "message": "I can't use `Résumé` as a name.",
+    "severity": "error",
+    "span": [
+      215,
+      223
+    ]
+  },
+  {
+    "code": "VL0104",
+    "help": null,
+    "message": "`when` is coming in a later Velme version — try another name.",
+    "severity": "error",
+    "span": [
+      263,
+      267
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `@` here.",
+    "severity": "error",
+    "span": [
+      327,
+      328
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `@@@` here.",
+    "severity": "error",
+    "span": [
+      362,
+      365
+    ]
+  },
+  {
+    "code": "VL0102",
+    "help": "indent it exactly as far as the line it belongs with",
+    "message": "This line's indentation doesn't line up with the lines above it.",
+    "severity": "error",
+    "span": [
+      403,
+      407
+    ]
+  }
+]

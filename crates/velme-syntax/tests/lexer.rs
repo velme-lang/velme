@@ -124,8 +124,10 @@ fn ac_syn_06_unterminated_text_is_vl0105_and_unknown_escape_is_vl0101() {
 #[test]
 fn ac_syn_14_bom_is_ignored_and_invalid_utf8_is_vl0901() {
     let with_bom = SourceFile::from_bytes("a.velme", b"\xef\xbb\xbfgoal A() -> Number:\n".to_vec()).unwrap();
-    assert!(lex(&with_bom).1.is_empty());
-    assert_eq!(with_bom.text, "goal A() -> Number:\n");
+    let (tokens, diags) = lex(&with_bom);
+    assert!(diags.is_empty());
+    // Spans are file byte offsets: `goal` starts after the 3-byte BOM (D-75).
+    assert_eq!(tokens[0].span.start, 3);
     let err = SourceFile::from_bytes("a.velme", b"goal \xff".to_vec()).unwrap_err();
     assert_eq!(err.code, Code::FileError);
 }
@@ -151,4 +153,55 @@ fn ac_syn_11_newlines_inside_brackets_are_joined() {
     let joined = "goal A(a: Number, b: Number) -> Number:\n    plan: \"x\"\n";
     let split = "goal A(\n    a: Number,\n        b: Number) -> Number:\n    plan: \"x\"\n";
     assert_eq!(kinds(split), kinds(joined));
+}
+
+/// D-21: plan lines lose trailing spaces and tabs only; other whitespace is text.
+#[test]
+fn ac_syn_04_block_plan_trims_only_spaces_and_tabs() {
+    let (tokens, diags) = lex_str("plan: |\n    One \t\n    two\u{a0}\u{3000}\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    assert!(
+        tokens
+            .iter()
+            .any(|t| t.kind == TokenKind::BlockText("One\ntwo\u{a0}\u{3000}".into()))
+    );
+}
+
+/// R-SYN-22: bidi controls warn in comments too, including U+061C, U+200E and U+200F.
+#[test]
+fn bidi_controls_in_comments_and_text_are_lint_warnings() {
+    for c in ['\u{61c}', '\u{200e}', '\u{200f}', '\u{202e}', '\u{2067}'] {
+        assert_eq!(
+            codes(&format!("# a{c}b\n")),
+            [Code::LintWarning],
+            "{c:?} on a comment line"
+        );
+        assert_eq!(
+            codes(&format!("plan: \"x\" # a{c}b\n")),
+            [Code::LintWarning],
+            "{c:?} after code"
+        );
+        assert_eq!(
+            codes(&format!("plan: \"a{c}b\"\n")),
+            [Code::LintWarning],
+            "{c:?} in text"
+        );
+    }
+}
+
+/// D-76: a run of characters Velme can't read is one error.
+#[test]
+fn a_run_of_unreadable_characters_is_one_error() {
+    let (tokens, diags) = lex_str("x @@~ y\n");
+    assert_eq!(
+        diags
+            .iter()
+            .map(|d| (d.code, d.span.start, d.span.end))
+            .collect::<Vec<_>>(),
+        [(Code::UnexpectedToken, 2, 5)]
+    );
+    assert_eq!(
+        tokens.iter().filter(|t| matches!(t.kind, TokenKind::Name(_))).count(),
+        2
+    );
 }

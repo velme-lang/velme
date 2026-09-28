@@ -1222,8 +1222,8 @@ input_file: tests/golden/parser/accept/expressions.velme
                       ]
                     },
                     "span": [
-                      941,
-                      946
+                      940,
+                      947
                     ]
                   },
                   "rhs": {
@@ -1235,7 +1235,7 @@ input_file: tests/golden/parser/accept/expressions.velme
                     ]
                   },
                   "span": [
-                    941,
+                    940,
                     951
                   ]
                 }
@@ -1272,8 +1272,8 @@ input_file: tests/golden/parser/accept/expressions.velme
                 ]
               },
               "span": [
-                964,
-                975
+                963,
+                976
               ]
             },
             "rhs": {
@@ -1319,13 +1319,13 @@ input_file: tests/golden/parser/accept/expressions.velme
                 ]
               },
               "span": [
-                982,
-                1005
+                981,
+                1006
               ]
             },
             "span": [
-              964,
-              1005
+              963,
+              1006
             ]
           }
         ],

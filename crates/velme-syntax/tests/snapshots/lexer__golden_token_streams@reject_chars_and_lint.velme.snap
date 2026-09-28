@@ -26,7 +26,7 @@ input_file: tests/golden/lexer/reject_chars_and_lint.velme
 79..80 number 1
 83..84 number 2
 85..88 keyword and
-89..92 name caf
+89..94 name café
 95..97 punct ==
 98..100 number 1_
 101..104 keyword and
@@ -39,7 +39,7 @@ input_file: tests/golden/lexer/reject_chars_and_lint.velme
 124..124 DEDENT
 warning[VL0107] 30..47: This text contains an invisible character (U+202E) that can make it look different from what Velme reads.
 error[VL0101] 81..82: I didn't expect `@` here.
-error[VL0101] 92..94: I didn't expect `é` here.
+error[VL0101] 89..94: I can't use `café` as a name.
 error[VL0101] 98..100: A `_` in a number must sit between two digits.
 error[VL0101] 105..109: A `_` in a number must sit between two digits.
 error[VL0101] 113..114: I didn't expect `\` here.

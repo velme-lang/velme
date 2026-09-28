@@ -2,7 +2,8 @@
 
 use velme_diagnostics::{Code, Diagnostic, Span};
 
-/// One `.velme` file: its project-relative path and its text, without a leading BOM (R-SYN-01).
+/// One `.velme` file: its project-relative path and its text as saved. A leading BOM stays in the text, so spans are
+/// file byte offsets, and the lexer skips it (R-SYN-01, D-75).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFile {
     /// Project-relative path with `/` separators (`tooling/40` R-CLI-19).
@@ -12,16 +13,11 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    /// A source file from text already known to be valid; a leading BOM is dropped.
+    /// A source file from text already known to be valid.
     pub fn new(path: impl Into<String>, text: impl Into<String>) -> Self {
-        let text = text.into();
-        let text = match text.strip_prefix('\u{feff}') {
-            Some(rest) => rest.to_owned(),
-            None => text,
-        };
         SourceFile {
             path: path.into(),
-            text,
+            text: text.into(),
         }
     }
 

@@ -167,14 +167,14 @@ with "The answer is <binding>."
 | Never blame the learner; never "fatal"/"illegal" | "can't" / "doesn't" |
 | One diagnostic per root cause; suppress cascades from the same span | — |
 
-**R-CLI-09** Every user-visible message string comes from the diagnostic's definition in `velme-diagnostics`
-(CC-CONST); the CLI never composes its own error prose.
+**R-CLI-09** Every user-visible message string is composed by the library that detects the problem, starting from
+the code's template in `reference/90` §2 (CC-CONST, D-74); the CLI never composes its own error prose.
 **R-CLI-17** In human mode, every string Velme did not itself produce is escaped before display (D-47): external
 backend stderr and `{"error"}` reasons (`VL0406`), `{"question"}`/`{"pending"}` text, values computed by synthesized
 IR shown in `Got:` lines, trace text, and input echoes. C0/C1 control characters (other than the newline and tab a
-layout expects), ESC/ANSI/OSC sequences, and Unicode bidi controls (U+202A–U+202E, U+2066–U+2069) render as visible
-escapes such as `\u{1b}`, so no such byte reaches the terminal. `--json` output is unaffected — JSON's own escaping
-already prevents this. `compiler/22` R-SYNTH-33's cleaning of question/pending text is a separate, additional
+layout expects), ESC/ANSI/OSC sequences, and Unicode bidi controls (U+061C, U+200E, U+200F, U+202A–U+202E,
+U+2066–U+2069) render as visible escapes such as `\u{1b}`, so no such byte reaches the terminal. `--json` writes the
+same characters as `\uXXXX` escapes (JSON itself escapes only C0), so the decoded value is unchanged. `compiler/22` R-SYNTH-33's cleaning of question/pending text is a separate, additional
 length/format rule for that one field, not a substitute for this one.
 
 ## 4. Exit codes
