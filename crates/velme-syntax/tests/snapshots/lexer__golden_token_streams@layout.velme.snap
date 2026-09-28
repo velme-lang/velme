@@ -1,0 +1,47 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/layout.velme
+---
+71..75 keyword type
+76..82 name Player
+82..83 punct :
+83..83 NEWLINE
+88..88 INDENT
+88..92 name name
+92..93 punct :
+94..98 name Text
+98..98 NEWLINE
+142..147 name score
+147..148 punct :
+149..155 name Number
+155..155 NEWLINE
+156..156 DEDENT
+156..160 keyword goal
+161..165 name Best
+165..166 punct (
+166..173 name players
+173..174 punct :
+175..179 name List
+179..180 punct <
+180..186 name Player
+186..187 punct >
+187..188 punct )
+189..191 punct ->
+192..198 name Player
+198..199 punct :
+199..199 NEWLINE
+204..204 INDENT
+204..209 keyword check
+209..210 punct :
+210..210 NEWLINE
+219..219 INDENT
+219..220 punct -
+221..227 keyword result
+227..228 punct .
+228..233 name score
+234..236 punct >=
+237..238 number 0
+238..238 NEWLINE
+239..239 DEDENT
+239..239 DEDENT

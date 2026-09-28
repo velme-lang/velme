@@ -1,0 +1,50 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/brackets.velme
+---
+0..4 keyword goal
+5..8 name Add
+8..9 punct (
+14..15 name a
+15..16 punct :
+17..23 name Number
+23..24 punct ,
+85..86 name b
+86..87 punct :
+88..94 name Number
+94..95 punct ,
+96..97 punct )
+98..100 punct ->
+101..107 name Number
+107..108 punct :
+108..108 NEWLINE
+113..113 INDENT
+113..121 keyword examples
+121..122 punct :
+122..122 NEWLINE
+131..131 INDENT
+131..132 punct -
+133..136 name Add
+136..137 punct (
+137..138 number 1
+138..139 punct ,
+140..141 number 2
+141..142 punct )
+143..145 punct ==
+146..147 number 3
+147..147 NEWLINE
+156..157 punct -
+158..161 name Sum
+161..162 punct (
+162..163 punct [
+176..177 number 1
+177..178 punct ,
+189..190 number 2
+190..191 punct ]
+191..192 punct )
+193..195 punct ==
+196..197 number 3
+197..197 NEWLINE
+198..198 DEDENT
+198..198 DEDENT

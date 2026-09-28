@@ -1,0 +1,19 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/text_escapes.velme
+---
+0..4 keyword goal
+5..10 name Quote
+10..11 punct (
+11..12 punct )
+13..15 punct ->
+16..20 name Text
+20..21 punct :
+21..21 NEWLINE
+26..26 INDENT
+26..30 keyword plan
+30..31 punct :
+32..114 text "Say \"hi\", a backslash \\, a newline \n, a tab \t and 😀 # not a comment"
+114..114 NEWLINE
+115..115 DEDENT

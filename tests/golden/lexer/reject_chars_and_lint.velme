@@ -1,0 +1,4 @@
+goal A() -> Number:
+    plan: "hidden ‮ text"
+    check:
+        - result == 1 @ 2 and café == 1_ and 1__0 == \u{110000}

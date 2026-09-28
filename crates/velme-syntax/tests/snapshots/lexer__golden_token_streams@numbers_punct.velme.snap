@@ -1,0 +1,88 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/numbers_punct.velme
+---
+0..4 keyword goal
+5..12 name Numbers
+12..13 punct (
+13..14 punct )
+15..17 punct ->
+18..24 name Number
+24..25 punct :
+25..25 NEWLINE
+30..30 INDENT
+30..36 keyword budget
+37..45 name max_fuel
+45..46 punct =
+46..55 number 1_000_000
+56..63 name timeout
+63..64 punct =
+64..67 number 250
+67..69 name ms
+70..76 name memory
+76..77 punct =
+77..79 number 16
+79..81 name mb
+81..81 NEWLINE
+86..91 keyword check
+91..92 punct :
+92..92 NEWLINE
+101..101 INDENT
+101..102 punct -
+103..109 keyword result
+110..112 punct >=
+113..117 number 3.14
+118..121 keyword and
+122..128 keyword result
+129..131 punct !=
+132..133 punct -
+133..136 number 0.5
+137..139 keyword or
+140..146 keyword result
+147..149 punct <=
+150..152 number 10
+153..154 punct /
+155..156 number 2
+157..158 punct *
+159..160 number 1
+161..162 punct +
+163..164 number 2
+164..164 NEWLINE
+173..174 punct -
+175..179 keyword some
+180..181 name x
+182..184 keyword in
+185..186 punct [
+186..187 number 1
+187..188 punct ,
+189..190 number 2
+190..191 punct ]
+192..195 keyword has
+196..197 name x
+198..199 punct <
+200..201 number 3
+202..205 keyword and
+206..207 name x
+208..209 punct >
+210..211 number 0
+211..211 NEWLINE
+220..221 punct -
+222..227 name Point
+227..228 punct (
+228..229 name x
+229..230 punct :
+231..232 number 1
+232..233 punct )
+233..234 punct .
+234..235 name x
+236..238 punct ==
+239..240 number 1
+241..244 keyword and
+245..252 keyword nothing
+252..253 punct ?
+254..256 punct ==
+257..264 keyword nothing
+264..264 NEWLINE
+265..265 DEDENT
+265..265 DEDENT

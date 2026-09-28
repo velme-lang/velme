@@ -1,0 +1,2 @@
+goal Quote() -> Text:
+    plan: "Say \"hi\", a backslash \\, a newline \n, a tab \t and \u{1F600} # not a comment"

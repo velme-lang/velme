@@ -1,0 +1,32 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_unclosed_bracket.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 name x
+8..9 punct :
+10..16 name Number
+17..19 punct ->
+20..26 name Number
+26..27 punct :
+32..36 keyword plan
+36..37 punct :
+38..56 text "unclosed bracket"
+57..57 NEWLINE
+57..61 keyword goal
+62..63 name B
+63..64 punct (
+64..65 punct )
+66..68 punct ->
+69..75 name Number
+75..76 punct :
+76..76 NEWLINE
+81..81 INDENT
+81..85 keyword plan
+85..86 punct :
+87..100 text "still lexed"
+100..100 NEWLINE
+101..101 DEDENT

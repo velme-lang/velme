@@ -1,0 +1,30 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_tab_indent.velme
+---
+0..4 keyword goal
+5..8 name Tab
+8..9 punct (
+9..10 punct )
+11..13 punct ->
+14..20 name Number
+20..21 punct :
+21..21 NEWLINE
+23..23 INDENT
+23..27 keyword plan
+27..28 punct :
+29..34 text "tab"
+34..34 NEWLINE
+39..44 keyword check
+44..45 punct :
+45..45 NEWLINE
+54..54 INDENT
+54..55 punct -
+56..62 keyword result
+63..65 punct ==
+66..67 number 1
+67..67 NEWLINE
+68..68 DEDENT
+68..68 DEDENT
+error[VL0103] 22..23: Please indent with spaces, not tabs.

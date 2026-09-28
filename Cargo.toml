@@ -11,8 +11,13 @@ repository = "https://github.com/velme-lang/velme"
 authors = ["The Velme contributors"]
 
 [workspace.dependencies]
+# Workspace crates; edges must follow INV-9 (`xtask layering`).
+velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0" }
+
 anyhow = "1"
-insta = "1"
+chumsky = { version = "0.12", default-features = false, features = ["std"] }
+insta = { version = "1", features = ["glob", "json"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # CC-ERR-01, CC-STY-03. `unsafe_code` is forbidden per crate (`#![forbid(unsafe_code)]`), not here, because

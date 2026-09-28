@@ -1,0 +1,4 @@
+goal A(x: Number -> Number:
+    plan: "unclosed bracket"
+goal B() -> Number:
+    plan: "still lexed"

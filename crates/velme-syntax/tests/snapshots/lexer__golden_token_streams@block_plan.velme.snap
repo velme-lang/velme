@@ -1,0 +1,34 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/block_plan.velme
+---
+0..4 keyword goal
+5..9 name Tell
+9..10 punct (
+10..14 name name
+14..15 punct :
+16..20 name Text
+20..21 punct )
+22..24 punct ->
+25..29 name Text
+29..30 punct :
+30..30 NEWLINE
+35..35 INDENT
+35..39 keyword plan
+39..40 punct :
+41..42 punct |
+70..70 NEWLINE
+79..226 block_text "Say hello to the player.\n\n# This hash is text, not a comment.\n  Indented two more.\nTab\tafter the content column is text."
+233..238 keyword check
+238..239 punct :
+239..239 NEWLINE
+248..248 INDENT
+248..249 punct -
+250..256 keyword result
+257..259 keyword is
+260..263 keyword not
+264..269 keyword empty
+269..269 NEWLINE
+270..270 DEDENT
+270..270 DEDENT

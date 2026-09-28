@@ -1,0 +1,31 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_text_errors.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 punct )
+9..11 punct ->
+12..16 name Text
+16..17 punct :
+17..17 NEWLINE
+22..22 INDENT
+22..26 keyword plan
+26..27 punct :
+28..32 text "abc"
+32..32 NEWLINE
+37..42 keyword check
+42..43 punct :
+43..43 NEWLINE
+52..52 INDENT
+52..53 punct -
+54..60 keyword result
+61..63 punct ==
+64..68 text ""
+68..68 NEWLINE
+69..69 DEDENT
+69..69 DEDENT
+error[VL0105] 28..32: This text starts with `"` but never ends.
+error[VL0101] 65..67: `\q` isn't an escape Velme knows.

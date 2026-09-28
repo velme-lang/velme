@@ -1,0 +1,30 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_bad_dedent.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 punct )
+9..11 punct ->
+12..18 name Number
+18..19 punct :
+19..19 NEWLINE
+28..28 INDENT
+28..32 keyword plan
+32..33 punct :
+34..37 text "x"
+37..37 NEWLINE
+42..42 DEDENT
+42..47 keyword check
+47..48 punct :
+48..48 NEWLINE
+57..57 INDENT
+57..58 punct -
+59..65 keyword result
+66..68 punct ==
+69..70 number 1
+70..70 NEWLINE
+71..71 DEDENT
+error[VL0102] 38..42: This line's indentation doesn't line up with the lines above it.

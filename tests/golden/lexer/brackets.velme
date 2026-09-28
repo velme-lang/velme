@@ -1,0 +1,9 @@
+goal Add(
+    a: Number,   # newlines and indentation inside ( ) are ignored
+        b: Number,
+) -> Number:
+    examples:
+        - Add(1, 2) == 3
+        - Sum([
+            1,
+          2]) == 3
