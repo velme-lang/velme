@@ -3,6 +3,8 @@
 
 use serde::{Serialize, Serializer};
 
+pub mod render;
+
 macro_rules! codes {
     ($($name:ident = $code:literal, $severity:ident;)+) => {
         /// A stable diagnostic code (`reference/90` §2, INV-10). The variant name is the code's name there.

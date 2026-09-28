@@ -1,0 +1,43 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/goal_body_order.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/goal_body_order.velme",
+      "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
+      "labels": [],
+      "message": "`plan:` has to come before `check:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 161,
+        "line": 6,
+        "start": 157
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/goal_body_order.velme",
+      "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
+      "labels": [],
+      "message": "This goal already has a `plan:` part.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 219,
+        "line": 10,
+        "start": 215
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

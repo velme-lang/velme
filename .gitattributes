@@ -1,0 +1,6 @@
+# Goldens and snapshots hold byte offsets, so every platform checks text out with LF (R-CLI-19).
+* text=auto eol=lf
+
+# These deliberately hold a lone carriage return (R-SYN-02); keep their bytes as committed.
+tests/golden/lexer/reject_lone_cr.velme -text
+fuzz/corpus/** -text

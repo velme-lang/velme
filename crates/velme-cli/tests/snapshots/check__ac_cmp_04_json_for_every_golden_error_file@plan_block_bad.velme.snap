@@ -1,0 +1,41 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/plan_block_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/plan_block_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `Find` here — I was looking for `|`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 107,
+        "line": 4,
+        "start": 103
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/plan_block_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `more` here — I was looking for the end of the line.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 13,
+        "end": 155,
+        "line": 7,
+        "start": 151
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

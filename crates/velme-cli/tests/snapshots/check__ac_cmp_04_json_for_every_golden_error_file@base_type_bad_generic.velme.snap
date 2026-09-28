@@ -1,0 +1,42 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/base_type_bad_generic.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/base_type_bad_generic.velme",
+      "help": "write `List<…>` for a list, or drop the `< >`",
+      "labels": [],
+      "message": "`Text` doesn't take a type in `< >` — only `List` does.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 114,
+        "line": 4,
+        "start": 102
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/base_type_bad_generic.velme",
+      "labels": [],
+      "message": "I didn't expect `empty` here — I was looking for a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 124,
+        "line": 5,
+        "start": 119
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

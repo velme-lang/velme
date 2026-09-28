@@ -13,8 +13,10 @@ authors = ["The Velme contributors"]
 [workspace.dependencies]
 # Workspace crates; edges must follow INV-9 (`xtask layering`).
 velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0" }
+velme-syntax = { path = "crates/velme-syntax", version = "0.1.0" }
 
 anyhow = "1"
+ariadne = { version = "0.6", default-features = false }
 chumsky = { version = "0.12", default-features = false, features = ["std"] }
 insta = { version = "1", features = ["glob", "json"] }
 proptest = { version = "1", default-features = false, features = ["std"] }

@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/type_decl_no_fields.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/type_decl_no_fields.velme",
+      "labels": [],
+      "message": "I didn't expect `type` here — I was looking for an indented line.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 65,
+        "line": 3,
+        "start": 65
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

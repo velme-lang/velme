@@ -1,0 +1,42 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/unexpected_indent.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0102",
+      "file": "tests/golden/parser/reject/unexpected_indent.velme",
+      "help": "line it up with the line above, or end the line above with `:` to start a block",
+      "labels": [],
+      "message": "This line is indented more than I expected.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 97,
+        "line": 4,
+        "start": 97
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/unexpected_indent.velme",
+      "labels": [],
+      "message": "I didn't expect `goal` here — I was looking for a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 116,
+        "line": 6,
+        "start": 112
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

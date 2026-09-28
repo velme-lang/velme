@@ -1,0 +1,41 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/param_missing_type.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/param_missing_type.velme",
+      "labels": [],
+      "message": "I didn't expect `)` here — I was looking for `:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 100,
+        "line": 3,
+        "start": 99
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/param_missing_type.velme",
+      "labels": [],
+      "message": "I didn't expect `result` here — I was looking for `)` or a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 8,
+        "end": 140,
+        "line": 6,
+        "start": 134
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

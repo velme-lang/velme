@@ -1,0 +1,42 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/tab_then_errors.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0103",
+      "file": "tests/golden/parser/reject/tab_then_errors.velme",
+      "help": "replace the tab with spaces",
+      "labels": [],
+      "message": "Please indent with spaces, not tabs.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 60,
+        "line": 3,
+        "start": 59
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/tab_then_errors.velme",
+      "labels": [],
+      "message": "I didn't expect `Number` here — I was looking for `:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 7,
+        "end": 91,
+        "line": 6,
+        "start": 85
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

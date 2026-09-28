@@ -1,0 +1,41 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/examples_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/examples_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `=` here — I was looking for `==`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 16,
+        "end": 187,
+        "line": 6,
+        "start": 186
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/examples_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `+` here — I was looking for `)` or `,`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 205,
+        "line": 7,
+        "start": 204
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

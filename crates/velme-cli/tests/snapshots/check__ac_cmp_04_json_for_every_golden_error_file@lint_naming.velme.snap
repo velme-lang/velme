@@ -1,0 +1,88 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/lint_naming.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0107",
+      "file": "tests/golden/parser/reject/lint_naming.velme",
+      "help": "Type names use PascalCase",
+      "labels": [],
+      "message": "`player_stats` works, but Velme style writes it `PlayerStats`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 6,
+        "end": 83,
+        "line": 2,
+        "start": 71
+      }
+    },
+    {
+      "code": "VL0107",
+      "file": "tests/golden/parser/reject/lint_naming.velme",
+      "help": "Field names use snake_case",
+      "labels": [],
+      "message": "`jumpHeight` works, but Velme style writes it `jump_height`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 5,
+        "end": 99,
+        "line": 3,
+        "start": 89
+      }
+    },
+    {
+      "code": "VL0107",
+      "file": "tests/golden/parser/reject/lint_naming.velme",
+      "help": "Goal names use PascalCase",
+      "labels": [],
+      "message": "`find_badge` works, but Velme style writes it `FindBadge`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 6,
+        "end": 124,
+        "line": 5,
+        "start": 114
+      }
+    },
+    {
+      "code": "VL0107",
+      "file": "tests/golden/parser/reject/lint_naming.velme",
+      "help": "Parameter names use snake_case",
+      "labels": [],
+      "message": "`PlayerName` works, but Velme style writes it `player_name`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 17,
+        "end": 135,
+        "line": 5,
+        "start": 125
+      }
+    },
+    {
+      "code": "VL0107",
+      "file": "tests/golden/parser/reject/lint_naming.velme",
+      "help": "Binding names use snake_case",
+      "labels": [],
+      "message": "`BestScore` works, but Velme style writes it `best_score`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 9,
+        "end": 179,
+        "line": 7,
+        "start": 170
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "ok"
+}

@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/header_missing_colon.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/header_missing_colon.velme",
+      "labels": [],
+      "message": "I didn't expect `velme` here — I was looking for `:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 10,
+        "end": 61,
+        "line": 3,
+        "start": 56
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

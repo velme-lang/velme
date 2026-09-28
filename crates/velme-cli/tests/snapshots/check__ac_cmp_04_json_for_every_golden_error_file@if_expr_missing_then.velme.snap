@@ -1,0 +1,42 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/if_expr_missing_then.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/if_expr_missing_then.velme",
+      "labels": [],
+      "message": "I didn't expect `b` here — I was looking for `(`, `.`, `and`, `is`, `or` or `then`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 16,
+        "end": 161,
+        "line": 5,
+        "start": 160
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/if_expr_missing_then.velme",
+      "help": "put it in parentheses, like `a and (if b then c)`",
+      "labels": [],
+      "message": "I didn't expect `if` here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 180,
+        "line": 6,
+        "start": 178
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

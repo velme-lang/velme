@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/goal_body_unknown_block.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/goal_body_unknown_block.velme",
+      "help": "did you mean `check`?",
+      "labels": [],
+      "message": "I didn't expect `chek` here — I was looking for `budget`, `call`, `check`, `examples` or `plan`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 149,
+        "line": 5,
+        "start": 145
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

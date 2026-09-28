@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/type_expr_double_optional.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/type_expr_double_optional.velme",
+      "help": "write a single `?`",
+      "labels": [],
+      "message": "A type can be marked optional with `?` only once.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 21,
+        "end": 83,
+        "line": 4,
+        "start": 82
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

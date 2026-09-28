@@ -25,6 +25,18 @@ impl SourceFile {
         }
     }
 
+    /// `VL0901` for a file that couldn't be opened or read (R-SYN-01); the OS reason goes in a note.
+    pub fn unreadable(path: &str, err: &std::io::Error) -> Diagnostic {
+        let diag = match err.kind() {
+            std::io::ErrorKind::NotFound => {
+                Diagnostic::new(Code::FileError, Span::default(), format!("I couldn't find `{path}`."))
+                    .with_help("check the file name, and that you're in the folder that holds it")
+            }
+            _ => Diagnostic::new(Code::FileError, Span::default(), format!("I couldn't read `{path}`.")),
+        };
+        diag.with_note(err.to_string())
+    }
+
     /// Decodes raw file bytes; bytes that aren't UTF-8 are `VL0901` (R-SYN-01, AC-SYN-14).
     pub fn from_bytes(path: impl Into<String>, bytes: Vec<u8>) -> Result<Self, Diagnostic> {
         let path = path.into();
