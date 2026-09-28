@@ -1,0 +1,403 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/call_block.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Wired",
+        "span": [
+          167,
+          172
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "player",
+            "span": [
+              173,
+              179
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                181,
+                187
+              ]
+            },
+            "optional": false,
+            "span": [
+              181,
+              187
+            ]
+          },
+          "span": [
+            173,
+            187
+          ]
+        },
+        {
+          "name": {
+            "name": "n",
+            "span": [
+              189,
+              190
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                192,
+                198
+              ]
+            },
+            "optional": false,
+            "span": [
+              192,
+              198
+            ]
+          },
+          "span": [
+            189,
+            198
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            203,
+            207
+          ]
+        },
+        "optional": false,
+        "span": [
+          203,
+          207
+        ]
+      },
+      "budget": null,
+      "call": {
+        "bindings": [
+          {
+            "name": {
+              "name": "score",
+              "span": [
+                227,
+                232
+              ]
+            },
+            "callee": {
+              "name": "Score",
+              "span": [
+                235,
+                240
+              ]
+            },
+            "args": [
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "player",
+                    "span": [
+                      241,
+                      247
+                    ]
+                  }
+                ],
+                "span": [
+                  241,
+                  247
+                ]
+              }
+            ],
+            "span": [
+              227,
+              248
+            ]
+          },
+          {
+            "name": {
+              "name": "label",
+              "span": [
+                257,
+                262
+              ]
+            },
+            "callee": {
+              "name": "Label",
+              "span": [
+                265,
+                270
+              ]
+            },
+            "args": [
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "player",
+                    "span": [
+                      271,
+                      277
+                    ]
+                  },
+                  {
+                    "name": "stats",
+                    "span": [
+                      278,
+                      283
+                    ]
+                  },
+                  {
+                    "name": "score",
+                    "span": [
+                      284,
+                      289
+                    ]
+                  }
+                ],
+                "span": [
+                  271,
+                  289
+                ]
+              },
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "n",
+                    "span": [
+                      291,
+                      292
+                    ]
+                  }
+                ],
+                "span": [
+                  291,
+                  292
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "text",
+                "value": "x",
+                "span": [
+                  294,
+                  297
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "number",
+                "text": "-2.5",
+                "span": [
+                  299,
+                  303
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "bool",
+                "value": true,
+                "span": [
+                  305,
+                  309
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "bool",
+                "value": false,
+                "span": [
+                  311,
+                  316
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "nothing",
+                "span": [
+                  318,
+                  325
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "list",
+                "items": [
+                  {
+                    "kind": "number",
+                    "text": "1",
+                    "span": [
+                      328,
+                      329
+                    ]
+                  },
+                  {
+                    "kind": "number",
+                    "text": "2",
+                    "span": [
+                      331,
+                      332
+                    ]
+                  }
+                ],
+                "span": [
+                  327,
+                  334
+                ]
+              },
+              {
+                "arg": "literal",
+                "kind": "record",
+                "name": {
+                  "name": "Point",
+                  "span": [
+                    336,
+                    341
+                  ]
+                },
+                "fields": [
+                  {
+                    "name": {
+                      "name": "x",
+                      "span": [
+                        342,
+                        343
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "1",
+                      "span": [
+                        345,
+                        346
+                      ]
+                    },
+                    "span": [
+                      342,
+                      346
+                    ]
+                  },
+                  {
+                    "name": {
+                      "name": "y",
+                      "span": [
+                        348,
+                        349
+                      ]
+                    },
+                    "value": {
+                      "kind": "number",
+                      "text": "2",
+                      "span": [
+                        351,
+                        352
+                      ]
+                    },
+                    "span": [
+                      348,
+                      352
+                    ]
+                  }
+                ],
+                "span": [
+                  336,
+                  353
+                ]
+              }
+            ],
+            "span": [
+              257,
+              355
+            ]
+          },
+          {
+            "name": {
+              "name": "result",
+              "span": [
+                364,
+                370
+              ]
+            },
+            "callee": {
+              "name": "Pick",
+              "span": [
+                373,
+                377
+              ]
+            },
+            "args": [
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "label",
+                    "span": [
+                      378,
+                      383
+                    ]
+                  }
+                ],
+                "span": [
+                  378,
+                  383
+                ]
+              },
+              {
+                "arg": "path",
+                "segments": [
+                  {
+                    "name": "score",
+                    "span": [
+                      385,
+                      390
+                    ]
+                  }
+                ],
+                "span": [
+                  385,
+                  390
+                ]
+              }
+            ],
+            "span": [
+              364,
+              391
+            ]
+          }
+        ],
+        "span": [
+          213,
+          391
+        ]
+      },
+      "plan": null,
+      "check": null,
+      "examples": null,
+      "span": [
+        162,
+        391
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    392
+  ]
+}

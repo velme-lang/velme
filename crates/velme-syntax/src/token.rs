@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use serde::Serialize;
 use velme_diagnostics::Span;
 
 use crate::Keyword;
@@ -114,6 +115,38 @@ impl Punct {
     }
 }
 
+/// A budget `UNIT` (`language/10` §2.1), written directly after a `NUMBER`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Unit {
+    /// `ms`
+    Ms,
+    /// `s`
+    S,
+    /// `kb`
+    Kb,
+    /// `mb`
+    Mb,
+}
+
+impl Unit {
+    /// The unit as written.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Unit::Ms => "ms",
+            Unit::S => "s",
+            Unit::Kb => "kb",
+            Unit::Mb => "mb",
+        }
+    }
+
+    pub(crate) fn from_word(word: &str) -> Option<Unit> {
+        [Unit::Ms, Unit::S, Unit::Kb, Unit::Mb]
+            .into_iter()
+            .find(|u| u.as_str() == word)
+    }
+}
+
 /// What a token is (`language/10` §2.1).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenKind {
@@ -123,6 +156,8 @@ pub enum TokenKind {
     Keyword(Keyword),
     /// `NUMBER`, as written (underscores kept); the parser checks and normalizes it (R-SYN-03).
     Number(String),
+    /// `UNIT`: a unit written with no space after a `NUMBER`.
+    Unit(Unit),
     /// `TEXT`, with escapes decoded.
     Text(String),
     /// `BLOCK_TEXT`: a `plan: |` block, normalized per D-21 and D-67.
@@ -144,6 +179,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Name(name) => write!(f, "`{name}`"),
             TokenKind::Keyword(kw) => write!(f, "`{kw}`"),
             TokenKind::Number(text) => write!(f, "`{text}`"),
+            TokenKind::Unit(unit) => write!(f, "`{}`", unit.as_str()),
             TokenKind::Text(_) => f.write_str("some text"),
             TokenKind::BlockText(_) => f.write_str("a plan"),
             TokenKind::Punct(p) => write!(f, "`{}`", p.as_str()),

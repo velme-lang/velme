@@ -1,0 +1,7 @@
+# covers: or_expr, and_expr, not_expr
+# `or`, `and` and `not` with nothing after them.
+goal G(a: Boolean) -> Boolean:
+    check:
+        - a or
+        - a and
+        - not

@@ -1,0 +1,78 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/header.velme
+---
+{
+  "header": {
+    "language": {
+      "name": "velme",
+      "span": [
+        88,
+        93
+      ]
+    },
+    "version": {
+      "text": "0.1",
+      "span": [
+        94,
+        97
+      ]
+    },
+    "span": [
+      78,
+      97
+    ]
+  },
+  "decls": [
+    {
+      "kind": "type",
+      "name": {
+        "name": "Point",
+        "span": [
+          104,
+          109
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "x",
+            "span": [
+              115,
+              116
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                118,
+                124
+              ]
+            },
+            "optional": false,
+            "span": [
+              118,
+              124
+            ]
+          },
+          "span": [
+            115,
+            124
+          ]
+        }
+      ],
+      "span": [
+        99,
+        124
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    125
+  ]
+}

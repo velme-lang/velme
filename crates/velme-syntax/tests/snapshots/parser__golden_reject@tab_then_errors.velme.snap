@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/tab_then_errors.velme
+---
+[
+  {
+    "code": "VL0103",
+    "help": "replace the tab with spaces",
+    "message": "Please indent with spaces, not tabs.",
+    "severity": "error",
+    "span": [
+      59,
+      60
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `Number` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      85,
+      91
+    ]
+  }
+]

@@ -1,0 +1,20 @@
+# covers: check_block, check_item, expr, if_expr, quant_expr, or_expr, and_expr, not_expr, cmp_expr, cmp_op, add_expr, mul_expr, unary, postfix, primary, arg
+# Every expression form and precedence level (§4.1).
+goal Exprs(a: Boolean, b: Boolean, xs: List<Number>, p: Player) -> Number:
+    plan: "Compute."
+    check:
+        - if a then result > 0
+        - every x in xs has x > 0 and x < 9
+        - some x in p.scores has x == 3
+        - a or b and not a
+        - not not a
+        - result == 1 and result != 2 and result < 3 and result <= 4 and result > 5 and result >= 6
+        - xs is empty or xs is not empty
+        - result == 1 + 2 * 3 - 4 / 5
+        - result == -1 + - -2
+        - p.stats.score == result.value
+        - result == 2.5 or "text" == "text" or true or false or result == nothing
+        - result == len(xs) and result == sum(1, 2,)
+        - p == Player(name: "A", score: 3)
+        - [1, 2, 3] == [result, (1 + 2) * 3]
+        - (if a then b) and (every x in xs has x > 0)

@@ -1,0 +1,3 @@
+# covers: header
+# A header naming another language (R-SYN-15).
+language: python/0.1

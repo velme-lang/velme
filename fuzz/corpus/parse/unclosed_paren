@@ -1,0 +1,4 @@
+goal G(a: Number -> Number:
+    plan: "p"
+type B:
+    x: Number

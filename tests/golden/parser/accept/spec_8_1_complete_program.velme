@@ -1,0 +1,38 @@
+# covers: program, declaration, type_decl, field_decl, goal_decl, param, goal_body, call_block, binding, call_arg, path, plan_block, check_block, check_item, examples_block, example_item, literal
+# The complete program in language/12 §8.1 (AC-SYN-01).
+type Player:
+    name: Text
+    jump_height: Number
+    score: Number
+
+type PlayerSummary:
+    name: Text
+    score: Number
+    badge: Text
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score."
+    check:
+        - result == player.score
+
+goal FindBadge(player: Player) -> Text:
+    plan: |
+        Give the player Gold for a score of at least 1000,
+        Silver for a score of at least 500, Bronze otherwise.
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+    examples:
+        - FindBadge(Player(name: "Lina", jump_height: 3, score: 820)) == "Silver"
+        - FindBadge(Player(name: "Tom", jump_height: 5, score: 1000)) == "Gold"
+
+goal BuildPlayerSummary(player: Player) -> PlayerSummary:
+    call:
+        score = CalculateScore(player)
+        badge = FindBadge(player)
+    plan: |
+        Build a player summary using the player's name,
+        calculated score, and badge.
+    check:
+        - result.name == player.name
+        - result.score == score
+        - result.badge == badge

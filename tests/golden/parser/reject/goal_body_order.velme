@@ -1,0 +1,10 @@
+# covers: goal_body
+# `check:` before `plan:` (AC-SYN-12), and a repeated block (R-SYN-14).
+goal G(n: Number) -> Number:
+    check:
+        - result > 0
+    plan: "p"
+
+goal H(n: Number) -> Number:
+    plan: "p"
+    plan: "q"

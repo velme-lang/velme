@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/goal_body_unknown_block.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "did you mean `check`?",
+    "message": "I didn't expect `chek` here — I was looking for `budget`, `call`, `check`, `examples` or `plan`.",
+    "severity": "error",
+    "span": [
+      145,
+      149
+    ]
+  }
+]

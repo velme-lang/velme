@@ -3,7 +3,7 @@
 
 use velme_diagnostics::{Code, Diagnostic, Span};
 
-use crate::token::{Punct, Token, TokenKind};
+use crate::token::{Punct, Token, TokenKind, Unit};
 use crate::{Keyword, SourceFile};
 
 /// Indentation width a tab counts for while recovering from `VL0103`.
@@ -348,7 +348,8 @@ impl<'a> Lexer<'a> {
         pos
     }
 
-    /// `NUMBER` (§2.1): digits, optional `.digits`, `_` only between digits. Returns the end offset.
+    /// `NUMBER` (§2.1): digits, optional `.digits`, `_` only between digits, then a `UNIT` if one follows with no
+    /// space. Returns the end offset.
     fn number(&mut self, from: usize, end: usize) -> usize {
         let is_part = |c: char| c.is_ascii_digit() || c == '_';
         let mut pos = self.scan_while(from, end, is_part);
@@ -373,7 +374,14 @@ impl<'a> Lexer<'a> {
             );
         }
         self.push(TokenKind::Number(text), Span::new(from, pos));
-        pos
+        let word_end = self.scan_while(pos, end, is_name_char);
+        match self.text.get(pos..word_end).and_then(Unit::from_word) {
+            Some(unit) => {
+                self.push(TokenKind::Unit(unit), Span::new(pos, word_end));
+                word_end
+            }
+            None => pos,
+        }
     }
 
     /// `TEXT` (§2.3, R-SYN-07). `from` is the opening quote; returns the end offset.

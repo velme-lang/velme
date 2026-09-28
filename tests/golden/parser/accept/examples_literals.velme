@@ -1,0 +1,10 @@
+# covers: examples_block, example_item, literal
+# Literal forms in examples: numbers with `-`, `.` and `_`, text, booleans, nothing, lists and nested records.
+goal Lits(n: Number) -> Number:
+    plan: "Echo."
+    examples:
+        - Lits(-3) == -3
+        - Lits(1_000.25) == 1000.25
+        - Lits("x", true, false, nothing) == nothing
+        - Lits([1, [2, 3],], []) == [ ]
+        - Lits(Team(name: "A", captain: Player(name: "B", score: 1,),)) == Player(name: "C")

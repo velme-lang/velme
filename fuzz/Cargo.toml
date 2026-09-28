@@ -1,0 +1,23 @@
+[package]
+name = "velme-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+description = "Fuzz targets for the Velme parser (R-SYN-19, delivery/51)"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+velme-syntax = { path = "../crates/velme-syntax" }
+
+# Not a member of the main workspace: cargo-fuzz needs nightly and its own build.
+[workspace]
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false

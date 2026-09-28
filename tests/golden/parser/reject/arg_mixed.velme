@@ -1,0 +1,6 @@
+# covers: arg
+# Named and unnamed arguments mixed (R-SYN-16, AC-SYN-18).
+goal G() -> Boolean:
+    check:
+        - result == Player(name: "A", 3)
+        - result == max(1, other: 2)

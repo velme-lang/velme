@@ -1,0 +1,6 @@
+# covers: if_expr
+# `if` without `then`, and an unparenthesized `if` inside `and` (§4.1).
+goal G(a: Boolean, b: Boolean) -> Boolean:
+    check:
+        - if a b
+        - a and if a then b

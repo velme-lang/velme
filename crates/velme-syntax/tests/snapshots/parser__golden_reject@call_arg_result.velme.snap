@@ -1,0 +1,37 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/call_arg_result.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "`result` doesn't exist yet while the calls run — pass a parameter or an earlier binding",
+    "message": "`result` can only name the last binding.",
+    "severity": "error",
+    "span": [
+      181,
+      187
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `+` here — I was looking for `)`, `,` or `.`.",
+    "severity": "error",
+    "span": [
+      215,
+      216
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `)` here — I was looking for a name.",
+    "severity": "error",
+    "span": [
+      240,
+      241
+    ]
+  }
+]

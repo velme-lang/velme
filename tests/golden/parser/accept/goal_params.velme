@@ -1,0 +1,14 @@
+# covers: goal_decl, param, type_expr
+# No parameters, a trailing comma, and a parameter list split across lines (AC-SYN-11).
+goal Zero() -> Number:
+    plan: "Return zero."
+
+goal Pair(a: Number, b: Text,) -> List<Number>?:
+    plan: "Return a pair."
+
+goal Split(
+    first: Number,
+        second: List<Text>,
+    third: Boolean?
+) -> Boolean:
+    plan: "Decide."

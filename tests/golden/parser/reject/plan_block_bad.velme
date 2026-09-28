@@ -1,0 +1,8 @@
+# covers: plan_block
+# A plan that isn't text, and `|` with more after it.
+goal A() -> Text:
+    plan: Find the answer.
+
+goal B() -> Text:
+    plan: | more
+        text

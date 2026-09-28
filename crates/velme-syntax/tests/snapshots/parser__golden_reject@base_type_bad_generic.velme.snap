@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/base_type_bad_generic.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "write `List<…>` for a list, or drop the `< >`",
+    "message": "`Text` doesn't take a type in `< >` — only `List` does.",
+    "severity": "error",
+    "span": [
+      102,
+      114
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `empty` here — I was looking for a name.",
+    "severity": "error",
+    "span": [
+      119,
+      124
+    ]
+  }
+]

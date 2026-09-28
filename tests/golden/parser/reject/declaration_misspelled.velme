@@ -1,0 +1,7 @@
+# covers: program, declaration
+# A misspelled `type` gets a did-you-mean hint (R-SYN-18); the next declaration still parses.
+tpye Player:
+    name: Text
+
+goal G() -> Number:
+    plan: "p"

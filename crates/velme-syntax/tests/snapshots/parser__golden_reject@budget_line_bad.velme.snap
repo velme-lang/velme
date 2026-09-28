@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/budget_line_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `5` here — I was looking for `=`.",
+    "severity": "error",
+    "span": [
+      130,
+      131
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect the end of the line here — I was looking for a name.",
+    "severity": "error",
+    "span": [
+      178,
+      178
+    ]
+  }
+]

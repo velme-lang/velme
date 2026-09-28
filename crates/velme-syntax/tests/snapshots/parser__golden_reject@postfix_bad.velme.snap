@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/postfix_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `==` here — I was looking for a name.",
+    "severity": "error",
+    "span": [
+      114,
+      116
+    ]
+  }
+]

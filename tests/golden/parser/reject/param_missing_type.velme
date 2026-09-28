@@ -1,0 +1,7 @@
+# covers: param
+# A parameter without a type, and `result` as a parameter name (R-SYN-05).
+goal A(x) -> Number:
+    plan: "p"
+
+goal B(result: Number) -> Number:
+    plan: "p"

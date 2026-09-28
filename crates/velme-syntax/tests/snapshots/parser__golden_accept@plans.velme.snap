@@ -1,0 +1,129 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/plans.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Inline",
+        "span": [
+          126,
+          132
+        ]
+      },
+      "params": [],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            138,
+            142
+          ]
+        },
+        "optional": false,
+        "span": [
+          138,
+          142
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Say # hello \"there\".",
+        "form": "inline",
+        "span": [
+          154,
+          178
+        ]
+      },
+      "check": null,
+      "examples": null,
+      "span": [
+        121,
+        178
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Block",
+        "span": [
+          185,
+          190
+        ]
+      },
+      "params": [],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            196,
+            200
+          ]
+        },
+        "optional": false,
+        "span": [
+          196,
+          200
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "First # not a comment.\n\n  Indented more.\nLast.",
+        "form": "block",
+        "span": [
+          222,
+          284
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "not_eq",
+            "lhs": {
+              "kind": "result",
+              "span": [
+                306,
+                312
+              ]
+            },
+            "rhs": {
+              "kind": "text",
+              "value": "",
+              "span": [
+                316,
+                318
+              ]
+            },
+            "span": [
+              306,
+              318
+            ]
+          }
+        ],
+        "span": [
+          289,
+          318
+        ]
+      },
+      "examples": null,
+      "span": [
+        180,
+        318
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    319
+  ]
+}

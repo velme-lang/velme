@@ -1,0 +1,6 @@
+# covers: goal_body
+# A misspelled block gets a did-you-mean hint; the block under it is skipped.
+goal G(n: Number) -> Number:
+    plan: "p"
+    chek:
+        - result > 0

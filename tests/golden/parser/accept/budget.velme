@@ -1,0 +1,9 @@
+# covers: goal_body, budget_line, budget_item
+# A budget line with and without units, before the other blocks (R-SYN-14).
+goal Quick(n: Number) -> Number:
+    budget time = 500ms memory = 64mb calls = 3 wait = 2s size = 10kb
+    plan: "Double it."
+    check:
+        - result == n * 2
+    examples:
+        - Quick(2) == 4

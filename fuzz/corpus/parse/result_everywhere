@@ -1,0 +1,4 @@
+goal G() -> N:
+    call:
+        result = F(result)
+        result = F(x)

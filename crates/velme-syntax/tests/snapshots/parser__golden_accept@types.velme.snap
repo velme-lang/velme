@@ -1,0 +1,259 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/types.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "type",
+      "name": {
+        "name": "Team",
+        "span": [
+          106,
+          110
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "name",
+            "span": [
+              116,
+              120
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                122,
+                126
+              ]
+            },
+            "optional": false,
+            "span": [
+              122,
+              126
+            ]
+          },
+          "span": [
+            116,
+            126
+          ]
+        },
+        {
+          "name": {
+            "name": "captain",
+            "span": [
+              131,
+              138
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                140,
+                146
+              ]
+            },
+            "optional": true,
+            "span": [
+              140,
+              147
+            ]
+          },
+          "span": [
+            131,
+            147
+          ]
+        },
+        {
+          "name": {
+            "name": "members",
+            "span": [
+              152,
+              159
+            ]
+          },
+          "ty": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "name": {
+                "name": "Player",
+                "span": [
+                  166,
+                  172
+                ]
+              },
+              "optional": false,
+              "span": [
+                166,
+                172
+              ]
+            },
+            "optional": false,
+            "span": [
+              161,
+              173
+            ]
+          },
+          "span": [
+            152,
+            173
+          ]
+        },
+        {
+          "name": {
+            "name": "scores",
+            "span": [
+              178,
+              184
+            ]
+          },
+          "ty": {
+            "kind": "list",
+            "element": {
+              "kind": "list",
+              "element": {
+                "kind": "named",
+                "name": {
+                  "name": "Number",
+                  "span": [
+                    196,
+                    202
+                  ]
+                },
+                "optional": false,
+                "span": [
+                  196,
+                  202
+                ]
+              },
+              "optional": false,
+              "span": [
+                191,
+                203
+              ]
+            },
+            "optional": true,
+            "span": [
+              186,
+              205
+            ]
+          },
+          "span": [
+            178,
+            205
+          ]
+        },
+        {
+          "name": {
+            "name": "maybe_players",
+            "span": [
+              210,
+              223
+            ]
+          },
+          "ty": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "name": {
+                "name": "Player",
+                "span": [
+                  230,
+                  236
+                ]
+              },
+              "optional": true,
+              "span": [
+                230,
+                237
+              ]
+            },
+            "optional": false,
+            "span": [
+              225,
+              238
+            ]
+          },
+          "span": [
+            210,
+            238
+          ]
+        },
+        {
+          "name": {
+            "name": "anything",
+            "span": [
+              243,
+              251
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Nothing",
+              "span": [
+                253,
+                260
+              ]
+            },
+            "optional": false,
+            "span": [
+              253,
+              260
+            ]
+          },
+          "span": [
+            243,
+            260
+          ]
+        },
+        {
+          "name": {
+            "name": "flag",
+            "span": [
+              265,
+              269
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Boolean",
+              "span": [
+                271,
+                278
+              ]
+            },
+            "optional": false,
+            "span": [
+              271,
+              278
+            ]
+          },
+          "span": [
+            265,
+            278
+          ]
+        }
+      ],
+      "span": [
+        101,
+        278
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    279
+  ]
+}

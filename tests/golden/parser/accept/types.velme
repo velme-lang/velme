@@ -1,0 +1,10 @@
+# covers: type_decl, field_decl, type_expr, base_type
+# Named, optional, list and nested list types.
+type Team:
+    name: Text
+    captain: Player?
+    members: List<Player>
+    scores: List<List<Number>>?
+    maybe_players: List<Player?>
+    anything: Nothing
+    flag: Boolean

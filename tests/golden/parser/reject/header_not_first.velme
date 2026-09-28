@@ -1,0 +1,6 @@
+# covers: program, header
+# The header must be the first line.
+type A:
+    x: Number
+
+language: velme/0.1

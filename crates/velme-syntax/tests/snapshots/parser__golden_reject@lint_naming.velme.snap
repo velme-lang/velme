@@ -1,0 +1,57 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/lint_naming.velme
+---
+[
+  {
+    "code": "VL0107",
+    "help": "Type names use PascalCase",
+    "message": "`player_stats` works, but Velme style writes it `PlayerStats`.",
+    "severity": "warning",
+    "span": [
+      71,
+      83
+    ]
+  },
+  {
+    "code": "VL0107",
+    "help": "Field names use snake_case",
+    "message": "`jumpHeight` works, but Velme style writes it `jump_height`.",
+    "severity": "warning",
+    "span": [
+      89,
+      99
+    ]
+  },
+  {
+    "code": "VL0107",
+    "help": "Goal names use PascalCase",
+    "message": "`find_badge` works, but Velme style writes it `FindBadge`.",
+    "severity": "warning",
+    "span": [
+      114,
+      124
+    ]
+  },
+  {
+    "code": "VL0107",
+    "help": "Parameter names use snake_case",
+    "message": "`PlayerName` works, but Velme style writes it `player_name`.",
+    "severity": "warning",
+    "span": [
+      125,
+      135
+    ]
+  },
+  {
+    "code": "VL0107",
+    "help": "Binding names use snake_case",
+    "message": "`BestScore` works, but Velme style writes it `best_score`.",
+    "severity": "warning",
+    "span": [
+      170,
+      179
+    ]
+  }
+]

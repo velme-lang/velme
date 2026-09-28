@@ -1,0 +1,37 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/three_errors.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `Number` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      94,
+      100
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect the end of the line here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      165,
+      165
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect the end of the line here — I was looking for `:`, `<` or `?`.",
+    "severity": "error",
+    "span": [
+      185,
+      185
+    ]
+  }
+]

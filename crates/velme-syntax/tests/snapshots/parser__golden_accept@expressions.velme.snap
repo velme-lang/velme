@@ -1,0 +1,1349 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/expressions.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Exprs",
+        "span": [
+          217,
+          222
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "a",
+            "span": [
+              223,
+              224
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Boolean",
+              "span": [
+                226,
+                233
+              ]
+            },
+            "optional": false,
+            "span": [
+              226,
+              233
+            ]
+          },
+          "span": [
+            223,
+            233
+          ]
+        },
+        {
+          "name": {
+            "name": "b",
+            "span": [
+              235,
+              236
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Boolean",
+              "span": [
+                238,
+                245
+              ]
+            },
+            "optional": false,
+            "span": [
+              238,
+              245
+            ]
+          },
+          "span": [
+            235,
+            245
+          ]
+        },
+        {
+          "name": {
+            "name": "xs",
+            "span": [
+              247,
+              249
+            ]
+          },
+          "ty": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "name": {
+                "name": "Number",
+                "span": [
+                  256,
+                  262
+                ]
+              },
+              "optional": false,
+              "span": [
+                256,
+                262
+              ]
+            },
+            "optional": false,
+            "span": [
+              251,
+              263
+            ]
+          },
+          "span": [
+            247,
+            263
+          ]
+        },
+        {
+          "name": {
+            "name": "p",
+            "span": [
+              265,
+              266
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Player",
+              "span": [
+                268,
+                274
+              ]
+            },
+            "optional": false,
+            "span": [
+              268,
+              274
+            ]
+          },
+          "span": [
+            265,
+            274
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            279,
+            285
+          ]
+        },
+        "optional": false,
+        "span": [
+          279,
+          285
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Compute.",
+        "form": "inline",
+        "span": [
+          297,
+          307
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "if",
+            "condition": {
+              "kind": "name",
+              "name": "a",
+              "span": [
+                332,
+                333
+              ]
+            },
+            "then": {
+              "kind": "binary",
+              "op": "gt",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  339,
+                  345
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "0",
+                "span": [
+                  348,
+                  349
+                ]
+              },
+              "span": [
+                339,
+                349
+              ]
+            },
+            "span": [
+              329,
+              349
+            ]
+          },
+          {
+            "kind": "quantified",
+            "quantifier": "every",
+            "var": {
+              "name": "x",
+              "span": [
+                366,
+                367
+              ]
+            },
+            "collection": {
+              "kind": "name",
+              "name": "xs",
+              "span": [
+                371,
+                373
+              ]
+            },
+            "body": {
+              "kind": "binary",
+              "op": "and",
+              "lhs": {
+                "kind": "binary",
+                "op": "gt",
+                "lhs": {
+                  "kind": "name",
+                  "name": "x",
+                  "span": [
+                    378,
+                    379
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "0",
+                  "span": [
+                    382,
+                    383
+                  ]
+                },
+                "span": [
+                  378,
+                  383
+                ]
+              },
+              "rhs": {
+                "kind": "binary",
+                "op": "lt",
+                "lhs": {
+                  "kind": "name",
+                  "name": "x",
+                  "span": [
+                    388,
+                    389
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "9",
+                  "span": [
+                    392,
+                    393
+                  ]
+                },
+                "span": [
+                  388,
+                  393
+                ]
+              },
+              "span": [
+                378,
+                393
+              ]
+            },
+            "span": [
+              360,
+              393
+            ]
+          },
+          {
+            "kind": "quantified",
+            "quantifier": "some",
+            "var": {
+              "name": "x",
+              "span": [
+                409,
+                410
+              ]
+            },
+            "collection": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "p",
+                "span": [
+                  414,
+                  415
+                ]
+              },
+              "field": {
+                "name": "scores",
+                "span": [
+                  416,
+                  422
+                ]
+              },
+              "span": [
+                414,
+                422
+              ]
+            },
+            "body": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "name",
+                "name": "x",
+                "span": [
+                  427,
+                  428
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "3",
+                "span": [
+                  432,
+                  433
+                ]
+              },
+              "span": [
+                427,
+                433
+              ]
+            },
+            "span": [
+              404,
+              433
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "name",
+              "name": "a",
+              "span": [
+                444,
+                445
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "and",
+              "lhs": {
+                "kind": "name",
+                "name": "b",
+                "span": [
+                  449,
+                  450
+                ]
+              },
+              "rhs": {
+                "kind": "unary",
+                "op": "not",
+                "operand": {
+                  "kind": "name",
+                  "name": "a",
+                  "span": [
+                    459,
+                    460
+                  ]
+                },
+                "span": [
+                  455,
+                  460
+                ]
+              },
+              "span": [
+                449,
+                460
+              ]
+            },
+            "span": [
+              444,
+              460
+            ]
+          },
+          {
+            "kind": "unary",
+            "op": "not",
+            "operand": {
+              "kind": "unary",
+              "op": "not",
+              "operand": {
+                "kind": "name",
+                "name": "a",
+                "span": [
+                  479,
+                  480
+                ]
+              },
+              "span": [
+                475,
+                480
+              ]
+            },
+            "span": [
+              471,
+              480
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "binary",
+              "op": "and",
+              "lhs": {
+                "kind": "binary",
+                "op": "and",
+                "lhs": {
+                  "kind": "binary",
+                  "op": "and",
+                  "lhs": {
+                    "kind": "binary",
+                    "op": "and",
+                    "lhs": {
+                      "kind": "binary",
+                      "op": "eq",
+                      "lhs": {
+                        "kind": "result",
+                        "span": [
+                          491,
+                          497
+                        ]
+                      },
+                      "rhs": {
+                        "kind": "number",
+                        "text": "1",
+                        "span": [
+                          501,
+                          502
+                        ]
+                      },
+                      "span": [
+                        491,
+                        502
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "binary",
+                      "op": "not_eq",
+                      "lhs": {
+                        "kind": "result",
+                        "span": [
+                          507,
+                          513
+                        ]
+                      },
+                      "rhs": {
+                        "kind": "number",
+                        "text": "2",
+                        "span": [
+                          517,
+                          518
+                        ]
+                      },
+                      "span": [
+                        507,
+                        518
+                      ]
+                    },
+                    "span": [
+                      491,
+                      518
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "binary",
+                    "op": "lt",
+                    "lhs": {
+                      "kind": "result",
+                      "span": [
+                        523,
+                        529
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "number",
+                      "text": "3",
+                      "span": [
+                        532,
+                        533
+                      ]
+                    },
+                    "span": [
+                      523,
+                      533
+                    ]
+                  },
+                  "span": [
+                    491,
+                    533
+                  ]
+                },
+                "rhs": {
+                  "kind": "binary",
+                  "op": "lt_eq",
+                  "lhs": {
+                    "kind": "result",
+                    "span": [
+                      538,
+                      544
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "number",
+                    "text": "4",
+                    "span": [
+                      548,
+                      549
+                    ]
+                  },
+                  "span": [
+                    538,
+                    549
+                  ]
+                },
+                "span": [
+                  491,
+                  549
+                ]
+              },
+              "rhs": {
+                "kind": "binary",
+                "op": "gt",
+                "lhs": {
+                  "kind": "result",
+                  "span": [
+                    554,
+                    560
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "5",
+                  "span": [
+                    563,
+                    564
+                  ]
+                },
+                "span": [
+                  554,
+                  564
+                ]
+              },
+              "span": [
+                491,
+                564
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "gt_eq",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  569,
+                  575
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "6",
+                "span": [
+                  579,
+                  580
+                ]
+              },
+              "span": [
+                569,
+                580
+              ]
+            },
+            "span": [
+              491,
+              580
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "name",
+                "name": "xs",
+                "span": [
+                  591,
+                  593
+                ]
+              },
+              "negated": false,
+              "span": [
+                591,
+                602
+              ]
+            },
+            "rhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "name",
+                "name": "xs",
+                "span": [
+                  606,
+                  608
+                ]
+              },
+              "negated": true,
+              "span": [
+                606,
+                621
+              ]
+            },
+            "span": [
+              591,
+              621
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "span": [
+                632,
+                638
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "sub",
+              "lhs": {
+                "kind": "binary",
+                "op": "add",
+                "lhs": {
+                  "kind": "number",
+                  "text": "1",
+                  "span": [
+                    642,
+                    643
+                  ]
+                },
+                "rhs": {
+                  "kind": "binary",
+                  "op": "mul",
+                  "lhs": {
+                    "kind": "number",
+                    "text": "2",
+                    "span": [
+                      646,
+                      647
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "number",
+                    "text": "3",
+                    "span": [
+                      650,
+                      651
+                    ]
+                  },
+                  "span": [
+                    646,
+                    651
+                  ]
+                },
+                "span": [
+                  642,
+                  651
+                ]
+              },
+              "rhs": {
+                "kind": "binary",
+                "op": "div",
+                "lhs": {
+                  "kind": "number",
+                  "text": "4",
+                  "span": [
+                    654,
+                    655
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "5",
+                  "span": [
+                    658,
+                    659
+                  ]
+                },
+                "span": [
+                  654,
+                  659
+                ]
+              },
+              "span": [
+                642,
+                659
+              ]
+            },
+            "span": [
+              632,
+              659
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "span": [
+                670,
+                676
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "add",
+              "lhs": {
+                "kind": "unary",
+                "op": "neg",
+                "operand": {
+                  "kind": "number",
+                  "text": "1",
+                  "span": [
+                    681,
+                    682
+                  ]
+                },
+                "span": [
+                  680,
+                  682
+                ]
+              },
+              "rhs": {
+                "kind": "unary",
+                "op": "neg",
+                "operand": {
+                  "kind": "unary",
+                  "op": "neg",
+                  "operand": {
+                    "kind": "number",
+                    "text": "2",
+                    "span": [
+                      688,
+                      689
+                    ]
+                  },
+                  "span": [
+                    687,
+                    689
+                  ]
+                },
+                "span": [
+                  685,
+                  689
+                ]
+              },
+              "span": [
+                680,
+                689
+              ]
+            },
+            "span": [
+              670,
+              689
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "field",
+                "base": {
+                  "kind": "name",
+                  "name": "p",
+                  "span": [
+                    700,
+                    701
+                  ]
+                },
+                "field": {
+                  "name": "stats",
+                  "span": [
+                    702,
+                    707
+                  ]
+                },
+                "span": [
+                  700,
+                  707
+                ]
+              },
+              "field": {
+                "name": "score",
+                "span": [
+                  708,
+                  713
+                ]
+              },
+              "span": [
+                700,
+                713
+              ]
+            },
+            "rhs": {
+              "kind": "field",
+              "base": {
+                "kind": "result",
+                "span": [
+                  717,
+                  723
+                ]
+              },
+              "field": {
+                "name": "value",
+                "span": [
+                  724,
+                  729
+                ]
+              },
+              "span": [
+                717,
+                729
+              ]
+            },
+            "span": [
+              700,
+              729
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "binary",
+              "op": "or",
+              "lhs": {
+                "kind": "binary",
+                "op": "or",
+                "lhs": {
+                  "kind": "binary",
+                  "op": "or",
+                  "lhs": {
+                    "kind": "binary",
+                    "op": "eq",
+                    "lhs": {
+                      "kind": "result",
+                      "span": [
+                        740,
+                        746
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "number",
+                      "text": "2.5",
+                      "span": [
+                        750,
+                        753
+                      ]
+                    },
+                    "span": [
+                      740,
+                      753
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "binary",
+                    "op": "eq",
+                    "lhs": {
+                      "kind": "text",
+                      "value": "text",
+                      "span": [
+                        757,
+                        763
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "text",
+                      "value": "text",
+                      "span": [
+                        767,
+                        773
+                      ]
+                    },
+                    "span": [
+                      757,
+                      773
+                    ]
+                  },
+                  "span": [
+                    740,
+                    773
+                  ]
+                },
+                "rhs": {
+                  "kind": "bool",
+                  "value": true,
+                  "span": [
+                    777,
+                    781
+                  ]
+                },
+                "span": [
+                  740,
+                  781
+                ]
+              },
+              "rhs": {
+                "kind": "bool",
+                "value": false,
+                "span": [
+                  785,
+                  790
+                ]
+              },
+              "span": [
+                740,
+                790
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  794,
+                  800
+                ]
+              },
+              "rhs": {
+                "kind": "nothing",
+                "span": [
+                  804,
+                  811
+                ]
+              },
+              "span": [
+                794,
+                811
+              ]
+            },
+            "span": [
+              740,
+              811
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  822,
+                  828
+                ]
+              },
+              "rhs": {
+                "kind": "call",
+                "callee": {
+                  "name": "len",
+                  "span": [
+                    832,
+                    835
+                  ]
+                },
+                "args": [
+                  {
+                    "name": null,
+                    "value": {
+                      "kind": "name",
+                      "name": "xs",
+                      "span": [
+                        836,
+                        838
+                      ]
+                    },
+                    "span": [
+                      836,
+                      838
+                    ]
+                  }
+                ],
+                "span": [
+                  832,
+                  839
+                ]
+              },
+              "span": [
+                822,
+                839
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "result",
+                "span": [
+                  844,
+                  850
+                ]
+              },
+              "rhs": {
+                "kind": "call",
+                "callee": {
+                  "name": "sum",
+                  "span": [
+                    854,
+                    857
+                  ]
+                },
+                "args": [
+                  {
+                    "name": null,
+                    "value": {
+                      "kind": "number",
+                      "text": "1",
+                      "span": [
+                        858,
+                        859
+                      ]
+                    },
+                    "span": [
+                      858,
+                      859
+                    ]
+                  },
+                  {
+                    "name": null,
+                    "value": {
+                      "kind": "number",
+                      "text": "2",
+                      "span": [
+                        861,
+                        862
+                      ]
+                    },
+                    "span": [
+                      861,
+                      862
+                    ]
+                  }
+                ],
+                "span": [
+                  854,
+                  864
+                ]
+              },
+              "span": [
+                844,
+                864
+              ]
+            },
+            "span": [
+              822,
+              864
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "name",
+              "name": "p",
+              "span": [
+                875,
+                876
+              ]
+            },
+            "rhs": {
+              "kind": "call",
+              "callee": {
+                "name": "Player",
+                "span": [
+                  880,
+                  886
+                ]
+              },
+              "args": [
+                {
+                  "name": {
+                    "name": "name",
+                    "span": [
+                      887,
+                      891
+                    ]
+                  },
+                  "value": {
+                    "kind": "text",
+                    "value": "A",
+                    "span": [
+                      893,
+                      896
+                    ]
+                  },
+                  "span": [
+                    887,
+                    896
+                  ]
+                },
+                {
+                  "name": {
+                    "name": "score",
+                    "span": [
+                      898,
+                      903
+                    ]
+                  },
+                  "value": {
+                    "kind": "number",
+                    "text": "3",
+                    "span": [
+                      905,
+                      906
+                    ]
+                  },
+                  "span": [
+                    898,
+                    906
+                  ]
+                }
+              ],
+              "span": [
+                880,
+                907
+              ]
+            },
+            "span": [
+              875,
+              907
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "list",
+              "items": [
+                {
+                  "kind": "number",
+                  "text": "1",
+                  "span": [
+                    919,
+                    920
+                  ]
+                },
+                {
+                  "kind": "number",
+                  "text": "2",
+                  "span": [
+                    922,
+                    923
+                  ]
+                },
+                {
+                  "kind": "number",
+                  "text": "3",
+                  "span": [
+                    925,
+                    926
+                  ]
+                }
+              ],
+              "span": [
+                918,
+                927
+              ]
+            },
+            "rhs": {
+              "kind": "list",
+              "items": [
+                {
+                  "kind": "result",
+                  "span": [
+                    932,
+                    938
+                  ]
+                },
+                {
+                  "kind": "binary",
+                  "op": "mul",
+                  "lhs": {
+                    "kind": "binary",
+                    "op": "add",
+                    "lhs": {
+                      "kind": "number",
+                      "text": "1",
+                      "span": [
+                        941,
+                        942
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "number",
+                      "text": "2",
+                      "span": [
+                        945,
+                        946
+                      ]
+                    },
+                    "span": [
+                      941,
+                      946
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "number",
+                    "text": "3",
+                    "span": [
+                      950,
+                      951
+                    ]
+                  },
+                  "span": [
+                    941,
+                    951
+                  ]
+                }
+              ],
+              "span": [
+                931,
+                952
+              ]
+            },
+            "span": [
+              918,
+              952
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "if",
+              "condition": {
+                "kind": "name",
+                "name": "a",
+                "span": [
+                  967,
+                  968
+                ]
+              },
+              "then": {
+                "kind": "name",
+                "name": "b",
+                "span": [
+                  974,
+                  975
+                ]
+              },
+              "span": [
+                964,
+                975
+              ]
+            },
+            "rhs": {
+              "kind": "quantified",
+              "quantifier": "every",
+              "var": {
+                "name": "x",
+                "span": [
+                  988,
+                  989
+                ]
+              },
+              "collection": {
+                "kind": "name",
+                "name": "xs",
+                "span": [
+                  993,
+                  995
+                ]
+              },
+              "body": {
+                "kind": "binary",
+                "op": "gt",
+                "lhs": {
+                  "kind": "name",
+                  "name": "x",
+                  "span": [
+                    1000,
+                    1001
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "0",
+                  "span": [
+                    1004,
+                    1005
+                  ]
+                },
+                "span": [
+                  1000,
+                  1005
+                ]
+              },
+              "span": [
+                982,
+                1005
+              ]
+            },
+            "span": [
+              964,
+              1005
+            ]
+          }
+        ],
+        "span": [
+          312,
+          1006
+        ]
+      },
+      "examples": null,
+      "span": [
+        212,
+        1006
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    1007
+  ]
+}

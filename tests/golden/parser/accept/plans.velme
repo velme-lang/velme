@@ -1,0 +1,13 @@
+# covers: plan_block
+# Inline and block plans; a block plan keeps `#`, blank lines and relative indentation (AC-SYN-04).
+goal Inline() -> Text:
+    plan: "Say # hello \"there\"."
+
+goal Block() -> Text:
+    plan: |
+        First # not a comment.
+
+          Indented more.
+        Last.
+    check:
+        - result != ""

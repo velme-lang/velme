@@ -1,0 +1,6 @@
+# An indented line where no block was opened is VL0102 (R-SYN-11).
+type A:
+    x: Number
+        y: Number
+
+    goal B() -> Number:

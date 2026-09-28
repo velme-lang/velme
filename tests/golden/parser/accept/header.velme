@@ -1,0 +1,6 @@
+# covers: program, header
+# A header naming the supported version (R-SYN-15).
+language: velme/0.1
+
+type Point:
+    x: Number

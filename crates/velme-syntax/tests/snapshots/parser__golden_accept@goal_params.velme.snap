@@ -1,0 +1,299 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/goal_params.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Zero",
+        "span": [
+          131,
+          135
+        ]
+      },
+      "params": [],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            141,
+            147
+          ]
+        },
+        "optional": false,
+        "span": [
+          141,
+          147
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Return zero.",
+        "form": "inline",
+        "span": [
+          159,
+          173
+        ]
+      },
+      "check": null,
+      "examples": null,
+      "span": [
+        126,
+        173
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Pair",
+        "span": [
+          180,
+          184
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "a",
+            "span": [
+              185,
+              186
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                188,
+                194
+              ]
+            },
+            "optional": false,
+            "span": [
+              188,
+              194
+            ]
+          },
+          "span": [
+            185,
+            194
+          ]
+        },
+        {
+          "name": {
+            "name": "b",
+            "span": [
+              196,
+              197
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                199,
+                203
+              ]
+            },
+            "optional": false,
+            "span": [
+              199,
+              203
+            ]
+          },
+          "span": [
+            196,
+            203
+          ]
+        }
+      ],
+      "output": {
+        "kind": "list",
+        "element": {
+          "kind": "named",
+          "name": {
+            "name": "Number",
+            "span": [
+              214,
+              220
+            ]
+          },
+          "optional": false,
+          "span": [
+            214,
+            220
+          ]
+        },
+        "optional": true,
+        "span": [
+          209,
+          222
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Return a pair.",
+        "form": "inline",
+        "span": [
+          234,
+          250
+        ]
+      },
+      "check": null,
+      "examples": null,
+      "span": [
+        175,
+        250
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Split",
+        "span": [
+          257,
+          262
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "first",
+            "span": [
+              268,
+              273
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                275,
+                281
+              ]
+            },
+            "optional": false,
+            "span": [
+              275,
+              281
+            ]
+          },
+          "span": [
+            268,
+            281
+          ]
+        },
+        {
+          "name": {
+            "name": "second",
+            "span": [
+              291,
+              297
+            ]
+          },
+          "ty": {
+            "kind": "list",
+            "element": {
+              "kind": "named",
+              "name": {
+                "name": "Text",
+                "span": [
+                  304,
+                  308
+                ]
+              },
+              "optional": false,
+              "span": [
+                304,
+                308
+              ]
+            },
+            "optional": false,
+            "span": [
+              299,
+              309
+            ]
+          },
+          "span": [
+            291,
+            309
+          ]
+        },
+        {
+          "name": {
+            "name": "third",
+            "span": [
+              315,
+              320
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Boolean",
+              "span": [
+                322,
+                329
+              ]
+            },
+            "optional": true,
+            "span": [
+              322,
+              330
+            ]
+          },
+          "span": [
+            315,
+            330
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Boolean",
+          "span": [
+            336,
+            343
+          ]
+        },
+        "optional": false,
+        "span": [
+          336,
+          343
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Decide.",
+        "form": "inline",
+        "span": [
+          355,
+          364
+        ]
+      },
+      "check": null,
+      "examples": null,
+      "span": [
+        252,
+        364
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    365
+  ]
+}

@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/plan_block_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `Find` here — I was looking for `|`.",
+    "severity": "error",
+    "span": [
+      103,
+      107
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `more` here — I was looking for the end of the line.",
+    "severity": "error",
+    "span": [
+      151,
+      155
+    ]
+  }
+]

@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/param_missing_type.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `)` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      99,
+      100
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `result` here — I was looking for `)` or a name.",
+    "severity": "error",
+    "span": [
+      134,
+      140
+    ]
+  }
+]

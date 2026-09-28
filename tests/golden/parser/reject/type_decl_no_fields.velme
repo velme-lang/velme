@@ -1,0 +1,6 @@
+# covers: type_decl
+# A type with no indented fields.
+type Empty:
+
+type Next:
+    x: Number

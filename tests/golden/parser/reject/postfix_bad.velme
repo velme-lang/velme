@@ -1,0 +1,5 @@
+# covers: postfix
+# A `.` with no field name after it.
+goal G(p: Player) -> Boolean:
+    check:
+        - result. == p.

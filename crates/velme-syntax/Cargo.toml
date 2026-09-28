@@ -15,6 +15,8 @@ velme-diagnostics.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+proptest.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

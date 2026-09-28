@@ -1,0 +1,7 @@
+# covers: add_expr, mul_expr, unary
+# Operators missing an operand.
+goal G(a: Number) -> Boolean:
+    check:
+        - a + * 2 > 0
+        - a * > 0
+        - - > 0

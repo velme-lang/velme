@@ -1,0 +1,4 @@
+# covers: type_expr
+# `T??` (R-SYN-15, AC-SYN-17).
+type Team:
+    captain: Player??

@@ -1,0 +1,4 @@
+# covers: goal_decl
+# A goal without `->` before its output type.
+goal Score(player: Player) Number:
+    plan: "p"

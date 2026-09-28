@@ -1,0 +1,27 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/field_decl_missing_colon.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `Text` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      132,
+      136
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `height` here — I was looking for `:`.",
+    "severity": "error",
+    "span": [
+      164,
+      170
+    ]
+  }
+]
