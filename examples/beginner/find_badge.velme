@@ -1,0 +1,18 @@
+language: velme/0.1
+
+# A type is a named record with typed fields.
+type Player:
+    name: Text
+    score: Number
+
+# A plan can run over several lines after `plan: |`.
+goal FindBadge(player: Player) -> Text:
+    plan: |
+        Give the player Gold for a score of at least 1000,
+        Silver for a score of at least 500, Bronze otherwise.
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+    examples:
+        - FindBadge(Player(name: "Lina", score: 820)) == "Silver"
+        - FindBadge(Player(name: "Tom", score: 1000)) == "Gold"
+        - FindBadge(Player(name: "Ana", score: 499)) == "Bronze"
