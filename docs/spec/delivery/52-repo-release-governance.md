@@ -18,7 +18,6 @@ separate private repositories.
 velme/
 ├── Cargo.toml  Cargo.lock  rust-toolchain.toml  rustfmt.toml  deny.toml
 ├── README.md  LICENSE-MIT  LICENSE-APACHE  LICENSE-CC-BY  CONTRIBUTING.md  CODE_OF_CONDUCT.md  SECURITY.md  CHANGELOG.md
-├── AGENTS.md  CLAUDE.md          agent instructions (D-40)
 ├── crates/
 │   ├── velme-syntax/  velme-diagnostics/  velme-sema/  velme-ir/  velme-check/  velme-builtins/
 │   ├── velme-interp/  velme-synth/  velme-runtime/  velme-wasm/  velme-cli/  velme-test-support/
@@ -74,8 +73,8 @@ no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/vel
   scope and the ids covered, e.g. `feat(syntax): indentation and block scalars (AC-SYN-03..06)`; spec edits use
   `docs(spec)`. Snapshots, `Cargo.lock` and replay fixtures are committed with the code that changed them.
 - At the Stop & Verify Gate: rebase on `main`, full verify, open a PR (`gh pr create`) whose body is the gate report,
-  merge with `--rebase` after approval (slice commits kept, no merge bubbles), tag `mN-verified`, record the SHA in
-  the plan's gate log, delete the branch.
+  merge with `--rebase` after approval (slice commits kept, no merge bubbles), tag `mN-verified` (the public record
+  that the phase is done, D-66), delete the branch.
 - Until `ci.yml` exists, the required check is the local `cargo xtask verify`; review approval is the user's gate
   approval. R-REL-05 applies in full once there is a second contributor.
 
