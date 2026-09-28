@@ -51,7 +51,7 @@ cannot cause a call.
 |---|---|---|
 | **R-GOAL-05** The callee is a goal declared in this file. | `score = Unknown(x)` | `VL0301 UnknownGoal` |
 | **R-GOAL-06** Argument count equals the callee's parameter count. | | `VL0302 CallArityMismatch` |
-| **R-GOAL-07** Each argument is assignable to its parameter type (R-TYP-20). Message: "Cannot call CalculateScore: expected Player, received Text". | `CalculateScore("hello")` | `VL0204 TypeMismatch` |
+| **R-GOAL-07** Each argument is assignable to its parameter type (R-TYP-20). Message: "Expected Player, but got Text." (`reference/90`). | `CalculateScore("hello")` | `VL0204 TypeMismatch` |
 | **R-GOAL-08** An argument is a path (input, earlier binding, and field accesses on them) or a literal — no arithmetic, no built-ins. Computation belongs in a goal (P-3). A type name used as a callee is also rejected here. | `s = Score(x + 1)` | `VL0303 InvalidCall` |
 | **R-GOAL-09** A binding may reference only inputs and bindings defined on **earlier lines** (§12.5). | `b = Second(a)` above `a = First(x)` | `VL0305 BindingUsedBeforeDefinition` |
 | **R-GOAL-10** Binding names are unique and do not reuse a parameter name. | | `VL0306 DuplicateBinding` |
@@ -384,7 +384,7 @@ threshold make them verified. When `VL0407` asks a question, an example like the
 | ID | Criterion |
 |---|---|
 | AC-GOAL-01 | A goal with neither `plan` nor `result` binding yields `VL0307`. |
-| AC-GOAL-02 | `score = CalculateScore("hello")` with parameter type `Player` yields `VL0204` with "expected Player, received Text", before any synthesis. |
+| AC-GOAL-02 | `score = CalculateScore("hello")` with parameter type `Player` yields `VL0204` "Expected Player, but got Text.", before any synthesis. |
 | AC-GOAL-03 | `value = A(x)` inside goal `A` yields `VL0304`; `A → B → A` yields `VL0304` printing that path. |
 | AC-GOAL-04 | `b = Second(a)` written above `a = First(x)` yields `VL0305`, even though a topological order exists. |
 | AC-GOAL-05 | `s = Score(x + 1)` yields `VL0303`; `s = Score(player.stats)` type-checks. |

@@ -1,0 +1,175 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/check_types.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "a check must be true or false, like `result > 0`",
+      "labels": [],
+      "message": "Expected Boolean, but got Number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 357,
+        "line": 15,
+        "start": 347
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "a condition must be true or false, like `score > 0`",
+      "labels": [],
+      "message": "Expected Boolean, but got Number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 14,
+        "end": 377,
+        "line": 16,
+        "start": 371
+      }
+    },
+    {
+      "code": "VL0206",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "text can only be compared with `==` and `!=`",
+      "labels": [],
+      "message": "`<` can't be used with Text and Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 414,
+        "line": 17,
+        "start": 404
+      }
+    },
+    {
+      "code": "VL0206",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "use `concat(a, b)` to join text",
+      "labels": [],
+      "message": "`+` can't be used with Text and Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 435,
+        "line": 18,
+        "start": 425
+      }
+    },
+    {
+      "code": "VL0206",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "labels": [],
+      "message": "`==` can't be used with Player and Summary.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 471,
+        "line": 19,
+        "start": 454
+      }
+    },
+    {
+      "code": "VL0206",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "a `Player` is never empty — did you mean `Player?`",
+      "labels": [],
+      "message": "`is empty` can't be used with Player.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 488,
+        "line": 20,
+        "start": 482
+      }
+    },
+    {
+      "code": "VL0206",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "labels": [],
+      "message": "`not` can't be used with Number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 518,
+        "line": 21,
+        "start": 512
+      }
+    },
+    {
+      "code": "VL0205",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "labels": [],
+      "message": "A `Player` doesn't have a field called `rank`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 18,
+        "end": 540,
+        "line": 22,
+        "start": 536
+      }
+    },
+    {
+      "code": "VL0202",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "a check can use the goal's inputs, its `call:` names and `result`",
+      "labels": [],
+      "message": "I don't know what `score` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 560,
+        "line": 23,
+        "start": 555
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "a list holds one type of value",
+      "labels": [],
+      "message": "Expected Number, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 582,
+        "line": 24,
+        "start": 579
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/check_types.velme",
+      "help": "compare the list with a value whose type is known, or use `is empty`",
+      "labels": [],
+      "message": "I can't tell what kind of list this is.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 603,
+        "line": 25,
+        "start": 601
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

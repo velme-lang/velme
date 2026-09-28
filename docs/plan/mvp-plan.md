@@ -64,9 +64,9 @@ reject).
 ### M2 — Semantics
 
 **Read:** `language/11`, `language/12` §call rules, `language/13` §scope + narrowing, `compiler/20` §phases.
-**Slices:** M2a name resolution + record types (VL0201–0203, 0205, 0208) · M2b type checking of signatures, calls,
-checks, examples incl. narrowing (VL0204, 0206, 0207) · M2c call graph, cycles, binding order, wired goals, budgets and
-static call limits (VL03xx, VL0605; caps in `velme-builtins`, D-77).
+**Slices:** M2a name resolution + record types (VL0201–0203, 0205, 0208) · M2b type checking of checks, examples and
+built-in calls incl. narrowing (VL0204, 0206, 0207) · M2c the `call` block (argument types, binding order), call graph,
+cycles, wired goals, budgets and static call limits (VL03xx, VL0605; caps in `velme-builtins`, D-77).
 **Exit:** `AC-TYP-*` (static parts; JSON input and value rendering are M3, D-77), `AC-GOAL-*` (static parts), `AC-CHK-*` (static parts), AC-CMP-03/04 green; AC-RDM-04,
 AC-RDM-05 green.
 **User verifies:** `velme check` on the cycle and type-mismatch examples prints the friendly errors from `language/12`.

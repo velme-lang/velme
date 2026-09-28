@@ -42,7 +42,7 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     let run = velme(&["check", "examples/beginner/hello.velme"]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("✓ Parsed\n✓ Types valid\n", "", 0)
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", "", 0)
     );
 }
 
@@ -68,7 +68,7 @@ fn every_example_parses_cleanly() {
             let run = velme(&["check", rel]);
             assert_eq!(
                 (run.stdout.as_str(), run.stderr.as_str(), run.code),
-                ("✓ Parsed\n✓ Types valid\n", "", 0),
+                ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", "", 0),
                 "{rel}"
             );
             checked += 1;
@@ -87,7 +87,10 @@ fn ac_cli_01_parse_part_syntax_error_exits_1_with_a_caret() {
 #[test]
 fn warnings_are_shown_but_do_not_fail() {
     let run = velme(&["check", "tests/golden/parser/reject/lint_naming.velme"]);
-    assert_eq!((run.stdout.as_str(), run.code), ("✓ Parsed\n✓ Types valid\n", 0));
+    assert_eq!(
+        (run.stdout.as_str(), run.code),
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", 0)
+    );
     assert!(run.stderr.starts_with("Warning: "), "{}", run.stderr);
     assert_eq!(
         json(&velme(&[

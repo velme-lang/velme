@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use velme_diagnostics::Span;
+use velme_syntax::ast::{BinaryOp, Quantifier, UnaryOp};
 
 /// A record type: an index into [`Program::types`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -113,6 +114,10 @@ pub struct Goal {
     pub output: Type,
     /// The plan text, normalized (D-21), if it has one.
     pub plan: Option<String>,
+    /// The `check` items, each a `Boolean` expression (`language/13` R-CHK-01).
+    pub checks: Vec<Expr>,
+    /// The `examples`, in order (`language/12` R-GOAL-21).
+    pub examples: Vec<Example>,
     /// The whole declaration.
     pub span: Span,
 }
@@ -126,4 +131,141 @@ pub struct Param {
     pub ty: Type,
     /// `name: type`.
     pub span: Span,
+}
+
+/// `- Goal(args) == expected`, calling the goal it belongs to (R-GOAL-21).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Example {
+    /// The inputs, one per parameter, each assignable to it.
+    pub args: Vec<Expr>,
+    /// The expected output, assignable to the goal's output.
+    pub expected: Expr,
+    /// The whole line after `-`.
+    pub span: Span,
+}
+
+/// A typed expression of a check or example (`language/13` §3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Expr {
+    /// What the expression is.
+    #[serde(flatten)]
+    pub kind: ExprKind,
+    /// Its type, after narrowing (`language/11` §9).
+    pub ty: Type,
+    /// The source it came from.
+    pub span: Span,
+}
+
+/// The forms of [`Expr`]. Surface forms with a built-in meaning are already calls: `x.length` is `length(x)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExprKind {
+    /// A number, as its exact decimal text.
+    Number {
+        /// The text.
+        text: String,
+    },
+    /// Text.
+    Text {
+        /// The text.
+        value: String,
+    },
+    /// `true` or `false`.
+    Bool {
+        /// The value.
+        value: bool,
+    },
+    /// `nothing`.
+    Nothing,
+    /// A goal input, by parameter index.
+    Input {
+        /// The index into [`Goal::params`].
+        index: usize,
+    },
+    /// A `call` binding, by position in the block.
+    Binding {
+        /// The binding's index.
+        index: usize,
+    },
+    /// The goal's output.
+    Result,
+    /// A quantifier variable, by nesting depth: `0` is the outermost quantifier around it.
+    Var {
+        /// The depth.
+        depth: usize,
+    },
+    /// A built-in call (`language/14`).
+    Builtin {
+        /// The built-in's catalog name.
+        name: &'static str,
+        /// The arguments.
+        args: Vec<Expr>,
+    },
+    /// `Type(field: value, …)`, fields in declaration order.
+    Record {
+        /// The record type.
+        ty: TypeId,
+        /// One value per field, in declaration order.
+        fields: Vec<Expr>,
+    },
+    /// `[a, b]`.
+    List {
+        /// The items.
+        items: Vec<Expr>,
+    },
+    /// `record.field`.
+    Field {
+        /// The record.
+        base: Box<Expr>,
+        /// The field's index in its record type.
+        field: usize,
+    },
+    /// `records.field` on a list of records: the field of each (R-TYP-14).
+    Project {
+        /// The list.
+        base: Box<Expr>,
+        /// The field's index in the element's record type.
+        field: usize,
+    },
+    /// `-x` or `not x`.
+    Unary {
+        /// The operator.
+        op: UnaryOp,
+        /// Its operand.
+        operand: Box<Expr>,
+    },
+    /// `a op b`.
+    Binary {
+        /// The operator.
+        op: BinaryOp,
+        /// The left operand.
+        lhs: Box<Expr>,
+        /// The right operand.
+        rhs: Box<Expr>,
+    },
+    /// `x is empty` or `x is not empty` (R-TYP-25).
+    IsEmpty {
+        /// What is tested.
+        operand: Box<Expr>,
+        /// `is not empty`.
+        negated: bool,
+    },
+    /// `if a then b`.
+    If {
+        /// The condition.
+        condition: Box<Expr>,
+        /// What must hold when it's true.
+        then: Box<Expr>,
+    },
+    /// `every x in xs has p` or `some x in xs has p`.
+    Quantified {
+        /// `every` or `some`.
+        quantifier: Quantifier,
+        /// The variable's name, for reports.
+        var: String,
+        /// The list.
+        collection: Box<Expr>,
+        /// The condition, where the variable is [`ExprKind::Var`] at this quantifier's depth.
+        body: Box<Expr>,
+    },
 }

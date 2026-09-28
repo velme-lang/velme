@@ -1,0 +1,25 @@
+# Check items and operators have the types of the language/11 §8 table (R-CHK-01, R-TYP-09, R-TYP-10, R-TYP-21).
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+
+type Summary:
+    name: Text
+    score: Number
+
+goal Rate(player: Player, summary: Summary, note: Text) -> Number:
+    plan: "Rate the player."
+    check:
+        - result + 1
+        - if result then result > 0
+        - note < "m"
+        - note + "!" == "a!"
+        - player == summary
+        - player is empty
+        - not result
+        - player.rank > 0
+        - score > 0
+        - [1, "a"] == [1]
+        - [] == []

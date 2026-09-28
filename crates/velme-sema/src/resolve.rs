@@ -14,7 +14,6 @@ use crate::hir::{FieldDef, Goal, GoalId, Param, RecordType, Type, TypeId};
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Declared {
     Type(TypeId),
-    #[expect(dead_code, reason = "read when calls are checked (M2c)")]
     Goal(GoalId),
 }
 
@@ -27,6 +26,8 @@ pub(crate) struct Scope<'a> {
     pub failed: BTreeSet<&'a str>,
     /// Each goal's declaration, by [`GoalId`].
     pub goals: Vec<&'a ast::GoalDecl>,
+    /// Goals whose name is taken, with their signatures: their bodies are checked too (CC-ERR-04).
+    pub unnamed_goals: Vec<(&'a ast::GoalDecl, Goal)>,
 }
 
 impl Scope<'_> {
@@ -55,6 +56,7 @@ pub(crate) fn resolve<'a>(
             .filter_map(|d| d.name.as_ref().map(|n| n.name.as_str()))
             .collect(),
         goals: Vec::new(),
+        unnamed_goals: Vec::new(),
     };
     let mut type_decls = Vec::new();
     // Declarations whose name is taken: checked, never referenced.
@@ -112,7 +114,10 @@ pub(crate) fn resolve<'a>(
     for decl in unnamed {
         match decl {
             Decl::Type(t) => drop(record_type(t, &scope, &lines, diags)),
-            Decl::Goal(g) => drop(goal_signature(g, &scope, &lines, diags)),
+            Decl::Goal(g) => {
+                let goal = goal_signature(g, &scope, &lines, diags);
+                scope.unnamed_goals.push((g, goal));
+            }
         }
     }
     (types, goals, scope)
@@ -171,6 +176,8 @@ fn goal_signature(decl: &ast::GoalDecl, scope: &Scope<'_>, lines: &LineIndex<'_>
         params,
         output: declared_type(&decl.output, scope, diags),
         plan: decl.plan.as_ref().map(|p| p.text.clone()),
+        checks: Vec::new(),
+        examples: Vec::new(),
         span: decl.span,
     }
 }

@@ -37,7 +37,11 @@ const ANALYZE_STACK: usize = 64 * 1024 * 1024;
 
 /// The `velme check` progress lines (`tooling/40` §3.3) this build can reach, each with the code prefixes of the phase
 /// it reports on (`reference/90` groups codes by phase).
-const CHECK_LINES: [(&str, &[&str]); 2] = [("✓ Parsed", &["VL01"]), ("✓ Types valid", &["VL02"])];
+const CHECK_LINES: [(&str, &[&str]); 3] = [
+    ("✓ Parsed", &["VL01"]),
+    ("✓ Types valid", &["VL02"]),
+    ("✓ Call graph valid", &["VL03"]),
+];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       velme --version";
 

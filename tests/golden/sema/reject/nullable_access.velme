@@ -1,0 +1,19 @@
+# A `T?` is used only after it's narrowed (R-TYP-12, R-TYP-14, R-TYP-22, AC-TYP-04).
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+
+goal Best(players: List<Player?>, best: Player?, scores: List<Number>?) -> Number?:
+    plan: "Pick the best score."
+    check:
+        - best.score > 0
+        - result + 1 > 0
+        - result >= 0
+        - players.score == []
+        - every s in scores has s > 0
+        - best is not empty
+        - best.name != ""
+        - maximum(scores) > 0
+        - not best is not empty and best.score > 0
