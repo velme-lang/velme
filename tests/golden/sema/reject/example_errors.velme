@@ -1,0 +1,18 @@
+# Examples call their own goal with values of the right types (R-GOAL-21, R-TYP-17, R-TYP-20, AC-TYP-12).
+language: velme/0.1
+
+type Player:
+    name: Text
+    nickname: Text?
+
+goal Greet(player: Player) -> Text:
+    plan: "Greet the player by nickname, or by name."
+    examples:
+        - Hello(Player(name: "Ada", nickname: nothing)) == "Hi Ada"
+        - Greet() == "Hi"
+        - Greet("Ada") == "Hi Ada"
+        - Greet(Player(name: "Ada", nickname: "A")) == 3
+        - Greet(Player(name: "Ada")) == "Hi Ada"
+        - Greet(Player(name: "Ada", nick: "A")) == "Hi A"
+        - Greet(Plyer(name: "Ada", nickname: nothing)) == "Hi Ada"
+        - Greet(Player(name: "Ada", name: "Bo", nickname: nothing)) == "Hi Ada"

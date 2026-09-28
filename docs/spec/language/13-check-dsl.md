@@ -128,7 +128,7 @@ truth is decided only here.
 | AC-CHK-02 | A check using a `call` binding (`result.score == score`) type-checks; using an undefined name yields `VL0202`. |
 | AC-CHK-03 | `- CalculateScore(player) > 0` in a check yields `VL0303`. |
 | AC-CHK-04 | For `BuildPlayerSummary` returning `rank: 3` when `rank = 4`, the report shows the assertion `result.rank == rank`, Expected `4`, Received `3`, and the binding values. |
-| AC-CHK-05 | `every x in [] has false` is true; `some x in [] has true` is false. |
+| AC-CHK-05 | For an input `xs: List<Number>` given `[]`, `every x in xs has false` is true and `some x in xs has true` is false (a bare `[]` has no element type, R-TYP-13). |
 | AC-CHK-06 | `every b in result has b.bounce >= 5` failing on the third element reports index 2 and that element's value, and does not evaluate later elements. |
 | AC-CHK-07 | `if players is empty then result is empty` holds when `players` is non-empty regardless of `result`; its `then` side is reported "not evaluated". |
 | AC-CHK-08 | A check `- total / count > 1` with `count = 0` fails with `VL0501` citing cause `VL0602`; the goal's output is not returned. |

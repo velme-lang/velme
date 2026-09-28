@@ -171,7 +171,7 @@ applies the same limits before a goal starts.
 
 | ID | Criterion |
 |---|---|
-| AC-TYP-01 | `CalculateScore("hello")` where the parameter is `Player` yields `VL0204` with "expected Player, received Text". |
+| AC-TYP-01 | `CalculateScore("hello")` where the parameter is `Player` yields `VL0204` "Expected Player, but got Text." |
 | AC-TYP-02 | Passing a `Number` to a `Number?` parameter and `nothing` to a `Player?` parameter type-checks; passing `Number?` to `Number` yields `VL0204`. |
 | AC-TYP-03 | `List<Number>` passed where `List<Number?>` is expected yields `VL0204`. |
 | AC-TYP-04 | `result.jump_height` with `result: Player?` yields `VL0207`; `result is not empty and result.jump_height > 0` type-checks. |

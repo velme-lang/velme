@@ -461,6 +461,16 @@ pub enum UnaryOp {
     Not,
 }
 
+impl UnaryOp {
+    /// The operator as written.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UnaryOp::Neg => "-",
+            UnaryOp::Not => "not",
+        }
+    }
+}
+
 /// Infix operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -489,6 +499,26 @@ pub enum BinaryOp {
     Mul,
     /// `/`
     Div,
+}
+
+impl BinaryOp {
+    /// The operator as written.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BinaryOp::Or => "or",
+            BinaryOp::And => "and",
+            BinaryOp::Eq => "==",
+            BinaryOp::NotEq => "!=",
+            BinaryOp::Lt => "<",
+            BinaryOp::LtEq => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::GtEq => ">=",
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+        }
+    }
 }
 
 /// `every` or `some`.

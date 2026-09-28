@@ -1,0 +1,133 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/nullable_access.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `best is not empty and …` before using it",
+      "labels": [],
+      "message": "`best` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 295,
+        "line": 11,
+        "start": 291
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `result is not empty and …` before using it",
+      "labels": [],
+      "message": "`result` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 322,
+        "line": 12,
+        "start": 316
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `result is not empty and …` before using it",
+      "labels": [],
+      "message": "`result` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 347,
+        "line": 13,
+        "start": 341
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "go through it with `every … in … has …` and check each item `is not empty`",
+      "labels": [],
+      "message": "`players` may hold `nothing`, so it has no `score` to list.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 370,
+        "line": 14,
+        "start": 363
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `scores is not empty and …` before using it",
+      "labels": [],
+      "message": "`scores` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 410,
+        "line": 15,
+        "start": 404
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `best is not empty and …` before using it",
+      "labels": [],
+      "message": "`best` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 463,
+        "line": 17,
+        "start": 459
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "it might be empty — check `scores is not empty` first",
+      "labels": [],
+      "message": "Expected List<Number>, but got List<Number>?.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 499,
+        "line": 18,
+        "start": 493
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "help": "write `best is not empty and …` before using it",
+      "labels": [],
+      "message": "`best` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 37,
+        "end": 545,
+        "line": 19,
+        "start": 541
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

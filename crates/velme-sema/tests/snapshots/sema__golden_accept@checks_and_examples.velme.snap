@@ -1,0 +1,1982 @@
+---
+source: crates/velme-sema/tests/sema.rs
+expression: "program.expect(\"a program without errors\")"
+input_file: tests/golden/sema/accept/checks_and_examples.velme
+---
+{
+  "language_version": "0.1",
+  "types": [
+    {
+      "name": "Player",
+      "fields": [
+        {
+          "name": "name",
+          "ty": "text",
+          "span": [
+            151,
+            161
+          ]
+        },
+        {
+          "name": "score",
+          "ty": "number",
+          "span": [
+            166,
+            179
+          ]
+        },
+        {
+          "name": "rival",
+          "ty": {
+            "optional": {
+              "record": 1
+            }
+          },
+          "span": [
+            184,
+            199
+          ]
+        }
+      ],
+      "span": [
+        134,
+        199
+      ]
+    },
+    {
+      "name": "Player2",
+      "fields": [
+        {
+          "name": "name",
+          "ty": "text",
+          "span": [
+            219,
+            229
+          ]
+        },
+        {
+          "name": "tags",
+          "ty": {
+            "list": "text"
+          },
+          "span": [
+            234,
+            250
+          ]
+        }
+      ],
+      "span": [
+        201,
+        250
+      ]
+    }
+  ],
+  "goals": [
+    {
+      "name": "Total",
+      "params": [
+        {
+          "name": "a",
+          "ty": {
+            "optional": {
+              "record": 0
+            }
+          },
+          "span": [
+            369,
+            379
+          ]
+        },
+        {
+          "name": "b",
+          "ty": {
+            "optional": {
+              "record": 0
+            }
+          },
+          "span": [
+            381,
+            391
+          ]
+        }
+      ],
+      "output": "number",
+      "plan": "Add both scores, or 0 if either player is missing.",
+      "checks": [
+        {
+          "kind": "if",
+          "condition": {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "input",
+                "index": 0,
+                "ty": {
+                  "optional": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  491,
+                  492
+                ]
+              },
+              "negated": true,
+              "ty": "boolean",
+              "span": [
+                491,
+                505
+              ]
+            },
+            "rhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "input",
+                "index": 1,
+                "ty": {
+                  "optional": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  510,
+                  511
+                ]
+              },
+              "negated": true,
+              "ty": "boolean",
+              "span": [
+                510,
+                524
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              491,
+              524
+            ]
+          },
+          "then": {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "ty": "number",
+              "span": [
+                530,
+                536
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "add",
+              "lhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    540,
+                    541
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  540,
+                  547
+                ]
+              },
+              "rhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 1,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    550,
+                    551
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  550,
+                  557
+                ]
+              },
+              "ty": "number",
+              "span": [
+                540,
+                557
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              530,
+              557
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            488,
+            557
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "input",
+                "index": 0,
+                "ty": {
+                  "optional": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  568,
+                  569
+                ]
+              },
+              "negated": false,
+              "ty": "boolean",
+              "span": [
+                568,
+                578
+              ]
+            },
+            "rhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "input",
+                "index": 1,
+                "ty": {
+                  "optional": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  582,
+                  583
+                ]
+              },
+              "negated": false,
+              "ty": "boolean",
+              "span": [
+                582,
+                592
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              568,
+              592
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "result",
+              "ty": "number",
+              "span": [
+                596,
+                602
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "add",
+              "lhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    606,
+                    607
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  606,
+                  613
+                ]
+              },
+              "rhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 1,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    616,
+                    617
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  616,
+                  623
+                ]
+              },
+              "ty": "number",
+              "span": [
+                606,
+                623
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              596,
+              623
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            568,
+            623
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "and",
+          "lhs": {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "unary",
+              "op": "not",
+              "operand": {
+                "kind": "binary",
+                "op": "eq",
+                "lhs": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "optional": {
+                      "record": 0
+                    }
+                  },
+                  "span": [
+                    639,
+                    640
+                  ]
+                },
+                "rhs": {
+                  "kind": "nothing",
+                  "ty": "nothing",
+                  "span": [
+                    644,
+                    651
+                  ]
+                },
+                "ty": "boolean",
+                "span": [
+                  638,
+                  652
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                634,
+                652
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "not_eq",
+              "lhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    657,
+                    658
+                  ]
+                },
+                "field": 2,
+                "ty": {
+                  "optional": {
+                    "record": 1
+                  }
+                },
+                "span": [
+                  657,
+                  664
+                ]
+              },
+              "rhs": {
+                "kind": "nothing",
+                "ty": "nothing",
+                "span": [
+                  668,
+                  675
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                657,
+                675
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              634,
+              675
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "not_eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    680,
+                    681
+                  ]
+                },
+                "field": 2,
+                "ty": {
+                  "record": 1
+                },
+                "span": [
+                  680,
+                  687
+                ]
+              },
+              "field": 0,
+              "ty": "text",
+              "span": [
+                680,
+                692
+              ]
+            },
+            "rhs": {
+              "kind": "text",
+              "value": "",
+              "ty": "text",
+              "span": [
+                696,
+                698
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              680,
+              698
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            634,
+            698
+          ]
+        },
+        {
+          "kind": "if",
+          "condition": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "optional": {
+                  "record": 0
+                }
+              },
+              "span": [
+                712,
+                713
+              ]
+            },
+            "negated": true,
+            "ty": "boolean",
+            "span": [
+              712,
+              726
+            ]
+          },
+          "then": {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "field",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    732,
+                    733
+                  ]
+                },
+                "field": 2,
+                "ty": {
+                  "optional": {
+                    "record": 1
+                  }
+                },
+                "span": [
+                  732,
+                  739
+                ]
+              },
+              "negated": false,
+              "ty": "boolean",
+              "span": [
+                732,
+                748
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "gt_eq",
+              "lhs": {
+                "kind": "builtin",
+                "name": "length",
+                "args": [
+                  {
+                    "kind": "field",
+                    "base": {
+                      "kind": "field",
+                      "base": {
+                        "kind": "input",
+                        "index": 0,
+                        "ty": {
+                          "record": 0
+                        },
+                        "span": [
+                          752,
+                          753
+                        ]
+                      },
+                      "field": 2,
+                      "ty": {
+                        "record": 1
+                      },
+                      "span": [
+                        752,
+                        759
+                      ]
+                    },
+                    "field": 1,
+                    "ty": {
+                      "list": "text"
+                    },
+                    "span": [
+                      752,
+                      764
+                    ]
+                  }
+                ],
+                "ty": "number",
+                "span": [
+                  752,
+                  771
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "0",
+                "ty": "number",
+                "span": [
+                  775,
+                  776
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                752,
+                776
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              732,
+              776
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            709,
+            776
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "args": [
+            {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                807,
+                814
+              ]
+            },
+            {
+              "kind": "record",
+              "ty": 0,
+              "fields": [
+                {
+                  "kind": "text",
+                  "value": "Bo",
+                  "ty": "text",
+                  "span": [
+                    829,
+                    833
+                  ]
+                },
+                {
+                  "kind": "number",
+                  "text": "2",
+                  "ty": "number",
+                  "span": [
+                    842,
+                    843
+                  ]
+                },
+                {
+                  "kind": "nothing",
+                  "ty": "nothing",
+                  "span": [
+                    852,
+                    859
+                  ]
+                }
+              ],
+              "ty": {
+                "record": 0
+              },
+              "span": [
+                816,
+                860
+              ]
+            }
+          ],
+          "expected": {
+            "kind": "number",
+            "text": "0",
+            "ty": "number",
+            "span": [
+              865,
+              866
+            ]
+          },
+          "span": [
+            801,
+            866
+          ]
+        }
+      ],
+      "span": [
+        358,
+        866
+      ]
+    },
+    {
+      "name": "Best",
+      "params": [
+        {
+          "name": "players",
+          "ty": {
+            "list": {
+              "record": 0
+            }
+          },
+          "span": [
+            982,
+            1003
+          ]
+        },
+        {
+          "name": "tags",
+          "ty": {
+            "optional": {
+              "list": "text"
+            }
+          },
+          "span": [
+            1005,
+            1022
+          ]
+        }
+      ],
+      "output": {
+        "optional": {
+          "record": 0
+        }
+      },
+      "plan": "Pick the player with the highest score.",
+      "checks": [
+        {
+          "kind": "if",
+          "condition": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1112,
+                1119
+              ]
+            },
+            "negated": false,
+            "ty": "boolean",
+            "span": [
+              1112,
+              1128
+            ]
+          },
+          "then": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "result",
+              "ty": {
+                "optional": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1134,
+                1140
+              ]
+            },
+            "negated": false,
+            "ty": "boolean",
+            "span": [
+              1134,
+              1149
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1109,
+            1149
+          ]
+        },
+        {
+          "kind": "if",
+          "condition": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "result",
+              "ty": {
+                "optional": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1163,
+                1169
+              ]
+            },
+            "negated": true,
+            "ty": "boolean",
+            "span": [
+              1163,
+              1182
+            ]
+          },
+          "then": {
+            "kind": "quantified",
+            "quantifier": "every",
+            "var": "p",
+            "collection": {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1199,
+                1206
+              ]
+            },
+            "body": {
+              "kind": "binary",
+              "op": "gt_eq",
+              "lhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "result",
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    1211,
+                    1217
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  1211,
+                  1223
+                ]
+              },
+              "rhs": {
+                "kind": "field",
+                "base": {
+                  "kind": "var",
+                  "depth": 0,
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    1227,
+                    1228
+                  ]
+                },
+                "field": 1,
+                "ty": "number",
+                "span": [
+                  1227,
+                  1234
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                1211,
+                1234
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1188,
+              1234
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1160,
+            1234
+          ]
+        },
+        {
+          "kind": "quantified",
+          "quantifier": "some",
+          "var": "p",
+          "collection": {
+            "kind": "input",
+            "index": 0,
+            "ty": {
+              "list": {
+                "record": 0
+              }
+            },
+            "span": [
+              1255,
+              1262
+            ]
+          },
+          "body": {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "binary",
+              "op": "gt",
+              "lhs": {
+                "kind": "builtin",
+                "name": "length",
+                "args": [
+                  {
+                    "kind": "field",
+                    "base": {
+                      "kind": "var",
+                      "depth": 0,
+                      "ty": {
+                        "record": 0
+                      },
+                      "span": [
+                        1267,
+                        1268
+                      ]
+                    },
+                    "field": 0,
+                    "ty": "text",
+                    "span": [
+                      1267,
+                      1273
+                    ]
+                  }
+                ],
+                "ty": "number",
+                "span": [
+                  1267,
+                  1280
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "0",
+                "ty": "number",
+                "span": [
+                  1283,
+                  1284
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                1267,
+                1284
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "eq",
+              "lhs": {
+                "kind": "builtin",
+                "name": "length",
+                "args": [
+                  {
+                    "kind": "input",
+                    "index": 0,
+                    "ty": {
+                      "list": {
+                        "record": 0
+                      }
+                    },
+                    "span": [
+                      1288,
+                      1295
+                    ]
+                  }
+                ],
+                "ty": "number",
+                "span": [
+                  1288,
+                  1302
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "0",
+                "ty": "number",
+                "span": [
+                  1306,
+                  1307
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                1288,
+                1307
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1267,
+              1307
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1245,
+            1307
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "builtin",
+              "name": "maximum",
+              "args": [
+                {
+                  "kind": "project",
+                  "base": {
+                    "kind": "input",
+                    "index": 0,
+                    "ty": {
+                      "list": {
+                        "record": 0
+                      }
+                    },
+                    "span": [
+                      1326,
+                      1333
+                    ]
+                  },
+                  "field": 1,
+                  "ty": {
+                    "list": "number"
+                  },
+                  "span": [
+                    1326,
+                    1339
+                  ]
+                }
+              ],
+              "ty": {
+                "optional": "number"
+              },
+              "span": [
+                1318,
+                1340
+              ]
+            },
+            "rhs": {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                1344,
+                1351
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1318,
+              1351
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "gt_eq",
+            "lhs": {
+              "kind": "builtin",
+              "name": "sum",
+              "args": [
+                {
+                  "kind": "project",
+                  "base": {
+                    "kind": "input",
+                    "index": 0,
+                    "ty": {
+                      "list": {
+                        "record": 0
+                      }
+                    },
+                    "span": [
+                      1359,
+                      1366
+                    ]
+                  },
+                  "field": 1,
+                  "ty": {
+                    "list": "number"
+                  },
+                  "span": [
+                    1359,
+                    1372
+                  ]
+                }
+              ],
+              "ty": "number",
+              "span": [
+                1355,
+                1373
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "0",
+              "ty": "number",
+              "span": [
+                1377,
+                1378
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1355,
+              1378
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1318,
+            1378
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "builtin",
+            "name": "contains",
+            "args": [
+              {
+                "kind": "project",
+                "base": {
+                  "kind": "input",
+                  "index": 0,
+                  "ty": {
+                    "list": {
+                      "record": 0
+                    }
+                  },
+                  "span": [
+                    1398,
+                    1405
+                  ]
+                },
+                "field": 0,
+                "ty": {
+                  "list": "text"
+                },
+                "span": [
+                  1398,
+                  1410
+                ]
+              },
+              {
+                "kind": "text",
+                "value": "Ada",
+                "ty": "text",
+                "span": [
+                  1412,
+                  1417
+                ]
+              }
+            ],
+            "ty": "boolean",
+            "span": [
+              1389,
+              1418
+            ]
+          },
+          "rhs": {
+            "kind": "unary",
+            "op": "not",
+            "operand": {
+              "kind": "builtin",
+              "name": "contains",
+              "args": [
+                {
+                  "kind": "project",
+                  "base": {
+                    "kind": "input",
+                    "index": 0,
+                    "ty": {
+                      "list": {
+                        "record": 0
+                      }
+                    },
+                    "span": [
+                      1435,
+                      1442
+                    ]
+                  },
+                  "field": 0,
+                  "ty": {
+                    "list": "text"
+                  },
+                  "span": [
+                    1435,
+                    1447
+                  ]
+                },
+                {
+                  "kind": "text",
+                  "value": "Ada",
+                  "ty": "text",
+                  "span": [
+                    1449,
+                    1454
+                  ]
+                }
+              ],
+              "ty": "boolean",
+              "span": [
+                1426,
+                1455
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1422,
+              1455
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1389,
+            1455
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "binary",
+            "op": "not_eq",
+            "lhs": {
+              "kind": "project",
+              "base": {
+                "kind": "input",
+                "index": 0,
+                "ty": {
+                  "list": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  1466,
+                  1473
+                ]
+              },
+              "field": 1,
+              "ty": {
+                "list": "number"
+              },
+              "span": [
+                1466,
+                1479
+              ]
+            },
+            "rhs": {
+              "kind": "list",
+              "items": [],
+              "ty": {
+                "list": "number"
+              },
+              "span": [
+                1483,
+                1485
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1466,
+              1485
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "eq",
+            "lhs": {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1489,
+                1496
+              ]
+            },
+            "rhs": {
+              "kind": "list",
+              "items": [],
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1500,
+                1502
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1489,
+              1502
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1466,
+            1502
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "input",
+              "index": 1,
+              "ty": {
+                "optional": {
+                  "list": "text"
+                }
+              },
+              "span": [
+                1513,
+                1517
+              ]
+            },
+            "negated": false,
+            "ty": "boolean",
+            "span": [
+              1513,
+              1526
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "gt",
+            "lhs": {
+              "kind": "builtin",
+              "name": "length",
+              "args": [
+                {
+                  "kind": "input",
+                  "index": 1,
+                  "ty": {
+                    "list": "text"
+                  },
+                  "span": [
+                    1530,
+                    1534
+                  ]
+                }
+              ],
+              "ty": "number",
+              "span": [
+                1530,
+                1541
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "0",
+              "ty": "number",
+              "span": [
+                1544,
+                1545
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              1530,
+              1545
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1513,
+            1545
+          ]
+        }
+      ],
+      "examples": [
+        {
+          "args": [
+            {
+              "kind": "list",
+              "items": [],
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1575,
+                1577
+              ]
+            },
+            {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                1579,
+                1586
+              ]
+            }
+          ],
+          "expected": {
+            "kind": "nothing",
+            "ty": "nothing",
+            "span": [
+              1591,
+              1598
+            ]
+          },
+          "span": [
+            1570,
+            1598
+          ]
+        },
+        {
+          "args": [
+            {
+              "kind": "list",
+              "items": [
+                {
+                  "kind": "record",
+                  "ty": 0,
+                  "fields": [
+                    {
+                      "kind": "text",
+                      "value": "Ada",
+                      "ty": "text",
+                      "span": [
+                        1628,
+                        1633
+                      ]
+                    },
+                    {
+                      "kind": "number",
+                      "text": "3",
+                      "ty": "number",
+                      "span": [
+                        1642,
+                        1643
+                      ]
+                    },
+                    {
+                      "kind": "nothing",
+                      "ty": "nothing",
+                      "span": [
+                        1652,
+                        1659
+                      ]
+                    }
+                  ],
+                  "ty": {
+                    "record": 0
+                  },
+                  "span": [
+                    1615,
+                    1660
+                  ]
+                }
+              ],
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1614,
+                1661
+              ]
+            },
+            {
+              "kind": "list",
+              "items": [
+                {
+                  "kind": "text",
+                  "value": "fast",
+                  "ty": "text",
+                  "span": [
+                    1664,
+                    1670
+                  ]
+                }
+              ],
+              "ty": {
+                "list": "text"
+              },
+              "span": [
+                1663,
+                1671
+              ]
+            }
+          ],
+          "expected": {
+            "kind": "record",
+            "ty": 0,
+            "fields": [
+              {
+                "kind": "text",
+                "value": "Ada",
+                "ty": "text",
+                "span": [
+                  1699,
+                  1704
+                ]
+              },
+              {
+                "kind": "number",
+                "text": "3",
+                "ty": "number",
+                "span": [
+                  1690,
+                  1691
+                ]
+              },
+              {
+                "kind": "nothing",
+                "ty": "nothing",
+                "span": [
+                  1713,
+                  1720
+                ]
+              }
+            ],
+            "ty": {
+              "record": 0
+            },
+            "span": [
+              1676,
+              1721
+            ]
+          },
+          "span": [
+            1609,
+            1721
+          ]
+        }
+      ],
+      "span": [
+        972,
+        1721
+      ]
+    },
+    {
+      "name": "Summary",
+      "params": [
+        {
+          "name": "player",
+          "ty": {
+            "record": 0
+          },
+          "span": [
+            1881,
+            1895
+          ]
+        },
+        {
+          "name": "players",
+          "ty": {
+            "list": {
+              "record": 0
+            }
+          },
+          "span": [
+            1897,
+            1918
+          ]
+        },
+        {
+          "name": "sum",
+          "ty": "number",
+          "span": [
+            1920,
+            1931
+          ]
+        }
+      ],
+      "output": "number",
+      "plan": "Combine the numbers.",
+      "checks": [
+        {
+          "kind": "binary",
+          "op": "and",
+          "lhs": {
+            "kind": "is_empty",
+            "operand": {
+              "kind": "binding",
+              "index": 0,
+              "ty": {
+                "optional": {
+                  "record": 0
+                }
+              },
+              "span": [
+                2085,
+                2089
+              ]
+            },
+            "negated": true,
+            "ty": "boolean",
+            "span": [
+              2085,
+              2102
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "gt_eq",
+            "lhs": {
+              "kind": "binding",
+              "index": 1,
+              "ty": "number",
+              "span": [
+                2107,
+                2112
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "0",
+              "ty": "number",
+              "span": [
+                2116,
+                2117
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              2107,
+              2117
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            2085,
+            2117
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "or",
+          "lhs": {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "is_empty",
+              "operand": {
+                "kind": "binding",
+                "index": 0,
+                "ty": {
+                  "optional": {
+                    "record": 0
+                  }
+                },
+                "span": [
+                  2128,
+                  2132
+                ]
+              },
+              "negated": true,
+              "ty": "boolean",
+              "span": [
+                2128,
+                2145
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "gt_eq",
+              "lhs": {
+                "kind": "builtin",
+                "name": "sum",
+                "args": [
+                  {
+                    "kind": "list",
+                    "items": [
+                      {
+                        "kind": "field",
+                        "base": {
+                          "kind": "binding",
+                          "index": 0,
+                          "ty": {
+                            "record": 0
+                          },
+                          "span": [
+                            2155,
+                            2159
+                          ]
+                        },
+                        "field": 1,
+                        "ty": "number",
+                        "span": [
+                          2155,
+                          2165
+                        ]
+                      },
+                      {
+                        "kind": "input",
+                        "index": 2,
+                        "ty": "number",
+                        "span": [
+                          2167,
+                          2170
+                        ]
+                      }
+                    ],
+                    "ty": {
+                      "list": "number"
+                    },
+                    "span": [
+                      2154,
+                      2171
+                    ]
+                  }
+                ],
+                "ty": "number",
+                "span": [
+                  2150,
+                  2172
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "0",
+                "ty": "number",
+                "span": [
+                  2176,
+                  2177
+                ]
+              },
+              "ty": "boolean",
+              "span": [
+                2150,
+                2177
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              2128,
+              2177
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "gt",
+            "lhs": {
+              "kind": "input",
+              "index": 2,
+              "ty": "number",
+              "span": [
+                2181,
+                2184
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "0",
+              "ty": "number",
+              "span": [
+                2187,
+                2188
+              ]
+            },
+            "ty": "boolean",
+            "span": [
+              2181,
+              2188
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            2128,
+            2188
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "not_eq",
+          "lhs": {
+            "kind": "list",
+            "items": [
+              {
+                "kind": "number",
+                "text": "1",
+                "ty": "number",
+                "span": [
+                  2200,
+                  2201
+                ]
+              },
+              {
+                "kind": "nothing",
+                "ty": "nothing",
+                "span": [
+                  2203,
+                  2210
+                ]
+              }
+            ],
+            "ty": {
+              "list": {
+                "optional": "number"
+              }
+            },
+            "span": [
+              2199,
+              2211
+            ]
+          },
+          "rhs": {
+            "kind": "list",
+            "items": [
+              {
+                "kind": "nothing",
+                "ty": "nothing",
+                "span": [
+                  2216,
+                  2223
+                ]
+              }
+            ],
+            "ty": {
+              "list": {
+                "optional": "number"
+              }
+            },
+            "span": [
+              2215,
+              2224
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            2199,
+            2224
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "eq",
+          "lhs": {
+            "kind": "builtin",
+            "name": "clamp",
+            "args": [
+              {
+                "kind": "result",
+                "ty": "number",
+                "span": [
+                  2241,
+                  2247
+                ]
+              },
+              {
+                "kind": "number",
+                "text": "0",
+                "ty": "number",
+                "span": [
+                  2249,
+                  2250
+                ]
+              },
+              {
+                "kind": "number",
+                "text": "10",
+                "ty": "number",
+                "span": [
+                  2252,
+                  2254
+                ]
+              }
+            ],
+            "ty": "number",
+            "span": [
+              2235,
+              2255
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "mul",
+            "lhs": {
+              "kind": "builtin",
+              "name": "round",
+              "args": [
+                {
+                  "kind": "binary",
+                  "op": "div",
+                  "lhs": {
+                    "kind": "result",
+                    "ty": "number",
+                    "span": [
+                      2265,
+                      2271
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "number",
+                    "text": "2",
+                    "ty": "number",
+                    "span": [
+                      2274,
+                      2275
+                    ]
+                  },
+                  "ty": "number",
+                  "span": [
+                    2265,
+                    2275
+                  ]
+                }
+              ],
+              "ty": "number",
+              "span": [
+                2259,
+                2276
+              ]
+            },
+            "rhs": {
+              "kind": "unary",
+              "op": "neg",
+              "operand": {
+                "kind": "number",
+                "text": "1",
+                "ty": "number",
+                "span": [
+                  2280,
+                  2281
+                ]
+              },
+              "ty": "number",
+              "span": [
+                2279,
+                2281
+              ]
+            },
+            "ty": "number",
+            "span": [
+              2259,
+              2281
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            2235,
+            2281
+          ]
+        }
+      ],
+      "examples": [],
+      "span": [
+        1868,
+        2281
+      ]
+    }
+  ]
+}

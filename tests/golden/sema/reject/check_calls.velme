@@ -1,0 +1,19 @@
+# Checks call only the check built-ins; record literals name their fields (R-CHK-02, R-CHK-03, R-SYN-16, R-BLT-01).
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+
+goal Score(player: Player) -> Number:
+    plan: "Score the player."
+    check:
+        - Score(player) > 0
+        - map(player.name) == 0
+        - summ([1]) > 0
+        - clamp(result, 0) > 0
+        - sum(player.name) > 0
+        - abs(x: result) >= 0
+        - Player("Ada", 3) == player
+        - every player in [player] has player.score > 0
+        - maximum(score) == nothing

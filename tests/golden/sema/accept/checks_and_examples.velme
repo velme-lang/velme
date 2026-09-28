@@ -1,0 +1,50 @@
+# Checks and examples type-check against the signatures (language/11 §8-9, language/13, language/12 R-GOAL-21).
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+    rival: Player2?
+
+type Player2:
+    name: Text
+    tags: List<Text>
+
+# Narrowing through `and`, `or`, `if`, `not` and `!= nothing` (R-TYP-22, R-TYP-27, AC-TYP-04, AC-TYP-20).
+goal Total(a: Player?, b: Player?) -> Number:
+    plan: "Add both scores, or 0 if either player is missing."
+    check:
+        - if a is not empty and b is not empty then result == a.score + b.score
+        - a is empty or b is empty or result == a.score + b.score
+        - not (a == nothing) and a.rival != nothing and a.rival.name != ""
+        - if a is not empty then a.rival is empty or a.rival.tags.length >= 0
+    examples:
+        - Total(nothing, Player(name: "Bo", score: 2, rival: nothing)) == 0
+
+# Projection, `.length`, quantifiers and the check built-ins (R-TYP-14, R-CHK-02, R-CHK-04, AC-TYP-13).
+goal Best(players: List<Player>, tags: List<Text>?) -> Player?:
+    plan: "Pick the player with the highest score."
+    check:
+        - if players is empty then result is empty
+        - if result is not empty then every p in players has result.score >= p.score
+        - some p in players has p.name.length > 0 or players.length == 0
+        - maximum(players.score) == nothing or sum(players.score) >= 0
+        - contains(players.name, "Ada") or not contains(players.name, "Ada")
+        - players.score != [] or players == []
+        - tags is empty or tags.length > 0
+    examples:
+        - Best([], nothing) == nothing
+        - Best([Player(name: "Ada", score: 3, rival: nothing)], ["fast"]) == Player(score: 3, name: "Ada", rival: nothing)
+
+# A binding in a check has its callee's output type (AC-CHK-02); `sum(...)` is the built-in even with an input
+# called `sum` (D-64, AC-BLT-14).
+goal Summary(player: Player, players: List<Player>, sum: Number) -> Number:
+    call:
+        best = Best(players, nothing)
+        total = Total(player, nothing)
+    plan: "Combine the numbers."
+    check:
+        - best is not empty and total >= 0
+        - best is not empty and sum([best.score, sum]) >= 0 or sum > 0
+        - [1, nothing] != [nothing]
+        - clamp(result, 0, 10) == round(result / 2) * -1

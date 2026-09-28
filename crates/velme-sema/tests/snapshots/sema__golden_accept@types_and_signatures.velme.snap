@@ -112,6 +112,8 @@ input_file: tests/golden/sema/accept/types_and_signatures.velme
         }
       },
       "plan": "Pick the player who jumps highest, or the backup.",
+      "checks": [],
+      "examples": [],
       "span": [
         228,
         351

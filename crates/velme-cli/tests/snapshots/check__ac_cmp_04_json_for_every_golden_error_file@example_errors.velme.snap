@@ -1,0 +1,129 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/example_errors.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "help": "an example calls the goal it belongs to, `Greet`",
+      "labels": [],
+      "message": "`Hello` can only be used after it's listed in `call:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 295,
+        "line": 11,
+        "start": 290
+      }
+    },
+    {
+      "code": "VL0302",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "labels": [],
+      "message": "`Greet` needs 1 input, but got 0.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 373,
+        "line": 12,
+        "start": 358
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "labels": [],
+      "message": "Expected Player, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 395,
+        "line": 13,
+        "start": 390
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "labels": [],
+      "message": "Expected Text, but got Number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 56,
+        "end": 465,
+        "line": 14,
+        "start": 464
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "help": "give every field a value; a field whose type ends in `?` can be `nothing`",
+      "labels": [],
+      "message": "This `Player` is missing `nickname`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 501,
+        "line": 15,
+        "start": 482
+      }
+    },
+    {
+      "code": "VL0205",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "labels": [],
+      "message": "A `Player` doesn't have a field called `nick`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 37,
+        "end": 555,
+        "line": 16,
+        "start": 551
+      }
+    },
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "help": "did you mean `Player`?",
+      "labels": [],
+      "message": "I don't know a type called `Plyer`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 594,
+        "line": 17,
+        "start": 589
+      }
+    },
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/example_errors.velme",
+      "help": "remove one of them",
+      "labels": [],
+      "message": "`name` is given a value twice.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 37,
+        "end": 680,
+        "line": 18,
+        "start": 676
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

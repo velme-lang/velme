@@ -1,0 +1,146 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/check_calls.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "a check looks at one run; list the call in `call:` and use its name here",
+      "labels": [],
+      "message": "`Score` can only be used after it's listed in `call:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 278,
+        "line": 11,
+        "start": 273
+      }
+    },
+    {
+      "code": "VL0202",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "`map` works only in generated code; in a check, use `every … in … has …` or `some … in … has …`",
+      "labels": [],
+      "message": "I don't know what `map` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 304,
+        "line": 12,
+        "start": 301
+      }
+    },
+    {
+      "code": "VL0202",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "did you mean `sum`?",
+      "labels": [],
+      "message": "I don't know what `summ` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 337,
+        "line": 13,
+        "start": 333
+      }
+    },
+    {
+      "code": "VL0302",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "labels": [],
+      "message": "`clamp` needs 3 inputs, but got 2.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 373,
+        "line": 14,
+        "start": 357
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "labels": [],
+      "message": "Expected List<Number>, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 403,
+        "line": 15,
+        "start": 392
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "remove `x:`",
+      "labels": [],
+      "message": "`abs` takes its inputs without names.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 424,
+        "line": 16,
+        "start": 423
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "write them like `Player(name: …, score: …)`",
+      "labels": [],
+      "message": "Each value in `Player(…)` needs its field name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 465,
+        "line": 17,
+        "start": 449
+      }
+    },
+    {
+      "code": "VL0306",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "give the item its own name",
+      "labels": [],
+      "message": "`player` is already used in this goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 498,
+        "line": 18,
+        "start": 492
+      }
+    },
+    {
+      "code": "VL0202",
+      "file": "tests/golden/sema/reject/check_calls.velme",
+      "help": "a check can use the goal's inputs, its `call:` names and `result`",
+      "labels": [],
+      "message": "I don't know what `score` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 555,
+        "line": 19,
+        "start": 550
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}
