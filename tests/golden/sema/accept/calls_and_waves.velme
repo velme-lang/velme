@@ -1,0 +1,80 @@
+# Call blocks, waves, wired goals and budgets (language/12 §3, §4, §6, §8.3, §8.4).
+language: velme/0.1
+
+type Stats:
+    jump_height: Number
+
+type Player:
+    name: Text
+    stats: Stats
+    rival: Player2?
+
+type Player2:
+    name: Text
+
+type Level:
+    enemy_count: Number
+    treasure_count: Number
+    base_score: Number
+
+type LevelSummary:
+    score: Number
+    difficulty: Text
+    reward: Number
+
+goal CountEnemies(level: Level) -> Number:
+    plan: "Return the level's enemy_count."
+
+goal CountTreasures(level: Level) -> Number:
+    plan: "Return the level's treasure_count."
+
+goal CalculateLevelScore(level: Level) -> Number:
+    plan: "Return the level's base_score."
+
+goal RateDifficulty(enemies: Number, treasures: Number) -> Text:
+    plan: "Rate the level Hard, Medium or Easy."
+
+goal CalculateReward(score: Number, treasures: Number) -> Number:
+    plan: "The reward is the score plus 50 for every treasure."
+
+# Mixed waves: {enemies, treasures, score}, then {difficulty, reward} (AC-GOAL-07).
+goal CreateLevelSummary(level: Level) -> LevelSummary:
+    call:
+        enemies = CountEnemies(level)
+        treasures = CountTreasures(level)
+        score = CalculateLevelScore(level)
+        difficulty = RateDifficulty(enemies, treasures)
+        reward = CalculateReward(score, treasures)
+    plan: |
+        Combine the score, difficulty, and reward into one level summary.
+    check:
+        - result.score == score
+        - result.difficulty == difficulty
+        - result.reward == reward
+
+# A field path and literals as arguments (AC-GOAL-05); `T` and `nothing` fit a `T?` input (R-TYP-20).
+goal Jump(stats: Stats, bonus: Number, rival: Player2?) -> Number:
+    plan: "Add the bonus to the jump height."
+
+goal Scores(player: Player) -> List<Number>:
+    budget cpu=10ms memory=512kb calls=3 depth=1
+    call:
+        high = Jump(player.stats, 10, player.rival)
+        low = Jump(Stats(jump_height: 1), -1, nothing)
+    plan: "Both jump scores."
+
+# Wired: the last binding is the output and there is no plan (D-4, AC-GOAL-18); a sequential chain.
+goal Double(x: Number) -> Number:
+    plan: "Multiply x by 2."
+
+goal AddOne(x: Number) -> Number:
+    plan: "Add 1 to x."
+
+goal Main(x: Number) -> Number:
+    budget depth=2
+    call:
+        doubled = Double(x)
+        added = AddOne(doubled)
+        result = Double(added)
+    check:
+        - result == added * 2

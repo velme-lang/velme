@@ -1,6 +1,7 @@
 //! The typed semantic model (HIR, `compiler/20` §4): resolved ids instead of names, with spans kept (R-CMP-11).
 
 use serde::Serialize;
+use velme_builtins::limits;
 use velme_diagnostics::Span;
 use velme_syntax::ast::{BinaryOp, Quantifier, UnaryOp};
 
@@ -112,6 +113,12 @@ pub struct Goal {
     pub params: Vec<Param>,
     /// Its output type.
     pub output: Type,
+    /// What is synthesized for it (`language/12` §2, D-4).
+    pub kind: GoalKind,
+    /// The limits of its own invocation (R-GOAL-20).
+    pub budget: Budget,
+    /// The `call` bindings, in block order; a wired goal's last one is `result` (R-GOAL-12).
+    pub bindings: Vec<Binding>,
     /// The plan text, normalized (D-21), if it has one.
     pub plan: Option<String>,
     /// The `check` items, each a `Boolean` expression (`language/13` R-CHK-01).
@@ -119,6 +126,59 @@ pub struct Goal {
     /// The `examples`, in order (`language/12` R-GOAL-21).
     pub examples: Vec<Example>,
     /// The whole declaration.
+    pub span: Span,
+}
+
+/// What is synthesized for a goal (`language/12` §2, `compiler/20` §3 phase 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalKind {
+    /// No `call` block: the whole body is synthesized.
+    Leaf,
+    /// A `call` block without `result`: only the tail is synthesized (D-5).
+    Composite,
+    /// A `call` block ending in `result`: nothing is synthesized (D-4).
+    Wired,
+}
+
+/// The effective limits of one goal's own invocation: the system caps, lowered by its `budget` line (R-GOAL-20,
+/// `runtime/30` R-RUN-16).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Budget {
+    /// Fuel for this invocation (`cpu=` × `FUEL_PER_MS`).
+    pub max_fuel: u64,
+    /// Bytes allocated by this invocation (`memory=`).
+    pub max_memory: u64,
+    /// Goal invocations in this goal's subtree, itself included (`calls=`).
+    pub max_goal_calls: u64,
+    /// Call depth below this goal (`depth=`).
+    pub max_call_depth: u64,
+}
+
+impl Budget {
+    /// The system caps (`runtime/30` §7), for a goal without a `budget` line.
+    pub const SYSTEM: Budget = Budget {
+        max_fuel: limits::MAX_FUEL,
+        max_memory: limits::MAX_MEMORY,
+        max_goal_calls: limits::MAX_GOAL_CALLS,
+        max_call_depth: limits::MAX_CALL_DEPTH,
+    };
+}
+
+/// `name = Goal(args)` in a `call` block (`language/12` §3, R-GOAL-14).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Binding {
+    /// The bound name, `result` for a wired goal's last binding.
+    pub name: String,
+    /// The goal called.
+    pub callee: GoalId,
+    /// One argument per callee parameter: a path from an input or an earlier binding, or a literal (R-GOAL-08).
+    pub args: Vec<Expr>,
+    /// The callee's output type (R-GOAL-12).
+    pub ty: Type,
+    /// When it can run: 1 + the latest wave among the bindings it uses; inputs are wave 0 (R-GOAL-14).
+    pub wave: usize,
+    /// The whole line.
     pub span: Span,
 }
 
@@ -144,7 +204,7 @@ pub struct Example {
     pub span: Span,
 }
 
-/// A typed expression of a check or example (`language/13` §3).
+/// A typed expression of a check, an example or a call argument (`language/13` §3, `language/12` R-GOAL-08).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
     /// What the expression is.
@@ -182,9 +242,9 @@ pub enum ExprKind {
         /// The index into [`Goal::params`].
         index: usize,
     },
-    /// A `call` binding, by position in the block.
+    /// A `call` binding.
     Binding {
-        /// The binding's index.
+        /// The index into [`Goal::bindings`].
         index: usize,
     },
     /// The goal's output.

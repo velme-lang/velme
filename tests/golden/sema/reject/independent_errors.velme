@@ -1,0 +1,20 @@
+# Three independent errors from three phases, all reported in one run by position (compiler/20 AC-CMP-03).
+language: velme/0.1
+
+goal Broken(x: Number) -> Number:
+    plan: "Return x."
+    check:
+        - result >
+
+goal Typed(x: Numbr) -> Number:
+    plan: "Return x."
+
+goal Ping(x: Number) -> Number:
+    call:
+        pong = Pong(x)
+    plan: "Use Pong."
+
+goal Pong(x: Number) -> Number:
+    call:
+        ping = Ping(x)
+    plan: "Use Ping."

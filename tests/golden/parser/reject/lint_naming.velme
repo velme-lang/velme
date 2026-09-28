@@ -6,3 +6,9 @@ goal find_badge(PlayerName: Text) -> Text:
     call:
         BestScore = Score(PlayerName)
         result = Badge(BestScore)
+
+goal Score(name: Text) -> Number:
+    plan: "Count the letters."
+
+goal Badge(score: Number) -> Text:
+    plan: "Pick a badge."

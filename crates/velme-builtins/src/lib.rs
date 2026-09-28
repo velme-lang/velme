@@ -1,5 +1,8 @@
-//! Velme built-ins: the catalog of built-in functions, defined once as data (`language/14` R-BLT-01).
+//! Velme built-ins: the catalog of built-in functions, defined once as data (`language/14` R-BLT-01), and the budget
+//! caps every layer checks against (D-77).
 #![forbid(unsafe_code)]
+
+pub mod limits;
 
 /// The catalog's version, recorded in every artifact manifest and synthesis cache key (R-BLT-09).
 pub const BUILTINS_VERSION: &str = "0.1";

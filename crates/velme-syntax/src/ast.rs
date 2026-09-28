@@ -221,6 +221,9 @@ pub enum CallArg {
     Path(Path),
     /// A literal value.
     Literal(Literal),
+    /// Anything else, such as `x + 1`: read as an expression so the checker can reject it with `VL0303` and keep
+    /// checking the goal (`language/12` R-GOAL-08).
+    Expr(Expr),
 }
 
 /// `path` (§4): `name.field.field`.

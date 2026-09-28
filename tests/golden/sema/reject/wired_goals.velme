@@ -1,0 +1,21 @@
+# A goal needs a plan or a `result` binding, whose type fits the output (language/12 R-GOAL-01, R-GOAL-12).
+language: velme/0.1
+
+goal Name(x: Number) -> Text:
+    plan: "Spell x out."
+
+goal Double(x: Number) -> Number:
+    plan: "Multiply x by 2."
+
+goal Main(x: Number) -> Number:
+    call:
+        doubled = Double(x)
+        result = Name(doubled)
+
+goal NoPlan(x: Number) -> Number:
+    call:
+        doubled = Double(x)
+
+goal Empty(x: Number) -> Number:
+    check:
+        - result > x

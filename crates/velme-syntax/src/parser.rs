@@ -853,7 +853,36 @@ fn call_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, CallBlock, Extra<'t
                 span: sp(e.span()),
             }
         });
-    let arg = choice((literal().map(CallArg::Literal), path.map(CallArg::Path)));
+    // A path or literal must end the argument. One followed by an operator, or an argument starting with `-`, `not`
+    // or `(`, is read whole as an expression for R-GOAL-08. The operators are matched with `select!`, which adds
+    // nothing to the "I was looking for" list when the argument simply ends badly.
+    let arg_end = punct(Punct::Comma).or(punct(Punct::RParen)).rewind();
+    let operator = select! {
+        Tok::Punct(
+            Punct::Plus | Punct::Minus | Punct::Star | Punct::Slash | Punct::EqEq | Punct::NotEq
+            | Punct::Lt | Punct::LtEq | Punct::Gt | Punct::GtEq
+        ) => (),
+        Tok::Keyword(Keyword::And | Keyword::Or | Keyword::Is) => (),
+    };
+    let prefix = select! { Tok::Punct(Punct::Minus | Punct::LParen) => (), Tok::Keyword(Keyword::Not) => () };
+    let names = name_or_result().then(punct(Punct::Dot).ignore_then(name()).repeated());
+    let operand = literal().ignored().or(names.ignored());
+    let starts_expr = operand.then(operator).ignored().or(prefix).rewind();
+    let other = starts_expr.ignore_then(expr()).validate(|e, _, emitter| {
+        if let Some(at) = first_result(&e) {
+            emitter.emit(custom(
+                simple(at),
+                "`result` can only name the last binding.",
+                "`result` doesn't exist yet while the calls run — pass a parameter or an earlier binding",
+            ));
+        }
+        CallArg::Expr(e)
+    });
+    let arg = choice((
+        literal().map(CallArg::Literal).then_ignore(arg_end.clone()),
+        path.map(CallArg::Path).then_ignore(arg_end),
+        other,
+    ));
     let binding = name_or_result()
         .then_ignore(punct(Punct::Assign))
         .then(name())
@@ -879,6 +908,25 @@ fn call_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, CallBlock, Extra<'t
             span: sp(e.span()),
         }
     })
+}
+
+/// Where `result` first appears in `e`, if it does (R-GOAL-23).
+fn first_result(e: &Expr) -> Option<Span> {
+    match &e.kind {
+        ExprKind::Result => Some(e.span),
+        ExprKind::Number { .. }
+        | ExprKind::Text { .. }
+        | ExprKind::Bool { .. }
+        | ExprKind::Nothing
+        | ExprKind::Name { .. } => None,
+        ExprKind::Call { args, .. } => args.iter().find_map(|a| first_result(&a.value)),
+        ExprKind::List { items } => items.iter().find_map(first_result),
+        ExprKind::Field { base, .. } => first_result(base),
+        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } => first_result(operand),
+        ExprKind::Binary { lhs, rhs, .. } => first_result(lhs).or_else(|| first_result(rhs)),
+        ExprKind::If { condition, then } => first_result(condition).or_else(|| first_result(then)),
+        ExprKind::Quantified { collection, body, .. } => first_result(collection).or_else(|| first_result(body)),
+    }
 }
 
 fn plan_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Plan, Extra<'t>> + Clone {

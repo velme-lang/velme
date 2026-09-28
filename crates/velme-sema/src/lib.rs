@@ -1,7 +1,9 @@
 //! Velme semantic analysis: names, types and the call graph, producing the typed HIR (`compiler/20` §3 phases 3–6).
 #![forbid(unsafe_code)]
 
+mod budget;
 mod check;
+mod graph;
 pub mod hir;
 mod resolve;
 
@@ -15,6 +17,7 @@ pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>) {
     let (ast, mut diags) = velme_syntax::parse(file);
     let (types, mut goals, scope) = resolve::resolve(&ast, &file.text, &mut diags);
     check::check_bodies(&types, &mut goals, &scope, &file.text, &mut diags);
+    graph::check_graph(&goals, &scope.goals, &mut diags);
     velme_diagnostics::sort(&mut diags);
     let program = hir::Program {
         language_version: ast

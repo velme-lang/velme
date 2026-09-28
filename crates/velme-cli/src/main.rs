@@ -36,11 +36,12 @@ const JSON_FORMAT: &str = "velme-cli/1";
 const ANALYZE_STACK: usize = 64 * 1024 * 1024;
 
 /// The `velme check` progress lines (`tooling/40` §3.3) this build can reach, each with the code prefixes of the phase
-/// it reports on (`reference/90` groups codes by phase).
+/// it reports on (`reference/90` groups codes by phase). The static call limits are checked with the call graph
+/// (`runtime/30` §7).
 const CHECK_LINES: [(&str, &[&str]); 3] = [
     ("✓ Parsed", &["VL01"]),
     ("✓ Types valid", &["VL02"]),
-    ("✓ Call graph valid", &["VL03"]),
+    ("✓ Call graph valid", &["VL03", "VL0605"]),
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       velme --version";
@@ -265,6 +266,20 @@ mod tests {
             let exit = code_exit(code);
             assert!(EXIT_PRECEDENCE.contains(&exit), "{code:?} maps to {exit}");
         }
+    }
+
+    /// A static call limit fails the call graph line, not the ones before it (AC-RUN-06).
+    #[test]
+    fn call_limit_is_reported_with_the_call_graph() {
+        let diag = |code| Diagnostic::new(code, Default::default(), "");
+        assert_eq!(
+            progress_lines(&[diag(Code::CallLimitExceeded)]),
+            "✓ Parsed\n✓ Types valid\n"
+        );
+        assert_eq!(
+            progress_lines(&[diag(Code::InvalidBudget)]),
+            "✓ Parsed\n✓ Types valid\n"
+        );
     }
 
     #[test]

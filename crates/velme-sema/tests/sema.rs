@@ -3,9 +3,10 @@
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
+use velme_builtins::limits;
 use velme_diagnostics::{Code, Diagnostic};
 use velme_sema::analyze;
-use velme_sema::hir::{Program, Type};
+use velme_sema::hir::{Budget, GoalKind, Program, Type};
 use velme_syntax::SourceFile;
 
 fn analyze_str(text: &str) -> (Option<Program>, Vec<Diagnostic>) {
@@ -382,4 +383,343 @@ fn empty_list_fits_an_optional_list() {
          examples:\n        - G([]) == 0\n",
     );
     assert_eq!(p.type_name(&p.goals[0].examples[0].args[0].ty), "List<Text>");
+}
+
+/// `language/12` §8.1 and §8.2, as written there.
+const WORKED_PROGRAMS: &str = r#"type Player:
+    name: Text
+    jump_height: Number
+    score: Number
+
+type PlayerSummary:
+    name: Text
+    score: Number
+    badge: Text
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score."
+    check:
+        - result == player.score
+
+goal FindBadge(player: Player) -> Text:
+    plan: |
+        Give the player Gold for a score of at least 1000,
+        Silver for a score of at least 500, Bronze otherwise.
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+    examples:
+        - FindBadge(Player(name: "Lina", jump_height: 3, score: 820)) == "Silver"
+        - FindBadge(Player(name: "Tom", jump_height: 5, score: 1000)) == "Gold"
+
+goal BuildPlayerSummary(player: Player) -> PlayerSummary:
+    call:
+        score = CalculateScore(player)
+        badge = FindBadge(player)
+    plan: |
+        Build a player summary using the player's name,
+        calculated score, and badge.
+    check:
+        - result.name == player.name
+        - result.score == score
+        - result.badge == badge
+
+goal FindHighestJumpingPlayer(players: List<Player>) -> Player?:
+    plan: |
+        Look at all the players.
+        Find the one whose jump_height is the biggest.
+        Return that player.
+    check:
+        - if players is empty then result is empty
+        - if players is not empty then result is not empty
+        - if result is not empty then every p in players has result.jump_height >= p.jump_height
+"#;
+
+/// `type Player` and a leaf `Score(player: Player) -> Number`, then `goal G(player: Player, x: Number) -> Number`
+/// with `lines` as its `call:` block.
+fn with_calls(lines: &str) -> String {
+    format!(
+        "type Stats:\n    height: Number\n\ntype Player:\n    name: Text\n    stats: Stats\n\n\
+         goal Score(player: Player) -> Number:\n    plan: \"x\"\n\ngoal Height(stats: Stats) -> Number:\n    plan: \"x\"\n\n\
+         goal G(player: Player, x: Number) -> Number:\n    call:\n{lines}    plan: \"x\"\n"
+    )
+}
+
+fn repo_file(rel: &str) -> String {
+    std::fs::read_to_string(format!("{}/../../{rel}", env!("CARGO_MANIFEST_DIR"))).expect("repository file")
+}
+
+#[test]
+fn ac_goal_01_goal_needs_a_plan_or_a_result_binding() {
+    let d = only("goal G(x: Number) -> Number:\n    check:\n        - result > x\n");
+    assert_eq!(d.code, Code::GoalHasNoBody);
+    assert_eq!(d.message, "`G` needs a `plan:` that says what it should do.");
+    assert_eq!(
+        codes("goal G(x: Number) -> Number:\n    plan: \"\"\n"),
+        [Code::GoalHasNoBody]
+    );
+}
+
+#[test]
+fn ac_goal_02_argument_type_is_checked_before_synthesis() {
+    let d = only(&with_calls("        score = Score(\"hello\")\n"));
+    assert_eq!(d.code, Code::TypeMismatch);
+    assert_eq!(d.message, "Expected Player, but got Text.");
+}
+
+#[test]
+fn ac_goal_03_self_call_and_cycle_path() {
+    let d = only("goal A(x: Number) -> Number:\n    call:\n        value = A(x)\n    plan: \"x\"\n");
+    assert_eq!(d.code, Code::CallCycle);
+    assert_eq!(d.message, "These goals call each other in a circle: A → A.");
+    let d = only(
+        "goal A(x: Number) -> Number:\n    call:\n        b = B(x)\n    plan: \"x\"\n\n\
+         goal B(x: Number) -> Number:\n    call:\n        a = A(x)\n    plan: \"x\"\n",
+    );
+    assert_eq!(d.code, Code::CallCycle);
+    assert_eq!(d.message, "These goals call each other in a circle: A → B → A.");
+}
+
+#[test]
+fn ac_goal_04_binding_used_before_its_line() {
+    let d = only(&with_calls("        b = Score(a)\n        a = Score(player)\n"));
+    assert_eq!(d.code, Code::BindingUsedBeforeDefinition);
+    assert_eq!(d.message, "`a` is used before it's made — move its line up.");
+}
+
+#[test]
+fn ac_goal_05_arguments_are_paths_or_literals() {
+    let d = only(&with_calls("        s = Score(x + 1)\n"));
+    assert_eq!(d.code, Code::InvalidCall);
+    let p = program(&with_calls("        s = Height(player.stats)\n"));
+    let s = &p.goals[2].bindings[0];
+    assert_eq!((s.ty.clone(), s.wave), (Type::Number, 1));
+    assert_eq!(
+        codes(&with_calls("        s = Score(player.name.length)\n")),
+        [Code::InvalidCall]
+    );
+}
+
+/// A call block can't narrow, so a field of a value that might be empty gets the call-block advice (R-TYP-12).
+#[test]
+fn optional_field_path_in_a_call() {
+    let text = "type R:\n    name: Text\n\ntype P:\n    rival: R?\n\ngoal N(name: Text) -> Number:\n    plan: \"x\"\n\n\
+                goal G(p: P) -> Number:\n    call:\n        n = N(p.rival.name)\n    plan: \"x\"\n";
+    let d = only(text);
+    assert_eq!(d.code, Code::NullableAccess);
+    assert_eq!(d.message, "`p.rival` might be empty, so a call can't use its `name`.");
+    assert_eq!(
+        d.help.as_deref(),
+        Some("a call can't check that first — pass `p.rival` itself to an input of type `R?`")
+    );
+}
+
+#[test]
+fn ac_goal_06_unknown_goal_and_arity() {
+    let d = only(&with_calls("        s = Scor(player)\n"));
+    assert_eq!(d.code, Code::UnknownGoal);
+    assert_eq!(d.message, "I don't know a goal called `Scor`.");
+    assert_eq!(d.help.as_deref(), Some("did you mean `Score`?"));
+    let d = only(&with_calls("        s = Score(player, x)\n"));
+    assert_eq!(d.code, Code::CallArityMismatch);
+    assert_eq!(d.message, "`Score` needs 1 input, but got 2.");
+}
+
+#[test]
+fn ac_goal_07_mixed_waves() {
+    let p = program(&repo_file("examples/games/level_summary.velme"));
+    let goal = p
+        .goals
+        .iter()
+        .find(|g| g.name == "CreateLevelSummary")
+        .expect("the §8.4 goal");
+    let waves: Vec<(&str, usize)> = goal.bindings.iter().map(|b| (b.name.as_str(), b.wave)).collect();
+    assert_eq!(
+        waves,
+        [
+            ("enemies", 1),
+            ("treasures", 1),
+            ("score", 1),
+            ("difficulty", 2),
+            ("reward", 2)
+        ]
+    );
+    assert_eq!(goal.kind, GoalKind::Composite);
+}
+
+#[test]
+fn ac_goal_10_budget_only_lowers_the_caps() {
+    let d = only("goal G(x: Number) -> Number:\n    budget cpu=10ms calls=999\n    plan: \"x\"\n");
+    assert_eq!(d.code, Code::InvalidBudget);
+    assert_eq!(
+        d.message,
+        format!(
+            "`budget` can only make limits smaller — `calls` can be at most `{}`.",
+            limits::MAX_GOAL_CALLS
+        )
+    );
+    let p = program("goal G(x: Number) -> Number:\n    budget cpu=10ms depth=2\n    plan: \"x\"\n");
+    let budget = p.goals[0].budget;
+    assert_eq!(budget.max_call_depth, 2);
+    assert_eq!(budget.max_fuel, 10 * limits::FUEL_PER_MS);
+    assert_eq!(
+        (budget.max_goal_calls, budget.max_memory),
+        (Budget::SYSTEM.max_goal_calls, Budget::SYSTEM.max_memory)
+    );
+}
+
+#[test]
+fn ac_goal_12_result_binding_must_fit_the_output() {
+    let text = "goal Name(x: Number) -> Text:\n    plan: \"x\"\n\n\
+                goal Main(x: Number) -> Number:\n    call:\n        result = Name(x)\n";
+    let d = only(text);
+    assert_eq!(d.code, Code::TypeMismatch);
+    assert_eq!(d.message, "Expected Number, but got Text.");
+    let optional = "goal Maybe(x: Number) -> Number:\n    plan: \"x\"\n\n\
+                    goal Main(x: Number) -> Number?:\n    call:\n        result = Maybe(x)\n";
+    assert_eq!(program(optional).goals[1].kind, GoalKind::Wired);
+}
+
+#[test]
+fn ac_goal_13_worked_programs_check_clean() {
+    let p = program(WORKED_PROGRAMS);
+    let kinds: Vec<GoalKind> = p.goals.iter().map(|g| g.kind).collect();
+    assert_eq!(
+        kinds,
+        [GoalKind::Leaf, GoalKind::Leaf, GoalKind::Composite, GoalKind::Leaf]
+    );
+}
+
+#[test]
+fn ac_goal_14_fractional_and_wrong_unit_cpu() {
+    let budget = |line: &str| {
+        only(&format!(
+            "goal G(x: Number) -> Number:\n    budget {line}\n    plan: \"x\"\n"
+        ))
+    };
+    let d = budget("cpu=1.5ms");
+    assert_eq!(
+        (d.code, d.message.as_str()),
+        (Code::InvalidBudget, "`cpu` must be a whole number.")
+    );
+    let d = budget("cpu=10s");
+    assert_eq!(
+        (d.code, d.message.as_str()),
+        (
+            Code::InvalidBudget,
+            "`cpu` is a time in whole milliseconds, like `cpu=10ms`."
+        )
+    );
+}
+
+#[test]
+fn ac_goal_16_duplicate_binding_and_parameter_name() {
+    let d = only(&with_calls(
+        "        total = Score(player)\n        total = Score(player)\n",
+    ));
+    assert_eq!(d.code, Code::DuplicateBinding);
+    assert_eq!(d.message, "`total` is already used in this goal.");
+    assert_eq!(
+        codes(&with_calls("        x = Score(player)\n")),
+        [Code::DuplicateBinding]
+    );
+}
+
+#[test]
+fn ac_goal_18_result_names_only_the_last_binding() {
+    let early = with_calls("        result = Score(player)\n        s = Score(player)\n");
+    assert_eq!(codes(&early), [Code::UnexpectedToken]);
+    assert_eq!(
+        codes(&with_calls("        s = Score(result)\n")),
+        [Code::UnexpectedToken]
+    );
+    let d = only(&with_calls("        s = Height(result.stats + 1)\n"));
+    assert_eq!(
+        (d.code, d.message.as_str()),
+        (Code::UnexpectedToken, "`result` can only name the last binding.")
+    );
+    let wired = "goal Score(x: Number) -> Number:\n    plan: \"x\"\n\n\
+                 goal Main(x: Number) -> Number:\n    call:\n        s = Score(x)\n        result = Score(s)\n";
+    let p = program(wired);
+    assert_eq!(p.goals[1].kind, GoalKind::Wired);
+    assert_eq!(p.goals[1].bindings[1].wave, 2);
+}
+
+/// Every goal can be the top of a run, so each run tree is held to the system caps; a goal above one that is already
+/// over isn't reported again.
+#[test]
+fn ac_run_06_call_tree_over_the_cap_is_rejected_statically() {
+    let fan = |name: &str, callee: &str, n: u64| {
+        let lines: String = (0..n).map(|i| format!("        c{i} = {callee}(x)\n")).collect();
+        format!("goal {name}(x: Number) -> Number:\n    call:\n{lines}    plan: \"x\"\n\n")
+    };
+    let leaf = "goal Leaf(x: Number) -> Number:\n    plan: \"x\"\n\n";
+    program(&format!("{leaf}{}", fan("Wide", "Leaf", limits::MAX_GOAL_CALLS - 1)));
+    let text = format!(
+        "{leaf}{}{}",
+        fan("Wide", "Leaf", limits::MAX_GOAL_CALLS),
+        fan("Top", "Wide", 1)
+    );
+    let d = only(&text);
+    assert_eq!(d.code, Code::CallLimitExceeded);
+    assert_eq!(d.message, "Too many goals were called while running `Wide`.");
+    assert_eq!(
+        d.notes,
+        [format!(
+            "it would run {} goals, counting itself, but its limit is {}",
+            limits::MAX_GOAL_CALLS + 1,
+            limits::MAX_GOAL_CALLS
+        )]
+    );
+}
+
+/// `max_call_depth` counts the calls below the top of the run (`runtime/30` §7).
+#[test]
+fn call_depth_over_the_cap_is_rejected_statically() {
+    let chain = |n: u64| {
+        let mut text = "goal G0(x: Number) -> Number:\n    plan: \"x\"\n".to_owned();
+        for i in 1..=n {
+            text.push_str(&format!(
+                "\ngoal G{i}(x: Number) -> Number:\n    call:\n        y = G{}(x)\n    plan: \"x\"\n",
+                i - 1
+            ));
+        }
+        text
+    };
+    program(&chain(limits::MAX_CALL_DEPTH));
+    let d = only(&chain(limits::MAX_CALL_DEPTH + 2));
+    assert_eq!(d.code, Code::CallLimitExceeded);
+    assert_eq!(
+        d.message,
+        format!(
+            "Too many goals were called while running `G{}`.",
+            limits::MAX_CALL_DEPTH + 1
+        )
+    );
+    assert_eq!(
+        d.notes,
+        [format!(
+            "its calls would nest {} deep, but its limit is {}",
+            limits::MAX_CALL_DEPTH + 1,
+            limits::MAX_CALL_DEPTH
+        )]
+    );
+}
+
+/// A goal with a repeated parameter still takes as many inputs as it lists, so calls to it aren't reported again.
+#[test]
+fn duplicate_parameter_keeps_the_goal_arity() {
+    let text = "goal Pair(a: Number, a: Number) -> Number:\n    plan: \"x\"\n\n\
+                goal G(x: Number) -> Number:\n    call:\n        p = Pair(x, x)\n        q = Pair(x)\n    plan: \"x\"\n";
+    assert_eq!(codes(text), [Code::DuplicateDeclaration, Code::CallArityMismatch]);
+    let d = &analyze_str(text).1[1];
+    assert_eq!(d.message, "`Pair` needs 2 inputs, but got 1.");
+}
+
+#[test]
+fn ac_cmp_03_independent_errors_from_three_phases() {
+    let text = repo_file("tests/golden/sema/reject/independent_errors.velme");
+    assert_eq!(
+        codes(&text),
+        [Code::UnexpectedToken, Code::UnknownType, Code::CallCycle]
+    );
 }
