@@ -626,6 +626,17 @@ fn indented<'t, I: TokenInput<'t>, O>(
         .map(|items| items.into_iter().flatten().collect())
 }
 
+/// `keyword ":" NEWLINE INDENT item { item } DEDENT`: the `call:`, `check:` and `examples:` blocks.
+fn keyword_block<'t, I: TokenInput<'t>, O>(
+    keyword: Keyword,
+    item: impl Parser<'t, I, O, Extra<'t>> + Clone,
+) -> impl Parser<'t, I, Vec<O>, Extra<'t>> + Clone {
+    kw(keyword)
+        .ignore_then(punct(Punct::Colon))
+        .ignore_then(newline())
+        .ignore_then(indented(item))
+}
+
 fn item_parser<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Item, Extra<'t>> {
     let header = kw(Keyword::Language)
         .ignore_then(punct(Punct::Colon))
@@ -865,24 +876,20 @@ fn call_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, CallBlock, Extra<'t
             span: sp(e.span()),
         })
         .then_ignore(newline());
-    kw(Keyword::Call)
-        .ignore_then(punct(Punct::Colon))
-        .ignore_then(newline())
-        .ignore_then(indented(binding))
-        .validate(|bindings: Vec<Binding>, e, emitter| {
-            let early = bindings.iter().rev().skip(1);
-            for binding in early.filter(|b| b.name.name == Keyword::Result.as_str()) {
-                emitter.emit(custom(
-                    simple(binding.name.span),
-                    "`result` can only name the last binding.",
-                    "rename this binding, or move it to the end of `call:`",
-                ));
-            }
-            CallBlock {
-                bindings,
-                span: sp(e.span()),
-            }
-        })
+    keyword_block(Keyword::Call, binding).validate(|bindings: Vec<Binding>, e, emitter| {
+        let early = bindings.iter().rev().skip(1);
+        for binding in early.filter(|b| b.name.name == Keyword::Result.as_str()) {
+            emitter.emit(custom(
+                simple(binding.name.span),
+                "`result` can only name the last binding.",
+                "rename this binding, or move it to the end of `call:`",
+            ));
+        }
+        CallBlock {
+            bindings,
+            span: sp(e.span()),
+        }
+    })
 }
 
 fn plan_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Plan, Extra<'t>> + Clone {
@@ -899,14 +906,10 @@ fn plan_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Plan, Extra<'t>> + 
 
 fn check_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, CheckBlock, Extra<'t>> + Clone {
     let item = punct(Punct::Minus).ignore_then(expr()).then_ignore(newline());
-    kw(Keyword::Check)
-        .ignore_then(punct(Punct::Colon))
-        .ignore_then(newline())
-        .ignore_then(indented(item))
-        .map_with(|items, e| CheckBlock {
-            items,
-            span: sp(e.span()),
-        })
+    keyword_block(Keyword::Check, item).map_with(|items, e| CheckBlock {
+        items,
+        span: sp(e.span()),
+    })
 }
 
 fn examples_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, ExamplesBlock, Extra<'t>> + Clone {
@@ -924,14 +927,10 @@ fn examples_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, ExamplesBlock, 
                 }),
         )
         .then_ignore(newline());
-    kw(Keyword::Examples)
-        .ignore_then(punct(Punct::Colon))
-        .ignore_then(newline())
-        .ignore_then(indented(item))
-        .map_with(|items, e| ExamplesBlock {
-            items,
-            span: sp(e.span()),
-        })
+    keyword_block(Keyword::Examples, item).map_with(|items, e| ExamplesBlock {
+        items,
+        span: sp(e.span()),
+    })
 }
 
 /// `literal` (§4): values in examples and call arguments.

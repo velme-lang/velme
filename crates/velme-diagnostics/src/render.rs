@@ -127,11 +127,7 @@ fn char_count(text: &str, offset: usize) -> usize {
 /// Whether `c` must not reach a terminal as is (R-CLI-17): C0/C1 controls other than tab and newline, DEL, the bidi
 /// controls, and the separators ariadne would start a new line at although Velme doesn't (R-SYN-02).
 fn is_unsafe(c: char) -> bool {
-    (c.is_control() && c != '\n' && c != '\t')
-        || matches!(
-            c,
-            '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{2028}' | '\u{2029}'
-        )
+    (c.is_control() && c != '\n' && c != '\t') || crate::is_bidi_control(c) || matches!(c, '\u{2028}' | '\u{2029}')
 }
 
 /// Escapes unsafe characters in a message as `\u{..}` (R-CLI-17).

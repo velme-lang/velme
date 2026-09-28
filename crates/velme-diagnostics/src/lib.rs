@@ -221,6 +221,12 @@ impl Diagnostic {
     }
 }
 
+/// Whether `c` is a Unicode bidi control: it can make displayed and read order differ ("Trojan Source"). The one
+/// list for the R-SYN-22 lint and for escaping (R-CLI-17).
+pub fn is_bidi_control(c: char) -> bool {
+    matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
 /// Orders one file's diagnostics by start offset, then code, keeping the emit order for ties (R-CMP-16, INV-3).
 pub fn sort(diagnostics: &mut [Diagnostic]) {
     diagnostics.sort_by_key(|d| (d.span.start, d.code));

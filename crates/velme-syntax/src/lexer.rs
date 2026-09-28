@@ -1,18 +1,13 @@
 //! Lexer and layout pass (`language/10` §2, §3): characters → tokens, with `INDENT`/`DEDENT`/`NEWLINE` and
 //! `plan: |` block scalars resolved here so the parser sees a context-free token stream.
 
-use velme_diagnostics::{Code, Diagnostic, Span};
+use velme_diagnostics::{Code, Diagnostic, Span, is_bidi_control};
 
 use crate::token::{Punct, Token, TokenKind, Unit};
 use crate::{Keyword, SourceFile};
 
 /// Indentation width a tab counts for while recovering from `VL0103`.
 const TAB_RECOVERY_WIDTH: usize = 4;
-
-/// Bidi control characters that trigger the R-SYN-22 lint.
-fn is_bidi_control(c: char) -> bool {
-    matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
-}
 
 /// The whitespace D-21 trims from the end of each plan line: space and tab only.
 const TRAILING_WHITESPACE: [char; 2] = [' ', '\t'];
@@ -121,7 +116,27 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn line_text(&self, line: Line) -> &'a str {
-        self.text.get(line.start..line.end).unwrap_or_default()
+        self.slice(line.start, line.end)
+    }
+
+    /// The text from byte `start` to `end`; empty if that isn't a range of the text.
+    fn slice(&self, start: usize, end: usize) -> &'a str {
+        self.text.get(start..end).unwrap_or_default()
+    }
+
+    /// The character at byte `pos`, if it starts before `end`.
+    fn char_at(&self, pos: usize, end: usize) -> Option<char> {
+        self.slice(pos, end).chars().next()
+    }
+
+    /// `VL0103` for the tab at byte `at` in layout whitespace (R-SYN-08, D-67).
+    fn tab_indentation(&mut self, at: usize) {
+        self.error(
+            Code::TabIndentation,
+            Span::new(at, at + 1),
+            "Please indent with spaces, not tabs.",
+            "replace the tab with spaces",
+        );
     }
 
     fn push(&mut self, kind: TokenKind, span: Span) {
@@ -145,13 +160,7 @@ impl<'a> Lexer<'a> {
             }
             let ws = text.get(..ws_len).unwrap_or_default();
             if let Some(tab) = ws.find('\t') {
-                let at = line.start + tab;
-                self.error(
-                    Code::TabIndentation,
-                    Span::new(at, at + 1),
-                    "Please indent with spaces, not tabs.",
-                    "replace the tab with spaces",
-                );
+                self.tab_indentation(line.start + tab);
             }
             let content_start = line.start + ws_len;
             // An unclosed bracket must not swallow the rest of the file: a declaration at column 0 ends it.
@@ -240,7 +249,7 @@ impl<'a> Lexer<'a> {
         let opens = plan.kind == TokenKind::Keyword(Keyword::Plan)
             && colon.kind == TokenKind::Punct(Punct::Colon)
             && pipe.kind == TokenKind::Punct(Punct::Pipe);
-        opens.then(|| width_of(self.text.get(line.start..plan.span.start).unwrap_or_default()))
+        opens.then(|| width_of(self.slice(line.start, plan.span.start)))
     }
 
     /// Consumes the block scalar starting at line `first`; returns the index of the first line after it.
@@ -269,13 +278,7 @@ impl<'a> Lexer<'a> {
                 col
             } else if spaces < ws_len {
                 // D-67: a tab before the content column is layout whitespace, so VL0103; keep the line as content.
-                let at = line.start + spaces;
-                self.error(
-                    Code::TabIndentation,
-                    Span::new(at, at + 1),
-                    "Please indent with spaces, not tabs.",
-                    "replace the tab with spaces",
-                );
+                self.tab_indentation(line.start + spaces);
                 ws_len
             } else {
                 // D-73: deeper than `plan` but shallower than the text above; keep it as content.
@@ -329,17 +332,13 @@ impl<'a> Lexer<'a> {
     /// Lexes the tokens of one line from `start` to `end` (comments dropped, R-SYN-04).
     fn lex_line(&mut self, start: usize, end: usize) {
         let mut pos = start;
-        while let Some(c) = self.text.get(pos..end).and_then(|s| s.chars().next()) {
+        while let Some(c) = self.char_at(pos, end) {
             let from = pos;
             pos += c.len_utf8();
             match c {
                 ' ' | '\t' => {}
                 '#' => {
-                    self.lint_bidi(
-                        self.text.get(from..end).unwrap_or_default(),
-                        Span::new(from, end),
-                        "comment",
-                    );
+                    self.lint_bidi(self.slice(from, end), Span::new(from, end), "comment");
                     return;
                 }
                 '"' => pos = self.text_literal(from, end),
@@ -372,7 +371,7 @@ impl<'a> Lexer<'a> {
                         None => {
                             // D-76: a run of characters Velme can't read is one error.
                             pos = self.scan_while(pos, end, |c| !starts_token(c));
-                            let run = self.text.get(from..pos).unwrap_or_default();
+                            let run = self.slice(from, pos);
                             self.diags.push(Diagnostic::new(
                                 Code::UnexpectedToken,
                                 Span::new(from, pos),
@@ -388,7 +387,7 @@ impl<'a> Lexer<'a> {
     /// A word: a keyword, a name, or a name with letters outside ASCII (`VL0101`, then read as a name so parsing
     /// continues; D-76).
     fn word(&mut self, span: Span) {
-        let word = self.text.get(span.start..span.end).unwrap_or_default();
+        let word = self.slice(span.start, span.end);
         let kind = match Keyword::from_word(word) {
             Some(kw) => TokenKind::Keyword(kw),
             None => TokenKind::Name(word.to_owned()),
@@ -405,7 +404,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn scan_while(&self, mut pos: usize, end: usize, pred: impl Fn(char) -> bool) -> usize {
-        while let Some(c) = self.text.get(pos..end).and_then(|s| s.chars().next()) {
+        while let Some(c) = self.char_at(pos, end) {
             if !pred(c) {
                 break;
             }
@@ -419,11 +418,11 @@ impl<'a> Lexer<'a> {
     fn number(&mut self, from: usize, end: usize) -> usize {
         let is_part = |c: char| c.is_ascii_digit() || c == '_';
         let mut pos = self.scan_while(from, end, is_part);
-        let rest = self.text.get(pos..end).unwrap_or_default();
+        let rest = self.slice(pos, end);
         if rest.starts_with('.') && rest.chars().nth(1).is_some_and(|c| c.is_ascii_digit()) {
             pos = self.scan_while(pos + 1, end, is_part);
         }
-        let text = self.text.get(from..pos).unwrap_or_default().to_owned();
+        let text = self.slice(from, pos).to_owned();
         let bytes = text.as_bytes();
         let misplaced = bytes.iter().enumerate().any(|(i, &b)| {
             b == b'_'
@@ -441,7 +440,7 @@ impl<'a> Lexer<'a> {
         }
         self.push(TokenKind::Number(text), Span::new(from, pos));
         let word_end = self.scan_while(pos, end, is_word_char);
-        match self.text.get(pos..word_end).and_then(Unit::from_word) {
+        match Unit::from_word(self.slice(pos, word_end)) {
             Some(unit) => {
                 self.push(TokenKind::Unit(unit), Span::new(pos, word_end));
                 word_end
@@ -455,7 +454,7 @@ impl<'a> Lexer<'a> {
         let mut value = String::new();
         let mut pos = from + 1;
         loop {
-            let Some(c) = self.text.get(pos..end).and_then(|s| s.chars().next()) else {
+            let Some(c) = self.char_at(pos, end) else {
                 self.error(
                     Code::UnterminatedText,
                     Span::new(from, end),
@@ -480,7 +479,7 @@ impl<'a> Lexer<'a> {
 
     /// One escape starting at the backslash `at`; appends its character and returns the end offset.
     fn escape(&mut self, at: usize, end: usize, value: &mut String) -> usize {
-        let rest = self.text.get(at + 1..end).unwrap_or_default();
+        let rest = self.slice(at + 1, end);
         let Some(c) = rest.chars().next() else { return at + 1 }; // a trailing `\` leaves the text unterminated.
         let simple = match c {
             '"' => Some('"'),
@@ -506,7 +505,7 @@ impl<'a> Lexer<'a> {
             match decoded {
                 Some(ch) => value.push(ch),
                 None => {
-                    let written = self.text.get(span.start..span.end).unwrap_or_default().to_owned();
+                    let written = self.slice(span.start, span.end).to_owned();
                     self.error(
                         Code::UnexpectedToken,
                         span,
