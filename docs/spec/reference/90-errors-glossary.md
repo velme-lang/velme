@@ -28,6 +28,7 @@ diagnostic's data.
 | VL0104 | ReservedWord | syntax | reserved future word used (D-24) | `{word}` is saved for a later Velme version — try another name. | — |
 | VL0105 | UnterminatedText | syntax | text literal missing closing quote | This text starts with `"` but never ends. | A001 |
 | VL0106 | UnsupportedLanguageVersion | syntax | header names a version this compiler doesn't support | This file is written for `{version}`, but this Velme understands `{supported}`. | — |
+| VL0107 | LintWarning | syntax, names/types | warning: naming convention (`language/10` R-SYN-06), bidi control character in text (R-SYN-22), declaration named like a built-in (D-64) (D-69) | `{name}` works, but Velme style writes it `{suggestion}`. | — |
 | VL0201 | UnknownType | names/types | type name not declared | I don't know a type called `{name}`. | A003 |
 | VL0202 | UnknownName | names/types | identifier not in scope | I don't know what `{name}` is here. | — |
 | VL0203 | DuplicateDeclaration | names/types | type/goal/field/parameter declared twice | `{name}` is already defined on line {line}. | — |
@@ -71,7 +72,8 @@ diagnostic's data.
 | VL0902 | InvalidInput | CLI/IO | input JSON or config doesn't match expected shape (D-23) | Input `{name}` should be {expected}, but got {found}. | — |
 | VL0903 | GoalNotFound | CLI/IO | `--goal` names no goal in the file | There's no goal called `{name}`. Did you mean `{suggestion}`? | — |
 
-Severity: all codes above are errors in v0.1. Warnings, when added, use the same groups with names ending in `Warning`.
+Severity: all codes above are errors in v0.1 except `VL0107`, the one warning (D-69). Further warnings
+use the same groups with names ending in `Warning`.
 
 ## 3. Runtime result and failure kinds
 

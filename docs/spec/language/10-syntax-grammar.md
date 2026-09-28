@@ -51,7 +51,7 @@ variable is `VL0101` (D-4): unlike a truly reserved word, `result` is already me
 is an ordinary syntax error, not "coming in a later version" — `VL0104` stays reserved for the D-24 words.
 
 **R-SYN-06** Naming conventions — `PascalCase` for types and goals, `snake_case` for fields, parameters and bindings —
-are lint warnings, never errors (P-3 applies to meaning, not style).
+are lint warnings (`VL0107 LintWarning`, D-69), never errors (P-3 applies to meaning, not style).
 
 ### 2.3 Text literals
 
@@ -84,13 +84,14 @@ ignored (implicit line joining), so long parameter lists and literals may span l
 **R-SYN-12** `plan: |` followed by a newline starts a block scalar. Its content is every following line indented
 deeper than the column of the `plan` keyword, including blank lines between them; it ends at the first non-blank line
 indented at or below that column. The lexer emits the content as one `BLOCK_TEXT` token, normalized per D-21 (LF, trailing
-whitespace trimmed, common indentation removed). No escapes or comments are processed inside it.
+whitespace trimmed, common indentation removed). No escapes or comments are processed inside it. Trailing blank
+lines, tabs, a comment after `|` and an empty block follow D-67.
 
 **R-SYN-13** An empty inline or block plan is `VL0307 GoalHasNoBody` unless the goal is wired (D-4,
 [12-goals-calls](12-goals-calls.md) §2).
 
 **R-SYN-22** A Unicode bidi control character (U+202A–U+202E, U+2066–U+2069) inside a `plan` (inline or block) or a
-`TEXT` literal is a lint warning, using the naming-convention mechanism of R-SYN-06 (no new diagnostic code): these
+`TEXT` literal is a lint warning, using the naming-convention mechanism of R-SYN-06 (`VL0107`, D-69): these
 characters can make displayed and lexed order differ ("Trojan Source"), which matters most in text an LLM reads (D-43,
 [compiler/22](../compiler/22-spellbook-synthesis.md) R-SYNTH-22).
 
@@ -203,9 +204,10 @@ hint ("did you mean `check:`?"). Messages never mention tokens by internal name 
 
 ## 6. Golden corpus
 
-**R-SYN-20** Every syntax rule has at least one accepting and one rejecting file in `tests/golden/parser/`
-(`name.velme` + `name.ast.json` or `name.diag.json`). A later Tree-sitter grammar must give the same accept/reject outcome
-on the whole corpus (D-25).
+**R-SYN-20** Every syntax rule has at least one accepting file in `tests/golden/parser/accept/` and one rejecting file
+in `tests/golden/parser/reject/`. Each file's `insta` snapshot (`delivery/51` R-QA-03) is its AST as JSON, with byte
+spans on every node, or its diagnostics as JSON (D-70). A later Tree-sitter grammar must give the same accept/reject
+outcome on the whole corpus (D-25).
 
 ## 7. Acceptance criteria
 

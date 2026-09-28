@@ -109,8 +109,8 @@ notes, help }`. The code enum lives in `velme-diagnostics` only; codes are never
 **R-CMP-14** Messages are written for a learner: say what went wrong in plain words, point at the source, and suggest
 the fix (`help:`). Jargon (DAG, IR, fuel) appears only in notes or in `--verbose`.
 **R-CMP-15** Two renderers: `human` (ariadne, colour when a TTY) and `json` (one object per diagnostic: `code`,
-`severity`, `message`, `file`, `start`, `end`, `line`, `column`, `labels`, `help`). The JSON shape is versioned and
-additive-only; tools and the playground depend on it.
+`severity`, `message`, `file`, `span`, `labels`, `notes`, `help`, laid out as in `tooling/40` R-CLI-08, D-68). The
+JSON shape is versioned and additive-only; tools and the playground depend on it.
 **R-CMP-16** Diagnostics are emitted sorted by (file, start offset, code) so output is deterministic (INV-3).
 **R-CMP-17** Runtime failures (`VL05xx`, `VL06xx`) reuse the same `Diagnostic` type, with the check or call span as the
 primary label and the offending values as notes (runtime/30 §6).

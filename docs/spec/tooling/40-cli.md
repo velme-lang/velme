@@ -93,8 +93,9 @@ Human mode prints the result as pretty JSON using the same mapping. `--json` pri
 }
 ```
 
-**R-CLI-08** Diagnostics carry `code`, `severity`, `message`, `file`, `span` (byte offsets and 1-based line/column),
-`notes[]` and `help?`. The human message and the JSON `message` are the same text.
+**R-CLI-08** Diagnostics carry `code`, `severity`, `message`, `file`, `span` (`start`/`end` byte offsets and 1-based
+`line`/`column`, the column counted in Unicode scalar values, D-68), `labels[]` (each a `span` and `text`), `notes[]`
+and `help?`. The human message and the JSON `message` are the same text.
 **R-CLI-19** Every path shown to the user or written to a file — a diagnostic's `file`, a trace entry, and the lock's
 `file` field (`runtime/32` §5) — is project-relative with `/` separators on every platform, including Windows; the
 same project built on different OSes produces byte-identical `velme.lock`, diagnostics and traces.
