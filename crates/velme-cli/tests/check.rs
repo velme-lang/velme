@@ -46,6 +46,37 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     );
 }
 
+/// Until `velme test --locked` exists (`delivery/51` §2), every example at least parses without a warning.
+#[test]
+fn every_example_parses_cleanly() {
+    let mut checked = 0;
+    for dir in std::fs::read_dir(repo_root().join("examples")).expect("examples dir") {
+        let dir = dir.expect("entry").path();
+        if !dir.is_dir() {
+            continue;
+        }
+        for file in std::fs::read_dir(&dir).expect("example folder") {
+            let file = file.expect("entry").path();
+            if file.extension().is_none_or(|e| e != "velme") {
+                continue;
+            }
+            let rel = file
+                .strip_prefix(repo_root())
+                .expect("under the repo")
+                .to_str()
+                .expect("UTF-8 path");
+            let run = velme(&["check", rel]);
+            assert_eq!(
+                (run.stdout.as_str(), run.stderr.as_str(), run.code),
+                ("✓ Parsed\n", "", 0),
+                "{rel}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 1, "found {checked} examples");
+}
+
 #[test]
 fn ac_cli_01_parse_part_syntax_error_exits_1_with_a_caret() {
     let run = velme(&["check", "tests/golden/parser/reject/tab_then_errors.velme"]);

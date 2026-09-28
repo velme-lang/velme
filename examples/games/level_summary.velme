@@ -1,0 +1,56 @@
+language: velme/0.1
+
+type Level:
+    enemy_count: Number
+    treasure_count: Number
+    base_score: Number
+
+type LevelSummary:
+    score: Number
+    difficulty: Text
+    reward: Number
+
+goal CountEnemies(level: Level) -> Number:
+    plan: "Return the level's enemy_count."
+    check:
+        - result == level.enemy_count
+
+goal CountTreasures(level: Level) -> Number:
+    plan: "Return the level's treasure_count."
+    check:
+        - result == level.treasure_count
+
+goal CalculateLevelScore(level: Level) -> Number:
+    plan: "Return the level's base_score."
+    check:
+        - result == level.base_score
+
+goal RateDifficulty(enemies: Number, treasures: Number) -> Text:
+    plan: |
+        Rate the level Hard for at least 10 enemies,
+        Medium for at least 5, Easy otherwise.
+    examples:
+        - RateDifficulty(10, 2) == "Hard"
+        - RateDifficulty(5, 2) == "Medium"
+        - RateDifficulty(4, 2) == "Easy"
+
+goal CalculateReward(score: Number, treasures: Number) -> Number:
+    plan: "The reward is the score plus 50 for every treasure."
+    examples:
+        - CalculateReward(100, 0) == 100
+        - CalculateReward(100, 2) == 200
+
+# First the three counts run at the same time; then difficulty and reward, also together; the summary comes last.
+goal CreateLevelSummary(level: Level) -> LevelSummary:
+    call:
+        enemies = CountEnemies(level)
+        treasures = CountTreasures(level)
+        score = CalculateLevelScore(level)
+        difficulty = RateDifficulty(enemies, treasures)
+        reward = CalculateReward(score, treasures)
+    plan: |
+        Combine the score, difficulty, and reward into one level summary.
+    check:
+        - result.score == score
+        - result.difficulty == difficulty
+        - result.reward == reward

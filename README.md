@@ -34,9 +34,9 @@ It is not the right tool for everything. v0.1 goals can't read files, use the ne
 (`delivery/50`), and a one-line rule is no shorter as a plan plus examples than as code plus a test. Velme saves the
 most on goals that are quick to describe but long to implement.
 
-**Status:** specification complete for v0.1; the workspace and quality gate (M0) are done and the syntax phase (M1)
-is next. Nothing is usable yet. To hear when it is, watch this repo (Watch → Custom → Releases); progress notes are
-posted in [Discussions → Announcements](https://github.com/velme-lang/velme/discussions/categories/announcements).
+**Status:** specification complete for v0.1; the syntax phase (M1) is done, so `velme check` parses a file and reports
+syntax errors. Type checking (M2) is next; nothing runs yet. To hear when it does, watch this repo (Watch → Custom →
+Releases); progress notes are posted in [Discussions → Announcements](https://github.com/velme-lang/velme/discussions/categories/announcements).
 
 - Specification: [`docs/spec/SPEC.md`](docs/spec/SPEC.md)
 - Design decisions and open questions: [`docs/spec/reference/92-decisions-questions.md`](docs/spec/reference/92-decisions-questions.md)
