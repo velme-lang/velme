@@ -174,7 +174,8 @@ fn json_escapes_bidi_characters() {
     assert!(!run.stdout.contains(['\u{202e}', '\u{85}']), "{}", run.stdout);
     assert!(run.stdout.contains("bi\\u202edi\\u0085.velme"), "{}", run.stdout);
     let diag = &json(&run)["diagnostics"][0];
-    assert_eq!(diag["file"], path);
+    // Shown with `/` separators on every platform (R-CLI-19).
+    assert_eq!(diag["file"], path.replace('\\', "/"));
     assert!(
         diag["message"]
             .as_str()
