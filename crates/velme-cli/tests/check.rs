@@ -159,6 +159,29 @@ fn invalid_utf8_is_vl0901_and_points_at_the_byte() {
     assert_eq!((span["line"].as_u64(), span["column"].as_u64()), (Some(2), Some(15)));
 }
 
+/// R-CLI-17: `--json` escapes control and bidi characters too, as `\uXXXX`.
+#[test]
+fn json_escapes_bidi_characters() {
+    let dir = std::env::temp_dir().join(format!("velme-cli-bidi-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    // The file name carries the characters into a JSON string.
+    let file = dir.join("bi\u{202e}di\u{85}.velme");
+    std::fs::write(&file, "# evil \u{202e} comment\ntype A:\n    x: Number\n").expect("write");
+    let path = file.to_str().expect("UTF-8 path");
+    let run = velme(&["check", "--json", path]);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(run.code, 0);
+    assert!(!run.stdout.contains(['\u{202e}', '\u{85}']), "{}", run.stdout);
+    assert!(run.stdout.contains("bi\\u202edi\\u0085.velme"), "{}", run.stdout);
+    let diag = &json(&run)["diagnostics"][0];
+    assert_eq!(diag["file"], path);
+    assert!(
+        diag["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("comment") && m.contains("U+202E"))
+    );
+}
+
 #[test]
 fn usage_errors_exit_64() {
     for args in [

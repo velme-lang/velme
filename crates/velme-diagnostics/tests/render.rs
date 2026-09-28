@@ -1,6 +1,6 @@
 //! The renderers (`compiler/20` R-CMP-15, `tooling/40` R-CLI-08, R-CLI-17, D-68).
 
-use velme_diagnostics::render::{self, JsonDiagnostic, JsonSpan, MAX_SHOWN};
+use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex, MAX_SHOWN};
 use velme_diagnostics::{Code, Diagnostic, Span};
 
 fn diag(code: Code, start: usize, end: usize, message: &str) -> Diagnostic {
@@ -10,9 +10,9 @@ fn diag(code: Code, start: usize, end: usize, message: &str) -> Diagnostic {
 #[test]
 fn json_span_counts_lines_and_scalar_values() {
     // `é` is two bytes and `👋` four, but each is one column (D-68); `\r\n` ends a line like `\n` (R-SYN-02).
-    let text = "a\r\né👋x\nlast";
+    let lines = LineIndex::new("a\r\né👋x\nlast");
     let at = |start| {
-        let span = JsonSpan::new(text, Span::new(start, start + 1));
+        let span = lines.locate(Span::new(start, start + 1));
         (span.line, span.column)
     };
     assert_eq!(at(0), (1, 1));
@@ -21,13 +21,15 @@ fn json_span_counts_lines_and_scalar_values() {
     assert_eq!(at(11), (3, 1));
     // Past the end, and with no text at all, it stays on a real position.
     assert_eq!(at(100), (3, 5));
-    assert_eq!(
-        (
-            JsonSpan::new("", Span::new(0, 0)).line,
-            JsonSpan::new("", Span::new(0, 0)).column
-        ),
-        (1, 1)
-    );
+    let empty = LineIndex::new("").locate(Span::new(0, 0));
+    assert_eq!((empty.line, empty.column), (1, 1));
+    // A leading BOM is not a column; offsets still count its 3 bytes (D-75).
+    let bom = LineIndex::new("\u{feff}ab\nc");
+    let at = |start| {
+        let span = bom.locate(Span::new(start, start));
+        (span.line, span.column)
+    };
+    assert_eq!((at(0), at(3), at(4), at(6)), ((1, 1), (1, 1), (1, 2), (2, 1)));
 }
 
 #[test]
@@ -36,7 +38,7 @@ fn json_diagnostic_matches_r_cli_08() {
         .with_label(Span::new(0, 4), "in this type")
         .with_note("types are declared with `type`")
         .with_help("did you mean `Player`?");
-    let value = serde_json::to_value(JsonDiagnostic::new(&d, "game.velme", "type Playr:\n")).unwrap();
+    let value = serde_json::to_value(JsonDiagnostic::new(&d, "game.velme", &LineIndex::new("type Playr:\n"))).unwrap();
     insta::assert_json_snapshot!(value, @r#"
     {
       "code": "VL0201",
@@ -66,7 +68,12 @@ fn json_diagnostic_matches_r_cli_08() {
       }
     }
     "#);
-    let no_help = serde_json::to_value(JsonDiagnostic::new(&diag(Code::TabIndentation, 0, 1, "m"), "f", "\t")).unwrap();
+    let no_help = serde_json::to_value(JsonDiagnostic::new(
+        &diag(Code::TabIndentation, 0, 1, "m"),
+        "f",
+        &LineIndex::new("\t"),
+    ))
+    .unwrap();
     assert!(no_help.get("help").is_none());
 }
 
@@ -149,7 +156,46 @@ fn sort_orders_by_start_then_code() {
         diag(Code::UnexpectedToken, 5, 9, "a"),
         diag(Code::TabIndentation, 0, 1, "c"),
     ];
-    render::sort(&mut diags);
+    velme_diagnostics::sort(&mut diags);
     let order: Vec<_> = diags.iter().map(|d| d.message.as_str()).collect();
     assert_eq!(order, ["c", "a", "b"]);
+}
+
+/// R-CLI-17: `--json` escapes the same characters, as `\uXXXX`, so the decoded value is unchanged.
+#[test]
+fn json_output_escapes_control_and_bidi_characters() {
+    let d = diag(
+        Code::UnexpectedToken,
+        0,
+        1,
+        "a\u{7f}b\u{9b}c\u{202e}d\u{200f}e\u{2028}f\u{1b}g",
+    );
+    let json = serde_json::to_string_pretty(&JsonDiagnostic::new(&d, "p\u{61c}.velme", &LineIndex::new("x"))).unwrap();
+    let escaped = render::escape_json(&json);
+    assert!(
+        !escaped
+            .chars()
+            .any(|c| c.is_control() && c != '\n' || matches!(c, '\u{61c}' | '\u{200f}' | '\u{202e}' | '\u{2028}')),
+        "{escaped}"
+    );
+    assert!(
+        escaped.contains(r#""message": "a\u007fb\u009bc\u202ed\u200fe\u2028f\u001bg""#),
+        "{escaped}"
+    );
+    let back: serde_json::Value = serde_json::from_str(&escaped).unwrap();
+    assert_eq!(back["message"], d.message.as_str());
+    assert_eq!(back["file"], "p\u{61c}.velme");
+}
+
+#[test]
+fn human_output_skips_a_bom() {
+    let text = "\u{feff}goal A:\n";
+    let out = render::render_human(
+        &[diag(Code::UnexpectedToken, 8, 9, "Bad.")],
+        "a.velme",
+        Some(text),
+        false,
+    );
+    assert!(out.contains("a.velme:1:6"), "{out}");
+    assert!(!out.contains('\u{feff}'), "{out}");
 }

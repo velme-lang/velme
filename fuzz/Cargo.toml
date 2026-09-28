@@ -10,6 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+velme-diagnostics = { path = "../crates/velme-diagnostics" }
 velme-syntax = { path = "../crates/velme-syntax" }
 
 # Not a member of the main workspace: cargo-fuzz needs nightly and its own build.

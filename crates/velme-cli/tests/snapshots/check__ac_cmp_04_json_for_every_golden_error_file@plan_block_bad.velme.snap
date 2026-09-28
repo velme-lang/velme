@@ -9,7 +9,7 @@ input_file: tests/golden/parser/reject/plan_block_bad.velme
       "code": "VL0101",
       "file": "tests/golden/parser/reject/plan_block_bad.velme",
       "labels": [],
-      "message": "I didn't expect `Find` here — I was looking for `|`.",
+      "message": "I didn't expect `Find` here — I was looking for `|` or some text in quotes.",
       "notes": [],
       "severity": "error",
       "span": {

@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/plan_block_underindented.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0102",
+      "file": "tests/golden/parser/reject/plan_block_underindented.velme",
+      "help": "indent it as far as the plan's first line, or no further than `plan` to end the plan",
+      "labels": [],
+      "message": "This line is indented less than the plan text above it.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 178,
+        "line": 6,
+        "start": 172
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

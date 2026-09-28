@@ -1,0 +1,85 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/one_error_per_cause.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "help": "names use the letters a–z and A–Z, digits and `_` in this version of Velme",
+      "labels": [],
+      "message": "I can't use `Résumé` as a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 223,
+        "line": 3,
+        "start": 215
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "labels": [],
+      "message": "`when` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 267,
+        "line": 7,
+        "start": 263
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "labels": [],
+      "message": "I didn't expect `@` here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 328,
+        "line": 12,
+        "start": 327
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "labels": [],
+      "message": "I didn't expect `@@@` here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 365,
+        "line": 15,
+        "start": 362
+      }
+    },
+    {
+      "code": "VL0102",
+      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "help": "indent it exactly as far as the line it belongs with",
+      "labels": [],
+      "message": "This line's indentation doesn't line up with the lines above it.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 407,
+        "line": 19,
+        "start": 403
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

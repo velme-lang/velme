@@ -1,0 +1,1141 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/nesting_flat.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "goal",
+      "name": {
+        "name": "G",
+        "span": [
+          120,
+          121
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "a",
+            "span": [
+              122,
+              123
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                125,
+                131
+              ]
+            },
+            "optional": false,
+            "span": [
+              125,
+              131
+            ]
+          },
+          "span": [
+            122,
+            131
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Boolean",
+          "span": [
+            136,
+            143
+          ]
+        },
+        "optional": false,
+        "span": [
+          136,
+          143
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "p",
+        "form": "inline",
+        "span": [
+          155,
+          158
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "binary",
+              "op": "and",
+              "lhs": {
+                "kind": "binary",
+                "op": "and",
+                "lhs": {
+                  "kind": "binary",
+                  "op": "and",
+                  "lhs": {
+                    "kind": "binary",
+                    "op": "and",
+                    "lhs": {
+                      "kind": "binary",
+                      "op": "and",
+                      "lhs": {
+                        "kind": "binary",
+                        "op": "and",
+                        "lhs": {
+                          "kind": "binary",
+                          "op": "and",
+                          "lhs": {
+                            "kind": "binary",
+                            "op": "and",
+                            "lhs": {
+                              "kind": "binary",
+                              "op": "and",
+                              "lhs": {
+                                "kind": "binary",
+                                "op": "and",
+                                "lhs": {
+                                  "kind": "binary",
+                                  "op": "and",
+                                  "lhs": {
+                                    "kind": "binary",
+                                    "op": "and",
+                                    "lhs": {
+                                      "kind": "binary",
+                                      "op": "and",
+                                      "lhs": {
+                                        "kind": "binary",
+                                        "op": "and",
+                                        "lhs": {
+                                          "kind": "binary",
+                                          "op": "and",
+                                          "lhs": {
+                                            "kind": "binary",
+                                            "op": "and",
+                                            "lhs": {
+                                              "kind": "binary",
+                                              "op": "and",
+                                              "lhs": {
+                                                "kind": "binary",
+                                                "op": "and",
+                                                "lhs": {
+                                                  "kind": "binary",
+                                                  "op": "and",
+                                                  "lhs": {
+                                                    "kind": "binary",
+                                                    "op": "and",
+                                                    "lhs": {
+                                                      "kind": "binary",
+                                                      "op": "and",
+                                                      "lhs": {
+                                                        "kind": "binary",
+                                                        "op": "and",
+                                                        "lhs": {
+                                                          "kind": "binary",
+                                                          "op": "and",
+                                                          "lhs": {
+                                                            "kind": "binary",
+                                                            "op": "and",
+                                                            "lhs": {
+                                                              "kind": "binary",
+                                                              "op": "and",
+                                                              "lhs": {
+                                                                "kind": "binary",
+                                                                "op": "and",
+                                                                "lhs": {
+                                                                  "kind": "binary",
+                                                                  "op": "and",
+                                                                  "lhs": {
+                                                                    "kind": "binary",
+                                                                    "op": "and",
+                                                                    "lhs": {
+                                                                      "kind": "binary",
+                                                                      "op": "and",
+                                                                      "lhs": {
+                                                                        "kind": "binary",
+                                                                        "op": "and",
+                                                                        "lhs": {
+                                                                          "kind": "binary",
+                                                                          "op": "and",
+                                                                          "lhs": {
+                                                                            "kind": "binary",
+                                                                            "op": "lt",
+                                                                            "lhs": {
+                                                                              "kind": "name",
+                                                                              "name": "a",
+                                                                              "span": [
+                                                                                180,
+                                                                                181
+                                                                              ]
+                                                                            },
+                                                                            "rhs": {
+                                                                              "kind": "number",
+                                                                              "text": "1",
+                                                                              "span": [
+                                                                                184,
+                                                                                185
+                                                                              ]
+                                                                            },
+                                                                            "span": [
+                                                                              180,
+                                                                              185
+                                                                            ]
+                                                                          },
+                                                                          "rhs": {
+                                                                            "kind": "binary",
+                                                                            "op": "lt",
+                                                                            "lhs": {
+                                                                              "kind": "name",
+                                                                              "name": "a",
+                                                                              "span": [
+                                                                                190,
+                                                                                191
+                                                                              ]
+                                                                            },
+                                                                            "rhs": {
+                                                                              "kind": "number",
+                                                                              "text": "2",
+                                                                              "span": [
+                                                                                194,
+                                                                                195
+                                                                              ]
+                                                                            },
+                                                                            "span": [
+                                                                              190,
+                                                                              195
+                                                                            ]
+                                                                          },
+                                                                          "span": [
+                                                                            180,
+                                                                            195
+                                                                          ]
+                                                                        },
+                                                                        "rhs": {
+                                                                          "kind": "binary",
+                                                                          "op": "lt",
+                                                                          "lhs": {
+                                                                            "kind": "name",
+                                                                            "name": "a",
+                                                                            "span": [
+                                                                              200,
+                                                                              201
+                                                                            ]
+                                                                          },
+                                                                          "rhs": {
+                                                                            "kind": "number",
+                                                                            "text": "3",
+                                                                            "span": [
+                                                                              204,
+                                                                              205
+                                                                            ]
+                                                                          },
+                                                                          "span": [
+                                                                            200,
+                                                                            205
+                                                                          ]
+                                                                        },
+                                                                        "span": [
+                                                                          180,
+                                                                          205
+                                                                        ]
+                                                                      },
+                                                                      "rhs": {
+                                                                        "kind": "binary",
+                                                                        "op": "lt",
+                                                                        "lhs": {
+                                                                          "kind": "name",
+                                                                          "name": "a",
+                                                                          "span": [
+                                                                            210,
+                                                                            211
+                                                                          ]
+                                                                        },
+                                                                        "rhs": {
+                                                                          "kind": "number",
+                                                                          "text": "4",
+                                                                          "span": [
+                                                                            214,
+                                                                            215
+                                                                          ]
+                                                                        },
+                                                                        "span": [
+                                                                          210,
+                                                                          215
+                                                                        ]
+                                                                      },
+                                                                      "span": [
+                                                                        180,
+                                                                        215
+                                                                      ]
+                                                                    },
+                                                                    "rhs": {
+                                                                      "kind": "binary",
+                                                                      "op": "lt",
+                                                                      "lhs": {
+                                                                        "kind": "name",
+                                                                        "name": "a",
+                                                                        "span": [
+                                                                          220,
+                                                                          221
+                                                                        ]
+                                                                      },
+                                                                      "rhs": {
+                                                                        "kind": "number",
+                                                                        "text": "5",
+                                                                        "span": [
+                                                                          224,
+                                                                          225
+                                                                        ]
+                                                                      },
+                                                                      "span": [
+                                                                        220,
+                                                                        225
+                                                                      ]
+                                                                    },
+                                                                    "span": [
+                                                                      180,
+                                                                      225
+                                                                    ]
+                                                                  },
+                                                                  "rhs": {
+                                                                    "kind": "binary",
+                                                                    "op": "lt",
+                                                                    "lhs": {
+                                                                      "kind": "name",
+                                                                      "name": "a",
+                                                                      "span": [
+                                                                        230,
+                                                                        231
+                                                                      ]
+                                                                    },
+                                                                    "rhs": {
+                                                                      "kind": "number",
+                                                                      "text": "6",
+                                                                      "span": [
+                                                                        234,
+                                                                        235
+                                                                      ]
+                                                                    },
+                                                                    "span": [
+                                                                      230,
+                                                                      235
+                                                                    ]
+                                                                  },
+                                                                  "span": [
+                                                                    180,
+                                                                    235
+                                                                  ]
+                                                                },
+                                                                "rhs": {
+                                                                  "kind": "binary",
+                                                                  "op": "lt",
+                                                                  "lhs": {
+                                                                    "kind": "name",
+                                                                    "name": "a",
+                                                                    "span": [
+                                                                      240,
+                                                                      241
+                                                                    ]
+                                                                  },
+                                                                  "rhs": {
+                                                                    "kind": "number",
+                                                                    "text": "7",
+                                                                    "span": [
+                                                                      244,
+                                                                      245
+                                                                    ]
+                                                                  },
+                                                                  "span": [
+                                                                    240,
+                                                                    245
+                                                                  ]
+                                                                },
+                                                                "span": [
+                                                                  180,
+                                                                  245
+                                                                ]
+                                                              },
+                                                              "rhs": {
+                                                                "kind": "binary",
+                                                                "op": "lt",
+                                                                "lhs": {
+                                                                  "kind": "name",
+                                                                  "name": "a",
+                                                                  "span": [
+                                                                    250,
+                                                                    251
+                                                                  ]
+                                                                },
+                                                                "rhs": {
+                                                                  "kind": "number",
+                                                                  "text": "8",
+                                                                  "span": [
+                                                                    254,
+                                                                    255
+                                                                  ]
+                                                                },
+                                                                "span": [
+                                                                  250,
+                                                                  255
+                                                                ]
+                                                              },
+                                                              "span": [
+                                                                180,
+                                                                255
+                                                              ]
+                                                            },
+                                                            "rhs": {
+                                                              "kind": "binary",
+                                                              "op": "lt",
+                                                              "lhs": {
+                                                                "kind": "name",
+                                                                "name": "a",
+                                                                "span": [
+                                                                  260,
+                                                                  261
+                                                                ]
+                                                              },
+                                                              "rhs": {
+                                                                "kind": "number",
+                                                                "text": "9",
+                                                                "span": [
+                                                                  264,
+                                                                  265
+                                                                ]
+                                                              },
+                                                              "span": [
+                                                                260,
+                                                                265
+                                                              ]
+                                                            },
+                                                            "span": [
+                                                              180,
+                                                              265
+                                                            ]
+                                                          },
+                                                          "rhs": {
+                                                            "kind": "binary",
+                                                            "op": "lt",
+                                                            "lhs": {
+                                                              "kind": "name",
+                                                              "name": "a",
+                                                              "span": [
+                                                                270,
+                                                                271
+                                                              ]
+                                                            },
+                                                            "rhs": {
+                                                              "kind": "number",
+                                                              "text": "10",
+                                                              "span": [
+                                                                274,
+                                                                276
+                                                              ]
+                                                            },
+                                                            "span": [
+                                                              270,
+                                                              276
+                                                            ]
+                                                          },
+                                                          "span": [
+                                                            180,
+                                                            276
+                                                          ]
+                                                        },
+                                                        "rhs": {
+                                                          "kind": "binary",
+                                                          "op": "lt",
+                                                          "lhs": {
+                                                            "kind": "name",
+                                                            "name": "a",
+                                                            "span": [
+                                                              281,
+                                                              282
+                                                            ]
+                                                          },
+                                                          "rhs": {
+                                                            "kind": "number",
+                                                            "text": "11",
+                                                            "span": [
+                                                              285,
+                                                              287
+                                                            ]
+                                                          },
+                                                          "span": [
+                                                            281,
+                                                            287
+                                                          ]
+                                                        },
+                                                        "span": [
+                                                          180,
+                                                          287
+                                                        ]
+                                                      },
+                                                      "rhs": {
+                                                        "kind": "binary",
+                                                        "op": "lt",
+                                                        "lhs": {
+                                                          "kind": "name",
+                                                          "name": "a",
+                                                          "span": [
+                                                            292,
+                                                            293
+                                                          ]
+                                                        },
+                                                        "rhs": {
+                                                          "kind": "number",
+                                                          "text": "12",
+                                                          "span": [
+                                                            296,
+                                                            298
+                                                          ]
+                                                        },
+                                                        "span": [
+                                                          292,
+                                                          298
+                                                        ]
+                                                      },
+                                                      "span": [
+                                                        180,
+                                                        298
+                                                      ]
+                                                    },
+                                                    "rhs": {
+                                                      "kind": "binary",
+                                                      "op": "lt",
+                                                      "lhs": {
+                                                        "kind": "name",
+                                                        "name": "a",
+                                                        "span": [
+                                                          303,
+                                                          304
+                                                        ]
+                                                      },
+                                                      "rhs": {
+                                                        "kind": "number",
+                                                        "text": "13",
+                                                        "span": [
+                                                          307,
+                                                          309
+                                                        ]
+                                                      },
+                                                      "span": [
+                                                        303,
+                                                        309
+                                                      ]
+                                                    },
+                                                    "span": [
+                                                      180,
+                                                      309
+                                                    ]
+                                                  },
+                                                  "rhs": {
+                                                    "kind": "binary",
+                                                    "op": "lt",
+                                                    "lhs": {
+                                                      "kind": "name",
+                                                      "name": "a",
+                                                      "span": [
+                                                        314,
+                                                        315
+                                                      ]
+                                                    },
+                                                    "rhs": {
+                                                      "kind": "number",
+                                                      "text": "14",
+                                                      "span": [
+                                                        318,
+                                                        320
+                                                      ]
+                                                    },
+                                                    "span": [
+                                                      314,
+                                                      320
+                                                    ]
+                                                  },
+                                                  "span": [
+                                                    180,
+                                                    320
+                                                  ]
+                                                },
+                                                "rhs": {
+                                                  "kind": "binary",
+                                                  "op": "lt",
+                                                  "lhs": {
+                                                    "kind": "name",
+                                                    "name": "a",
+                                                    "span": [
+                                                      325,
+                                                      326
+                                                    ]
+                                                  },
+                                                  "rhs": {
+                                                    "kind": "number",
+                                                    "text": "15",
+                                                    "span": [
+                                                      329,
+                                                      331
+                                                    ]
+                                                  },
+                                                  "span": [
+                                                    325,
+                                                    331
+                                                  ]
+                                                },
+                                                "span": [
+                                                  180,
+                                                  331
+                                                ]
+                                              },
+                                              "rhs": {
+                                                "kind": "binary",
+                                                "op": "lt",
+                                                "lhs": {
+                                                  "kind": "name",
+                                                  "name": "a",
+                                                  "span": [
+                                                    336,
+                                                    337
+                                                  ]
+                                                },
+                                                "rhs": {
+                                                  "kind": "number",
+                                                  "text": "16",
+                                                  "span": [
+                                                    340,
+                                                    342
+                                                  ]
+                                                },
+                                                "span": [
+                                                  336,
+                                                  342
+                                                ]
+                                              },
+                                              "span": [
+                                                180,
+                                                342
+                                              ]
+                                            },
+                                            "rhs": {
+                                              "kind": "binary",
+                                              "op": "lt",
+                                              "lhs": {
+                                                "kind": "name",
+                                                "name": "a",
+                                                "span": [
+                                                  347,
+                                                  348
+                                                ]
+                                              },
+                                              "rhs": {
+                                                "kind": "number",
+                                                "text": "17",
+                                                "span": [
+                                                  351,
+                                                  353
+                                                ]
+                                              },
+                                              "span": [
+                                                347,
+                                                353
+                                              ]
+                                            },
+                                            "span": [
+                                              180,
+                                              353
+                                            ]
+                                          },
+                                          "rhs": {
+                                            "kind": "binary",
+                                            "op": "lt",
+                                            "lhs": {
+                                              "kind": "name",
+                                              "name": "a",
+                                              "span": [
+                                                358,
+                                                359
+                                              ]
+                                            },
+                                            "rhs": {
+                                              "kind": "number",
+                                              "text": "18",
+                                              "span": [
+                                                362,
+                                                364
+                                              ]
+                                            },
+                                            "span": [
+                                              358,
+                                              364
+                                            ]
+                                          },
+                                          "span": [
+                                            180,
+                                            364
+                                          ]
+                                        },
+                                        "rhs": {
+                                          "kind": "binary",
+                                          "op": "lt",
+                                          "lhs": {
+                                            "kind": "name",
+                                            "name": "a",
+                                            "span": [
+                                              369,
+                                              370
+                                            ]
+                                          },
+                                          "rhs": {
+                                            "kind": "number",
+                                            "text": "19",
+                                            "span": [
+                                              373,
+                                              375
+                                            ]
+                                          },
+                                          "span": [
+                                            369,
+                                            375
+                                          ]
+                                        },
+                                        "span": [
+                                          180,
+                                          375
+                                        ]
+                                      },
+                                      "rhs": {
+                                        "kind": "binary",
+                                        "op": "lt",
+                                        "lhs": {
+                                          "kind": "name",
+                                          "name": "a",
+                                          "span": [
+                                            380,
+                                            381
+                                          ]
+                                        },
+                                        "rhs": {
+                                          "kind": "number",
+                                          "text": "20",
+                                          "span": [
+                                            384,
+                                            386
+                                          ]
+                                        },
+                                        "span": [
+                                          380,
+                                          386
+                                        ]
+                                      },
+                                      "span": [
+                                        180,
+                                        386
+                                      ]
+                                    },
+                                    "rhs": {
+                                      "kind": "binary",
+                                      "op": "lt",
+                                      "lhs": {
+                                        "kind": "name",
+                                        "name": "a",
+                                        "span": [
+                                          391,
+                                          392
+                                        ]
+                                      },
+                                      "rhs": {
+                                        "kind": "number",
+                                        "text": "21",
+                                        "span": [
+                                          395,
+                                          397
+                                        ]
+                                      },
+                                      "span": [
+                                        391,
+                                        397
+                                      ]
+                                    },
+                                    "span": [
+                                      180,
+                                      397
+                                    ]
+                                  },
+                                  "rhs": {
+                                    "kind": "binary",
+                                    "op": "lt",
+                                    "lhs": {
+                                      "kind": "name",
+                                      "name": "a",
+                                      "span": [
+                                        402,
+                                        403
+                                      ]
+                                    },
+                                    "rhs": {
+                                      "kind": "number",
+                                      "text": "22",
+                                      "span": [
+                                        406,
+                                        408
+                                      ]
+                                    },
+                                    "span": [
+                                      402,
+                                      408
+                                    ]
+                                  },
+                                  "span": [
+                                    180,
+                                    408
+                                  ]
+                                },
+                                "rhs": {
+                                  "kind": "binary",
+                                  "op": "lt",
+                                  "lhs": {
+                                    "kind": "name",
+                                    "name": "a",
+                                    "span": [
+                                      413,
+                                      414
+                                    ]
+                                  },
+                                  "rhs": {
+                                    "kind": "number",
+                                    "text": "23",
+                                    "span": [
+                                      417,
+                                      419
+                                    ]
+                                  },
+                                  "span": [
+                                    413,
+                                    419
+                                  ]
+                                },
+                                "span": [
+                                  180,
+                                  419
+                                ]
+                              },
+                              "rhs": {
+                                "kind": "binary",
+                                "op": "lt",
+                                "lhs": {
+                                  "kind": "name",
+                                  "name": "a",
+                                  "span": [
+                                    424,
+                                    425
+                                  ]
+                                },
+                                "rhs": {
+                                  "kind": "number",
+                                  "text": "24",
+                                  "span": [
+                                    428,
+                                    430
+                                  ]
+                                },
+                                "span": [
+                                  424,
+                                  430
+                                ]
+                              },
+                              "span": [
+                                180,
+                                430
+                              ]
+                            },
+                            "rhs": {
+                              "kind": "binary",
+                              "op": "lt",
+                              "lhs": {
+                                "kind": "name",
+                                "name": "a",
+                                "span": [
+                                  435,
+                                  436
+                                ]
+                              },
+                              "rhs": {
+                                "kind": "number",
+                                "text": "25",
+                                "span": [
+                                  439,
+                                  441
+                                ]
+                              },
+                              "span": [
+                                435,
+                                441
+                              ]
+                            },
+                            "span": [
+                              180,
+                              441
+                            ]
+                          },
+                          "rhs": {
+                            "kind": "binary",
+                            "op": "lt",
+                            "lhs": {
+                              "kind": "name",
+                              "name": "a",
+                              "span": [
+                                446,
+                                447
+                              ]
+                            },
+                            "rhs": {
+                              "kind": "number",
+                              "text": "26",
+                              "span": [
+                                450,
+                                452
+                              ]
+                            },
+                            "span": [
+                              446,
+                              452
+                            ]
+                          },
+                          "span": [
+                            180,
+                            452
+                          ]
+                        },
+                        "rhs": {
+                          "kind": "binary",
+                          "op": "lt",
+                          "lhs": {
+                            "kind": "name",
+                            "name": "a",
+                            "span": [
+                              457,
+                              458
+                            ]
+                          },
+                          "rhs": {
+                            "kind": "number",
+                            "text": "27",
+                            "span": [
+                              461,
+                              463
+                            ]
+                          },
+                          "span": [
+                            457,
+                            463
+                          ]
+                        },
+                        "span": [
+                          180,
+                          463
+                        ]
+                      },
+                      "rhs": {
+                        "kind": "binary",
+                        "op": "lt",
+                        "lhs": {
+                          "kind": "name",
+                          "name": "a",
+                          "span": [
+                            468,
+                            469
+                          ]
+                        },
+                        "rhs": {
+                          "kind": "number",
+                          "text": "28",
+                          "span": [
+                            472,
+                            474
+                          ]
+                        },
+                        "span": [
+                          468,
+                          474
+                        ]
+                      },
+                      "span": [
+                        180,
+                        474
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "binary",
+                      "op": "lt",
+                      "lhs": {
+                        "kind": "name",
+                        "name": "a",
+                        "span": [
+                          479,
+                          480
+                        ]
+                      },
+                      "rhs": {
+                        "kind": "number",
+                        "text": "29",
+                        "span": [
+                          483,
+                          485
+                        ]
+                      },
+                      "span": [
+                        479,
+                        485
+                      ]
+                    },
+                    "span": [
+                      180,
+                      485
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "binary",
+                    "op": "lt",
+                    "lhs": {
+                      "kind": "name",
+                      "name": "a",
+                      "span": [
+                        490,
+                        491
+                      ]
+                    },
+                    "rhs": {
+                      "kind": "number",
+                      "text": "30",
+                      "span": [
+                        494,
+                        496
+                      ]
+                    },
+                    "span": [
+                      490,
+                      496
+                    ]
+                  },
+                  "span": [
+                    180,
+                    496
+                  ]
+                },
+                "rhs": {
+                  "kind": "binary",
+                  "op": "lt",
+                  "lhs": {
+                    "kind": "name",
+                    "name": "a",
+                    "span": [
+                      501,
+                      502
+                    ]
+                  },
+                  "rhs": {
+                    "kind": "number",
+                    "text": "31",
+                    "span": [
+                      505,
+                      507
+                    ]
+                  },
+                  "span": [
+                    501,
+                    507
+                  ]
+                },
+                "span": [
+                  180,
+                  507
+                ]
+              },
+              "rhs": {
+                "kind": "binary",
+                "op": "lt",
+                "lhs": {
+                  "kind": "name",
+                  "name": "a",
+                  "span": [
+                    512,
+                    513
+                  ]
+                },
+                "rhs": {
+                  "kind": "number",
+                  "text": "32",
+                  "span": [
+                    516,
+                    518
+                  ]
+                },
+                "span": [
+                  512,
+                  518
+                ]
+              },
+              "span": [
+                180,
+                518
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "lt",
+              "lhs": {
+                "kind": "name",
+                "name": "a",
+                "span": [
+                  523,
+                  524
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "33",
+                "span": [
+                  527,
+                  529
+                ]
+              },
+              "span": [
+                523,
+                529
+              ]
+            },
+            "span": [
+              180,
+              529
+            ]
+          }
+        ],
+        "span": [
+          163,
+          529
+        ]
+      },
+      "examples": null,
+      "span": [
+        115,
+        529
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    530
+  ]
+}

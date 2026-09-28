@@ -1,0 +1,20 @@
+# One mistake is one error (D-76): a word with a non-ASCII letter, a reserved word as a block, a character Velme
+# can't read after `plan:`, a run of such characters, and a line between two indentation levels.
+type Résumé:
+    name: Text
+
+goal A() -> Text:
+    when:
+        - true
+    plan: "x"
+
+goal B() -> Text:
+    plan: @
+
+goal C() -> Text:
+    plan: "x" @@@
+
+goal D() -> Text:
+        plan: "x"
+    check:
+        - result is not empty

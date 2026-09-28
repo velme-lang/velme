@@ -42,22 +42,46 @@ const MAX_FRACTION_DIGITS: usize = 28;
 const BLOCK_ORDER_HELP: &str = "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`";
 
 /// Parses a whole file (`language/10` §4). Always returns a program; every problem, including the lexer's, is a
-/// diagnostic, sorted by position (R-SYN-17, R-SYN-19).
+/// diagnostic, one per root cause (D-76), sorted by position then code (R-SYN-17, R-SYN-19, R-CMP-16).
 pub fn parse(file: &SourceFile) -> (Program, Vec<Diagnostic>) {
+    let text = file.text.as_str();
     let (tokens, mut diags) = lex(file);
     let tokens = parser_tokens(tokens, &mut diags);
+    // Where the errors found before parsing start (the lexer's and reserved words, VL0104), sorted; and those that
+    // left the tokens damaged, which excludes indentation errors (D-76).
+    let mut early: Vec<usize> = diags.iter().filter(|d| d.is_error()).map(|d| d.span.start).collect();
+    early.sort_unstable();
+    let mut damage: Vec<usize> = diags
+        .iter()
+        .filter(|d| d.is_error() && d.code != Code::TabIndentation && d.code != Code::InconsistentIndentation)
+        .map(|d| d.span.start)
+        .collect();
+    damage.sort_unstable();
     let mut program = Program {
         header: None,
         decls: Vec::new(),
         failed: Vec::new(),
-        span: Span::new(0, file.text.len()),
+        span: Span::new(0, text.len()),
     };
     let chunks = chunks(&tokens);
     for (index, chunk) in chunks.iter().copied().enumerate() {
-        let next = chunks.get(index + 1).and_then(|c| c.first()).map(|(tok, _)| tok);
-        match parse_chunk(chunk, next, &mut diags) {
+        let next = chunks.get(index + 1).and_then(|c| c.first());
+        let (item, errors) = parse_chunk(chunk, next.map(|(tok, _)| tok));
+        diags.extend(
+            errors
+                .into_iter()
+                .filter(|d| !follows_damage(text, &damage, d.span.start)),
+        );
+        // D-76: a declaration holding any error, the lexer's included, is excluded like one that didn't parse.
+        let from = chunk.first().map_or(0, |(_, s)| s.start);
+        let to = next.map_or(text.len(), |(_, s)| s.start);
+        let first_at_or_after = early.partition_point(|&at| at < from);
+        let clean = early.get(first_at_or_after).is_none_or(|&at| at >= to);
+        match item {
             Some(Item::Header(header)) if index == 0 => {
-                check_header(&header, &mut diags);
+                if clean {
+                    check_header(&header, &mut diags);
+                }
                 program.header = Some(header);
             }
             Some(Item::Header(header)) => diags.push(
@@ -68,19 +92,30 @@ pub fn parse(file: &SourceFile) -> (Program, Vec<Diagnostic>) {
                 )
                 .with_help("move it to the top of the file"),
             ),
-            Some(Item::Decl(decl)) => {
+            Some(Item::Decl(decl)) if clean => {
                 lint_names(&decl, &mut diags);
                 program.decls.push(decl);
             }
-            None => {
+            Some(Item::Decl(_)) | None => {
                 if let Some(failed) = failed_decl(chunk) {
                     program.failed.push(failed);
                 }
             }
         }
     }
-    diags.sort_by_key(|d| d.span.start);
+    velme_diagnostics::sort(&mut diags);
     (program, diags)
+}
+
+/// Whether a parser error at `at` follows from an earlier error on its line that left the tokens damaged: a
+/// character or word Velme can't read, bad text or a reserved word (D-76). `damage` holds their sorted starts.
+fn follows_damage(text: &str, damage: &[usize], at: usize) -> bool {
+    let before = damage.partition_point(|&start| start <= at);
+    before
+        .checked_sub(1)
+        .and_then(|i| damage.get(i))
+        .and_then(|&start| text.get(start..at))
+        .is_some_and(|between| !between.contains('\n'))
 }
 
 /// A parsed chunk.
@@ -166,39 +201,48 @@ fn failed_decl(chunk: &[(Tok, SimpleSpan)]) -> Option<FailedDecl> {
     })
 }
 
-/// Parses one chunk; `None` if it had any syntax error (the declaration is then excluded, R-SYN-17).
+/// Parses one chunk into an item, or `None` and its syntax errors (the declaration is then excluded, R-SYN-17).
 /// `next` is the token after the chunk, which is what the parser really meets when the chunk runs out.
-fn parse_chunk(chunk: &[(Tok, SimpleSpan)], next: Option<&Tok>, diags: &mut Vec<Diagnostic>) -> Option<Item> {
+fn parse_chunk(chunk: &[(Tok, SimpleSpan)], next: Option<&Tok>) -> (Option<Item>, Vec<Diagnostic>) {
     if let Some((at, message)) = too_deep(chunk) {
-        diags.push(Diagnostic::new(Code::UnexpectedToken, sp(at), message).with_help("split it into smaller pieces"));
-        return None;
+        let diag = Diagnostic::new(Code::UnexpectedToken, sp(at), message).with_help("split it into smaller pieces");
+        return (None, vec![diag]);
     }
     let end = chunk.last().map_or(0, |(_, s)| s.end);
     let input = chunk.map(SimpleSpan::from(end..end), |(t, s)| (t, s));
     let (item, errors) = item_parser().parse(input).into_output_errors();
     if errors.is_empty() {
-        return item;
+        return (item, Vec::new());
     }
-    diags.extend(errors.into_iter().map(|err| to_diagnostic(err, next)));
-    None
+    (None, errors.into_iter().map(|err| to_diagnostic(err, next)).collect())
 }
 
-/// The first token past [`MAX_NESTING`] levels of indentation, brackets and prefix forms, or past [`MAX_CHAIN`]
-/// chained operators on one line, if any (D-71). Recovery recurses per indentation level, parsing per bracket and
-/// prefix form, and dropping or walking the tree per chained operator.
+/// The first token past [`MAX_NESTING`] levels of nesting, or past [`MAX_CHAIN`] chained operators on one line, if
+/// any (D-71). Recovery recurses per indentation level, parsing per open bracket and prefix form, and dropping or
+/// walking the tree per chained operator; flat forms such as `a < b and c < d` don't nest.
 fn too_deep(chunk: &[(Tok, SimpleSpan)]) -> Option<(SimpleSpan, &'static str)> {
+    /// One bracket level of the current line: `(`, `[`, a type's `<`, or the line itself.
     #[derive(Default)]
     struct Frame {
-        /// Prefix forms at this bracket level since its last `,`.
-        prefix: usize,
-        /// Infix operators and `.` at this bracket level since its last `,`.
+        /// Whether `>` closes it.
+        angle: bool,
+        /// `if` and quantifiers: their right side runs to the end of the level or the next `,`.
+        open: usize,
+        /// `not`s: each ends at the next `and`, `or`, `then`, `in` or `has`.
+        not: usize,
+        /// Prefix `-`s: each ends at the next infix operator.
+        neg: usize,
+        /// Infix operators and `.` since the last `,`.
         chain: usize,
     }
+    let is_type = matches!(chunk.first(), Some((Tok::Keyword(Keyword::Type), _)));
+    // A `type`'s lines and a `goal`'s first line are types, where `<` opens a level; elsewhere it compares.
+    let mut in_type = is_type || matches!(chunk.first(), Some((Tok::Keyword(Keyword::Goal), _)));
     let mut indent = 0usize;
     let mut frames = vec![Frame::default()];
     let mut prev: Option<&Tok> = None;
     for (tok, span) in chunk {
-        let prefix_minus = !matches!(
+        let after_operand = matches!(
             prev,
             Some(
                 Tok::Name(_)
@@ -209,49 +253,66 @@ fn too_deep(chunk: &[(Tok, SimpleSpan)]) -> Option<(SimpleSpan, &'static str)> {
                     | Tok::Keyword(Keyword::True | Keyword::False | Keyword::Nothing | Keyword::Result)
             )
         );
+        let after_is = prev == Some(&Tok::Keyword(Keyword::Is));
+        prev = Some(tok);
+        let closes_angle = frames.len() > 1 && frames.last().is_some_and(|f| f.angle);
         match tok {
-            Tok::Newline => frames = vec![Frame::default()],
+            Tok::Newline => {
+                frames = vec![Frame::default()];
+                in_type = is_type;
+            }
             Tok::Indent => indent += 1,
             Tok::Dedent => indent = indent.saturating_sub(1),
             Tok::Punct(Punct::LParen | Punct::LBracket) => frames.push(Frame::default()),
+            Tok::Punct(Punct::Lt) if in_type => frames.push(Frame {
+                angle: true,
+                ..Frame::default()
+            }),
             Tok::Punct(Punct::RParen | Punct::RBracket) if frames.len() > 1 => {
                 frames.pop();
             }
-            Tok::Punct(Punct::Comma) => {
-                if let Some(top) = frames.last_mut() {
-                    *top = Frame::default();
+            Tok::Punct(Punct::Gt) if closes_angle => {
+                frames.pop();
+            }
+            _ => {
+                let Some(top) = frames.last_mut() else { continue };
+                match tok {
+                    Tok::Punct(Punct::Comma) => {
+                        *top = Frame {
+                            angle: top.angle,
+                            ..Frame::default()
+                        }
+                    }
+                    Tok::Keyword(Keyword::If | Keyword::Every | Keyword::Some) => top.open += 1,
+                    Tok::Keyword(Keyword::Not) if !after_is => top.not += 1,
+                    Tok::Punct(Punct::Minus) if !after_operand => top.neg += 1,
+                    Tok::Keyword(Keyword::Then | Keyword::In | Keyword::Has) => (top.not, top.neg) = (0, 0),
+                    Tok::Keyword(Keyword::And | Keyword::Or) => {
+                        (top.not, top.neg) = (0, 0);
+                        top.chain += 1;
+                    }
+                    Tok::Punct(Punct::Dot) => top.chain += 1,
+                    Tok::Keyword(Keyword::Is)
+                    | Tok::Punct(
+                        Punct::Minus
+                        | Punct::Plus
+                        | Punct::Star
+                        | Punct::Slash
+                        | Punct::EqEq
+                        | Punct::NotEq
+                        | Punct::Lt
+                        | Punct::LtEq
+                        | Punct::Gt
+                        | Punct::GtEq,
+                    ) => {
+                        top.neg = 0;
+                        top.chain += 1;
+                    }
+                    _ => {}
                 }
             }
-            Tok::Keyword(Keyword::Not | Keyword::If | Keyword::Every | Keyword::Some) | Tok::Punct(Punct::Lt) => {
-                if let Some(top) = frames.last_mut() {
-                    top.prefix += 1;
-                }
-            }
-            Tok::Punct(Punct::Minus) if prefix_minus => {
-                if let Some(top) = frames.last_mut() {
-                    top.prefix += 1;
-                }
-            }
-            Tok::Keyword(Keyword::And | Keyword::Or | Keyword::Is)
-            | Tok::Punct(
-                Punct::Minus
-                | Punct::Plus
-                | Punct::Star
-                | Punct::Slash
-                | Punct::Dot
-                | Punct::EqEq
-                | Punct::NotEq
-                | Punct::LtEq
-                | Punct::Gt
-                | Punct::GtEq,
-            ) => {
-                if let Some(top) = frames.last_mut() {
-                    top.chain += 1;
-                }
-            }
-            _ => {}
         }
-        let depth = indent + frames.len() + frames.iter().map(|f| f.prefix).sum::<usize>();
+        let depth = indent + frames.iter().map(|f| 1 + f.open + f.not + f.neg).sum::<usize>();
         let chain = frames.iter().map(|f| f.chain).sum::<usize>();
         if depth > MAX_NESTING {
             return Some((*span, "This line nests too deeply for me to read."));
@@ -259,7 +320,6 @@ fn too_deep(chunk: &[(Tok, SimpleSpan)]) -> Option<(SimpleSpan, &'static str)> {
         if chain > MAX_CHAIN {
             return Some((*span, "This line chains too many operators for me to read."));
         }
-        prev = Some(tok);
     }
     None
 }
@@ -826,6 +886,7 @@ fn call_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, CallBlock, Extra<'t
 
 fn plan_block<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Plan, Extra<'t>> + Clone {
     let inline = select! { Tok::Text(text) = e => Plan { text, form: PlanForm::Inline, span: sp(e.span()) } }
+        .labelled("some text in quotes")
         .then_ignore(newline());
     let block = punct(Punct::Pipe)
         .ignore_then(newline())
@@ -985,10 +1046,15 @@ fn expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Expr, Extra<'t>> + Clone 
             kind,
             span: sp(e.span()),
         });
-        let primary = choice((
-            atom,
-            expr.clone().delimited_by(punct(Punct::LParen), punct(Punct::RParen)),
-        ));
+        // The span of `(x + 1)` includes its parentheses, so `(x + 1) * 2` starts at `(`.
+        let parenthesized = expr
+            .clone()
+            .delimited_by(punct(Punct::LParen), punct(Punct::RParen))
+            .map_with(|inner: Expr, e| Expr {
+                span: sp(e.span()),
+                ..inner
+            });
+        let primary = choice((atom, parenthesized));
         let postfix = primary.foldl(punct(Punct::Dot).ignore_then(name()).repeated(), |base, field| Expr {
             span: base.span.to(field.span),
             kind: ExprKind::Field {

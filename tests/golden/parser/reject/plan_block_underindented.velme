@@ -1,0 +1,7 @@
+# covers: plan_block
+# A line deeper than `plan` but shallower than the plan's first line is VL0102, not plan text (D-73).
+goal A() -> Text:
+    plan: |
+        Say hello.
+      check:
+        - result is not empty
