@@ -1,0 +1,27 @@
+# `budget` can only lower the system caps, and the run tree below a goal must fit its limits (language/12 §6,
+# R-GOAL-20, runtime/30 §7).
+language: velme/0.1
+
+goal Leaf(x: Number) -> Number:
+    plan: "Return x."
+
+goal Bad(x: Number) -> Number:
+    budget cpu=1.5ms cpu=10ms calls=999 memory=65mb depth=0 time=3
+    plan: "Return x."
+
+goal Units(x: Number) -> Number:
+    budget cpu=10s memory=4 calls=2kb depth=1.0
+    plan: "Return x."
+
+goal Two(x: Number) -> Number:
+    budget calls=2 depth=1
+    call:
+        a = Leaf(x)
+        b = Leaf(x)
+    plan: "Add a and b."
+
+goal Deep(x: Number) -> Number:
+    budget depth=1
+    call:
+        two = Two(x)
+    plan: "Return two."

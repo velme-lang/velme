@@ -1,0 +1,44 @@
+# The call block: callees, arguments, binding order and names (language/12 §3, R-GOAL-05..10).
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+    rival: Rival?
+
+type Rival:
+    name: Text
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score."
+
+goal RivalScore(rival: Rival) -> Number:
+    plan: "Score the rival."
+
+goal Named(name: Text) -> Number:
+    plan: "Score the name."
+
+# A duplicated parameter still counts as an input, so a call with two arguments isn't reported again.
+goal Pair(a: Number, a: Number) -> Number:
+    plan: "Add them."
+
+goal Calls(player: Player, x: Number) -> Number:
+    call:
+        wrong = CalculateScore("hello")
+        unknown = CalculateScor(player)
+        arity = CalculateScore(player, x)
+        sum = CalculateScore(x + 1)
+        typed = Player(player)
+        builtin = maximum(x)
+        length = CalculateScore(player.name.length)
+        early = CalculateScore(later)
+        later = CalculateScore(player)
+        missing = CalculateScore(playr)
+        rival = RivalScore(player.rival)
+        named = Named(player.rival.name)
+        pair = Pair(x, x)
+        pair = Pair(x)
+        x = CalculateScore(player)
+    plan: "Try every kind of call."
+    check:
+        - wrong + unknown + later > 0

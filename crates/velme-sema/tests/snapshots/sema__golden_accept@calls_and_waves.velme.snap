@@ -1,0 +1,992 @@
+---
+source: crates/velme-sema/tests/sema.rs
+expression: "program.expect(\"a program without errors\")"
+input_file: tests/golden/sema/accept/calls_and_waves.velme
+---
+{
+  "language_version": "0.1",
+  "types": [
+    {
+      "name": "Stats",
+      "fields": [
+        {
+          "name": "jump_height",
+          "ty": "number",
+          "span": [
+            126,
+            145
+          ]
+        }
+      ],
+      "span": [
+        110,
+        145
+      ]
+    },
+    {
+      "name": "Player",
+      "fields": [
+        {
+          "name": "name",
+          "ty": "text",
+          "span": [
+            164,
+            174
+          ]
+        },
+        {
+          "name": "stats",
+          "ty": {
+            "record": 0
+          },
+          "span": [
+            179,
+            191
+          ]
+        },
+        {
+          "name": "rival",
+          "ty": {
+            "optional": {
+              "record": 2
+            }
+          },
+          "span": [
+            196,
+            211
+          ]
+        }
+      ],
+      "span": [
+        147,
+        211
+      ]
+    },
+    {
+      "name": "Player2",
+      "fields": [
+        {
+          "name": "name",
+          "ty": "text",
+          "span": [
+            231,
+            241
+          ]
+        }
+      ],
+      "span": [
+        213,
+        241
+      ]
+    },
+    {
+      "name": "Level",
+      "fields": [
+        {
+          "name": "enemy_count",
+          "ty": "number",
+          "span": [
+            259,
+            278
+          ]
+        },
+        {
+          "name": "treasure_count",
+          "ty": "number",
+          "span": [
+            283,
+            305
+          ]
+        },
+        {
+          "name": "base_score",
+          "ty": "number",
+          "span": [
+            310,
+            328
+          ]
+        }
+      ],
+      "span": [
+        243,
+        328
+      ]
+    },
+    {
+      "name": "LevelSummary",
+      "fields": [
+        {
+          "name": "score",
+          "ty": "number",
+          "span": [
+            353,
+            366
+          ]
+        },
+        {
+          "name": "difficulty",
+          "ty": "text",
+          "span": [
+            371,
+            387
+          ]
+        },
+        {
+          "name": "reward",
+          "ty": "number",
+          "span": [
+            392,
+            406
+          ]
+        }
+      ],
+      "span": [
+        330,
+        406
+      ]
+    }
+  ],
+  "goals": [
+    {
+      "name": "CountEnemies",
+      "params": [
+        {
+          "name": "level",
+          "ty": {
+            "record": 3
+          },
+          "span": [
+            426,
+            438
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Return the level's enemy_count.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        408,
+        494
+      ]
+    },
+    {
+      "name": "CountTreasures",
+      "params": [
+        {
+          "name": "level",
+          "ty": {
+            "record": 3
+          },
+          "span": [
+            516,
+            528
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Return the level's treasure_count.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        496,
+        587
+      ]
+    },
+    {
+      "name": "CalculateLevelScore",
+      "params": [
+        {
+          "name": "level",
+          "ty": {
+            "record": 3
+          },
+          "span": [
+            614,
+            626
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Return the level's base_score.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        589,
+        681
+      ]
+    },
+    {
+      "name": "RateDifficulty",
+      "params": [
+        {
+          "name": "enemies",
+          "ty": "number",
+          "span": [
+            703,
+            718
+          ]
+        },
+        {
+          "name": "treasures",
+          "ty": "number",
+          "span": [
+            720,
+            737
+          ]
+        }
+      ],
+      "output": "text",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Rate the level Hard, Medium or Easy.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        683,
+        796
+      ]
+    },
+    {
+      "name": "CalculateReward",
+      "params": [
+        {
+          "name": "score",
+          "ty": "number",
+          "span": [
+            819,
+            832
+          ]
+        },
+        {
+          "name": "treasures",
+          "ty": "number",
+          "span": [
+            834,
+            851
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "The reward is the score plus 50 for every treasure.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        798,
+        927
+      ]
+    },
+    {
+      "name": "CreateLevelSummary",
+      "params": [
+        {
+          "name": "level",
+          "ty": {
+            "record": 3
+          },
+          "span": [
+            1037,
+            1049
+          ]
+        }
+      ],
+      "output": {
+        "record": 4
+      },
+      "kind": "composite",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [
+        {
+          "name": "enemies",
+          "callee": 0,
+          "args": [
+            {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "record": 3
+              },
+              "span": [
+                1109,
+                1114
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            1086,
+            1115
+          ]
+        },
+        {
+          "name": "treasures",
+          "callee": 1,
+          "args": [
+            {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "record": 3
+              },
+              "span": [
+                1151,
+                1156
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            1124,
+            1157
+          ]
+        },
+        {
+          "name": "score",
+          "callee": 2,
+          "args": [
+            {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "record": 3
+              },
+              "span": [
+                1194,
+                1199
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            1166,
+            1200
+          ]
+        },
+        {
+          "name": "difficulty",
+          "callee": 3,
+          "args": [
+            {
+              "kind": "binding",
+              "index": 0,
+              "ty": "number",
+              "span": [
+                1237,
+                1244
+              ]
+            },
+            {
+              "kind": "binding",
+              "index": 1,
+              "ty": "number",
+              "span": [
+                1246,
+                1255
+              ]
+            }
+          ],
+          "ty": "text",
+          "wave": 2,
+          "span": [
+            1209,
+            1256
+          ]
+        },
+        {
+          "name": "reward",
+          "callee": 4,
+          "args": [
+            {
+              "kind": "binding",
+              "index": 2,
+              "ty": "number",
+              "span": [
+                1290,
+                1295
+              ]
+            },
+            {
+              "kind": "binding",
+              "index": 1,
+              "ty": "number",
+              "span": [
+                1297,
+                1306
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 2,
+          "span": [
+            1265,
+            1307
+          ]
+        }
+      ],
+      "plan": "Combine the score, difficulty, and reward into one level summary.",
+      "checks": [
+        {
+          "kind": "binary",
+          "op": "eq",
+          "lhs": {
+            "kind": "field",
+            "base": {
+              "kind": "result",
+              "ty": {
+                "record": 4
+              },
+              "span": [
+                1415,
+                1421
+              ]
+            },
+            "field": 0,
+            "ty": "number",
+            "span": [
+              1415,
+              1427
+            ]
+          },
+          "rhs": {
+            "kind": "binding",
+            "index": 2,
+            "ty": "number",
+            "span": [
+              1431,
+              1436
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1415,
+            1436
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "eq",
+          "lhs": {
+            "kind": "field",
+            "base": {
+              "kind": "result",
+              "ty": {
+                "record": 4
+              },
+              "span": [
+                1447,
+                1453
+              ]
+            },
+            "field": 1,
+            "ty": "text",
+            "span": [
+              1447,
+              1464
+            ]
+          },
+          "rhs": {
+            "kind": "binding",
+            "index": 3,
+            "ty": "text",
+            "span": [
+              1468,
+              1478
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1447,
+            1478
+          ]
+        },
+        {
+          "kind": "binary",
+          "op": "eq",
+          "lhs": {
+            "kind": "field",
+            "base": {
+              "kind": "result",
+              "ty": {
+                "record": 4
+              },
+              "span": [
+                1489,
+                1495
+              ]
+            },
+            "field": 2,
+            "ty": "number",
+            "span": [
+              1489,
+              1502
+            ]
+          },
+          "rhs": {
+            "kind": "binding",
+            "index": 4,
+            "ty": "number",
+            "span": [
+              1506,
+              1512
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            1489,
+            1512
+          ]
+        }
+      ],
+      "examples": [],
+      "span": [
+        1013,
+        1512
+      ]
+    },
+    {
+      "name": "Jump",
+      "params": [
+        {
+          "name": "stats",
+          "ty": {
+            "record": 0
+          },
+          "span": [
+            1626,
+            1638
+          ]
+        },
+        {
+          "name": "bonus",
+          "ty": "number",
+          "span": [
+            1640,
+            1653
+          ]
+        },
+        {
+          "name": "rival",
+          "ty": {
+            "optional": {
+              "record": 2
+            }
+          },
+          "span": [
+            1655,
+            1670
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Add the bonus to the jump height.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        1616,
+        1728
+      ]
+    },
+    {
+      "name": "Scores",
+      "params": [
+        {
+          "name": "player",
+          "ty": {
+            "record": 1
+          },
+          "span": [
+            1742,
+            1756
+          ]
+        }
+      ],
+      "output": {
+        "list": "number"
+      },
+      "kind": "composite",
+      "budget": {
+        "max_fuel": 1000000,
+        "max_memory": 524288,
+        "max_goal_calls": 3,
+        "max_call_depth": 1
+      },
+      "bindings": [
+        {
+          "name": "high",
+          "callee": 6,
+          "args": [
+            {
+              "kind": "field",
+              "base": {
+                "kind": "input",
+                "index": 0,
+                "ty": {
+                  "record": 1
+                },
+                "span": [
+                  1854,
+                  1860
+                ]
+              },
+              "field": 1,
+              "ty": {
+                "record": 0
+              },
+              "span": [
+                1854,
+                1866
+              ]
+            },
+            {
+              "kind": "number",
+              "text": "10",
+              "ty": "number",
+              "span": [
+                1868,
+                1870
+              ]
+            },
+            {
+              "kind": "field",
+              "base": {
+                "kind": "input",
+                "index": 0,
+                "ty": {
+                  "record": 1
+                },
+                "span": [
+                  1872,
+                  1878
+                ]
+              },
+              "field": 2,
+              "ty": {
+                "optional": {
+                  "record": 2
+                }
+              },
+              "span": [
+                1872,
+                1884
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            1842,
+            1885
+          ]
+        },
+        {
+          "name": "low",
+          "callee": 6,
+          "args": [
+            {
+              "kind": "record",
+              "ty": 0,
+              "fields": [
+                {
+                  "kind": "number",
+                  "text": "1",
+                  "ty": "number",
+                  "span": [
+                    1924,
+                    1925
+                  ]
+                }
+              ],
+              "ty": {
+                "record": 0
+              },
+              "span": [
+                1905,
+                1926
+              ]
+            },
+            {
+              "kind": "number",
+              "text": "-1",
+              "ty": "number",
+              "span": [
+                1928,
+                1930
+              ]
+            },
+            {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                1932,
+                1939
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            1894,
+            1940
+          ]
+        }
+      ],
+      "plan": "Both jump scores.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        1730,
+        1970
+      ]
+    },
+    {
+      "name": "Double",
+      "params": [
+        {
+          "name": "x",
+          "ty": "number",
+          "span": [
+            2084,
+            2093
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Multiply x by 2.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        2072,
+        2134
+      ]
+    },
+    {
+      "name": "AddOne",
+      "params": [
+        {
+          "name": "x",
+          "ty": "number",
+          "span": [
+            2148,
+            2157
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
+      "plan": "Add 1 to x.",
+      "checks": [],
+      "examples": [],
+      "span": [
+        2136,
+        2193
+      ]
+    },
+    {
+      "name": "Main",
+      "params": [
+        {
+          "name": "x",
+          "ty": "number",
+          "span": [
+            2205,
+            2214
+          ]
+        }
+      ],
+      "output": "number",
+      "kind": "wired",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 2
+      },
+      "bindings": [
+        {
+          "name": "doubled",
+          "callee": 8,
+          "args": [
+            {
+              "kind": "input",
+              "index": 0,
+              "ty": "number",
+              "span": [
+                2281,
+                2282
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            2264,
+            2283
+          ]
+        },
+        {
+          "name": "added",
+          "callee": 9,
+          "args": [
+            {
+              "kind": "binding",
+              "index": 0,
+              "ty": "number",
+              "span": [
+                2307,
+                2314
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 2,
+          "span": [
+            2292,
+            2315
+          ]
+        },
+        {
+          "name": "result",
+          "callee": 8,
+          "args": [
+            {
+              "kind": "binding",
+              "index": 1,
+              "ty": "number",
+              "span": [
+                2340,
+                2345
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 3,
+          "span": [
+            2324,
+            2346
+          ]
+        }
+      ],
+      "plan": null,
+      "checks": [
+        {
+          "kind": "binary",
+          "op": "eq",
+          "lhs": {
+            "kind": "result",
+            "ty": "number",
+            "span": [
+              2368,
+              2374
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "mul",
+            "lhs": {
+              "kind": "binding",
+              "index": 1,
+              "ty": "number",
+              "span": [
+                2378,
+                2383
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "2",
+              "ty": "number",
+              "span": [
+                2386,
+                2387
+              ]
+            },
+            "ty": "number",
+            "span": [
+              2378,
+              2387
+            ]
+          },
+          "ty": "boolean",
+          "span": [
+            2368,
+            2387
+          ]
+        }
+      ],
+      "examples": [],
+      "span": [
+        2195,
+        2387
+      ]
+    }
+  ]
+}

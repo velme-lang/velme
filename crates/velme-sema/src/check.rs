@@ -1,17 +1,18 @@
-//! Phase 4, type-check (`compiler/20` §3): each goal's `check` items and `examples` against the signatures
-//! (`language/11` §8–9, `language/13` §2–3, `language/12` R-GOAL-21). The `call` block is checked with the call graph.
+//! Phase 4, type-check (`compiler/20` §3): each goal's `call` block, `check` items and `examples` against the
+//! signatures (`language/11` §8–9, `language/13` §2–3, `language/12` §3 and R-GOAL-21), and its kind (phase 6).
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use velme_builtins::{Builtin, Shape};
 use velme_diagnostics::{Code, Diagnostic, Span, closest};
-use velme_syntax::ast::{self, BinaryOp, ExprKind as Ast, LiteralKind, UnaryOp};
+use velme_syntax::Keyword;
+use velme_syntax::ast::{self, BinaryOp, CallArg, ExprKind as Ast, LiteralKind, UnaryOp};
 
-use crate::hir::{Example, Expr, ExprKind, Goal, RecordType, Type, TypeId};
+use crate::budget::budget;
+use crate::hir::{Binding, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type, TypeId};
 use crate::resolve::{Declared, Scope};
 
-/// Checks every goal's body and fills in its checks and examples. Goals whose name is taken are checked too
-/// (CC-ERR-04).
+/// Checks every goal's body and budget and fills them in. Goals whose name is taken are checked too (CC-ERR-04).
 pub(crate) fn check_bodies(
     types: &[RecordType],
     goals: &mut [Goal],
@@ -27,17 +28,29 @@ pub(crate) fn check_bodies(
     };
     for (decl, goal) in &scope.unnamed_goals {
         drop(file.body(decl, goal, diags));
+        budget(decl.budget.as_ref(), diags);
     }
     let bodies: Vec<_> = scope
         .goals
         .iter()
         .zip(goals.iter())
-        .map(|(decl, goal)| file.body(decl, goal, diags))
+        .map(|(decl, goal)| (file.body(decl, goal, diags), budget(decl.budget.as_ref(), diags)))
         .collect();
-    for (goal, (checks, examples)) in goals.iter_mut().zip(bodies) {
-        goal.checks = checks;
-        goal.examples = examples;
+    for (goal, (body, budget)) in goals.iter_mut().zip(bodies) {
+        goal.kind = body.kind;
+        goal.bindings = body.bindings;
+        goal.checks = body.checks;
+        goal.examples = body.examples;
+        goal.budget = budget;
     }
+}
+
+/// What checking a goal's body gives.
+struct Checked {
+    kind: GoalKind,
+    bindings: Vec<Binding>,
+    checks: Vec<Expr>,
+    examples: Vec<Example>,
 }
 
 /// What every body sees.
@@ -49,29 +62,33 @@ struct File<'f> {
 }
 
 impl File<'_> {
-    fn body(&self, decl: &ast::GoalDecl, goal: &Goal, diags: &mut Vec<Diagnostic>) -> (Vec<Expr>, Vec<Example>) {
-        // A binding's type is its callee's output (R-GOAL-12); calls themselves are checked with the call graph.
-        let bindings = decl
-            .call
-            .iter()
-            .flat_map(|c| &c.bindings)
-            .filter(|b| b.name.name != "result")
-            .map(|b| {
-                let ty = match self.scope.names.get(b.callee.name.as_str()) {
-                    Some(Declared::Goal(id)) => self.goals.get(id.0).map_or(Type::Error, |g| g.output.clone()),
-                    _ => Type::Error,
-                };
-                (b.name.name.as_str(), ty)
-            })
-            .collect();
+    fn body(&self, decl: &ast::GoalDecl, goal: &Goal, diags: &mut Vec<Diagnostic>) -> Checked {
         let mut body = Body {
             file: self,
             goal,
-            bindings,
+            bindings: Vec::new(),
             vars: Vec::new(),
             narrowed: Vec::new(),
             diags,
         };
+        let lines = decl.call.as_ref().map_or(&[][..], |c| &c.bindings);
+        let bindings = body.call_block(lines);
+        let kind = match lines.last() {
+            None => GoalKind::Leaf,
+            Some(last) if last.name.name == Keyword::Result.as_str() => GoalKind::Wired,
+            Some(_) => GoalKind::Composite,
+        };
+        // R-GOAL-01: a wired goal's plan is only documentation.
+        if kind != GoalKind::Wired && goal.plan.as_deref().is_none_or(|p| p.trim().is_empty()) {
+            body.diags.push(
+                Diagnostic::new(
+                    Code::GoalHasNoBody,
+                    decl.name.span,
+                    format!("`{}` needs a `plan:` that says what it should do.", goal.name),
+                )
+                .with_help("tell Velme what this goal should do in `plan:`"),
+            );
+        }
         let checks = decl
             .check
             .iter()
@@ -84,7 +101,12 @@ impl File<'_> {
             .flat_map(|e| &e.items)
             .filter_map(|e| body.example(e))
             .collect();
-        (checks, examples)
+        Checked {
+            kind,
+            bindings,
+            checks,
+            examples,
+        }
     }
 }
 
@@ -119,7 +141,8 @@ struct Path<'a> {
 struct Body<'f, 'a> {
     file: &'f File<'f>,
     goal: &'f Goal,
-    /// `call` bindings visible in checks, in block order.
+    /// `call` bindings visible here, in block order: the earlier ones in the `call` block, all but `result` in checks
+    /// (R-GOAL-09, R-CHK-02).
     bindings: Vec<(&'a str, Type)>,
     /// Quantifier variables in scope, outermost first.
     vars: Vec<(&'a str, Type)>,
@@ -155,6 +178,237 @@ fn poisoned(span: Span) -> Expr {
 }
 
 impl<'f, 'a> Body<'f, 'a> {
+    /// The `call` block (`language/12` §3). Each binding becomes visible to the lines after it and to the checks with
+    /// its callee's output type (R-GOAL-12); one whose callee isn't a goal is left out of the result, but its name
+    /// stays visible so its uses aren't reported again.
+    fn call_block(&mut self, lines: &'a [ast::Binding]) -> Vec<Binding> {
+        let mut out = Vec::new();
+        // The wave of each binding in `self.bindings` (R-GOAL-14).
+        let mut waves = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            let name = line.name.name.as_str();
+            if self.goal.params.iter().any(|p| p.name == name) || self.bindings.iter().any(|(n, _)| *n == name) {
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::DuplicateBinding,
+                        line.name.span,
+                        format!("`{name}` is already used in this goal."),
+                    )
+                    .with_help("give this call its own name"),
+                );
+            }
+            let callee = self.callee(&line.callee);
+            let params = match callee.map(|(_, g)| g) {
+                Some(g) if g.params.len() != line.args.len() => {
+                    self.diags
+                        .push(arity(&g.name, g.params.len(), line.args.len(), line.span));
+                    None
+                }
+                Some(g) => Some(&g.params),
+                None => None,
+            };
+            let mut wave = 1;
+            let args = line
+                .args
+                .iter()
+                .enumerate()
+                .map(|(j, arg)| {
+                    let ty = params.and_then(|p| p.get(j)).map_or(Type::Error, |p| p.ty.clone());
+                    let (e, arg_wave) = self.call_arg(arg, &ty, lines.get(i..).unwrap_or_default(), &waves);
+                    wave = wave.max(arg_wave + 1);
+                    e
+                })
+                .collect();
+            let ty = callee.map_or(Type::Error, |(_, g)| g.output.clone());
+            if name == Keyword::Result.as_str() {
+                if !assignable(&ty, &self.goal.output) {
+                    let callee = &line.callee.name;
+                    self.diags.push(
+                        Diagnostic::new(
+                            Code::TypeMismatch,
+                            line.span,
+                            format!(
+                                "Expected {}, but got {}.",
+                                self.type_name(&self.goal.output),
+                                self.type_name(&ty)
+                            ),
+                        )
+                        .with_help(format!(
+                            "`result` is what `{}` gives back, so `{callee}` must give back {} too",
+                            self.goal.name,
+                            self.type_name(&self.goal.output)
+                        )),
+                    );
+                }
+            } else {
+                self.bindings.push((name, ty.clone()));
+                waves.push(wave);
+            }
+            if let Some((id, _)) = callee {
+                out.push(Binding {
+                    name: name.to_owned(),
+                    callee: id,
+                    args,
+                    ty,
+                    wave,
+                    span: line.span,
+                });
+            }
+        }
+        out
+    }
+
+    /// The goal a binding calls: `VL0301` for an unknown name, `VL0303` for a type or built-in (R-GOAL-05, R-GOAL-08).
+    fn callee(&mut self, callee: &ast::Ident) -> Option<(GoalId, &'f Goal)> {
+        let name = callee.name.as_str();
+        let invalid = |message: String| Diagnostic::new(Code::InvalidCall, callee.span, message);
+        let diag = match self.file.scope.names.get(name) {
+            Some(&Declared::Goal(id)) => return self.file.goals.get(id.0).map(|g| (id, g)),
+            Some(Declared::Type(_)) => invalid(format!("`{name}` is a type, not a goal."))
+                .with_help("a `call:` line runs a goal; its inputs can be values of this type"),
+            None if self.file.scope.is_failed(name) => return None,
+            None if Builtin::find(name).is_some() => invalid(format!("`{name}` is a built-in, not a goal."))
+                .with_help("a `call:` line runs a goal declared in this file"),
+            None => {
+                let goals = self.file.scope.names.iter().filter_map(|(n, d)| match d {
+                    Declared::Goal(_) => Some(*n),
+                    Declared::Type(_) => None,
+                });
+                let diag = Diagnostic::new(
+                    Code::UnknownGoal,
+                    callee.span,
+                    format!("I don't know a goal called `{name}`."),
+                );
+                match closest(name, goals) {
+                    Some(suggestion) => diag.with_help(format!("did you mean `{suggestion}`?")),
+                    None => diag.with_help("declare it with `goal` in this file"),
+                }
+            }
+        };
+        self.diags.push(diag);
+        None
+    }
+
+    /// A call argument assignable to `ty`, and the latest wave among the bindings it uses (R-GOAL-07, R-GOAL-08).
+    /// `later` holds this line and the ones after it, whose names it can't use yet (R-GOAL-09).
+    fn call_arg(&mut self, arg: &'a CallArg, ty: &Type, later: &[ast::Binding], waves: &[usize]) -> (Expr, usize) {
+        let (e, wave) = match arg {
+            CallArg::Literal(literal) => return (self.assigned(literal, ty), 0),
+            CallArg::Path(path) => self.arg_path(path, later, waves),
+            CallArg::Expr(e) => {
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::InvalidCall,
+                        e.span,
+                        "A call's inputs can only be names, their fields, or plain values.",
+                    )
+                    .with_help("work this out in a goal of its own, and call that goal on an earlier line"),
+                );
+                return (poisoned(e.span), 0);
+            }
+        };
+        if !assignable(&e.ty, ty) {
+            let mut diag = self.mismatch(&e, &[self.type_name(ty)]);
+            if matches!(e.ty, Type::Optional(_)) {
+                // A call block can't narrow, unlike a check (`language/11` §9).
+                let wanted = self.type_name(&Type::Optional(Box::new(ty.clone())));
+                diag = diag.with_help(format!(
+                    "it might be empty, and a call can't check that first — make that input `{wanted}` to accept it"
+                ));
+            }
+            self.diags.push(diag);
+        }
+        (e, wave)
+    }
+
+    /// `name.field…`, starting at an input or an earlier binding.
+    fn arg_path(&mut self, path: &'a ast::Path, later: &[ast::Binding], waves: &[usize]) -> (Expr, usize) {
+        let Some((first, fields)) = path.segments.split_first() else {
+            return (poisoned(path.span), 0);
+        };
+        let name = first.name.as_str();
+        let (root, ty, wave) = if let Some((i, p)) = self.goal.params.iter().enumerate().find(|(_, p)| p.name == name) {
+            (Root::Input(i), p.ty.clone(), 0)
+        } else if let Some((i, (_, ty))) = self.bindings.iter().enumerate().find(|(_, (n, _))| *n == name) {
+            (Root::Binding(i), ty.clone(), waves.get(i).copied().unwrap_or(0))
+        } else if later.iter().any(|b| b.name.name == name) {
+            self.diags.push(
+                Diagnostic::new(
+                    Code::BindingUsedBeforeDefinition,
+                    first.span,
+                    format!("`{name}` is used before it's made — move its line up."),
+                )
+                .with_help("a call can use only the names made on the lines above it"),
+            );
+            return (poisoned(path.span), 0);
+        } else {
+            let visible = self
+                .goal
+                .params
+                .iter()
+                .map(|p| p.name.as_str())
+                .chain(self.bindings.iter().map(|(n, _)| *n));
+            let help = match closest(name, visible) {
+                Some(suggestion) => format!("did you mean `{suggestion}`?"),
+                None => "a call can use the goal's inputs and the names of the calls above it".to_owned(),
+            };
+            self.diags.push(
+                Diagnostic::new(
+                    Code::UnknownName,
+                    first.span,
+                    format!("I don't know what `{name}` is here."),
+                )
+                .with_help(help),
+            );
+            return (poisoned(path.span), 0);
+        };
+        let mut e = Expr {
+            kind: root.kind(),
+            ty,
+            span: first.span,
+        };
+        for field in fields {
+            let span = e.span.to(field.span);
+            let may_be_empty = match &e.ty {
+                Type::Optional(_) => true,
+                Type::List(element) => {
+                    matches!(&**element, Type::Optional(inner) if matches!(**inner, Type::Record(_)))
+                }
+                _ => false,
+            };
+            if may_be_empty {
+                // A call block can't narrow, unlike a check (`language/11` §9), so the check's advice doesn't apply.
+                let source = self.source(e.span);
+                let ty = self.type_name(&e.ty);
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::NullableAccess,
+                        e.span,
+                        format!("`{source}` might be empty, so a call can't use its `{}`.", field.name),
+                    )
+                    .with_help(format!(
+                        "a call can't check that first — pass `{source}` itself to an input of type `{ty}`"
+                    )),
+                );
+                return (poisoned(span), wave);
+            }
+            let (kind, ty) = self.field_of(e, field);
+            if matches!(kind, ExprKind::Builtin { .. }) {
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::InvalidCall,
+                        field.span,
+                        format!("`.{}` is a built-in, which a call's inputs can't use.", field.name),
+                    )
+                    .with_help("work this out in a goal of its own, and call that goal on an earlier line"),
+                );
+                return (poisoned(span), wave);
+            }
+            e = Expr { kind, ty, span };
+        }
+        (e, wave)
+    }
+
     /// R-CHK-01: a check item is `Boolean`.
     fn check_item(&mut self, item: &'a ast::Expr) -> Expr {
         let e = self.expr(item, None);
@@ -663,8 +917,13 @@ impl<'f, 'a> Body<'f, 'a> {
 
     /// `base.field`: a record field, a list's or text's `.length`, or a projection over a list of records
     /// (R-TYP-14, R-TYP-12).
-    fn field(&mut self, base: &'a ast::Expr, field: &'a ast::Ident) -> (ExprKind, Type) {
+    fn field(&mut self, base: &'a ast::Expr, field: &ast::Ident) -> (ExprKind, Type) {
         let base_e = self.expr(base, None);
+        self.field_of(base_e, field)
+    }
+
+    /// [`Self::field`] of a base already checked.
+    fn field_of(&mut self, base_e: Expr, field: &ast::Ident) -> (ExprKind, Type) {
         let name = field.name.as_str();
         let base_ty = base_e.ty.clone();
         let length = |base_e: Expr| {
@@ -679,7 +938,7 @@ impl<'f, 'a> Body<'f, 'a> {
         match &base_ty {
             Type::Error => (ExprKind::Nothing, Type::Error),
             Type::Optional(_) => {
-                self.nullable(base);
+                self.nullable(base_e.span);
                 (ExprKind::Nothing, Type::Error)
             }
             Type::Text | Type::List(_) if name == "length" => length(base_e),
@@ -705,11 +964,11 @@ impl<'f, 'a> Body<'f, 'a> {
                     None => (ExprKind::Nothing, Type::Error),
                 },
                 Type::Optional(inner) if matches!(**inner, Type::Record(_)) => {
-                    let list = self.source(base.span);
+                    let list = self.source(base_e.span);
                     self.diags.push(
                         Diagnostic::new(
                             Code::NullableAccess,
-                            base.span,
+                            base_e.span,
                             format!("`{list}` may hold `nothing`, so it has no `{name}` to list."),
                         )
                         .with_help("go through it with `every … in … has …` and check each item `is not empty`"),
@@ -751,7 +1010,7 @@ impl<'f, 'a> Body<'f, 'a> {
         match &e.ty {
             Type::Error => {}
             t if *t == wanted => {}
-            Type::Optional(inner) if **inner == wanted && op == UnaryOp::Neg => self.nullable(operand),
+            Type::Optional(inner) if **inner == wanted && op == UnaryOp::Neg => self.nullable(operand.span),
             t => {
                 let t = self.type_name(t);
                 self.diags.push(Diagnostic::new(
@@ -841,7 +1100,7 @@ impl<'f, 'a> Body<'f, 'a> {
         }
         for (e, ast) in [(&l, lhs), (&r, rhs)] {
             if optional_number(&e.ty) {
-                self.nullable(ast);
+                self.nullable(ast.span);
             }
         }
         (l, r, true)
@@ -879,7 +1138,7 @@ impl<'f, 'a> Body<'f, 'a> {
             Type::List(element) => (**element).clone(),
             Type::Error => Type::Error,
             Type::Optional(inner) if matches!(**inner, Type::List(_)) => {
-                self.nullable(collection);
+                self.nullable(collection.span);
                 Type::Error
             }
             ty => {
@@ -961,13 +1220,13 @@ impl<'f, 'a> Body<'f, 'a> {
         )
     }
 
-    /// `VL0207` for the path or value `e` of type `T?` (R-TYP-12).
-    fn nullable(&mut self, e: &ast::Expr) {
-        let source = self.source(e.span);
+    /// `VL0207` for the path or value at `span` of type `T?` (R-TYP-12).
+    fn nullable(&mut self, span: Span) {
+        let source = self.source(span);
         self.diags.push(
             Diagnostic::new(
                 Code::NullableAccess,
-                e.span,
+                span,
                 format!("`{source}` might be empty — check `is not empty` first."),
             )
             .with_help(format!("write `{source} is not empty and …` before using it")),

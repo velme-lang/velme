@@ -1,0 +1,195 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/budgets.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`cpu` must be a whole number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 268,
+        "line": 9,
+        "start": 259
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "help": "keep one of them",
+      "labels": [],
+      "message": "`cpu` is already set on this line.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 277,
+        "line": 9,
+        "start": 269
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`budget` can only make limits smaller — `calls` can be at most `128`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 31,
+        "end": 287,
+        "line": 9,
+        "start": 278
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`budget` can only make limits smaller — `memory` can be at most `64mb`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 41,
+        "end": 299,
+        "line": 9,
+        "start": 288
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`depth` must be more than 0.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 53,
+        "end": 307,
+        "line": 9,
+        "start": 300
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "help": "a budget can set `cpu`, `memory`, `calls` and `depth`",
+      "labels": [],
+      "message": "A budget has no limit called `time`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 61,
+        "end": 312,
+        "line": 9,
+        "start": 308
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`cpu` is a time in whole milliseconds, like `cpu=10ms`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 389,
+        "line": 13,
+        "start": 382
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`memory` is a size in `kb` or `mb`, like `memory=4mb`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 20,
+        "end": 398,
+        "line": 13,
+        "start": 390
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`calls` is a count, so it has no unit, like `calls=16`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 29,
+        "end": 408,
+        "line": 13,
+        "start": 399
+      }
+    },
+    {
+      "code": "VL0605",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "help": "raise `calls=` in its budget, or call fewer goals below it — every call counts, even of the same goal",
+      "labels": [
+        {
+          "span": {
+            "column": 12,
+            "end": 491,
+            "line": 17,
+            "start": 484
+          },
+          "text": "the limit set here"
+        }
+      ],
+      "message": "Too many goals were called while running `Two`.",
+      "notes": [
+        "it would run 3 goals, counting itself, but its limit is 2"
+      ],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 450,
+        "line": 16,
+        "start": 447
+      }
+    },
+    {
+      "code": "VL0605",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "help": "raise `depth=` in its budget, or make its chains of calls shorter",
+      "labels": [
+        {
+          "span": {
+            "column": 12,
+            "end": 626,
+            "line": 24,
+            "start": 619
+          },
+          "text": "the limit set here"
+        }
+      ],
+      "message": "Too many goals were called while running `Deep`.",
+      "notes": [
+        "its calls would nest 2 deep, but its limit is 1"
+      ],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 585,
+        "line": 23,
+        "start": 581
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

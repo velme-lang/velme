@@ -1,7 +1,10 @@
 # covers: call_arg, path
-# `result` as a call argument (R-GOAL-23), an expression as an argument, and a path ending in `.`.
+# `result` as a call argument, alone or inside an expression (R-GOAL-23), a path followed by a stray name, and a path
+# ending in `.`. Any other expression as an argument parses and is rejected by the checker (R-GOAL-08,
+# `sema/reject/call_block.velme`).
 goal A(p: Player) -> Number:
     call:
         x = Score(result)
-        y = Score(p.score + 1)
+        w = Score(result.score + 1)
+        y = Score(p.score q)
         z = Score(p.)

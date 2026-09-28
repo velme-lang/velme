@@ -26,7 +26,7 @@ wire/spelling form comes from one `as_str()`/`serde(rename)` mapping on the enum
 | Builtin names + signatures (`language/14`) | `enum Builtin` with a signature table | `velme-builtins` | `Builtin::Maximum` |
 | IR node tags (`compiler/21`) | serde enum tag on the IR types; schema derived (schemars) | `velme-ir` | `Node::FieldGet { .. }` |
 | Version strings (language, IR, builtins, prompt) | `pub const` per crate | owning crate (`velme-syntax`, `velme-ir`, `velme-builtins`, `velme-synth`) | `velme_ir::IR_VERSION` |
-| Budget defaults (`runtime/30`) | `GoalBudget::DEFAULT` | `velme-runtime` | `GoalBudget::DEFAULT.max_call_depth` |
+| Budget system caps (`runtime/30` §7, D-77) | `pub const` in `limits` | `velme-builtins` | `velme_builtins::limits::MAX_CALL_DEPTH` |
 | Config keys, env var names (`tooling/40`) | `pub const` beside the config struct | `velme-cli` (`velme-synth` for provider keys) | `env::API_KEY` |
 | Failure kinds (`runtime/30`) | `enum FailureKind` | `velme-runtime` | `FailureKind::BudgetExceeded` |
 

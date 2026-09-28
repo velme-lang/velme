@@ -1,0 +1,23 @@
+# Goals can't call themselves, directly or around a circle (language/12 R-GOAL-11, AC-GOAL-03, AC-RDM-05).
+language: velme/0.1
+
+goal A(x: Number) -> Number:
+    call:
+        value = A(x)
+    plan: "Use A."
+
+goal B(x: Number) -> Number:
+    call:
+        c = C(x)
+    plan: "Use C."
+
+goal C(x: Number) -> Number:
+    call:
+        b = B(x)
+    plan: "Use B."
+
+# Calls into a circle, but isn't part of one: nothing more to report.
+goal D(x: Number) -> Number:
+    call:
+        b = B(x)
+    plan: "Use B."

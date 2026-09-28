@@ -1,0 +1,235 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/call_block.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "rename one of them",
+      "labels": [],
+      "message": "`a` is already defined on line 22.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 555,
+        "line": 22,
+        "start": 554
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "labels": [],
+      "message": "Expected Player, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 32,
+        "end": 696,
+        "line": 27,
+        "start": 689
+      }
+    },
+    {
+      "code": "VL0301",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "did you mean `CalculateScore`?",
+      "labels": [],
+      "message": "I don't know a goal called `CalculateScor`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 729,
+        "line": 28,
+        "start": 716
+      }
+    },
+    {
+      "code": "VL0302",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "labels": [],
+      "message": "`CalculateScore` needs 1 input, but got 2.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 779,
+        "line": 29,
+        "start": 746
+      }
+    },
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "work this out in a goal of its own, and call that goal on an earlier line",
+      "labels": [],
+      "message": "A call's inputs can only be names, their fields, or plain values.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 30,
+        "end": 814,
+        "line": 30,
+        "start": 809
+      }
+    },
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "a `call:` line runs a goal; its inputs can be values of this type",
+      "labels": [],
+      "message": "`Player` is a type, not a goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 838,
+        "line": 31,
+        "start": 832
+      }
+    },
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "a `call:` line runs a goal declared in this file",
+      "labels": [],
+      "message": "`maximum` is a built-in, not a goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 872,
+        "line": 32,
+        "start": 865
+      }
+    },
+    {
+      "code": "VL0303",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "work this out in a goal of its own, and call that goal on an earlier line",
+      "labels": [],
+      "message": "`.length` is a built-in, which a call's inputs can't use.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 45,
+        "end": 926,
+        "line": 33,
+        "start": 920
+      }
+    },
+    {
+      "code": "VL0305",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "a call can use only the names made on the lines above it",
+      "labels": [],
+      "message": "`later` is used before it's made — move its line up.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 32,
+        "end": 964,
+        "line": 34,
+        "start": 959
+      }
+    },
+    {
+      "code": "VL0202",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "did you mean `player`?",
+      "labels": [],
+      "message": "I don't know what `playr` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 34,
+        "end": 1043,
+        "line": 36,
+        "start": 1038
+      }
+    },
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "it might be empty, and a call can't check that first — make that input `Rival?` to accept it",
+      "labels": [],
+      "message": "Expected Rival, but got Rival?.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 28,
+        "end": 1084,
+        "line": 37,
+        "start": 1072
+      }
+    },
+    {
+      "code": "VL0207",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "a call can't check that first — pass `player.rival` itself to an input of type `Rival?`",
+      "labels": [],
+      "message": "`player.rival` might be empty, so a call can't use its `name`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 23,
+        "end": 1120,
+        "line": 38,
+        "start": 1108
+      }
+    },
+    {
+      "code": "VL0302",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "labels": [],
+      "message": "`Pair` needs 2 inputs, but got 1.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 1175,
+        "line": 40,
+        "start": 1161
+      }
+    },
+    {
+      "code": "VL0306",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "give this call its own name",
+      "labels": [],
+      "message": "`pair` is already used in this goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 1165,
+        "line": 40,
+        "start": 1161
+      }
+    },
+    {
+      "code": "VL0306",
+      "file": "tests/golden/sema/reject/call_block.velme",
+      "help": "give this call its own name",
+      "labels": [],
+      "message": "`x` is already used in this goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 1185,
+        "line": 41,
+        "start": 1184
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

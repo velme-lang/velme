@@ -46,6 +46,30 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     );
 }
 
+/// `CalculateScore("hello")` is rejected by `velme check`, before anything runs.
+#[test]
+fn ac_rdm_04_type_mismatch_rejects_the_call_before_execution() {
+    let run = velme(&["check", "tests/golden/sema/reject/call_block.velme"]);
+    assert_eq!(run.code, 1);
+    assert!(
+        run.stderr.contains("Error: Expected Player, but got Text.  [VL0204]"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn ac_rdm_05_cycle_fails_compilation_naming_it() {
+    let run = velme(&["check", "tests/golden/sema/reject/call_cycle.velme"]);
+    assert_eq!((run.stdout.as_str(), run.code), ("✓ Parsed\n✓ Types valid\n", 1));
+    assert!(
+        run.stderr
+            .contains("Error: These goals call each other in a circle: B → C → B.  [VL0304]"),
+        "{}",
+        run.stderr
+    );
+}
+
 /// Until `velme test --locked` exists (`delivery/51` §2), every example at least parses without a warning.
 #[test]
 fn every_example_parses_cleanly() {

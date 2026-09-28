@@ -1,0 +1,58 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/wired_goals.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0204",
+      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "help": "`result` is what `Main` gives back, so `Name` must give back Number too",
+      "labels": [],
+      "message": "Expected Number, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 349,
+        "line": 13,
+        "start": 327
+      }
+    },
+    {
+      "code": "VL0307",
+      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "help": "tell Velme what this goal should do in `plan:`",
+      "labels": [],
+      "message": "`NoPlan` needs a `plan:` that says what it should do.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 362,
+        "line": 15,
+        "start": 356
+      }
+    },
+    {
+      "code": "VL0307",
+      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "help": "tell Velme what this goal should do in `plan:`",
+      "labels": [],
+      "message": "`Empty` needs a `plan:` that says what it should do.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 434,
+        "line": 19,
+        "start": 429
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

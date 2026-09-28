@@ -111,6 +111,14 @@ input_file: tests/golden/sema/accept/types_and_signatures.velme
           "record": 1
         }
       },
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
       "plan": "Pick the player who jumps highest, or the backup.",
       "checks": [],
       "examples": [],

@@ -101,6 +101,14 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
         }
       ],
       "output": "number",
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
       "plan": "Add both scores, or 0 if either player is missing.",
       "checks": [
         {
@@ -744,6 +752,14 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
           "record": 0
         }
       },
+      "kind": "leaf",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [],
       "plan": "Pick the player with the highest score.",
       "checks": [
         {
@@ -1602,6 +1618,83 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
         }
       ],
       "output": "number",
+      "kind": "composite",
+      "budget": {
+        "max_fuel": 10000000,
+        "max_memory": 67108864,
+        "max_goal_calls": 128,
+        "max_call_depth": 32
+      },
+      "bindings": [
+        {
+          "name": "best",
+          "callee": 1,
+          "args": [
+            {
+              "kind": "input",
+              "index": 1,
+              "ty": {
+                "list": {
+                  "record": 0
+                }
+              },
+              "span": [
+                1974,
+                1981
+              ]
+            },
+            {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                1983,
+                1990
+              ]
+            }
+          ],
+          "ty": {
+            "optional": {
+              "record": 0
+            }
+          },
+          "wave": 1,
+          "span": [
+            1962,
+            1991
+          ]
+        },
+        {
+          "name": "total",
+          "callee": 0,
+          "args": [
+            {
+              "kind": "input",
+              "index": 0,
+              "ty": {
+                "record": 0
+              },
+              "span": [
+                2014,
+                2020
+              ]
+            },
+            {
+              "kind": "nothing",
+              "ty": "nothing",
+              "span": [
+                2022,
+                2029
+              ]
+            }
+          ],
+          "ty": "number",
+          "wave": 1,
+          "span": [
+            2000,
+            2030
+          ]
+        }
+      ],
       "plan": "Combine the numbers.",
       "checks": [
         {

@@ -1,14 +1,15 @@
 //! Phase 3, resolve (`compiler/20` §3): the declaration namespace, record types and goal signatures
 //! (`language/11` §7, `language/12` R-GOAL-02).
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 use velme_diagnostics::render::LineIndex;
 use velme_diagnostics::{Code, Diagnostic, Span, closest};
 use velme_syntax::BuiltinType;
 use velme_syntax::ast::{self, BaseType, Decl, TypeExpr};
 
-use crate::hir::{FieldDef, Goal, GoalId, Param, RecordType, Type, TypeId};
+use crate::graph::shortest_cycle;
+use crate::hir::{Budget, FieldDef, Goal, GoalId, GoalKind, Param, RecordType, Type, TypeId};
 
 /// What a declared name refers to.
 #[derive(Debug, Clone, Copy)]
@@ -175,6 +176,9 @@ fn goal_signature(decl: &ast::GoalDecl, scope: &Scope<'_>, lines: &LineIndex<'_>
         name: decl.name.name.clone(),
         params,
         output: declared_type(&decl.output, scope, diags),
+        kind: GoalKind::Leaf,
+        budget: Budget::SYSTEM,
+        bindings: Vec::new(),
         plan: decl.plan.as_ref().map(|p| p.text.clone()),
         checks: Vec::new(),
         examples: Vec::new(),
@@ -310,7 +314,7 @@ fn report_recursive_types(types: &[RecordType], decls: &[&ast::TypeDecl], diags:
         if reported.contains(&start) {
             continue;
         }
-        let Some(cycle) = shortest_cycle(start, &edges) else {
+        let Some(cycle) = shortest_cycle(start, |t: TypeId| edges.get(t.0).map_or(&[][..], Vec::as_slice)) else {
             continue;
         };
         reported.extend(cycle.iter().map(|&(id, _)| id));
@@ -334,32 +338,4 @@ fn report_recursive_types(types: &[RecordType], decls: &[&ast::TypeDecl], diags:
         }
         diags.push(diag.with_help("store the related values in a separate list instead of inside each other"));
     }
-}
-
-/// The shortest cycle from `start` back to itself, as (type, field index of the edge leaving it), first found in field
-/// order.
-fn shortest_cycle(start: TypeId, edges: &[Vec<(TypeId, usize)>]) -> Option<Vec<(TypeId, usize)>> {
-    // Breadth first; `came_from[t]` is the (type, field) edge that first reached `t`.
-    let mut came_from: BTreeMap<TypeId, (TypeId, usize)> = BTreeMap::new();
-    let mut queue = VecDeque::from([start]);
-    while let Some(at) = queue.pop_front() {
-        for &(next, field) in edges.get(at.0).into_iter().flatten() {
-            if next == start {
-                let mut path = vec![(at, field)];
-                let mut cur = at;
-                while cur != start {
-                    let &(prev, prev_field) = came_from.get(&cur)?;
-                    path.push((prev, prev_field));
-                    cur = prev;
-                }
-                path.reverse();
-                return Some(path);
-            }
-            if let std::collections::btree_map::Entry::Vacant(slot) = came_from.entry(next) {
-                slot.insert((at, field));
-                queue.push_back(next);
-            }
-        }
-    }
-    None
 }
