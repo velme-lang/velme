@@ -26,6 +26,7 @@ pub fn lex(file: &SourceFile) -> (Vec<Token>, Vec<Diagnostic>) {
         tokens: Vec::new(),
         diags: lone_cr.into_iter().collect(),
         indents: vec![0],
+        joined: None,
         depth: 0,
     };
     lexer.run();
@@ -111,6 +112,9 @@ struct Lexer<'a> {
     diags: Vec<Diagnostic>,
     /// Indentation stack (R-SYN-09); never empty, bottom is 0.
     indents: Vec<usize>,
+    /// After a line dedents between two widths (D-76): the stack height of the level it joined, and that level's
+    /// width before, which the block's other lines still use.
+    joined: Option<(usize, usize)>,
     /// Open `(`/`[` count; newlines and indentation are ignored while it is non-zero (R-SYN-10).
     depth: usize,
 }
@@ -182,6 +186,16 @@ impl<'a> Lexer<'a> {
         let at = Span::new(content_start, content_start);
         let top = self.indents.last().copied().unwrap_or(0);
         if width > top {
+            // Back at the block's width after a line that joined it: a sibling, unless the line above opened a block.
+            let opens_block = self
+                .tokens
+                .iter()
+                .rev()
+                .nth(1)
+                .is_some_and(|t| t.kind == TokenKind::Punct(Punct::Colon));
+            if !opens_block && self.joined == Some((self.indents.len(), width)) {
+                return;
+            }
             self.indents.push(width);
             self.push(TokenKind::Indent, at);
             return;
@@ -196,7 +210,9 @@ impl<'a> Lexer<'a> {
             if outer.is_some_and(|outer| outer < width) {
                 // Between two levels: the line stays in the block it came from, at its own width, so the lines after
                 // it parse as intended and the mistake is reported once (D-76).
+                let height = self.indents.len();
                 if let Some(top) = self.indents.last_mut() {
+                    self.joined = Some((height, *top));
                     *top = width;
                 }
                 self.error(
@@ -208,6 +224,9 @@ impl<'a> Lexer<'a> {
                 return;
             }
             self.indents.pop();
+            if self.joined.is_some_and(|(height, _)| height > self.indents.len()) {
+                self.joined = None;
+            }
             self.push(TokenKind::Dedent, at);
         }
     }

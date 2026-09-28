@@ -91,12 +91,11 @@ fn check(arg: &str, json: bool) -> u8 {
     let (text, diagnostics) = match std::fs::read(arg) {
         Err(err) => (None, vec![SourceFile::unreadable(&path, &err)]),
         Ok(bytes) => match SourceFile::from_bytes(path.clone(), bytes.clone()) {
-            Ok(file) => {
-                let Some(diagnostics) = parse_on_big_stack(&file) else {
-                    return EXIT_INTERNAL;
-                };
-                (Some(file.text), diagnostics)
-            }
+            Ok(file) => match parse_on_big_stack(&file) {
+                Some(diagnostics) => (Some(file.text), diagnostics),
+                // Shown without source lines: it belongs to no place in the file.
+                None => (None, vec![Diagnostic::internal_error()]),
+            },
             // The span is a byte offset into the raw bytes, which the lossy text keeps up to the bad byte.
             Err(diag) => (Some(String::from_utf8_lossy(&bytes).into_owned()), vec![diag]),
         },
@@ -237,6 +236,11 @@ mod tests {
             let exit = code_exit(code);
             assert!(EXIT_PRECEDENCE.contains(&exit), "{code:?} maps to {exit}");
         }
+    }
+
+    #[test]
+    fn internal_error_exits_70() {
+        assert_eq!(exit_code(&[Diagnostic::internal_error()]), EXIT_INTERNAL);
     }
 
     #[test]

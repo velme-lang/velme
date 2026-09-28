@@ -233,6 +233,18 @@ fn ac_syn_07_one_error_per_root_cause() {
     // A line between two indentation levels stays in its block, so `check:` isn't lost.
     let src = "goal A() -> Text:\n        plan: \"x\"\n    check:\n        - result is not empty\n";
     one(src, Code::InconsistentIndentation);
+    // One line off in a block: the lines after it at the block's width are still its siblings.
+    one(
+        "type A:\n    x: Number\n  y: Number\n    z: Number\n",
+        Code::InconsistentIndentation,
+    );
+    // Old line endings are one error, yet a real mistake after them is still reported.
+    let (_, diags) = parse_str("type A:\r    x: Number\r\rtype B:\r    y Number\r");
+    assert_eq!(
+        codes(&diags),
+        [Code::UnexpectedToken, Code::UnexpectedToken],
+        "{diags:#?}"
+    );
     // D-73: a plan line shallower than the first is VL0102, and the plan doesn't swallow it silently.
     one(
         "goal A() -> Text:\n    plan: |\n        Hi.\n      check:\n        - true\n",
