@@ -1,0 +1,9 @@
+# Nested blocks, blank lines and comment-only lines produce no tokens.
+type Player:
+    name: Text
+
+    # a comment line inside the block
+    score: Number
+goal Best(players: List<Player>) -> Player:
+    check:
+        - result.score >= 0

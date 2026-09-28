@@ -1,0 +1,33 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_lone_cr.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 punct )
+9..11 punct ->
+12..18 name Number
+18..19 punct :
+19..19 NEWLINE
+25..25 INDENT
+25..29 keyword plan
+29..30 punct :
+31..45 text "crlf is fine"
+45..45 NEWLINE
+51..56 keyword check
+56..57 punct :
+57..57 NEWLINE
+67..67 INDENT
+67..68 punct -
+69..75 keyword result
+76..78 punct ==
+79..80 number 1
+81..81 NEWLINE
+82..82 DEDENT
+82..82 DEDENT
+82..83 punct +
+84..85 number 1
+85..85 NEWLINE
+error[VL0101] 81..82: I didn't expect a carriage return here — lines should end with a normal line break.

@@ -1,0 +1,4 @@
+goal A() -> Number:
+    plan: "crlf is fine"
+    check:
+        - result == 1 + 1

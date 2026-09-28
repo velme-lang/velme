@@ -1,0 +1,47 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_chars_and_lint.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 punct )
+9..11 punct ->
+12..18 name Number
+18..19 punct :
+19..19 NEWLINE
+24..24 INDENT
+24..28 keyword plan
+28..29 punct :
+30..47 text "hidden \u{202e} text"
+47..47 NEWLINE
+52..57 keyword check
+57..58 punct :
+58..58 NEWLINE
+67..67 INDENT
+67..68 punct -
+69..75 keyword result
+76..78 punct ==
+79..80 number 1
+83..84 number 2
+85..88 keyword and
+89..92 name caf
+95..97 punct ==
+98..100 number 1_
+101..104 keyword and
+105..109 number 1__0
+110..112 punct ==
+114..115 name u
+116..122 number 110000
+123..123 NEWLINE
+124..124 DEDENT
+124..124 DEDENT
+warning[VL0107] 30..47: This text contains an invisible character (U+202E) that can make it look different from what Velme reads.
+error[VL0101] 81..82: I didn't expect `@` here.
+error[VL0101] 92..94: I didn't expect `é` here.
+error[VL0101] 98..100: A `_` in a number must sit between two digits.
+error[VL0101] 105..109: A `_` in a number must sit between two digits.
+error[VL0101] 113..114: I didn't expect `\` here.
+error[VL0101] 115..116: I didn't expect `{` here.
+error[VL0101] 122..123: I didn't expect `}` here.

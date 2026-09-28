@@ -1,0 +1,4 @@
+goal A() -> Text:
+    plan: "abc
+    check:
+        - result == "\q"

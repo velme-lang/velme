@@ -1,0 +1,4 @@
+goal A() -> Number:
+        plan: "x"
+    check:
+        - result == 1

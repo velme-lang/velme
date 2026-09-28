@@ -1,0 +1,11 @@
+goal Tell(name: Text) -> Text:
+    plan: |   # a comment after the bar
+        Say hello to the player.
+
+        # This hash is text, not a comment.
+          Indented two more.
+        Tab	after the content column is text.   
+
+
+    check:
+        - result is not empty

@@ -1,0 +1,4 @@
+goal Empty() -> Number:
+    plan: |
+    check:
+        - result == 1

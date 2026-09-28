@@ -1,0 +1,30 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/block_plan_empty.velme
+---
+0..4 keyword goal
+5..10 name Empty
+10..11 punct (
+11..12 punct )
+13..15 punct ->
+16..22 name Number
+22..23 punct :
+23..23 NEWLINE
+28..28 INDENT
+28..32 keyword plan
+32..33 punct :
+34..35 punct |
+35..35 NEWLINE
+35..35 block_text ""
+40..45 keyword check
+45..46 punct :
+46..46 NEWLINE
+55..55 INDENT
+55..56 punct -
+57..63 keyword result
+64..66 punct ==
+67..68 number 1
+68..68 NEWLINE
+69..69 DEDENT
+69..69 DEDENT

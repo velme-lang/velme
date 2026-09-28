@@ -1,0 +1,4 @@
+goal Tab() -> Number:
+	plan: "tab"
+    check:
+        - result == 1

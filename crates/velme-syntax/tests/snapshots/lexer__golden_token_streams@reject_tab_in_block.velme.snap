@@ -1,0 +1,31 @@
+---
+source: crates/velme-syntax/tests/lexer.rs
+expression: "render(&tokens, &diags)"
+input_file: tests/golden/lexer/reject_tab_in_block.velme
+---
+0..4 keyword goal
+5..6 name A
+6..7 punct (
+7..8 punct )
+9..11 punct ->
+12..18 name Number
+18..19 punct :
+19..19 NEWLINE
+24..24 INDENT
+24..28 keyword plan
+28..29 punct :
+30..31 punct |
+31..31 NEWLINE
+38..81 block_text "Inside.\n  Tab before the content column."
+86..91 keyword check
+91..92 punct :
+92..92 NEWLINE
+101..101 INDENT
+101..102 punct -
+103..109 keyword result
+110..112 punct ==
+113..114 number 1
+114..114 NEWLINE
+115..115 DEDENT
+115..115 DEDENT
+error[VL0103] 50..51: Please indent with spaces, not tabs.

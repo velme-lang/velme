@@ -1,0 +1,6 @@
+goal A() -> Number:
+    plan: |
+      Inside.
+    	Tab before the content column.
+    check:
+        - result == 1
