@@ -9,8 +9,9 @@
 use chumsky::error::{RichPattern, RichReason};
 use chumsky::input::ValueInput;
 use chumsky::prelude::*;
-use velme_diagnostics::{Code, Diagnostic, Span};
+use velme_diagnostics::{Code, Diagnostic, Span, closest};
 
+use crate::BuiltinType;
 use crate::ast::{
     Arg, BaseType, BinaryOp, Binding, Budget, BudgetItem, CallArg, CallBlock, CheckBlock, Decl, Example, ExamplesBlock,
     Expr, ExprKind, FailedDecl, Field, FieldValue, GoalDecl, Header, Ident, Literal, LiteralKind, Number, Param, Path,
@@ -454,41 +455,14 @@ fn join_or(items: &[String]) -> String {
 /// A keyword the parser expected that is close to the name it found (`chek` → `check`).
 fn did_you_mean(found: Option<&Tok>, expected: &[RichPattern<'_, Tok>]) -> Option<&'static str> {
     let Some(Tok::Name(word)) = found else { return None };
-    expected
-        .iter()
-        .filter_map(|p| match p {
-            RichPattern::Token(tok) => match &**tok {
-                Tok::Keyword(kw) => Some(kw.as_str()),
-                _ => None,
-            },
+    let keywords = expected.iter().filter_map(|p| match p {
+        RichPattern::Token(tok) => match &**tok {
+            Tok::Keyword(kw) => Some(kw.as_str()),
             _ => None,
-        })
-        .map(|kw| (edit_distance(word, kw), kw))
-        .filter(|&(d, kw)| d <= 2 && d < kw.len())
-        .min()
-        .map(|(_, kw)| kw)
-}
-
-fn edit_distance(a: &str, b: &str) -> usize {
-    let b: Vec<char> = b.chars().collect();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.chars().enumerate() {
-        let mut diag = i;
-        let mut prev = i + 1;
-        for (j, &cb) in b.iter().enumerate() {
-            let above = row.get(j + 1).copied().unwrap_or(0);
-            let next = (diag + usize::from(ca != cb)).min(prev + 1).min(above + 1);
-            diag = above;
-            if let Some(slot) = row.get_mut(j + 1) {
-                *slot = next;
-            }
-            prev = next;
-        }
-        if let Some(first) = row.first_mut() {
-            *first = i + 1;
-        }
-    }
-    row.last().copied().unwrap_or(0)
+        },
+        _ => None,
+    });
+    closest(word, keywords)
 }
 
 // ---- naming lint (R-SYN-06) ----
@@ -681,7 +655,7 @@ fn type_expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, TypeExpr, Extra<'t>>
             .validate(|(name, element), e, emitter| match element {
                 None => BaseType::Named { name },
                 Some(element) => {
-                    if name.name != "List" {
+                    if BuiltinType::from_name(&name.name) != Some(BuiltinType::List) {
                         emitter.emit(custom(
                             e.span(),
                             format!("`{}` doesn't take a type in `< >` — only `List` does.", name.name),

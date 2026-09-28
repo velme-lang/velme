@@ -1,0 +1,88 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/unknown_types.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "help": "did you mean `Number`?",
+      "labels": [],
+      "message": "I don't know a type called `Nubmer`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 155,
+        "line": 4,
+        "start": 149
+      }
+    },
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "help": "did you mean `Player`?",
+      "labels": [],
+      "message": "I don't know a type called `Plyer`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 20,
+        "end": 181,
+        "line": 6,
+        "start": 176
+      }
+    },
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "help": "declare it with `type`, or use `Number`, `Text` or `Boolean`",
+      "labels": [],
+      "message": "I don't know a type called `Unknown`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 30,
+        "end": 193,
+        "line": 6,
+        "start": 186
+      }
+    },
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "help": "use a type here, like `Number` or a `type` declared in this file",
+      "labels": [],
+      "message": "`Grade` is a goal, not a type.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 247,
+        "line": 9,
+        "start": 242
+      }
+    },
+    {
+      "code": "VL0201",
+      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "help": "write the type of its items in `< >`, like `List<Number>`",
+      "labels": [],
+      "message": "`List` needs to say what it holds.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 33,
+        "end": 262,
+        "line": 9,
+        "start": 258
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

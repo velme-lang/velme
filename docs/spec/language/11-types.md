@@ -96,7 +96,8 @@ named `length`. Projection over `List<R?>` is `VL0207`.
 **R-TYP-15** Record types are **nominal**: `Player` and `Summary` are different types even with identical fields.
 Record *values* compare structurally (§8).
 
-**R-TYP-16** A record has at least one field; field names are unique within it (`VL0203 DuplicateDeclaration`); an
+**R-TYP-16** A record has at least one field (the grammar requires one, so `type Empty:` is `VL0101`, `language/10`
+§4); field names are unique within it (`VL0203 DuplicateDeclaration`); an
 unknown field in access or a literal is `VL0205 UnknownField`.
 
 **R-TYP-17** A record literal names every field exactly once, in any order; a missing field is `VL0204` listing the
@@ -187,7 +188,7 @@ applies the same limits before a goal starts.
 | AC-TYP-15 | `0.1 + 0.2 == 0.3` is `true`; `to_text(2.50)` is `"2.5"`; `1 / 3` renders `0.3333333333333333333333333333`; JSON input `0.1` round-trips to output `0.1` — interpreter and WASM alike. |
 | AC-TYP-16 | JSON input `1e-29` or a number with more than 28 fractional digits yields `VL0902`; a goal parameter written without a type yields `VL0101` whose help names that parameter. |
 | AC-TYP-17 | `type Bad: value: Nothing` and a field typed `Nothing?` both yield `VL0204`. |
-| AC-TYP-18 | `type Empty:` with no fields yields `VL0203`; two fields both named `x` yield `VL0203`; accessing an undeclared field yields `VL0205`. |
+| AC-TYP-18 | `type Empty:` with no fields yields `VL0101` (R-TYP-16); two fields both named `x` yield `VL0203`; accessing an undeclared field yields `VL0205`. |
 | AC-TYP-19 | `type Number: …` (a type reusing a built-in type name) yields `VL0203`; a goal parameter typed `Unknown` yields `VL0201`. |
 | AC-TYP-20 | With `a: Player?` and `b: Player?`, `if a is empty or b is empty then 0 else a.score + b.score` type-checks (both narrowed in the `else` branch, R-TYP-22, R-TYP-27); `if a is not empty and b is not empty then a.score + b.score else 0` also type-checks. |
 | AC-TYP-21 | For `xs: List<Number>?`, `xs is empty` is `true` for `nothing` and for `[]`, and `false` for `[1]`; `xs is not empty` narrows `xs` to `List<Number>`. For `t: Text?`, `t is empty` is `true` for `nothing` and for `""`. |

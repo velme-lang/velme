@@ -1,0 +1,73 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/sema/reject/duplicate_declarations.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "help": "rename one of them",
+      "labels": [],
+      "message": "`value` is already defined on line 3.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 136,
+        "line": 4,
+        "start": 131
+      }
+    },
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "help": "rename one of them",
+      "labels": [],
+      "message": "`Score` is already defined on line 2.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 156,
+        "line": 6,
+        "start": 151
+      }
+    },
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "help": "rename one of them",
+      "labels": [],
+      "message": "`x` is already defined on line 9.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 221,
+        "line": 9,
+        "start": 220
+      }
+    },
+    {
+      "code": "VL0203",
+      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "help": "choose a different name",
+      "labels": [],
+      "message": "`Number` is already the name of a built-in type.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 272,
+        "line": 12,
+        "start": 266
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

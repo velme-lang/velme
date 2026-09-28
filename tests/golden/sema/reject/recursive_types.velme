@@ -1,0 +1,13 @@
+# VL0208: a record that contains itself, directly or through other records, lists and `?` (R-TYP-18).
+type Node:
+    value: Number
+    next: Node?
+
+type Parent:
+    children: List<Child>
+
+type Child:
+    parent: Parent
+
+type Tree:
+    root: Node

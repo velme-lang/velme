@@ -2,12 +2,14 @@
 #![forbid(unsafe_code)]
 
 pub mod ast;
+mod builtin_type;
 mod keyword;
 mod lexer;
 mod parser;
 mod source;
 mod token;
 
+pub use builtin_type::BuiltinType;
 pub use keyword::Keyword;
 pub use lexer::lex;
 pub use parser::parse;

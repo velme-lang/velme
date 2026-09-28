@@ -1,0 +1,44 @@
+---
+source: crates/velme-cli/tests/check.rs
+assertion_line: 158
+expression: json
+input_file: tests/golden/sema/reject/builtin_named_declaration.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0107",
+      "file": "tests/golden/sema/reject/builtin_named_declaration.velme",
+      "help": "type names use PascalCase",
+      "labels": [],
+      "message": "`range` works, but Velme style writes it `Range`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 6,
+        "end": 129,
+        "line": 2,
+        "start": 124
+      }
+    },
+    {
+      "code": "VL0107",
+      "file": "tests/golden/sema/reject/builtin_named_declaration.velme",
+      "help": "goal names use PascalCase",
+      "labels": [],
+      "message": "`sum` works, but Velme style writes it `Sum`.",
+      "notes": [],
+      "severity": "warning",
+      "span": {
+        "column": 6,
+        "end": 156,
+        "line": 5,
+        "start": 153
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "ok"
+}

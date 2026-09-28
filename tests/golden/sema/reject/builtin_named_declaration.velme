@@ -1,0 +1,6 @@
+# A type or goal named like a built-in function gets only the naming warning, whose suggestion doesn't collide (D-64).
+type range:
+    low: Number
+
+goal sum(x: Number) -> Number:
+    plan: "Return x."

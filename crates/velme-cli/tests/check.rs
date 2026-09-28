@@ -42,7 +42,7 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     let run = velme(&["check", "examples/beginner/hello.velme"]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("✓ Parsed\n", "", 0)
+        ("✓ Parsed\n✓ Types valid\n", "", 0)
     );
 }
 
@@ -68,7 +68,7 @@ fn every_example_parses_cleanly() {
             let run = velme(&["check", rel]);
             assert_eq!(
                 (run.stdout.as_str(), run.stderr.as_str(), run.code),
-                ("✓ Parsed\n", "", 0),
+                ("✓ Parsed\n✓ Types valid\n", "", 0),
                 "{rel}"
             );
             checked += 1;
@@ -87,7 +87,7 @@ fn ac_cli_01_parse_part_syntax_error_exits_1_with_a_caret() {
 #[test]
 fn warnings_are_shown_but_do_not_fail() {
     let run = velme(&["check", "tests/golden/parser/reject/lint_naming.velme"]);
-    assert_eq!((run.stdout.as_str(), run.code), ("✓ Parsed\n", 0));
+    assert_eq!((run.stdout.as_str(), run.code), ("✓ Parsed\n✓ Types valid\n", 0));
     assert!(run.stderr.starts_with("Warning: "), "{}", run.stderr);
     assert_eq!(
         json(&velme(&[
@@ -102,17 +102,7 @@ fn warnings_are_shown_but_do_not_fail() {
 /// AC-ERR-03 over the whole reject corpus: every human headline ends with its code, in the same order as `--json`.
 #[test]
 fn ac_err_03_every_rendered_diagnostic_ends_with_its_code() {
-    let dir = repo_root().join("tests/golden/parser/reject");
-    let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .expect("reject dir")
-        .map(|e| e.expect("entry").path())
-        .collect();
-    files.sort();
-    for file in files.iter().filter(|f| f.extension().is_some_and(|e| e == "velme")) {
-        let rel = format!(
-            "tests/golden/parser/reject/{}",
-            file.file_name().and_then(|n| n.to_str()).expect("name")
-        );
+    for rel in reject_files() {
         let human = velme(&["check", &rel]);
         let headlines: Vec<&str> = human
             .stderr
@@ -134,17 +124,41 @@ fn ac_err_03_every_rendered_diagnostic_ends_with_its_code() {
     }
 }
 
-/// The syntax part of AC-CMP-04: `--json` for every golden error file matches its snapshot.
+/// Every golden file with a diagnostic, relative to the repository root, sorted.
+fn reject_files() -> Vec<String> {
+    let mut files = Vec::new();
+    for dir in REJECT_DIRS {
+        for entry in std::fs::read_dir(repo_root().join(dir)).expect("reject dir") {
+            let name = entry.expect("entry").file_name().into_string().expect("UTF-8 name");
+            if name.ends_with(".velme") {
+                files.push(format!("{dir}/{name}"));
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// The golden folders of files with a diagnostic, per phase.
+const REJECT_DIRS: [&str; 2] = ["tests/golden/parser/reject", "tests/golden/sema/reject"];
+
+/// AC-CMP-04: `--json` for every golden error file matches its snapshot.
 #[test]
 fn ac_cmp_04_json_for_every_golden_error_file() {
-    insta::glob!("../../../tests/golden/parser/reject", "*.velme", |path| {
+    let snapshot = |dir: &str, path: &Path| {
         let name = path.file_name().and_then(|n| n.to_str()).expect("UTF-8 file name");
-        let rel = format!("tests/golden/parser/reject/{name}");
+        let rel = format!("{dir}/{name}");
         let run = velme(&["check", "--json", &rel]);
         let json = json(&run);
         let expected = if json["status"] == "ok" { 0 } else { 1 };
         assert_eq!(run.code, expected, "{rel}");
         insta::assert_json_snapshot!(json);
+    };
+    insta::glob!("../../../tests/golden/parser/reject", "*.velme", |path| {
+        snapshot("tests/golden/parser/reject", path);
+    });
+    insta::glob!("../../../tests/golden/sema/reject", "*.velme", |path| {
+        snapshot("tests/golden/sema/reject", path);
     });
 }
 
