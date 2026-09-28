@@ -1,0 +1,57 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/expr_chained_comparison.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "help": "join two comparisons with `and`, like `a < b and b < c`",
+      "labels": [],
+      "message": "Comparisons can't be chained like this.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 219,
+        "line": 5,
+        "start": 218
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "help": "join two comparisons with `and`, like `a < b and b < c`",
+      "labels": [],
+      "message": "Comparisons can't be chained like this.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 251,
+        "line": 6,
+        "start": 243
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "labels": [],
+      "message": "I didn't expect `=` here — I was looking for `(`, `.`, `and`, `is`, `or` or the end of the line.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 13,
+        "end": 265,
+        "line": 7,
+        "start": 264
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

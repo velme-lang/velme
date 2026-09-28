@@ -118,12 +118,19 @@ primary label and the offending values as notes (runtime/30 §6).
 Example (human renderer):
 
 ```
-error[VL0204]: this call gives CalculateScore a Text, but it needs a Player
-   ┌─ player.velme:14:32
-14 │         score = CalculateScore("hello")
-   │                                ^^^^^^^ this is Text
-   = help: pass the `player` input instead
+Error: This call gives CalculateScore a Text, but it needs a Player.  [VL0204]
+    ╭─[ player.velme:14:32 ]
+    │
+ 14 │         score = CalculateScore("hello")
+    │                                ───┬───
+    │                                   ╰───── here
+    │
+    │ Help: pass the `player` input instead
+────╯
 ```
+
+The first line ends with the code (AC-ERR-03, D-72); past 20 diagnostics the rest are counted as "…and N more"
+(`language/10` R-SYN-17).
 
 ## 6. Public compiler API
 

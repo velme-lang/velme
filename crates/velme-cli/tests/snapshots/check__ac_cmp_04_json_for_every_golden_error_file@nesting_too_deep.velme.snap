@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/nesting_too_deep.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/nesting_too_deep.velme",
+      "help": "split it into smaller pieces",
+      "labels": [],
+      "message": "This line nests too deeply for me to read.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 39,
+        "end": 152,
+        "line": 4,
+        "start": 151
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

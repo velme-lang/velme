@@ -1,0 +1,56 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/call_arg_result.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/call_arg_result.velme",
+      "help": "`result` doesn't exist yet while the calls run — pass a parameter or an earlier binding",
+      "labels": [],
+      "message": "`result` can only name the last binding.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 187,
+        "line": 5,
+        "start": 181
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/call_arg_result.velme",
+      "labels": [],
+      "message": "I didn't expect `+` here — I was looking for `)`, `,` or `.`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 27,
+        "end": 216,
+        "line": 6,
+        "start": 215
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/call_arg_result.velme",
+      "labels": [],
+      "message": "I didn't expect `)` here — I was looking for a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 21,
+        "end": 241,
+        "line": 7,
+        "start": 240
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

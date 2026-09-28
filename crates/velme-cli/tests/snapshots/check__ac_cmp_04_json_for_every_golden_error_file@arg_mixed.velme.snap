@@ -1,0 +1,43 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/arg_mixed.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/arg_mixed.velme",
+      "help": "name every argument to build a record, like `Player(name: \"A\", score: 3)`, or name none to call a built-in, like `sum(1, 2)`",
+      "labels": [],
+      "message": "This mixes named and unnamed arguments.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 39,
+        "end": 144,
+        "line": 5,
+        "start": 143
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/arg_mixed.velme",
+      "help": "name every argument to build a record, like `Player(name: \"A\", score: 3)`, or name none to call a built-in, like `sum(1, 2)`",
+      "labels": [],
+      "message": "This mixes named and unnamed arguments.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 28,
+        "end": 181,
+        "line": 6,
+        "start": 173
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

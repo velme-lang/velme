@@ -1,0 +1,20 @@
+---
+source: crates/velme-diagnostics/tests/render.rs
+expression: out
+---
+Error: I didn't expect `A` here.  [VL0101]
+   ╭─[ a.velme:1:6 ]
+   │
+ 1 │ goal A() -> Text:
+   │      ┬  
+   │      ╰── here
+   │ 
+   │ Help: a hint
+───╯
+Warning: `A` works, but Velme style writes it `Ab`.  [VL0107]
+   ╭─[ a.velme:1:6 ]
+   │
+ 1 │ goal A() -> Text:
+   │      ┬  
+   │      ╰── here
+───╯

@@ -88,6 +88,7 @@ Human mode prints the result as pretty JSON using the same mapping. `--json` pri
       "diagnostics": [], "result": { /* … */ }, "trace"?: { /* … */ }
     }
   ],
+  "diagnostics": [],
   "notices": [],
   "summary"?: { /* build only, R-SYNTH-21 */ }
 }
@@ -100,7 +101,9 @@ and `help?`. The human message and the JSON `message` are the same text.
 `file` field (`runtime/32` §5) — is project-relative with `/` separators on every platform, including Windows; the
 same project built on different OSes produces byte-identical `velme.lock`, diagnostics and traces.
 **R-CLI-15** The top-level `status` is the worst of the per-goal `status` values in `results[]`, each one of
-`ok | failed | pending | blocked | skipped` (`pending` = `VL0408`, `blocked` = `VL0409 SynthesisBlocked`); `notices[]`
+`ok | failed | pending | blocked | skipped` (`pending` = `VL0408`, `blocked` = `VL0409 SynthesisBlocked`), and is
+`failed` whenever the top-level `diagnostics[]` holds an error: that array carries the diagnostics that belong to the
+file rather than to one goal, such as syntax errors and an unreadable file (D-72); `notices[]`
 carries the R-SEC-12 notice lines as plain strings instead of stderr. A committed JSON Schema
 (`docs/schemas/velme-cli-1.schema.json`) is this envelope's contract, checked by a golden test against real
 `--json` output. Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the

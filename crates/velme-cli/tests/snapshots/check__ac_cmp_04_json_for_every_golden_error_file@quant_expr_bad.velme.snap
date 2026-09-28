@@ -1,0 +1,41 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/quant_expr_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/quant_expr_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `x` here — I was looking for `(`, `.` or `has`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 25,
+        "end": 165,
+        "line": 5,
+        "start": 164
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/quant_expr_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `result` here — I was looking for a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 16,
+        "end": 191,
+        "line": 6,
+        "start": 185
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/postfix_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/postfix_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `==` here — I was looking for a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 116,
+        "line": 5,
+        "start": 114
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

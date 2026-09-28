@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/header_other_language.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0106",
+      "file": "tests/golden/parser/reject/header_other_language.velme",
+      "help": "change the first line to `language: velme/0.1`",
+      "labels": [],
+      "message": "This file is written for `python/0.1`, but this Velme understands `velme/0.1`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 84,
+        "line": 3,
+        "start": 74
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

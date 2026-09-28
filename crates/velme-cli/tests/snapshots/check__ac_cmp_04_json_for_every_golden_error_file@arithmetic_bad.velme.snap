@@ -1,0 +1,55 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/arithmetic_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/arithmetic_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `*` here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 124,
+        "line": 5,
+        "start": 123
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/arithmetic_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `>` here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 15,
+        "end": 146,
+        "line": 6,
+        "start": 145
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/arithmetic_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `>` here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 13,
+        "end": 162,
+        "line": 7,
+        "start": 161
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

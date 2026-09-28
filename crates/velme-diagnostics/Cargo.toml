@@ -9,10 +9,12 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+ariadne.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

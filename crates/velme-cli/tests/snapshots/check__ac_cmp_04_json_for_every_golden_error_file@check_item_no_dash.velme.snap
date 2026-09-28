@@ -1,0 +1,41 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/check_item_no_dash.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/check_item_no_dash.velme",
+      "labels": [],
+      "message": "I didn't expect `result` here — I was looking for `-`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 146,
+        "line": 6,
+        "start": 140
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/check_item_no_dash.velme",
+      "labels": [],
+      "message": "I didn't expect the end of the indented block here — I was looking for an indented line.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 218,
+        "line": 11,
+        "start": 218
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

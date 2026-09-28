@@ -1,0 +1,55 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/three_errors.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/three_errors.velme",
+      "labels": [],
+      "message": "I didn't expect `Number` here — I was looking for `:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 7,
+        "end": 100,
+        "line": 3,
+        "start": 94
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/three_errors.velme",
+      "labels": [],
+      "message": "I didn't expect the end of the line here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 165,
+        "line": 8,
+        "start": 165
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "tests/golden/parser/reject/three_errors.velme",
+      "labels": [],
+      "message": "I didn't expect the end of the line here — I was looking for `:`, `<` or `?`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 19,
+        "end": 185,
+        "line": 10,
+        "start": 185
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

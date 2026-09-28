@@ -1,0 +1,9 @@
+language: velme/0.1
+
+# The smallest Velme program: one goal, its plan in plain words, a check and an example.
+goal SayHello(name: Text) -> Text:
+    plan: "Greet the person by name, like `Hello, Lina!`."
+    check:
+        - result != ""
+    examples:
+        - SayHello("Lina") == "Hello, Lina!"

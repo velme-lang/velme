@@ -1,0 +1,167 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/reserved_words.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`when` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 78,
+        "line": 2,
+        "start": 74
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`pure` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 88,
+        "line": 3,
+        "start": 84
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`effects` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 5,
+        "end": 108,
+        "line": 4,
+        "start": 101
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`choose` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 129,
+        "line": 6,
+        "start": 123
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`otherwise` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 13,
+        "end": 139,
+        "line": 6,
+        "start": 130
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`import` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 32,
+        "end": 155,
+        "line": 6,
+        "start": 149
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`module` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 48,
+        "end": 171,
+        "line": 6,
+        "start": 165
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`fallback` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 218,
+        "line": 8,
+        "start": 210
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`optional` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 26,
+        "end": 235,
+        "line": 8,
+        "start": 227
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`retry` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 250,
+        "line": 9,
+        "start": 245
+      }
+    },
+    {
+      "code": "VL0104",
+      "file": "tests/golden/parser/reject/reserved_words.velme",
+      "labels": [],
+      "message": "`assume` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 24,
+        "end": 266,
+        "line": 9,
+        "start": 260
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}
