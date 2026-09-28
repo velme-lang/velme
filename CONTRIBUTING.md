@@ -62,6 +62,8 @@ Available from M0 (`delivery/51` §4, `tooling/40`):
 | CLI | `cargo run -p velme-cli -- check examples/beginner/hello.velme` |
 | Live LLM tests (opt-in, cost money, never in the gate) | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` |
 
+Install the snapshot and dependency tools once: `cargo install cargo-insta cargo-deny --locked`.
+
 Every change keeps `cargo xtask verify` green (R-QA-07).
 
 ## Branches, commits and PRs
