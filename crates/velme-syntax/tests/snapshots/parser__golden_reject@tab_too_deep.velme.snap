@@ -1,0 +1,17 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: diagnostics_json(&diags)
+input_file: tests/golden/parser/reject/tab_too_deep.velme
+---
+[
+  {
+    "code": "VL0103",
+    "help": "replace the tab with spaces",
+    "message": "Please indent with spaces, not tabs.",
+    "severity": "error",
+    "span": [
+      123,
+      124
+    ]
+  }
+]

@@ -1,0 +1,8 @@
+# A tab line after a block opener, then one deeper, then one back: each is VL0103 alone (tooling/40 §5).
+goal Pick(x: Number) -> Number:
+    call:
+	a = Pick(x)
+	result = Pick(a)
+    plan: "Pick x."
+    check:
+	- result == x

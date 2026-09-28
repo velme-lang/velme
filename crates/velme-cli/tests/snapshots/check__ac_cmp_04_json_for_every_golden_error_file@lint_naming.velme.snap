@@ -8,7 +8,7 @@ input_file: tests/golden/parser/reject/lint_naming.velme
     {
       "code": "VL0107",
       "file": "tests/golden/parser/reject/lint_naming.velme",
-      "help": "Type names use PascalCase",
+      "help": "type names use PascalCase",
       "labels": [],
       "message": "`player_stats` works, but Velme style writes it `PlayerStats`.",
       "notes": [],
@@ -23,7 +23,7 @@ input_file: tests/golden/parser/reject/lint_naming.velme
     {
       "code": "VL0107",
       "file": "tests/golden/parser/reject/lint_naming.velme",
-      "help": "Field names use snake_case",
+      "help": "field names use snake_case",
       "labels": [],
       "message": "`jumpHeight` works, but Velme style writes it `jump_height`.",
       "notes": [],
@@ -38,7 +38,7 @@ input_file: tests/golden/parser/reject/lint_naming.velme
     {
       "code": "VL0107",
       "file": "tests/golden/parser/reject/lint_naming.velme",
-      "help": "Goal names use PascalCase",
+      "help": "goal names use PascalCase",
       "labels": [],
       "message": "`find_badge` works, but Velme style writes it `FindBadge`.",
       "notes": [],
@@ -53,7 +53,7 @@ input_file: tests/golden/parser/reject/lint_naming.velme
     {
       "code": "VL0107",
       "file": "tests/golden/parser/reject/lint_naming.velme",
-      "help": "Parameter names use snake_case",
+      "help": "parameter names use snake_case",
       "labels": [],
       "message": "`PlayerName` works, but Velme style writes it `player_name`.",
       "notes": [],
@@ -68,7 +68,7 @@ input_file: tests/golden/parser/reject/lint_naming.velme
     {
       "code": "VL0107",
       "file": "tests/golden/parser/reject/lint_naming.velme",
-      "help": "Binding names use snake_case",
+      "help": "binding names use snake_case",
       "labels": [],
       "message": "`BestScore` works, but Velme style writes it `best_score`.",
       "notes": [],

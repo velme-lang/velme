@@ -1,0 +1,58 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/tab_nested_call.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0103",
+      "file": "tests/golden/parser/reject/tab_nested_call.velme",
+      "help": "replace the tab with spaces",
+      "labels": [],
+      "message": "Please indent with spaces, not tabs.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 149,
+        "line": 4,
+        "start": 148
+      }
+    },
+    {
+      "code": "VL0103",
+      "file": "tests/golden/parser/reject/tab_nested_call.velme",
+      "help": "replace the tab with spaces",
+      "labels": [],
+      "message": "Please indent with spaces, not tabs.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 162,
+        "line": 5,
+        "start": 161
+      }
+    },
+    {
+      "code": "VL0103",
+      "file": "tests/golden/parser/reject/tab_nested_call.velme",
+      "help": "replace the tab with spaces",
+      "labels": [],
+      "message": "Please indent with spaces, not tabs.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 211,
+        "line": 8,
+        "start": 210
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: json
+input_file: tests/golden/parser/reject/tab_too_deep.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0103",
+      "file": "tests/golden/parser/reject/tab_too_deep.velme",
+      "help": "replace the tab with spaces",
+      "labels": [],
+      "message": "Please indent with spaces, not tabs.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 124,
+        "line": 4,
+        "start": 123
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}
