@@ -181,6 +181,19 @@ impl Diagnostic {
         }
     }
 
+    /// `VL0607`: a bug inside Velme, with the `reference/90` wording (D-74). It belongs to no span.
+    pub fn internal_error() -> Self {
+        Diagnostic::new(
+            Code::InternalError,
+            Span::default(),
+            concat!(
+                "Something went wrong inside Velme. Please report it: ",
+                env!("CARGO_PKG_REPOSITORY"),
+                "/issues."
+            ),
+        )
+    }
+
     /// Adds a secondary label.
     pub fn with_label(mut self, span: Span, text: impl Into<String>) -> Self {
         self.labels.push(Label {

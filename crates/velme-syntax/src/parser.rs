@@ -115,7 +115,8 @@ fn follows_damage(text: &str, damage: &[usize], at: usize) -> bool {
         .checked_sub(1)
         .and_then(|i| damage.get(i))
         .and_then(|&start| text.get(start..at))
-        .is_some_and(|between| !between.contains('\n'))
+        // A lone `\r` ends a line too (R-SYN-02).
+        .is_some_and(|between| !between.contains(['\n', '\r']))
 }
 
 /// A parsed chunk.
