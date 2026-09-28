@@ -65,8 +65,9 @@ reject).
 
 **Read:** `language/11`, `language/12` §call rules, `language/13` §scope + narrowing, `compiler/20` §phases.
 **Slices:** M2a name resolution + record types (VL0201–0203, 0205, 0208) · M2b type checking of signatures, calls,
-checks, examples incl. narrowing (VL0204, 0206, 0207) · M2c call graph, cycles, binding order, wired goals (VL03xx).
-**Exit:** all `AC-TYP-*`, `AC-GOAL-*` (static parts), `AC-CHK-*` (static parts), AC-CMP-03/04 green; AC-RDM-04,
+checks, examples incl. narrowing (VL0204, 0206, 0207) · M2c call graph, cycles, binding order, wired goals, budgets and
+static call limits (VL03xx, VL0605; caps in `velme-builtins`, D-77).
+**Exit:** `AC-TYP-*` (static parts; JSON input and value rendering are M3, D-77), `AC-GOAL-*` (static parts), `AC-CHK-*` (static parts), AC-CMP-03/04 green; AC-RDM-04,
 AC-RDM-05 green.
 **User verifies:** `velme check` on the cycle and type-mismatch examples prints the friendly errors from `language/12`.
 
@@ -75,7 +76,7 @@ AC-RDM-05 green.
 **Read:** `compiler/21` (all), `language/14`, `language/13` §evaluation, `runtime/30` §interpreter semantics,
 `runtime/32` (fingerprints, store, manifest, lock, staleness).
 **Slices:** M3a IR types + JSON Schema (schemars) + canonical JSON (D-21) · M3b validator stages (schema → budget
-analysis) · M3c decimal `Number` + builtins incl. `random` (D-36, D-22) · M3d interpreter + check/example evaluation with
+analysis) · M3c decimal `Number` + JSON input mapping (D-23, D-77) + builtins incl. `random` (D-36, D-22) · M3d interpreter + check/example evaluation with
 failure reports (VL05xx, VL0602) · M3e fingerprints (D-11) + artifact store + manifest · M3f `velme.lock` read/write,
 staleness (D-12), fixture installer in `velme-test-support`. IR for tests is hand-written (no LLM yet) and installed
 into the store and lock by that helper (D-16).

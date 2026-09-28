@@ -1,0 +1,121 @@
+---
+source: crates/velme-sema/tests/sema.rs
+expression: "program.expect(\"a program without errors\")"
+input_file: tests/golden/sema/accept/types_and_signatures.velme
+---
+{
+  "language_version": "0.1",
+  "types": [
+    {
+      "name": "Stats",
+      "fields": [
+        {
+          "name": "jump_height",
+          "ty": "number",
+          "span": [
+            113,
+            132
+          ]
+        },
+        {
+          "name": "tags",
+          "ty": {
+            "list": "text"
+          },
+          "span": [
+            137,
+            153
+          ]
+        }
+      ],
+      "span": [
+        97,
+        153
+      ]
+    },
+    {
+      "name": "Player",
+      "fields": [
+        {
+          "name": "name",
+          "ty": "text",
+          "span": [
+            172,
+            182
+          ]
+        },
+        {
+          "name": "stats",
+          "ty": {
+            "optional": {
+              "record": 0
+            }
+          },
+          "span": [
+            187,
+            200
+          ]
+        },
+        {
+          "name": "friends",
+          "ty": {
+            "list": {
+              "optional": {
+                "record": 0
+              }
+            }
+          },
+          "span": [
+            205,
+            226
+          ]
+        }
+      ],
+      "span": [
+        155,
+        226
+      ]
+    }
+  ],
+  "goals": [
+    {
+      "name": "Best",
+      "params": [
+        {
+          "name": "players",
+          "ty": {
+            "list": {
+              "record": 1
+            }
+          },
+          "span": [
+            238,
+            259
+          ]
+        },
+        {
+          "name": "backup",
+          "ty": {
+            "optional": {
+              "record": 1
+            }
+          },
+          "span": [
+            261,
+            276
+          ]
+        }
+      ],
+      "output": {
+        "optional": {
+          "record": 1
+        }
+      },
+      "plan": "Pick the player who jumps highest, or the backup.",
+      "span": [
+        228,
+        351
+      ]
+    }
+  ]
+}

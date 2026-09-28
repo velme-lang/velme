@@ -31,9 +31,13 @@ const EXIT_PRECEDENCE: [u8; 6] = [
 /// The `--json` envelope version (D-49, R-CLI-15).
 const JSON_FORMAT: &str = "velme-cli/1";
 
-/// Stack for the parser thread. The D-71 limits keep parsing within a few MiB even in a debug build; the main thread's
-/// default stack differs by platform (1 MiB on Windows), so the size is set here (R-SYN-19).
-const PARSE_STACK: usize = 64 * 1024 * 1024;
+/// Stack for the analysis thread. The D-71 limits keep parsing and checking within a few MiB even in a debug build; the
+/// main thread's default stack differs by platform (1 MiB on Windows), so the size is set here (R-SYN-19).
+const ANALYZE_STACK: usize = 64 * 1024 * 1024;
+
+/// The `velme check` progress lines (`tooling/40` §3.3) this build can reach, each with the code prefixes of the phase
+/// it reports on (`reference/90` groups codes by phase).
+const CHECK_LINES: [(&str, &[&str]); 2] = [("✓ Parsed", &["VL01"]), ("✓ Types valid", &["VL02"])];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       velme --version";
 
@@ -85,13 +89,13 @@ fn print_err(s: &str) {
     let _ = std::io::stderr().lock().write_all(s.as_bytes());
 }
 
-/// `velme check FILE`: for now, lexing and parsing (M1); name, type and call checks follow in M2.
+/// `velme check FILE`: phases 1–6 (`compiler/20` §3); IR and check validation follow in M3.
 fn check(arg: &str, json: bool) -> u8 {
     let path = display_path(arg);
     let (text, diagnostics) = match std::fs::read(arg) {
         Err(err) => (None, vec![SourceFile::unreadable(&path, &err)]),
         Ok(bytes) => match SourceFile::from_bytes(path.clone(), bytes.clone()) {
-            Ok(file) => match parse_on_big_stack(&file) {
+            Ok(file) => match analyze_on_big_stack(&file) {
                 Some(diagnostics) => (Some(file.text), diagnostics),
                 // Shown without source lines: it belongs to no place in the file.
                 None => (None, vec![Diagnostic::internal_error()]),
@@ -119,25 +123,46 @@ fn check(arg: &str, json: bool) -> u8 {
             Err(_) => return EXIT_INTERNAL,
         }
     } else {
+        // Progress first, so the lines for passed phases read above the errors (`tooling/40` §3.3).
+        print_out(&progress_lines(&diagnostics));
         if !diagnostics.is_empty() {
             print_err(&render::render_human(&diagnostics, &path, text.as_deref(), use_color()));
-        }
-        if exit == EXIT_OK {
-            print_out("✓ Parsed\n");
         }
     }
     exit
 }
 
-/// Parses on a thread with [`PARSE_STACK`]; `None` only if the thread couldn't start or the parser panicked, which is a
-/// bug (R-SYN-19).
-fn parse_on_big_stack(file: &SourceFile) -> Option<Vec<Diagnostic>> {
+/// The [`CHECK_LINES`] up to the first whose phase didn't pass: one that has an error from its own or an earlier
+/// phase, or from outside the checked phases (an unreadable file).
+fn progress_lines(diagnostics: &[Diagnostic]) -> String {
+    let mut out = String::new();
+    for (i, (line, _)) in CHECK_LINES.iter().enumerate() {
+        let later: Vec<&str> = CHECK_LINES
+            .iter()
+            .skip(i + 1)
+            .flat_map(|(_, p)| p.iter().copied())
+            .collect();
+        let failed = diagnostics
+            .iter()
+            .any(|d| d.is_error() && !later.iter().any(|p| d.code.as_str().starts_with(p)));
+        if failed {
+            break;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// Analyzes on a thread with [`ANALYZE_STACK`]; `None` only if the thread couldn't start or analysis panicked, which is
+/// a bug (R-SYN-19).
+fn analyze_on_big_stack(file: &SourceFile) -> Option<Vec<Diagnostic>> {
     std::thread::scope(|scope| {
-        let parser = std::thread::Builder::new()
-            .stack_size(PARSE_STACK)
-            .spawn_scoped(scope, || velme_syntax::parse(file).1)
+        let analyzer = std::thread::Builder::new()
+            .stack_size(ANALYZE_STACK)
+            .spawn_scoped(scope, || velme_sema::analyze(file).1)
             .ok()?;
-        parser.join().ok()
+        analyzer.join().ok()
     })
 }
 

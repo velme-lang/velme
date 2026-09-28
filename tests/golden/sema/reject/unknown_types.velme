@@ -1,0 +1,10 @@
+# VL0201: a type name that isn't declared, a goal used as a type, and `List` without its item type (R-TYP-19).
+type Player:
+    name: Text
+    rank: Nubmer
+
+goal Grade(player: Plyer) -> Unknown:
+    plan: "Grade the player."
+
+goal Team(lead: Grade, members: List) -> Text:
+    plan: "Name the team."

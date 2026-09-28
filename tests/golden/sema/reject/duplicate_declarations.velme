@@ -1,0 +1,13 @@
+# VL0203: names declared twice, and a built-in type name reused (R-TYP-16, R-TYP-19, R-GOAL-02).
+type Score:
+    value: Number
+    value: Number
+
+goal Score(x: Number) -> Number:
+    plan: "Use x."
+
+goal Pick(x: Number, x: Text) -> Number:
+    plan: "Pick x."
+
+type Number:
+    digits: Text

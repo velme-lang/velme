@@ -14,6 +14,8 @@ authors = ["The Velme contributors"]
 # Workspace crates; edges must follow INV-9 (`xtask layering`).
 velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0" }
 velme-syntax = { path = "crates/velme-syntax", version = "0.1.0" }
+velme-builtins = { path = "crates/velme-builtins", version = "0.1.0" }
+velme-sema = { path = "crates/velme-sema", version = "0.1.0" }
 
 anyhow = "1"
 ariadne = { version = "0.6", default-features = false }

@@ -1,0 +1,7 @@
+# VL0204: `Nothing` and `Nothing?` carry no information as a field, parameter or output type (R-TYP-03).
+type Bad:
+    value: Nothing
+    maybe: Nothing?
+
+goal Empty(x: Nothing) -> Nothing?:
+    plan: "Return nothing."

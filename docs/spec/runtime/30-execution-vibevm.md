@@ -118,8 +118,8 @@ so diagnostic text is itself deterministic.
 is rejected by `velme check` with `VL0308 InvalidBudget` (language/12 R-GOAL-20).
 **R-RUN-17** Fuel and memory are per invocation, not a shared pool, so concurrent siblings cannot affect each other's
 outcome (INV-3). The whole tree is still bounded: ≤ 128 invocations × per-invocation limits, plus the watchdog.
-**R-RUN-18** Budget constants are defined once in `velme-runtime` and referenced by name by the CLI, the prompt
-builder (22 §4) and tests.
+**R-RUN-18** Budget constants are defined once in `velme-builtins` (a leaf crate, so `velme check` can enforce them
+statically, D-77) and referenced by name by the runtime, the CLI, the prompt builder (22 §4) and tests.
 **R-RUN-24** The static bound of R-RUN-17 (at most `max_goal_calls` × `max_fuel` = 1.28 × 10⁹ fuel, about 12.8 s at
 `FUEL_PER_MS`) is the whole run's deterministic limit; `max_wall_clock` sits well above it and guards only against a
 Velme bug or an overloaded host, never a verification verdict (D-51). Its clock is injectable, so tests drive it with

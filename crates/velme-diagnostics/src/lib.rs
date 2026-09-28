@@ -231,3 +231,36 @@ pub fn is_bidi_control(c: char) -> bool {
 pub fn sort(diagnostics: &mut [Diagnostic]) {
     diagnostics.sort_by_key(|d| (d.span.start, d.code));
 }
+
+/// The candidate closest to `word`, for a "did you mean" help line: at most two edits away, and fewer edits than the
+/// candidate has letters. Ties go to the alphabetically first.
+pub fn closest<'a>(word: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    candidates
+        .into_iter()
+        .map(|c| (edit_distance(word, c), c))
+        .filter(|&(d, c)| d <= 2 && d < c.chars().count())
+        .min()
+        .map(|(_, c)| c)
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut diag = i;
+        let mut prev = i + 1;
+        for (j, &cb) in b.iter().enumerate() {
+            let above = row.get(j + 1).copied().unwrap_or(0);
+            let next = (diag + usize::from(ca != cb)).min(prev + 1).min(above + 1);
+            diag = above;
+            if let Some(slot) = row.get_mut(j + 1) {
+                *slot = next;
+            }
+            prev = next;
+        }
+        if let Some(first) = row.first_mut() {
+            *first = i + 1;
+        }
+    }
+    row.last().copied().unwrap_or(0)
+}

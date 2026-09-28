@@ -1,0 +1,6 @@
+# A declaration that failed to parse is reported once; names that refer to it get no second error (R-SYN-17).
+type Player:
+    name Text
+
+goal Rank(player: Player) -> Number:
+    plan: "Rank the player."

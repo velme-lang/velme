@@ -1,0 +1,14 @@
+# Records, lists and optionals resolve to HIR types (language/11 §2, §7).
+language: velme/0.1
+
+type Stats:
+    jump_height: Number
+    tags: List<Text>
+
+type Player:
+    name: Text
+    stats: Stats?
+    friends: List<Stats?>
+
+goal Best(players: List<Player>, backup: Player?) -> Player?:
+    plan: "Pick the player who jumps highest, or the backup."
