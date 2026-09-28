@@ -2,53 +2,25 @@
 
 **Goal:** pass the MVP success criteria `AC-RDM-01..09` (`delivery/50`), each backed by the `AC-*` tests of its owning
 spec file, with the quality gate (`delivery/51`) green.
-**Read when:** starting a phase, finishing a phase, or checking what's next. Read **§1 Progress tracker** and **only the
-phase you are working on** — each phase lists the spec sections it needs.
-**Workflow:** `AGENTS.md` (plan → small steps → Stop & Verify Gate → explicit approval → next phase).
+**Read when:** starting or finishing a phase. Read **only the phase you are working on**; each phase lists the spec
+sections it needs. Phase status is public through git: a phase is in progress on its `mN-*` branch and done once
+tagged `mN-verified` (R-REL-12, D-66).
 
 ---
 
-## 1. Progress tracker
+## 1. Success criteria (`delivery/50`)
 
-Status values: `TODO` · `IN PROGRESS` · `GATE` (waiting for user verification) · `DONE` · `BLOCKED`.
-Update the row and the gate log **at every Stop & Verify Gate**; don't rewrite phase bodies to record progress.
-"Model" is the tier and effort that build the phase (set with `/model` and `/effort` for inline work); "→ Opus review"
-means an `architect-review` (Opus, high) runs before the phase gate.
-
-| Phase | Name | Model | Status | Started | Verified | Notes |
-|---|---|---|---|---|---|---|
-| M0 | Workspace, conventions, verify gate | Sonnet · medium | DONE | 2026-09-25 | 2026-09-25 | |
-| M1 | Syntax: lexer, parser, AST, diagnostics | Opus · high | TODO | | | grammar is a language decision |
-| M2 | Semantics: names, types, call graph | Opus · high | TODO | | | |
-| M3 | IR, validator, interpreter, check evaluator, store + lock | Opus · high | TODO | | | defines reference semantics (P-4) |
-| M4 | VibeVM: DAG scheduler, budgets, trace, explain | Sonnet · medium → Opus review | TODO | | | determinism review (D-9, D-10) |
-| M5 | Spellbook: providers, prompt, retry, verification | Sonnet · medium → Opus review | TODO | | | security review (prompt injection, secrets, external command) |
-| M6 | CLI completion: locked/offline, artifact, config | Sonnet · medium | TODO | | | |
-| M7 | WASM backend + Wasmtime sandbox | Opus · high | TODO | | | sandbox is security-critical |
-| M8 | MVP gate: success criteria, examples, docs | Opus · medium | TODO | | | |
-
-### Open questions
-
-None open — Q-1..Q-7 resolved 2026-09-25 (`reference/92` §4 → D-36..D-39). Name screened and set to **Velme**
-(D-38); trademark search done 2026-09-27; an attorney's clearance opinion is owed before filing a mark.
-
-### MVP gate checklist (`delivery/50` success criteria)
-
-| # | Criterion | Delivered in | Evidence | ✓ |
-|---|---|---|---|---|
-| 1 | Simple goal synthesizes, verifies and runs | M5 | AC-RDM-01 (replay fixture) + one live run by hand | ☐ |
-| 2 | Goal composition (wired + synthesized tail) | M2, M4 | AC-RDM-02 | ☐ |
-| 3 | Independent calls execute concurrently | M4 | AC-RDM-03 | ☐ |
-| 4 | Type mismatch caught before execution | M2 | AC-RDM-04 | ☐ |
-| 5 | `A → B → A` fails compilation | M2 | AC-RDM-05 | ☐ |
-| 6 | Failed check shows assertion and values | M3, M4 | AC-RDM-06 | ☐ |
-| 7 | Expensive program is terminated | M4, M7 | AC-RDM-07 (fuel, both backends) | ☐ |
-| 8 | Unchanged source never re-synthesizes | M5 | AC-RDM-08 (provider call count = 0) | ☐ |
-| 9 | Reproducible: same source+inputs+lock+seed ⇒ same result | M4, M7 | AC-RDM-09 (interp + WASM, repeated) | ☐ |
-
-### Gate log
-
-Append one line per approved gate: `YYYY-MM-DD · Mn · approved by <who> · commit <sha> · AC covered / deferred`.
+| # | Criterion | Delivered in | Evidence |
+|---|---|---|---|
+| 1 | Simple goal synthesizes, verifies and runs | M5 | AC-RDM-01 (replay fixture) + one live run by hand |
+| 2 | Goal composition (wired + synthesized tail) | M2, M4 | AC-RDM-02 |
+| 3 | Independent calls execute concurrently | M4 | AC-RDM-03 |
+| 4 | Type mismatch caught before execution | M2 | AC-RDM-04 |
+| 5 | `A → B → A` fails compilation | M2 | AC-RDM-05 |
+| 6 | Failed check shows assertion and values | M3, M4 | AC-RDM-06 |
+| 7 | Expensive program is terminated | M4, M7 | AC-RDM-07 (fuel, both backends) |
+| 8 | Unchanged source never re-synthesizes | M5 | AC-RDM-08 (provider call count = 0) |
+| 9 | Reproducible: same source+inputs+lock+seed ⇒ same result | M4, M7 | AC-RDM-09 (interp + WASM, repeated) |
 
 ---
 
@@ -65,7 +37,7 @@ rejected with `VL0104`; nothing else is scaffolded.
 
 ## 3. Phases
 
-Each phase: read the listed spec sections only. A phase with slices is built slice by slice (`AGENTS.md` §Slices).
+Each phase lists what to read, what to build (in slices where given), its exit criteria and how to verify it.
 
 ### M0 — Workspace, conventions, verify gate
 

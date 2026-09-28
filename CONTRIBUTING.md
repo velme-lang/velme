@@ -87,8 +87,8 @@ Git flow is R-REL-12 (`delivery/52` §4). In short:
 AI-assisted contributions are welcome. You are the author: you must understand every line you submit, be able to
 explain it in review, and have run the gate yourself. Say in the PR if a substantial part was generated.
 
-The repo includes instructions for coding agents: `AGENTS.md` (any agent) and `CLAUDE.md` plus `.claude/` (Claude
-Code). If you don't use these tools you can ignore them; everything that applies to humans is in this file.
+Everything that applies to a contributor is in this file and in `docs/spec/` — there is nothing an assistant needs that
+a human does not.
 
 ## License
 

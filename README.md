@@ -44,8 +44,7 @@ posted in [Discussions → Announcements](https://github.com/velme-lang/velme/di
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). `AGENTS.md`, `CLAUDE.md` and `.claude/` are instructions for AI coding
-agents; you can ignore them if you don't use one.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Build
 

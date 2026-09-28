@@ -8,8 +8,8 @@
 ## 1. Purpose & boundaries
 
 Sequences the v0.1 build into phases M0–M8 (D-16), fixes the MVP scope and exclusions, and defines the MVP success
-criteria. The working tracker (status, dates, gate log) lives in `docs/plan/mvp-plan.md`; this file is the stable
-definition it tracks.
+criteria. `docs/plan/mvp-plan.md` breaks the phases into buildable steps; phase status is the git state (`mN-*`
+branch, `mN-verified` tag; D-66). This file is the stable definition both follow.
 
 **R-RDM-01** Build only the current phase. Don't scaffold later phases; `Future` items are never built in v0.1.
 **R-RDM-02** Each phase ends at a Stop & Verify Gate with its exit criteria green and its `AC-*` ids covered by
@@ -25,7 +25,7 @@ Order differs from the original §51 so leaf execution exists before the DAG run
 
 | Phase | Goal | Scope | Specs touched | Deliverable | Exit criteria |
 |---|---|---|---|---|---|
-| **M0** | Repository & gate | Cargo workspace with the D-15 crates as empty libs, pinned toolchain, `cargo xtask verify`, CI skeleton, license files, `README`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md` (D-40) | `delivery/51`, `delivery/52` | `cargo xtask verify` green | AC-REL-01, AC-REL-02, AC-QA-01, AC-QA-03, AC-CMP-01 |
+| **M0** | Repository & gate | Cargo workspace with the D-15 crates as empty libs, pinned toolchain, `cargo xtask verify`, CI skeleton, license files, `README`, `CONTRIBUTING.md` (D-65) | `delivery/51`, `delivery/52` | `cargo xtask verify` green | AC-REL-01, AC-REL-02, AC-QA-01, AC-QA-03, AC-CMP-01 |
 | **M1** | Syntax | indentation-aware lexer, Chumsky parser for the whole v0.1 grammar incl. literals, `examples`, `budget`, header; AST with spans; diagnostics crate + ariadne rendering; parser golden corpus | `language/10`, `compiler/20`, `reference/90` | `velme check` reports parse errors | AC-SYN-*, AC-ERR-*, `VL01xx` golden tests, AC-CLI-01 (parse part) |
 | **M2** | Semantics | name resolution, type checking incl. check DSL narrowing, call rules, cycle detection, wired goals (D-4), JSON input mapping | `language/11..14`, `compiler/20` | `velme check` fully validates a program | AC-TYP-*, AC-GOAL-* (static), AC-CHK-* (typing), AC-CMP-03, AC-CMP-04, AC-RDM-04, AC-RDM-05 |
 | **M3** | IR, interpreter, checks, store & lock | IR types + JSON Schema + validator; builtins incl. `random`/`range`; reference interpreter for leaf goals; check and example evaluation; fingerprints (D-11, D-21), content-addressed store + manifest, `velme.lock` read/write and staleness (D-12); fixture installer in `velme-test-support` | `compiler/21`, `language/13..14`, `runtime/30`, `runtime/32` | `velme run`/`velme test` on a leaf goal with fixture IR from the lock | AC-IR-*, AC-BLT-*, AC-CHK-* (eval), AC-ART-04, AC-ART-06, AC-ART-08, AC-ART-12, AC-CMP-02, AC-SEC-04, AC-RDM-06 |
