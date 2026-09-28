@@ -20,8 +20,7 @@ pub fn lex(file: &SourceFile) -> (Vec<Token>, Vec<Diagnostic>) {
         lines,
         tokens: Vec::new(),
         diags: lone_cr.into_iter().collect(),
-        indents: vec![0],
-        joined: None,
+        indents: vec![Level { width: 0, alias: None }],
         depth: 0,
     };
     lexer.run();
@@ -100,16 +99,22 @@ fn starts_token(c: char) -> bool {
     matches!(c, ' ' | '\t' | '#' | '"') || is_word_char(c) || Punct::single(c).is_some()
 }
 
+/// One level of the indentation stack.
+#[derive(Clone, Copy)]
+struct Level {
+    width: usize,
+    /// A second width whose lines are siblings at this level, set during recovery: the level's width before a line
+    /// joined it between two widths (D-76), or the guessed width of a tab line placed here (`VL0103`).
+    alias: Option<usize>,
+}
+
 struct Lexer<'a> {
     text: &'a str,
     lines: Vec<Line>,
     tokens: Vec<Token>,
     diags: Vec<Diagnostic>,
     /// Indentation stack (R-SYN-09); never empty, bottom is 0.
-    indents: Vec<usize>,
-    /// After a line dedents between two widths (D-76): the stack height of the level it joined, and that level's
-    /// width before, which the block's other lines still use.
-    joined: Option<(usize, usize)>,
+    indents: Vec<Level>,
     /// Open `(`/`[` count; newlines and indentation are ignored while it is non-zero (R-SYN-10).
     depth: usize,
 }
@@ -169,7 +174,7 @@ impl<'a> Lexer<'a> {
                 self.push(TokenKind::Newline, Span::new(content_start, content_start));
             }
             if self.depth == 0 {
-                self.layout(width_of(ws), line.start, content_start);
+                self.layout(width_of(ws), ws.contains('\t'), line.start, content_start);
             }
             let first_token = self.tokens.len();
             self.lex_line(content_start, line.end);
@@ -190,39 +195,60 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// R-SYN-09: compare the line's width with the indentation stack.
-    fn layout(&mut self, width: usize, line_start: usize, content_start: usize) {
+    /// R-SYN-09: compare the line's width with the indentation stack. A line indented with a tab (`tab`) already has
+    /// `VL0103`, so its width is only a guess: it goes where the line above says it should, with no second error.
+    fn layout(&mut self, width: usize, tab: bool, line_start: usize, content_start: usize) {
         let at = Span::new(content_start, content_start);
-        let top = self.indents.last().copied().unwrap_or(0);
-        if width > top {
-            // Back at the block's width after a line that joined it: a sibling, unless the line above opened a block.
-            let opens_block = self
-                .tokens
-                .iter()
-                .rev()
-                .nth(1)
-                .is_some_and(|t| t.kind == TokenKind::Punct(Punct::Colon));
-            if !opens_block && self.joined == Some((self.indents.len(), width)) {
-                return;
-            }
-            self.indents.push(width);
+        let top = self.indents.last().copied().unwrap_or(Level { width: 0, alias: None });
+        let opens_block = self
+            .tokens
+            .iter()
+            .rev()
+            .nth(1)
+            .is_some_and(|t| t.kind == TokenKind::Punct(Punct::Colon));
+        if tab && opens_block && width <= top.width {
+            self.indents.push(Level {
+                width: top.width + TAB_RECOVERY_WIDTH,
+                alias: Some(width),
+            });
             self.push(TokenKind::Indent, at);
             return;
         }
-        while width < self.indents.last().copied().unwrap_or(0) {
+        // A sibling at the width this level had before a line joined it, or at a tab line's guessed width, unless the
+        // line above opened a block; a line with spaces is exact, so it matches a tab alias (never deeper) only by width.
+        if !opens_block && top.alias == Some(width) && (tab || width > top.width) {
+            return;
+        }
+        if width > top.width {
+            if !opens_block && tab {
+                return;
+            }
+            self.indents.push(Level { width, alias: None });
+            self.push(TokenKind::Indent, at);
+            return;
+        }
+        // A tab line stops at the level whose guessed width it matches.
+        while let Some(&level) = self.indents.last()
+            && width < level.width
+            && !(tab && level.alias == Some(width))
+        {
             let outer = self
                 .indents
                 .len()
                 .checked_sub(2)
                 .and_then(|i| self.indents.get(i))
-                .copied();
+                .map(|level| level.width);
             if outer.is_some_and(|outer| outer < width) {
+                if tab {
+                    return;
+                }
                 // Between two levels: the line stays in the block it came from, at its own width, so the lines after
                 // it parse as intended and the mistake is reported once (D-76).
-                let height = self.indents.len();
                 if let Some(top) = self.indents.last_mut() {
-                    self.joined = Some((height, *top));
-                    *top = width;
+                    *top = Level {
+                        width,
+                        alias: Some(top.width),
+                    };
                 }
                 self.error(
                     Code::InconsistentIndentation,
@@ -233,9 +259,6 @@ impl<'a> Lexer<'a> {
                 return;
             }
             self.indents.pop();
-            if self.joined.is_some_and(|(height, _)| height > self.indents.len()) {
-                self.joined = None;
-            }
             self.push(TokenKind::Dedent, at);
         }
     }

@@ -1,0 +1,5 @@
+# A tab line deeper than its siblings, with no block opener above, stays a sibling (tooling/40 §5).
+type A:
+    x: Number
+		y: Number
+    z: Number

@@ -1,0 +1,8 @@
+# A tab one level deep is VL0103 once per line, with no cascade from its guessed width (tooling/40 §5).
+goal Echo(x: Text) -> Text:
+    plan: "Give back x."
+    check:
+	- result != ""
+	- result == x
+    examples:
+        - Echo("a") == "a"

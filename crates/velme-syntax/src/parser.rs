@@ -104,7 +104,22 @@ pub fn parse(file: &SourceFile) -> (Program, Vec<Diagnostic>) {
         }
     }
     velme_diagnostics::sort(&mut diags);
+    one_error_per_start(&mut diags);
     (program, diags)
+}
+
+/// `tooling/40` §5: keeps the first error at each span start; a second one there is a cascade from the same place.
+/// Expects `diags` sorted by position.
+fn one_error_per_start(diags: &mut Vec<Diagnostic>) {
+    let mut last_error = None;
+    diags.retain(|d| {
+        if !d.is_error() {
+            return true;
+        }
+        let first = last_error != Some(d.span.start);
+        last_error = Some(d.span.start);
+        first
+    });
 }
 
 /// Whether a parser error at `at` follows from an earlier error on its line that left the tokens damaged: a
@@ -481,18 +496,18 @@ fn edit_distance(a: &str, b: &str) -> usize {
 fn lint_names(decl: &Decl, diags: &mut Vec<Diagnostic>) {
     match decl {
         Decl::Type(ty) => {
-            lint_pascal(&ty.name, "Type", diags);
+            lint_pascal(&ty.name, "type", diags);
             for field in &ty.fields {
-                lint_snake(&field.name, "Field", diags);
+                lint_snake(&field.name, "field", diags);
             }
         }
         Decl::Goal(goal) => {
-            lint_pascal(&goal.name, "Goal", diags);
+            lint_pascal(&goal.name, "goal", diags);
             for param in &goal.params {
-                lint_snake(&param.name, "Parameter", diags);
+                lint_snake(&param.name, "parameter", diags);
             }
             for binding in goal.call.iter().flat_map(|c| &c.bindings) {
-                lint_snake(&binding.name, "Binding", diags);
+                lint_snake(&binding.name, "binding", diags);
             }
         }
     }
@@ -1171,4 +1186,23 @@ fn expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Expr, Extra<'t>> + Clone 
             });
         choice((if_expr, quantified, or)).labelled("an expression").boxed()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_error_per_start_skips_warnings_between() {
+        let at = |start| Span::new(start, start + 1);
+        let mut diags = vec![
+            Diagnostic::new(Code::UnexpectedToken, at(3), "a"),
+            Diagnostic::new(Code::LintWarning, at(3), "b"),
+            Diagnostic::new(Code::UnknownType, at(3), "c"),
+            Diagnostic::new(Code::UnexpectedToken, at(4), "d"),
+        ];
+        one_error_per_start(&mut diags);
+        let kept: Vec<Code> = diags.iter().map(|d| d.code).collect();
+        assert_eq!(kept, [Code::UnexpectedToken, Code::LintWarning, Code::UnexpectedToken]);
+    }
 }
