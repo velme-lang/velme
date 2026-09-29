@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use velme_diagnostics::render::LineIndex;
-use velme_diagnostics::{Code, Diagnostic, Span, closest};
+use velme_diagnostics::{Code, Diagnostic, Span, did_you_mean};
 use velme_syntax::BuiltinType;
 use velme_syntax::ast::{self, BaseType, Decl, TypeExpr};
 
@@ -269,17 +269,14 @@ fn named_type(name: &ast::Ident, scope: &Scope<'_>, diags: &mut Vec<Diagnostic>)
                     Declared::Type(_) => Some(*n),
                     Declared::Goal(_) => None,
                 }));
-            let mut diag = Diagnostic::new(
+            let diag = Diagnostic::new(
                 Code::UnknownType,
                 name.span,
                 format!("I don't know a type called `{}`.", name.name),
             );
-            if let Some(suggestion) = closest(&name.name, types) {
-                diag = diag.with_help(format!("did you mean `{suggestion}`?"));
-            } else {
-                diag = diag.with_help("declare it with `type`, or use `Number`, `Text` or `Boolean`");
-            }
-            diags.push(diag);
+            let help = did_you_mean(&name.name, types)
+                .unwrap_or_else(|| "declare it with `type`, or use `Number`, `Text` or `Boolean`".to_owned());
+            diags.push(diag.with_help(help));
             Type::Error
         }
     }

@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use velme_builtins::limits;
-use velme_diagnostics::{Code, Diagnostic, closest};
+use velme_diagnostics::{Code, Diagnostic, did_you_mean};
 use velme_syntax::Unit;
 use velme_syntax::ast;
 
@@ -88,10 +88,8 @@ fn limit(item: &ast::BudgetItem, seen: &mut BTreeSet<BudgetKey>) -> Result<(Budg
     let invalid = |message: String| Diagnostic::new(Code::InvalidBudget, item.span, message);
     let name = item.name.name.as_str();
     let Some(key) = BudgetKey::from_name(name) else {
-        let help = match closest(name, BudgetKey::ALL.map(BudgetKey::as_str)) {
-            Some(suggestion) => format!("did you mean `{suggestion}`?"),
-            None => "a budget can set `cpu`, `memory`, `calls` and `depth`".to_owned(),
-        };
+        let help = did_you_mean(name, BudgetKey::ALL.map(BudgetKey::as_str))
+            .unwrap_or_else(|| "a budget can set `cpu`, `memory`, `calls` and `depth`".to_owned());
         return Err(Diagnostic::new(
             Code::InvalidBudget,
             item.name.span,
@@ -102,12 +100,10 @@ fn limit(item: &ast::BudgetItem, seen: &mut BTreeSet<BudgetKey>) -> Result<(Budg
     if !seen.insert(key) {
         return Err(invalid(format!("`{name}` is already set on this line.")).with_help("keep one of them"));
     }
-    let scale = key
-        .scale(item.unit.as_ref().map(|u| u.unit))
-        .map_err(|m| invalid(m.to_owned()))?;
+    let unit = item.unit.as_ref().map(|u| u.unit);
+    let scale = key.scale(unit).map_err(|m| invalid(m.to_owned()))?;
     if item.value.text.contains('.') {
         let mut diag = invalid(format!("`{name}` is written as a whole number, without a `.`"));
-        let unit = item.unit.as_ref().map(|u| u.unit);
         if let Some(kb) = fractional_mb_as_kb(key, &item.value.text, unit).filter(|kb| kb * limits::KIB <= key.cap().0)
         {
             diag = diag.with_help(format!("write `{name}={kb}kb`"));

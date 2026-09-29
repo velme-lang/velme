@@ -243,6 +243,11 @@ pub fn closest<'a>(word: &str, candidates: impl IntoIterator<Item = &'a str>) ->
         .map(|(_, c)| c)
 }
 
+/// The "did you mean `x`?" help line for the `closest` candidate to `word`, if there is one.
+pub fn did_you_mean<'a>(word: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    closest(word, candidates).map(|c| format!("did you mean `{c}`?"))
+}
+
 fn edit_distance(a: &str, b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
     let mut row: Vec<usize> = (0..=b.len()).collect();
