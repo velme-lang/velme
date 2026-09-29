@@ -129,7 +129,11 @@ fn golden_reject() {
     insta::glob!("../../../tests/golden/parser/reject", "*.velme", |path| {
         let (_, diags) = parse_path(path);
         assert!(!diags.is_empty(), "{} produced no diagnostics", path.display());
-        insta::assert_json_snapshot!(diagnostics_json(&diags));
+        // Rendered by serde_json, not insta's serializer: with `arbitrary_precision` (unified in from `velme-ir`)
+        // insta would print each number as serde_json's private token map.
+        insta::assert_snapshot!(
+            serde_json::to_string_pretty(&diagnostics_json(&diags)).expect("JSON value serializes")
+        );
     });
 }
 

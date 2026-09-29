@@ -39,7 +39,9 @@ fn json_diagnostic_matches_r_cli_08() {
         .with_note("types are declared with `type`")
         .with_help("did you mean `Player`?");
     let value = serde_json::to_value(JsonDiagnostic::new(&d, "game.velme", &LineIndex::new("type Playr:\n"))).unwrap();
-    insta::assert_json_snapshot!(value, @r#"
+    // Rendered by serde_json, not insta's serializer: with `arbitrary_precision` (unified in from `velme-ir`)
+    // insta would print each number as serde_json's private token map.
+    insta::assert_snapshot!(serde_json::to_string_pretty(&value).unwrap(), @r#"
     {
       "code": "VL0201",
       "file": "game.velme",

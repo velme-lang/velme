@@ -1,0 +1,915 @@
+{
+  "$defs": {
+    "BinaryOperator": {
+      "description": "The operator of a `binary` node (`compiler/21` §3).",
+      "oneOf": [
+        {
+          "const": "add",
+          "description": "`+`",
+          "type": "string"
+        },
+        {
+          "const": "sub",
+          "description": "`-`",
+          "type": "string"
+        },
+        {
+          "const": "mul",
+          "description": "`*`",
+          "type": "string"
+        },
+        {
+          "const": "div",
+          "description": "`/`",
+          "type": "string"
+        },
+        {
+          "const": "lt",
+          "description": "`<`",
+          "type": "string"
+        },
+        {
+          "const": "le",
+          "description": "`<=`",
+          "type": "string"
+        },
+        {
+          "const": "gt",
+          "description": "`>`",
+          "type": "string"
+        },
+        {
+          "const": "ge",
+          "description": "`>=`",
+          "type": "string"
+        },
+        {
+          "const": "eq",
+          "description": "Structural equality (D-61).",
+          "type": "string"
+        },
+        {
+          "const": "ne",
+          "description": "Structural inequality (D-61).",
+          "type": "string"
+        },
+        {
+          "const": "and",
+          "description": "Short-circuit `and`.",
+          "type": "string"
+        },
+        {
+          "const": "or",
+          "description": "Short-circuit `or`.",
+          "type": "string"
+        }
+      ]
+    },
+    "CallNode": {
+      "description": "An entry of a goal's `calls`: a call node, tagged `\"kind\": \"call\"` as in an expression (R-IR-09).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The call.",
+          "properties": {
+            "args": {
+              "description": "Positional arguments: inputs and earlier bindings only (R-IR-09).",
+              "items": {
+                "$ref": "#/$defs/Node"
+              },
+              "type": "array"
+            },
+            "binding": {
+              "description": "The binding name the result is stored under.",
+              "type": "string"
+            },
+            "goal": {
+              "description": "The child goal's name.",
+              "type": "string"
+            },
+            "goal_signature": {
+              "description": "The child's signature fingerprint (R-IR-09).",
+              "type": "string"
+            },
+            "kind": {
+              "const": "call",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "binding",
+            "goal",
+            "goal_signature",
+            "args"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Lambda": {
+      "additionalProperties": false,
+      "description": "The `fn` or `key` of a collection node; lambdas are not values (R-IR-04).",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Node",
+          "description": "The body."
+        },
+        "param": {
+          "description": "The element parameter.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "param",
+        "body"
+      ],
+      "type": "object"
+    },
+    "Node": {
+      "description": "An expression node, tagged by `kind` (`compiler/21` §3).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A constant; `value` is JSON decoded as `type` (D-23).",
+          "properties": {
+            "kind": {
+              "const": "literal",
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/$defs/Type",
+              "description": "The literal's type."
+            },
+            "value": {
+              "description": "The value as JSON."
+            }
+          },
+          "required": [
+            "kind",
+            "type",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A goal input.",
+          "properties": {
+            "kind": {
+              "const": "input",
+              "type": "string"
+            },
+            "name": {
+              "description": "The input's name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A call binding, `let` name or lambda parameter in scope.",
+          "properties": {
+            "kind": {
+              "const": "local",
+              "type": "string"
+            },
+            "name": {
+              "description": "The local's name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A record value with exactly the declared fields.",
+          "properties": {
+            "fields": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Node"
+              },
+              "description": "One expression per field, by field name.",
+              "type": "object"
+            },
+            "kind": {
+              "const": "record",
+              "type": "string"
+            },
+            "type": {
+              "description": "The record type's name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A list value; each item is assignable to `of`.",
+          "properties": {
+            "items": {
+              "description": "The items, in order.",
+              "items": {
+                "$ref": "#/$defs/Node"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "list",
+              "type": "string"
+            },
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The element type."
+            }
+          },
+          "required": [
+            "kind",
+            "of",
+            "items"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Reads `field` of a (non-optional) record.",
+          "properties": {
+            "field": {
+              "description": "The field name.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "field",
+              "type": "string"
+            },
+            "of": {
+              "$ref": "#/$defs/Node",
+              "description": "The record expression."
+            }
+          },
+          "required": [
+            "kind",
+            "of",
+            "field"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A binary operator; `and`/`or` short-circuit.",
+          "properties": {
+            "kind": {
+              "const": "binary",
+              "type": "string"
+            },
+            "left": {
+              "$ref": "#/$defs/Node",
+              "description": "The left operand."
+            },
+            "op": {
+              "$ref": "#/$defs/BinaryOperator",
+              "description": "The operator."
+            },
+            "right": {
+              "$ref": "#/$defs/Node",
+              "description": "The right operand."
+            }
+          },
+          "required": [
+            "kind",
+            "op",
+            "left",
+            "right"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A unary operator.",
+          "properties": {
+            "arg": {
+              "$ref": "#/$defs/Node",
+              "description": "The operand."
+            },
+            "kind": {
+              "const": "unary",
+              "type": "string"
+            },
+            "op": {
+              "$ref": "#/$defs/UnaryOperator",
+              "description": "The operator."
+            }
+          },
+          "required": [
+            "kind",
+            "op",
+            "arg"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Sequential bindings `[name, expression]`, each visible to later ones and to `body`; no shadowing.",
+          "properties": {
+            "bind": {
+              "description": "The bindings, in order.",
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/Node"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "body": {
+              "$ref": "#/$defs/Node",
+              "description": "The result expression."
+            },
+            "kind": {
+              "const": "let",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bind",
+            "body"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An expression conditional (R-IR-06).",
+          "properties": {
+            "cond": {
+              "$ref": "#/$defs/Node",
+              "description": "A `Boolean` condition."
+            },
+            "else": {
+              "$ref": "#/$defs/Node",
+              "description": "The value when `cond` is false."
+            },
+            "kind": {
+              "const": "if",
+              "type": "string"
+            },
+            "then": {
+              "$ref": "#/$defs/Node",
+              "description": "The value when `cond` is true."
+            }
+          },
+          "required": [
+            "kind",
+            "cond",
+            "then",
+            "else"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The present value of an optional `of`, else `default` (R-IR-05).",
+          "properties": {
+            "default": {
+              "$ref": "#/$defs/Node",
+              "description": "The value when `of` is nothing."
+            },
+            "kind": {
+              "const": "unwrap_or",
+              "type": "string"
+            },
+            "of": {
+              "$ref": "#/$defs/Node",
+              "description": "An optional expression."
+            }
+          },
+          "required": [
+            "kind",
+            "of",
+            "default"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Applies `fn` to every element.",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The function."
+            },
+            "kind": {
+              "const": "map",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Keeps the elements for which `fn` is true.",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The `Boolean` predicate."
+            },
+            "kind": {
+              "const": "filter",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The first element for which `fn` is true, or nothing.",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The `Boolean` predicate."
+            },
+            "kind": {
+              "const": "find",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Folds the list from `init`, left to right.",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/ReduceLambda",
+              "description": "The step function."
+            },
+            "init": {
+              "$ref": "#/$defs/Node",
+              "description": "The initial accumulator."
+            },
+            "kind": {
+              "const": "reduce",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "init",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Stable sort by a `Number` key (R-IR-07, D-59).",
+          "properties": {
+            "descending": {
+              "description": "Largest key first when true.",
+              "type": "boolean"
+            },
+            "key": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The `Number` key."
+            },
+            "kind": {
+              "const": "sort_by",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "key",
+            "descending"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "True when `fn` is true for every element; true for an empty list (D-58).",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The `Boolean` predicate."
+            },
+            "kind": {
+              "const": "all",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "True when `fn` is true for some element; false for an empty list (D-58).",
+          "properties": {
+            "fn": {
+              "$ref": "#/$defs/Lambda",
+              "description": "The `Boolean` predicate."
+            },
+            "kind": {
+              "const": "any",
+              "type": "string"
+            },
+            "list": {
+              "$ref": "#/$defs/Node",
+              "description": "The list."
+            }
+          },
+          "required": [
+            "kind",
+            "list",
+            "fn"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A call to a builtin of the goal's `builtins_version` (`language/14`).",
+          "properties": {
+            "args": {
+              "description": "Positional arguments.",
+              "items": {
+                "$ref": "#/$defs/Node"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            },
+            "name": {
+              "description": "The builtin's name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "args"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A child goal call; valid only in `calls` (§4, D-5).",
+          "properties": {
+            "args": {
+              "description": "Positional arguments: inputs and earlier bindings only (R-IR-09).",
+              "items": {
+                "$ref": "#/$defs/Node"
+              },
+              "type": "array"
+            },
+            "binding": {
+              "description": "The binding name the result is stored under.",
+              "type": "string"
+            },
+            "goal": {
+              "description": "The child goal's name.",
+              "type": "string"
+            },
+            "goal_signature": {
+              "description": "The child's signature fingerprint (R-IR-09).",
+              "type": "string"
+            },
+            "kind": {
+              "const": "call",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "binding",
+            "goal",
+            "goal_signature",
+            "args"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RecordType": {
+      "additionalProperties": false,
+      "description": "A record type: its fields `[name, type]` in declaration order (R-IR-01).",
+      "properties": {
+        "fields": {
+          "description": "Fields `[name, type]`, in declaration order.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/Type"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ReduceLambda": {
+      "additionalProperties": false,
+      "description": "The `fn` of a `reduce` node (R-IR-04).",
+      "properties": {
+        "acc": {
+          "description": "The accumulator parameter.",
+          "type": "string"
+        },
+        "body": {
+          "$ref": "#/$defs/Node",
+          "description": "The body, giving the next accumulator."
+        },
+        "param": {
+          "description": "The element parameter.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "acc",
+        "param",
+        "body"
+      ],
+      "type": "object"
+    },
+    "Type": {
+      "description": "A value type (`compiler/21` §2.1).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Exact decimal number.",
+          "properties": {
+            "t": {
+              "const": "Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Text.",
+          "properties": {
+            "t": {
+              "const": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`true` or `false`.",
+          "properties": {
+            "t": {
+              "const": "Boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The type of `nothing`.",
+          "properties": {
+            "t": {
+              "const": "Nothing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`T?`: a value of `of`, or nothing.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The present type; never itself optional, since `T??` is `T?` (§2.1)."
+            },
+            "t": {
+              "const": "Optional",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`List<T>`.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The element type."
+            },
+            "t": {
+              "const": "List",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A record type named in the goal's `types`.",
+          "properties": {
+            "name": {
+              "description": "The record type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "UnaryOperator": {
+      "description": "The operator of a `unary` node (`compiler/21` §3).",
+      "oneOf": [
+        {
+          "const": "neg",
+          "description": "Numeric negation.",
+          "type": "string"
+        },
+        {
+          "const": "not",
+          "description": "Boolean negation.",
+          "type": "string"
+        },
+        {
+          "const": "is_empty",
+          "description": "True for nothing, an empty list or empty text (D-60).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One IR goal: the envelope of `compiler/21` §2.",
+  "properties": {
+    "body": {
+      "$ref": "#/$defs/Node",
+      "description": "The one expression computing the output (R-IR-03)."
+    },
+    "builtins_version": {
+      "description": "Version of the builtin catalog the `builtin` nodes are resolved against.",
+      "type": "string"
+    },
+    "calls": {
+      "description": "Child goal calls, in source order; compiler-produced only, omitted in synthesized IR (R-IR-02, R-IR-09).",
+      "items": {
+        "$ref": "#/$defs/CallNode"
+      },
+      "type": "array"
+    },
+    "goal": {
+      "description": "Name of the goal this IR implements.",
+      "type": "string"
+    },
+    "inputs": {
+      "description": "Goal inputs `[name, type]`, in declaration order.",
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/Type"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "ir_version": {
+      "description": "IR version, `MAJOR.MINOR` (R-IR-22).",
+      "type": "string"
+    },
+    "output": {
+      "$ref": "#/$defs/Type",
+      "description": "Declared output type."
+    },
+    "types": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RecordType"
+      },
+      "description": "Every record type reachable from the goal, by name (R-IR-01).",
+      "type": "object"
+    }
+  },
+  "required": [
+    "ir_version",
+    "builtins_version",
+    "goal",
+    "types",
+    "inputs",
+    "output",
+    "body"
+  ],
+  "title": "Goal",
+  "type": "object"
+}

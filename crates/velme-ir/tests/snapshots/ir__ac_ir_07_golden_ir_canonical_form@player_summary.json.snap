@@ -1,0 +1,7 @@
+---
+source: crates/velme-ir/tests/ir.rs
+assertion_line: 46
+expression: bytes
+input_file: tests/golden/ir/accept/player_summary.json
+---
+{"body":{"fields":{"badge":{"kind":"local","name":"badge"},"rank":{"kind":"local","name":"rank"},"score":{"kind":"local","name":"score"}},"kind":"record","type":"Summary"},"builtins_version":"0.1","calls":[{"args":[{"kind":"input","name":"player"}],"binding":"score","goal":"CalculateScore","goal_signature":"b3:1111111111111111111111111111111111111111111111111111111111111111","kind":"call"},{"args":[{"kind":"input","name":"player"}],"binding":"rank","goal":"CalculateRank","goal_signature":"b3:2222222222222222222222222222222222222222222222222222222222222222","kind":"call"},{"args":[{"kind":"input","name":"player"}],"binding":"badge","goal":"FindBadge","goal_signature":"b3:3333333333333333333333333333333333333333333333333333333333333333","kind":"call"}],"goal":"BuildPlayerSummary","inputs":[["player",{"name":"Player","t":"Record"}]],"ir_version":"0.1","output":{"name":"Summary","t":"Record"},"types":{"Player":{"fields":[["name",{"t":"Text"}],["jump_height",{"t":"Number"}],["score",{"t":"Number"}]]},"Summary":{"fields":[["score",{"t":"Number"}],["rank",{"t":"Number"}],["badge",{"t":"Text"}]]}}}
