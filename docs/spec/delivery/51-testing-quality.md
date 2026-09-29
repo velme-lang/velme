@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** QA
 **Read when:** writing tests, adding a golden file, fuzz target or benchmark, or running the local quality gate.
 **Depends on:** [SPEC](../SPEC.md), [50-roadmap](50-roadmap.md), [22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md), all specs (each owns its `AC-*`)
-**Source:** §23, §43.4 (golden, benchmarks, fuzz), §43.7, §52
 
 ## 1. Purpose & boundaries
 

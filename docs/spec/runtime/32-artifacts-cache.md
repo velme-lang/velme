@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** ART
 **Read when:** computing a fingerprint, reading/writing an artifact or `velme.lock`, deciding whether synthesis is needed, or touching the WASM/derived caches or Coach.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [compiler/22](../compiler/22-spellbook-synthesis.md), [30-execution-vibevm](30-execution-vibevm.md)
-**Source:** §24.2, §25, §26, §35, §36, §42 (Cache), §43.8, §48, §52 (Test 8, 9)
 
 ## 1. Purpose & boundaries
 
@@ -12,7 +11,7 @@ and immutable (INV-8). `velme.lock` pins which artifact each goal uses, which is
 though LLM output is not (D-12). This file owns identities, formats and staleness; producing artifacts is
 [compiler/22](../compiler/22-spellbook-synthesis.md), running them is [30](30-execution-vibevm.md).
 
-## 2. Identities (§25, D-11, D-21)
+## 2. Identities (D-11, D-21)
 
 All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 
@@ -22,9 +21,9 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 | `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + the compatibility units of `ir_version` and `builtins_version` (D-55, D-85) | lock staleness (§5); generated-input seed (22 §7) |
 | `synthesis_key` | `contract_key` + provider `input_version` (the `prompt_version`, or the external `request_version`) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `backend_version`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
-| `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces (§25) |
+| `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces |
 
-**R-ART-01** Nothing is cached, looked up or pinned by goal name alone (INV-8, §25).
+**R-ART-01** Nothing is cached, looked up or pinned by goal name alone (INV-8).
 **R-ART-02** Child **signatures**, not child artifacts, enter a parent's keys (D-11): regenerating `CalculateScore`
 leaves `BuildPlayerSummary`'s keys and artifact unchanged; only its `execution_id` changes.
 **R-ART-22** When `velme build` changes a child's artifact, it re-runs every ancestor composite's `examples` and
@@ -43,7 +42,7 @@ arguments; `budget` is the effective limits, system caps included: `max_fuel`, `
 `max_call_depth`, `max_list_size` and `max_output_bytes`. The document is built field by field, never from a Rust
 type's derived serialization, and a hard-coded golden key pins it: changing it invalidates every lock.
 
-## 3. Artifact document & manifest (§43.8, §48)
+## 3. Artifact document & manifest
 
 ```json
 {
@@ -68,7 +67,7 @@ another hash (D-86).
 **R-ART-24** `format` is `"velme-artifact/1"`, the artifact format; a manifest without it or with another value is no
 artifact this build reads, and is rejected like any document that is no artifact (R-ART-10, D-86). `kind` is `leaf`,
 `composite` or `wired`, the artifact's own spelling.
-**R-ART-06** `stdlib_version` (§43.8) is `builtins_version` in v0.1 — there is no separate standard library.
+**R-ART-06** `stdlib_version` is `builtins_version` in v0.1 — there is no separate standard library.
 **R-ART-07** Wired goals (D-4) produce artifacts too, with `"provider": "compiler"` and no `model_version`, so every
 goal resolves through the lock the same way.
 **R-ART-21** An `external` artifact records `"provider": "external"`, the backend name as `backend`, `model_version` =
@@ -76,7 +75,7 @@ goal resolves through the lock the same way.
 `<model>@<digest>` (D-41, D-42).
 **R-ART-08** `children` lists `{binding, goal, signature}` in source order, mirroring the IR `calls`.
 
-## 4. Local store layout (§26 MVP)
+## 4. Local store layout
 
 ```
 <project>/
@@ -109,7 +108,7 @@ nests at most 513 JSON levels, the 512 IR may nest (`MAX_JSON_DEPTH`) under the 
 a file past that size, or bytes that hash to their name but aren't the canonical JSON the store writes are
 `VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a document of another `format` (R-ART-24), a
 manifest/lock/computed mismatch or a re-validation failure makes the entry stale (R-ART-14).
-**R-ART-11** Only candidates that passed the full verification pipeline (22 §6) are written (§22). A failed or
+**R-ART-11** Only candidates that passed the full verification pipeline (22 §6) are written. A failed or
 timed-out candidate leaves no file.
 **R-ART-12** Artifacts not referenced by `velme.lock` may be garbage-collected by a CLI command (tooling/40); nothing is
 deleted implicitly.
@@ -149,19 +148,19 @@ stale goal and its cause. CI runs with `--locked`.
 **R-ART-16** `velme run`/`velme test` never synthesize implicitly unless the user passes `--build`; by default a stale or
 missing entry is `VL0702`/`VL0701` with a hint to run `velme build`. (Keeps "run" free of surprise LLM cost.)
 
-## 6. Reproducibility & cache tests (§52 Tests 8–9)
+## 6. Reproducibility & cache tests (AC-RDM-08, AC-RDM-09)
 
-**R-ART-17** Rebuilding with no source change makes zero provider calls (§52 Test 8).
+**R-ART-17** Rebuilding with no source change makes zero provider calls (AC-RDM-08).
 **R-ART-18** Same source + input + lock + seed gives the same result on any machine holding the committed artifacts,
-with no network (§52 Test 9, INV-3, INV-7).
+with no network (AC-RDM-09, INV-3, INV-7).
 
-## 7. Production store (Future, §26)
+## 7. Production store (Future)
 
 Hosted services may put a hot index in Redis, artifacts and debug metadata in object storage and project/version
 metadata in PostgreSQL. Redis is never the source of truth; the content address and the formats in §3 and §5 do not
 change, so local and hosted stores are interchangeable.
 
-## 8. Coach (Future, §35–§36)
+## 8. Coach (Future)
 
 Background optimization that proposes a better artifact for an existing goal.
 
@@ -170,7 +169,7 @@ local telemetry → slow goal detected → candidate queued → new IR synthesiz
   → validate → full verification → differential equivalence → benchmark → proposed lock change
 ```
 
-**R-ART-19** Optimization safety rule (§36): a candidate is acceptable only if it has the same `contract_key` (same
+**R-ART-19** Optimization safety rule: a candidate is acceptable only if it has the same `contract_key` (same
 signature, checks, examples), passes full verification, and produces identical outputs and outcome codes to the
 current artifact on the whole verification input set. It must improve a metric (fuel, memory, artifact size) without
 regressing correctness; latency alone is never enough.
@@ -181,13 +180,13 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 
 | ID | Criterion |
 |---|---|
-| AC-ART-01 | Building a golden project twice: the second build makes zero provider calls and leaves `velme.lock` and `.velme/artifacts/` byte-identical — §52 Test 8. |
+| AC-ART-01 | Building a golden project twice: the second build makes zero provider calls and leaves `velme.lock` and `.velme/artifacts/` byte-identical — AC-RDM-08. |
 | AC-ART-02 | Changing only `CalculateScore`'s plan and rebuilding re-synthesizes `CalculateScore` only; `BuildPlayerSummary`'s lock entry is unchanged. |
 | AC-ART-03 | Changing the configured model and rebuilding with an up-to-date lock makes zero provider calls. |
 | AC-ART-04 | Adding a field to `Player` marks every goal whose signature reaches `Player` stale, with a cause naming `Player`. |
 | AC-ART-05 | `--locked` with one stale goal fails with `VL0702` listing it; no provider is constructed. |
 | AC-ART-06 | A tampered artifact file fails with `VL0703`; a deleted one with `VL0701`. |
-| AC-ART-07 | Cloning a built project to another OS and running offline gives the same result and trace — §52 Test 9. |
+| AC-ART-07 | Cloning a built project to another OS and running offline gives the same result and trace — AC-RDM-09. |
 | AC-ART-08 | Artifact documents contain no timestamps, usernames or hostnames (schema test). |
 | AC-ART-09 | A wired goal gets a lock entry and an artifact with `"provider": "compiler"`. |
 | AC-ART-10 | Regenerating `FindBadge` so its behaviour changes, then rebuilding `BuildPlayerSummary`: `BuildPlayerSummary` is re-verified against the new `FindBadge` with no provider call; if it now fails a check, it is re-synthesized with a diagnostic naming `FindBadge` (D-55). |

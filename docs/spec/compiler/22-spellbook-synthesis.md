@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** SYNTH
 **Read when:** touching the provider interface, a provider (LLM or external backend), the synthesis request, the prompt, the retry loop, the verification pipeline, generated test inputs, or synthesis cost/config.
 **Depends on:** [SPEC](../SPEC.md), [20-compiler-architecture](20-compiler-architecture.md), [21-ir](21-ir.md), [runtime/32](../runtime/32-artifacts-cache.md), [tooling/41](../tooling/41-security-privacy.md)
-**Source:** §3.1, §3.2, §20, §21, §22, §23, §42 (LLM)
 
 ## 1. Purpose & boundaries
 
@@ -133,7 +132,7 @@ ancestors is synthesized (D-56): each ancestor ends instead with `VL0409 Synthes
 because `{child}` {reason}.", with the child's failure code as a note. `VL04xx` exits with status 2 as before
 (`tooling/40`).
 
-## 4. Prompt contract (§20.1)
+## 4. Prompt contract
 
 The prompt is rendered from `SynthRequest` (§3) with a versioned template in `crates/velme-synth/prompts/`.
 `prompt_version` = template id + BLAKE3 of the template bytes, so any edit changes synthesis keys (D-11). Both LLM
@@ -156,7 +155,7 @@ sends the same fields as structured JSON.
 **R-SYNTH-08** The prompt contains nothing outside this table: no file paths, no other goals' plans, no environment,
 no user identity (tooling/41).
 **R-SYNTH-09** Output is constrained to the reply schema (the IR JSON Schema or a question object, R-SYNTH-10) where
-the provider supports it; Velme still runs its own full validator on every reply (§20.2) — a provider's schema
+the provider supports it; Velme still runs its own full validator on every reply — a provider's schema
 guarantee is never trusted.
 **R-SYNTH-10** The reply is one IR goal or one question object `{"question": "<text>"}` (R-SYNTH-32). Any prose,
 markdown fence, partial JSON or other shape is a failed attempt with `VL0401`.
@@ -192,7 +191,7 @@ in a row share a cause (R-SYNTH-31), and the goal fails with `VL0403` at once.
 `reply_format`, `retry_history` and `max_prompt_examples`, because they change what is sent. Changing an option only
 changes `synthesis_key`; lock staleness uses `contract_key` (D-26), so it never re-synthesizes a locked goal.
 
-## 5. Retry loop (§21)
+## 5. Retry loop
 
 ```
 attempt 0 ─► validate (21 §6) ─► verify (§6) ─► accepted
@@ -239,7 +238,7 @@ become spaces and whitespace runs collapse to one; the result must then be 1..=2
 is a failed attempt with `VL0401`. It is shown only as a note, quoted and labelled as the AI helper's question, and as
 a plain string in `--json`.
 
-## 6. Verification pipeline (§22)
+## 6. Verification pipeline
 
 A candidate becomes an artifact only after every step passes, in order:
 
@@ -258,9 +257,9 @@ passes in, so `velme-synth` never depends on the artifact store directly (D-54, 
 attempt is not consumed, since the watchdog is a safety net, not a verification verdict (D-51).
 **R-SYNTH-15** Any failure in steps 8–9 wraps as `VL0503 VerificationFailed` with the first failing case (examples
 before generated inputs, then generation order) as the primary cause.
-**R-SYNTH-16** Only a fully verified candidate is eligible for the artifact store (§22, runtime/32 R-ART-11).
+**R-SYNTH-16** Only a fully verified candidate is eligible for the artifact store (runtime/32 R-ART-11).
 
-## 7. Generated test inputs (§23)
+## 7. Generated test inputs
 
 The `check` block is a property, not a proof: it is evaluated over a bounded, deterministic input set.
 

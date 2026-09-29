@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** BLT
 **Read when:** adding or changing a built-in, implementing one in a backend, writing the builtins section of the synthesis prompt, or bumping `builtins_version`.
 **Depends on:** [SPEC](../SPEC.md), [11-types](11-types.md), [13-check-dsl](13-check-dsl.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-22, D-36)
-**Source:** §7.4, §14, §16, §27, §32
 
 ## 1. Purpose & boundaries
 
@@ -84,7 +83,7 @@ A plan such as "create `count` bounce strengths from 5 through 10 using the seed
 ## 4. Collection primitives (IR only)
 
 These take an IR lambda ([21-ir](../compiler/21-ir.md)) and are how synthesized code iterates — learners never write
-loops (§14). Lambdas are non-recursive and may read enclosing inputs, locals and lambda parameters.
+loops. Lambdas are non-recursive and may read enclosing inputs, locals and lambda parameters.
 
 | Name | Signature | Fuel (excl. lambda body) | Behaviour |
 |---|---|---|---|
@@ -100,7 +99,7 @@ loops (§14). Lambdas are non-recursive and may read enclosing inputs, locals an
 primitive at the first failing element in that order. Every element visit consumes fuel
 ([30-execution-vibevm](../runtime/30-execution-vibevm.md)); result lists are subject to the list-size limit (`VL0606`).
 
-**R-BLT-08** `Group` (§14) needs maps and is Future. Counting is `length(filter(…))`; no separate `count`.
+**R-BLT-08** `Group` needs maps and is Future. Counting is `length(filter(…))`; no separate `count`.
 
 **R-BLT-11** `sort_by`'s key lambda is evaluated exactly once per element, in list order, before any comparison; the
 sort itself is stable, and `descending` keeps elements with equal keys in their input-list order (D-59). Ordering by a

@@ -3,16 +3,15 @@
 **Status:** v0.1 (roadmap M7, the last MVP phase) · **Area:** SBX
 **Read when:** working on IR → WASM code generation, the value layout, Wasmtime configuration, host imports, or interpreter/WASM differential tests.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [30-execution-vibevm](30-execution-vibevm.md), [language/14](../language/14-builtins.md), [tooling/41](../tooling/41-security-privacy.md)
-**Source:** §27, §28, §39, §40, §41, §42 (Runtime)
 
 ## 1. Purpose & boundaries
 
 The WASM backend compiles a verified IR goal body to a core WebAssembly module and runs it in Wasmtime with no
 ambient capabilities. It is an **optimization backend** (P-4): the interpreter ([30](30-execution-vibevm.md) §3)
 defines semantics and WASM must produce the same value, outcome code, fuel and memory figures (INV-3). Composite-goal
-scheduling stays in the host runtime (§17.2); only goal bodies become modules.
+scheduling stays in the host runtime; only goal bodies become modules.
 
-## 2. Strategy (§39–§41)
+## 2. Strategy
 
 | Stage | v0.1 | Later |
 |---|---|---|
@@ -53,7 +52,7 @@ typed loads/stores is simpler than emitting a parser, and the encoding is canoni
 ## 4. Code generation & validation
 
 **R-SBX-05** The emitter instruments Velme fuel and memory explicitly: each IR node decrements a global fuel counter by
-its cost from the shared cost table (30 R-RUN-04); each value creation adds the §7.1 size to a cumulative
+its cost from the shared cost table (30 R-RUN-04); each value creation adds the 30 §7.1 size to a cumulative
 bytes-allocated counter (30 §7.1, D-53). Crossing a limit traps with a reason code the host maps to `VL0601`/`VL0604`.
 The cost table is one constant set in `velme-builtins`, depended on by both `velme-interp` and `velme-wasm` (D-54).
 **R-SBX-06** `Number` arithmetic and comparison are host imports (`velme.num_add`, `num_sub`, `num_mul`, `num_div`,
@@ -79,9 +78,9 @@ are emitted in WASM; `sort` is an emitted stable merge sort.
 
 **R-SBX-09** Because `random` is a pure builtin (D-22), no effectful host function exists in v0.1. The `Linker`
 defines only the `velme.*` catalog imports; a module importing anything else fails instantiation with `VL0801` (INV-4).
-**R-SBX-10** No WASI is linked: no filesystem, network, environment, clock or process (§27, INV-4).
+**R-SBX-10** No WASI is linked: no filesystem, network, environment, clock or process (INV-4).
 
-## 6. Wasmtime configuration (§28)
+## 6. Wasmtime configuration
 
 | Setting | Value | Why |
 |---|---|---|
@@ -129,7 +128,7 @@ composite goals, and WASI capabilities tied to declared `effects`. Tracked by RF
 |---|---|
 | AC-SBX-01 | Every golden leaf goal gives identical value, outcome code, fuel and memory used (cumulative bytes allocated) on `interp` and `wasm`. |
 | AC-SBX-02 | A module importing a non-whitelisted function (e.g. `wasi_snapshot_preview1.fd_write`) fails with `VL0801` and never runs. |
-| AC-SBX-03 | An expensive leaf is stopped with `VL0601` on WASM with the same fuel figure as the interpreter — §52 Test 7. |
+| AC-SBX-03 | An expensive leaf is stopped with `VL0601` on WASM with the same fuel figure as the interpreter — AC-RDM-07. |
 | AC-SBX-04 | A leaf that allocates past `max_memory` fails with `VL0604` on both backends at the same point. |
 | AC-SBX-05 | Division by zero traps with `VL0602` on WASM; a module containing any `f32`/`f64` instruction is rejected by validation. |
 | AC-SBX-06 | Every emitted module in the golden set validates with `wasmparser` under exactly the R-SBX-07 feature set. |

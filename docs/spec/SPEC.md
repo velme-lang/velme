@@ -43,7 +43,6 @@ Each child file states what it is for in its first five lines, so you can route 
 | Tests, golden files, fuzzing, differential testing, benchmarks, quality gates | `delivery/51` |
 | Repo layout, CI, releases, distribution, license, governance, RFCs | `delivery/52` |
 | Error codes, failure kinds, reserved words, glossary | `reference/90` |
-| Where a section of the original design doc went | `reference/91` |
 | Why a design choice was made; open questions for the owner | `reference/92` |
 
 ### Identifier scheme
@@ -52,13 +51,12 @@ Each child file states what it is for in its first five lines, so you can route 
 |---|---|---|
 | `INV-n` | architectural invariant | this file |
 | `P-n` | design principle | this file |
-| `D-n` | design decision (resolves a gap or contradiction in the original doc) | `reference/92` |
+| `D-n` | design decision (the *why* behind a rule) | `reference/92` |
 | `Q-n` | open question for the project owner | `reference/92` |
 | `R-<AREA>-nn` | binding rule | the owning child file |
 | `AC-<AREA>-nn` | testable acceptance criterion | the owning child file |
 | `VLnnnn` | stable diagnostic / error code | `reference/90` |
 | `CC-*` | code convention | `docs/code-conventions.md` |
-| `§n` | section of the original design doc (deleted; the spec replaces it) | `reference/91` |
 
 Areas: `SYN` 10 · `TYP` 11 · `GOAL` 12 · `CHK` 13 · `BLT` 14 · `CMP` 20 · `IR` 21 · `SYNTH` 22 · `RUN` 30 ·
 `SBX` 31 · `ART` 32 · `CLI` 40 · `SEC` 41 · `RDM` 50 · `QA` 51 · `REL` 52 · `ERR` 90.
@@ -93,7 +91,7 @@ These hold for the life of the language. A change that breaks one is an architec
 |---|---|
 | **P-1** | **Language first** — the spec defines Velme; the implementation and the LLM never silently become the definition. |
 | **P-2** | **Progressive disclosure** — one semantic model from the first beginner goal to professional code; advanced features add to it, never replace it. |
-| **P-3** | **Reject rather than guess** — prefer a simple rule with a friendly diagnostic over clever inference (e.g. call bindings in source order, §12.5). |
+| **P-3** | **Reject rather than guess** — prefer a simple rule with a friendly diagnostic over clever inference (e.g. call bindings in source order, `language/12` §3). |
 | **P-4** | **Interpreter first** — the reference interpreter stabilizes semantics; WASM is an optimization backend. |
 | **P-5** | **Small v0.1** — no recursion, loops, conditionals in calls, generics, effects or modules until the straight-line DAG model is stable. |
 | **P-6** | **Friendly words, stable codes** — human messages are written for a learner; codes and JSON output are for tools. |
@@ -193,6 +191,5 @@ docs/spec/
     52-repo-release-governance.md repo layout, CI, releases, distribution, license, RFCs
   reference/
     90-errors-glossary.md         VL codes, failure kinds, reserved words, glossary
-    91-coverage-map.md            original § → owning file
     92-decisions-questions.md     design review: decisions D-n, open questions Q-n
 ```

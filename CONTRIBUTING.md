@@ -16,8 +16,7 @@ Questions and language ideas go to GitHub Discussions; bugs and tasks to Issues 
   the invariants `INV-1..10`. The first five lines of each child file say what it covers.
 - Every rule has a stable id: `R-*` rules, `AC-*` acceptance criteria, `INV-*` invariants, `D-*` decisions, `Q-*` open
   questions. Search for one with `grep -rn 'R-GOAL-04' docs/spec`.
-- The *why* behind a rule is in `reference/92` (`D-n`). `reference/91` maps sections of the original (deleted) design
-  doc to spec ids.
+- The *why* behind a rule is in `reference/92` (`D-n`).
 - **Cite ids, don't restate the spec** in code comments, commit messages or new docs (`R-IR-07`, `AC-RUN-03`, `INV-3`,
   `D-9`).
 - If code and spec disagree, or the spec is silent, open an issue rather than picking one.
@@ -79,7 +78,7 @@ Git flow is R-REL-12 (`delivery/52` §4). In short:
 ## Changing the spec or the language
 
 - **Spec edits**: change the owning file only, keep ids stable (never renumber; retire an id by marking it
-  `Retired`), update `reference/91`/`92` if affected, and list the ids you touched in the PR.
+  `Retired`), update `reference/92` if affected, and list the ids you touched in the PR.
 - **New design choices** are recorded as a `D-n` in `reference/92`, or a `Q-n` while still open.
 - **Syntax or semantics changes** need an accepted RFC first (`delivery/52` §9, R-REL-11): Discussion → RFC PR
   (`rfc/NNNN-title.md`) → accepted → implementation, tests and spec update together.
