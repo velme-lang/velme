@@ -43,7 +43,7 @@ where `#` is ordinary text.
 | Kind | Words |
 |---|---|
 | Keywords (v0.1) | `language type goal call plan check examples budget and or not if then every some in has is empty nothing true false result` |
-| Reserved (D-24) | `pure effects when choose otherwise import module fallback retry optional assume` |
+| Reserved (D-24, D-87) | `pure effects when choose otherwise import module fallback retry optional assume sample for` |
 | Built-in type names | `Number Text Boolean Nothing List` — ordinary names resolved by sema, not keywords |
 
 **R-SYN-05** Using a reserved word as a name, or as a block/modifier, is `VL0104 ReservedWord` with the message "`when`

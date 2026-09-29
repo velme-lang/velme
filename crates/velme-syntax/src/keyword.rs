@@ -87,6 +87,8 @@ keywords! {
     Retry = "retry",
     Optional = "optional",
     Assume = "assume",
+    Sample = "sample",
+    For = "for",
     ]
 }
 
