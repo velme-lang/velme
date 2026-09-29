@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use proptest::prelude::*;
 use serde_json::{Value, json};
 use velme_builtins::BUILTINS_VERSION;
+use velme_builtins::limits::MAX_LIST_SIZE;
 use velme_diagnostics::render::{JsonDiagnostic, LineIndex, render_human};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
@@ -217,6 +218,27 @@ fn ac_ir_04_unknown_builtin_is_named() {
     // A collection primitive is a node of its own, not a `builtin` call.
     let text = edit(golden("find_badge"), "/body/else/then/name", json!("map"));
     invalid(&program, "FindBadge", &text);
+}
+
+#[test]
+fn literal_over_the_item_limit_still_reports_a_wrong_item() {
+    let program = program(LIMITS);
+    // Above both the §7 literal limit and `max_list_size`, which the D-23 decoder checks after the items.
+    let mut items = vec![json!(0); usize::try_from(MAX_LIST_SIZE).expect("small") + 1];
+    items[0] = json!("x");
+    let body = json!({"kind": "literal", "type": {"t": "List", "of": {"t": "Number"}}, "value": items});
+    let text = limit_doc("Nested", json!({"t": "List", "of": {"t": "Number"}}), &body.to_string());
+    let diags = run(&program, "Nested", Origin::Complete, &text).expect_err("rejected");
+    let notes: Vec<&String> = diags.iter().flat_map(|d| &d.notes).collect();
+    assert!(notes.iter().any(|n| *n == "at `/body/value/0`"), "{diags:#?}");
+    assert!(diags.iter().any(|d| d.message.contains("isn't Number")), "{diags:#?}");
+}
+
+#[test]
+fn ac_blt_08_ir_calling_an_unknown_builtin_is_ir_invalid() {
+    let program = goals();
+    let text = edit(golden("find_badge"), "/body/else/then/name", json!("median"));
+    assert_eq!(invalid(&program, "FindBadge", &text).code, Code::IRInvalid);
 }
 
 const LIMITS: &str = "\

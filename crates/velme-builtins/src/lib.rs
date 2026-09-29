@@ -1,8 +1,15 @@
-//! Velme built-ins: the catalog of built-in functions, defined once as data (`language/14` R-BLT-01), and the budget
-//! caps every layer checks against (D-77).
+//! Velme built-ins: the catalog of built-in functions, defined once as data (`language/14` R-BLT-01), their pure
+//! Rust implementations over the value model (`Number`, D-36), and the budget caps every layer checks against (D-77).
 #![forbid(unsafe_code)]
 
+mod function;
 pub mod limits;
+mod number;
+mod value;
+
+pub use function::{Error, Function, Output, sort_by_fuel, sort_order};
+pub use number::Number;
+pub use value::{Record, Value};
 
 /// The catalog's version, recorded in every artifact manifest and synthesis cache key (R-BLT-09).
 pub const BUILTINS_VERSION: &str = "0.1";
@@ -49,6 +56,9 @@ pub struct Builtin {
     pub in_checks: bool,
     /// Callable from synthesized IR (R-BLT-02).
     pub in_ir: bool,
+    /// Its implementation, for a value built-in (§2); `None` for a collection primitive (§4), which the backend
+    /// drives because it takes a lambda.
+    pub function: Option<Function>,
 }
 
 impl Builtin {
@@ -71,12 +81,13 @@ const fn sig(params: &'static [Shape], output: Shape) -> Signature {
 }
 
 /// A value built-in (§2): callable from checks and IR.
-const fn value(name: &'static str, signatures: &'static [Signature]) -> Builtin {
+const fn value(name: &'static str, function: Function, signatures: &'static [Signature]) -> Builtin {
     Builtin {
         name,
         signatures,
         in_checks: true,
         in_ir: true,
+        function: Some(function),
     }
 }
 
@@ -87,33 +98,47 @@ const fn primitive(name: &'static str, signatures: &'static [Signature]) -> Buil
         signatures,
         in_checks: false,
         in_ir: true,
+        function: None,
     }
 }
 
 /// Every built-in of [`BUILTINS_VERSION`], in `language/14` order.
 pub const CATALOG: &[Builtin] = &[
-    value("length", &[sig(&[LIST_T], NUMBER), sig(&[TEXT], NUMBER)]),
+    value(
+        "length",
+        Function::Length,
+        &[sig(&[LIST_T], NUMBER), sig(&[TEXT], NUMBER)],
+    ),
     value(
         "is_empty",
+        Function::IsEmpty,
         &[
             sig(&[Shape::Optional(&T)], BOOLEAN),
             sig(&[LIST_T], BOOLEAN),
             sig(&[TEXT], BOOLEAN),
         ],
     ),
-    value("maximum", &[sig(&[LIST_NUMBER], Shape::Optional(&NUMBER))]),
-    value("minimum", &[sig(&[LIST_NUMBER], Shape::Optional(&NUMBER))]),
-    value("sum", &[sig(&[LIST_NUMBER], NUMBER)]),
-    value("contains", &[sig(&[LIST_T, T], BOOLEAN)]),
-    value("abs", &[sig(&[NUMBER], NUMBER)]),
-    value("floor", &[sig(&[NUMBER], NUMBER)]),
-    value("ceil", &[sig(&[NUMBER], NUMBER)]),
-    value("round", &[sig(&[NUMBER], NUMBER)]),
-    value("clamp", &[sig(&[NUMBER, NUMBER, NUMBER], NUMBER)]),
-    value("concat", &[sig(&[TEXT, TEXT], TEXT)]),
-    value("to_text", &[sig(&[NUMBER], TEXT)]),
-    value("range", &[sig(&[NUMBER], LIST_NUMBER)]),
-    value("random", &[sig(&[NUMBER, NUMBER], NUMBER)]),
+    value(
+        "maximum",
+        Function::Maximum,
+        &[sig(&[LIST_NUMBER], Shape::Optional(&NUMBER))],
+    ),
+    value(
+        "minimum",
+        Function::Minimum,
+        &[sig(&[LIST_NUMBER], Shape::Optional(&NUMBER))],
+    ),
+    value("sum", Function::Sum, &[sig(&[LIST_NUMBER], NUMBER)]),
+    value("contains", Function::Contains, &[sig(&[LIST_T, T], BOOLEAN)]),
+    value("abs", Function::Abs, &[sig(&[NUMBER], NUMBER)]),
+    value("floor", Function::Floor, &[sig(&[NUMBER], NUMBER)]),
+    value("ceil", Function::Ceil, &[sig(&[NUMBER], NUMBER)]),
+    value("round", Function::Round, &[sig(&[NUMBER], NUMBER)]),
+    value("clamp", Function::Clamp, &[sig(&[NUMBER, NUMBER, NUMBER], NUMBER)]),
+    value("concat", Function::Concat, &[sig(&[TEXT, TEXT], TEXT)]),
+    value("to_text", Function::ToText, &[sig(&[NUMBER], TEXT)]),
+    value("range", Function::Range, &[sig(&[NUMBER], LIST_NUMBER)]),
+    value("random", Function::Random, &[sig(&[NUMBER, NUMBER], NUMBER)]),
     primitive("map", &[sig(&[LIST_T, Shape::Lambda(&[T], &U)], Shape::List(&U))]),
     primitive("filter", &[sig(&[LIST_T, Shape::Lambda(&[T], &BOOLEAN)], LIST_T)]),
     primitive(
