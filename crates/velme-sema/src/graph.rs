@@ -161,12 +161,11 @@ fn exceeds(n: u64, key: BudgetKey, goal: &Goal, decl: &ast::GoalDecl, diags: &mu
         BudgetKey::Depth => "make its chains of calls shorter",
         _ => "call fewer goals below it — every call counts, even of the same goal",
     };
-    let mut diag = Diagnostic::new(
-        Code::CallLimitExceeded,
-        decl.name.span,
-        format!("Too many goals were called while running `{name}`."),
-    )
-    .with_note(count);
+    let headline = match key {
+        BudgetKey::Depth => format!("Goals call each other too deeply while running `{name}`."),
+        _ => format!("Too many goals were called while running `{name}`."),
+    };
+    let mut diag = Diagnostic::new(Code::CallLimitExceeded, decl.name.span, headline).with_note(count);
     let declared = decl
         .budget
         .iter()

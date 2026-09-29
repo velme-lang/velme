@@ -105,6 +105,13 @@ fn limit(item: &ast::BudgetItem, seen: &mut BTreeSet<BudgetKey>) -> Result<(Budg
     let scale = key
         .scale(item.unit.as_ref().map(|u| u.unit))
         .map_err(|m| invalid(m.to_owned()))?;
+    if item.value.text.contains('.') {
+        let mut diag = invalid(format!("`{name}` is written as a whole number, without a `.`"));
+        if let Some(kb) = fractional_mb_as_kb(key, &item.value.text, item.unit.as_ref().map(|u| u.unit)) {
+            diag = diag.with_help(format!("write `{name}={kb}kb`"));
+        }
+        return Err(diag);
+    }
     let Some(count) = whole(&item.value.text) else {
         return Err(invalid(format!("`{name}` must be a whole number.")));
     };
@@ -121,13 +128,28 @@ fn limit(item: &ast::BudgetItem, seen: &mut BTreeSet<BudgetKey>) -> Result<(Budg
     Ok((key, value))
 }
 
-/// The value of the decimal `text` if it is a whole number, saturating at `u64::MAX` (it is then above every cap).
+/// The value of the digits in `text` (`_` allowed, D-78), saturating at `u64::MAX` (it is then above every cap).
 fn whole(text: &str) -> Option<u64> {
-    let (digits, fraction) = text.split_once('.').unwrap_or((text, ""));
-    if !digits.bytes().all(|b| b.is_ascii_digit()) || fraction.bytes().any(|b| b != b'0') {
+    let mut digits = text.bytes().filter(|&b| b != b'_').peekable();
+    digits.peek()?;
+    digits.try_fold(0u64, |n, b| {
+        b.is_ascii_digit()
+            .then(|| n.saturating_mul(10).saturating_add(u64::from(b - b'0')))
+    })
+}
+
+/// D-78: `memory=1.5mb` as the whole number of `kb` it equals (`1536`), if it is one.
+fn fractional_mb_as_kb(key: BudgetKey, text: &str, unit: Option<Unit>) -> Option<u64> {
+    if key != BudgetKey::Memory || unit != Some(Unit::Mb) {
         return None;
     }
-    Some(digits.bytes().fold(0u64, |n, b| {
-        n.saturating_mul(10).saturating_add(u64::from(b.wrapping_sub(b'0')))
-    }))
+    let (int, fraction) = text.split_once('.')?;
+    let int = whole(int)?;
+    let scale = 10u64.checked_pow(u32::try_from(fraction.len()).ok()?)?;
+    let fraction = whole(fraction)?;
+    let kb = int
+        .checked_mul(scale)?
+        .checked_add(fraction)?
+        .checked_mul(limits::MIB / limits::KIB)?;
+    (kb % scale == 0).then_some(kb / scale)
 }

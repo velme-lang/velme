@@ -599,8 +599,19 @@ fn ac_goal_14_fractional_and_wrong_unit_cpu() {
     let d = budget("cpu=1.5ms");
     assert_eq!(
         (d.code, d.message.as_str()),
-        (Code::InvalidBudget, "`cpu` must be a whole number.")
+        (Code::InvalidBudget, "`cpu` is written as a whole number, without a `.`")
     );
+    let d = budget("cpu=10.0ms");
+    assert_eq!(d.message, "`cpu` is written as a whole number, without a `.`");
+    let d = budget("depth=1.0");
+    assert_eq!(d.message, "`depth` is written as a whole number, without a `.`");
+    assert!(d.help.is_none());
+    let d = budget("memory=1.5mb");
+    assert_eq!(d.message, "`memory` is written as a whole number, without a `.`");
+    assert_eq!(d.help.as_deref(), Some("write `memory=1536kb`"));
+    let d = budget("memory=1.0mb");
+    assert_eq!(d.help.as_deref(), Some("write `memory=1024kb`"));
+    program("goal G(x: Number) -> Number:\n    budget calls=1_0\n    plan: \"x\"\n");
     let d = budget("cpu=10s");
     assert_eq!(
         (d.code, d.message.as_str()),
@@ -691,7 +702,7 @@ fn call_depth_over_the_cap_is_rejected_statically() {
     assert_eq!(
         d.message,
         format!(
-            "Too many goals were called while running `G{}`.",
+            "Goals call each other too deeply while running `G{}`.",
             limits::MAX_CALL_DEPTH + 1
         )
     );
@@ -703,6 +714,26 @@ fn call_depth_over_the_cap_is_rejected_statically() {
             limits::MAX_CALL_DEPTH
         )]
     );
+}
+
+/// The recursive-type label points at the field that leads back, even when a duplicate field comes first.
+#[test]
+fn recursive_type_label_survives_a_duplicate_field() {
+    let text = "type Node:\n    a: Number\n    a: Number\n    next: Node?\n";
+    let d = analyze_str(text).1;
+    let d = d.iter().find(|d| d.code == Code::RecursiveType).expect("recursive");
+    assert_eq!(d.labels.len(), 1);
+    let start = d.labels[0].span.start;
+    assert_eq!(&text[start..start + 4], "next");
+}
+
+/// An example that calls another goal gets advice fit for an example, not for a `call:` block.
+#[test]
+fn example_calling_another_goal_says_what_examples_may_call() {
+    let text = "goal Half(x: Number) -> Number:\n    plan: \"x\"\n\ngoal Double(x: Number) -> Number:\n    plan: \"x\"\n    examples:\n        - Half(2) == 1\n";
+    let d = only(text);
+    assert_eq!(d.code, Code::InvalidCall);
+    assert_eq!(d.message, "An example can only call `Double`, the goal it belongs to.");
 }
 
 /// A goal with a repeated parameter still takes as many inputs as it lists, so calls to it aren't reported again.

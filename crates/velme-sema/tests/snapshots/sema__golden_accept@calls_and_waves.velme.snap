@@ -738,7 +738,7 @@ input_file: tests/golden/sema/accept/calls_and_waves.velme
           "args": [
             {
               "kind": "record",
-              "ty": 0,
+              "record": 0,
               "fields": [
                 {
                   "kind": "number",

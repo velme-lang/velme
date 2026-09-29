@@ -137,8 +137,9 @@ accesses. Paths are immutable, so their type can be narrowed:
 | `p is empty` | right operand of `c or …` |
 | `p != nothing` / `p == nothing` | same as `is not empty` / `is empty` |
 
-Narrowing reaches into nested expressions (including quantifier bodies) inside that scope. It does not flow through
-`not`, through built-in calls (`maximum(xs)` stays `Number?`), or across separate check items.
+Narrowing reaches into nested expressions (including quantifier bodies) inside that scope. It flows through `not`
+(which swaps the sides, R-TYP-27) and through an `if` used as a condition (R-TYP-27, D-6), but not through built-in
+calls (`maximum(xs)` stays `Number?`) or across separate check items.
 
 **R-TYP-27** Compound conditions combine the narrowings of their operands: in `if a and b then X`, the narrowings `a`
 and `b` each establish (per the table above) both apply within `X`. In `if a or b then X else Y`, the narrowings that

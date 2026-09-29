@@ -123,7 +123,8 @@ make no LLM request.
 **R-GOAL-20** The effective limit for this goal's own invocation is the minimum of the system cap and the declared
 value — a `budget` can only tighten its own invocation's caps, never a caller's or a callee's (D-8, revised
 2026-09-27; `runtime/30` R-RUN-17). A declared value above the system cap, an unknown key, a wrong or missing unit, a
-non-positive, non-integer or fractional (for `cpu`) count, or a repeated key is `VL0308 InvalidBudget`.
+non-positive count, a value written with a `.` (D-78: budget values are digit-only whole numbers, `_` allowed; even
+`10.0` is rejected, and a fractional size is written in `kb`), or a repeated key is `VL0308 InvalidBudget`.
 
 ## 7. `examples` (D-7)
 
@@ -396,7 +397,7 @@ threshold make them verified. When `VL0407` asks a question, an example like the
 | AC-GOAL-11 | An example calling a different goal yields `VL0303`; a wrong expected value at run time yields `VL0502` showing expected and received. |
 | AC-GOAL-12 | A binding named `result` whose type isn't assignable to the goal's output yields `VL0204`. |
 | AC-GOAL-13 | The §8.1 and §8.2 programs pass `velme check` with no diagnostics. |
-| AC-GOAL-14 | `budget cpu=1.5ms` (fractional) and `budget cpu=10s` (wrong unit) each yield `VL0308`. |
+| AC-GOAL-14 | `budget cpu=1.5ms` (fractional), `budget memory=1.5mb` (fractional; help suggests `memory=1536kb`) and `budget cpu=10s` (wrong unit) each yield `VL0308`. |
 | AC-GOAL-15 | Two goals named `Score` in the same file yield `VL0203`; two parameters named `x` on one goal yield `VL0203`. |
 | AC-GOAL-16 | Two `call` bindings named `total`, and a binding reusing a parameter's name, each yield `VL0306`. |
 | AC-GOAL-17 | `velme test` runs a goal's `examples` before any generated verification input, and evaluates that goal's `check` items on every example's result too; a check failing on an example's input is reported the same way as on a generated one. |
