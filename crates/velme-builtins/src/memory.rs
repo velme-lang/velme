@@ -28,7 +28,7 @@ pub fn number_list_bytes(length: u64) -> u64 {
     HEADER_BYTES.saturating_add(length.saturating_mul(NUMBER_BYTES))
 }
 
-/// The logical size of `value`, whatever its parts share (D-83): Number 16, Boolean 8, Nothing 0, Text 16 + bytes,
+/// The logical size of `value`, whatever its parts share (D-83): Number 16, Boolean 8, Nothing 0, Text 16 + ⌈bytes/8⌉ · 8,
 /// List 16 + Σ items, record 16 + Σ fields, an item or field of optional type 8 more, saturating at `u64::MAX`. Constant time: a list or record knows its size.
 pub fn value_bytes(value: &Value) -> u64 {
     match value {

@@ -1,6 +1,8 @@
 //! Lowering of checks and examples to IR (`language/13` R-CHK-11).
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+// The lists the fixture directories: tests may read files, the library may not (R-RUN-05).
+#![allow(clippy::disallowed_methods)]
 
 use serde_json::to_string_pretty;
 use velme_check::{Lowered, lower_check, lower_example};

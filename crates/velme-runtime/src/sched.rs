@@ -430,24 +430,33 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             tokio::task::spawn_blocking(move || {
                 let program = &shared.program;
                 let (Some(target), Some(locked)) = (program.goals.get(goal.0), shared.registry.get(goal)) else {
-                    return Err(Diagnostic::internal_error());
+                    return (Err(Diagnostic::internal_error()), spent);
                 };
                 let mut spent = spent;
                 let mut all = Vec::new();
                 for i in wave {
                     let budget = Budget::new(limits).after(spent).watched(Some(interrupt.clone()));
-                    let (args, total) = velme_interp::call_args(&locked.ir, i, &inputs, &values, budget)
-                        .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
+                    let (args, total) = velme_interp::call_args(&locked.ir, i, &inputs, &values, budget);
                     spent = total;
-                    all.push((i, args));
+                    match args {
+                        Ok(args) => all.push((i, args)),
+                        Err(failure) => return (Err(failure.diagnostic(&target.name, target.span)), spent),
+                    }
                 }
-                Ok((all, spent))
+                (Ok(all), spent)
             })
             .await
         };
+        let (evaluated, total) = match evaluated {
+            Ok(evaluated) => evaluated,
+            Err(_) => return run,
+        };
+        // Spent whether the arguments evaluated or not: a failure's figures are what it spent before stopping.
+        spent = total;
+        (run.fuel, run.memory) = (spent.fuel, spent.memory);
         let evaluated = match evaluated {
-            Ok(Ok(evaluated)) => evaluated,
-            Ok(Err(diagnostic)) => {
+            Ok(evaluated) => evaluated,
+            Err(diagnostic) => {
                 run.outcome = Err(Failed::new(name, vec![diagnostic]));
                 run.timing = Timing {
                     start: started,
@@ -455,12 +464,9 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                 };
                 return run;
             }
-            Err(_) => return run,
         };
-        spent = evaluated.1;
-        (run.fuel, run.memory) = (spent.fuel, spent.memory);
         let mut starts = Vec::new();
-        for (i, args) in evaluated.0 {
+        for (i, args) in evaluated {
             let Some(binding) = target.bindings.get(i) else {
                 return run;
             };

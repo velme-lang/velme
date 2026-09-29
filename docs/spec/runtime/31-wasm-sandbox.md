@@ -33,10 +33,10 @@ linear memory in this layout and reads the result back; the module never parses 
 
 | Type | Layout (little-endian, 8-byte aligned slots) |
 |---|---|
-| `Number` | 16-byte slot holding the canonical 128-bit decimal encoding of `velme-builtins` (coefficient + scale + sign) |
+| `Number` | 16-byte, 8-aligned slot holding the canonical 128-bit decimal encoding of `velme-builtins` (coefficient + scale + sign) |
 | `Boolean` | `i32` 0/1 |
 | `Nothing` | zero-size |
-| `T?` | `i32` tag (0 = nothing, 1 = present) + `T` slot |
+| `T?` | `i32` tag in its own 8-byte slot (0 = nothing, 1 = present) + `T` slot, so `Number?` is exactly 24 bytes |
 | `Text` | `i32 ptr, i32 len` → UTF-8 bytes |
 | `List<T>` | `i32 ptr, i32 len` → `len` contiguous `T` slots |
 | record | fields in declared order, each in its slot |
@@ -46,6 +46,11 @@ typed loads/stores is simpler than emitting a parser, and the encoding is canoni
 
 **R-SBX-03** Module exports exactly: `memory`, `velme_alloc(size: i32) -> i32`, `velme_run(input_ptr: i32) -> i32`
 (pointer to the result slot). Allocation is a bump allocator; nothing is freed — each invocation gets a fresh instance.
+Revised 2026-09-30 (D-90): linear memory holds only (a) the values 30 §7.1 charges, each in no more than its charged
+size, bump-allocated; (b) the invocation's inputs, written by the host; (c) literal data segments; (d) one fixed
+scratch region of S bytes, sized for `MAX_LIST_SIZE`, reused by every node and never bump-allocated — it holds sort
+order and keys, filter selection, the result slot and host-call marshalling. Nothing else takes memory that grows with
+fuel.
 **R-SBX-04** The host validates every pointer/length it reads back against memory bounds; an out-of-range result is
 `VL0607` (a backend bug, never user-visible data corruption).
 
@@ -57,13 +62,15 @@ bytes-allocated counter (30 §7.1, D-53). Crossing a limit traps with a reason c
 The cost table is one constant set in `velme-builtins`, depended on by both `velme-interp` and `velme-wasm` (D-54).
 **R-SBX-06** `Number` arithmetic and comparison are host imports (`velme.num_add`, `num_sub`, `num_mul`, `num_div`,
 `num_neg`, `num_cmp`) implemented by the same `velme-builtins` code as the interpreter, so results match bit for bit
-(D-36). Division by zero or overflow returns the `VL0602` reason and the module traps.
+(D-36). Division by zero or overflow returns the `VL0602` reason and the module traps. Numbers cross these imports, and
+the builtin imports of R-SBX-08, as values — two `i64`, never through linear memory (revised 2026-09-30, D-90).
 **R-SBX-07** The emitter uses only: MVP instructions except any `f32`/`f64` operation (`Number` is decimal, D-36), multi-value, bulk
 memory, mutable globals. No threads, SIMD,
 relaxed SIMD, reference types, exceptions or tail calls in v0.1. `wasmparser` validates every module with exactly this
 feature set before it is cached or instantiated.
 **R-SBX-08** Builtins are **host imports** under module `velme`, implemented by `velme-builtins` — the same Rust code the
-interpreter calls — so their semantics cannot diverge. Collection nodes (`map`, `filter`, `find`, `reduce`, `sort`)
+interpreter calls — so their semantics cannot diverge; the arguments and results they marshal go through the scratch
+region of R-SBX-03, or are the charged values themselves (revised 2026-09-30, D-90). Collection nodes (`map`, `filter`, `find`, `reduce`, `sort`)
 are emitted in WASM; `sort` is an emitted stable merge sort.
 
 ## 5. Host imports (whitelist)
@@ -87,7 +94,7 @@ defines only the `velme.*` catalog imports; a module importing anything else fai
 | `consume_fuel` | on, set to 20 × the Velme fuel budget | backstop only; Velme fuel (R-SBX-05) is the deterministic limit |
 | `epoch_interruption` | on; ticker thread increments every 10 ms; deadline = `max_wall_clock` | wall-clock safety net → `VL0603` (D-10) |
 | `wasm_threads`, `wasm_simd`, `wasm_relaxed_simd` | off | determinism (R-SBX-07) |
-| `StoreLimits` | memory ≤ `max_memory` + 1 MiB fixed overhead, 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` (D-53) |
+| `StoreLimits` | memory ≤ `max_memory` + the ABI bytes of the invocation's inputs + the data-segment bytes + S (R-SBX-03) + a fixed overhead, 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` (D-53, revised 2026-09-30, D-90) |
 | Instantiation | `InstancePre` per module, fresh `Store` + instance per invocation | no state shared between calls |
 
 **R-SBX-11** A Wasmtime trap is mapped by reason: Velme fuel/memory/arithmetic reason codes → their `VL06xx`;

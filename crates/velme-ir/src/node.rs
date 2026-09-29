@@ -397,9 +397,9 @@ impl<'de> Deserialize<'de> for LiteralValue {
 pub struct ItemShape(OnceLock<bool>);
 
 impl ItemShape {
-    /// Whether the items are optional; `false` for a node the validator hasn't typed.
-    pub fn optional(&self) -> bool {
-        self.0.get().copied().unwrap_or(false)
+    /// Whether the items are optional; `None` for a node the validator hasn't typed.
+    pub fn optional(&self) -> Option<bool> {
+        self.0.get().copied()
     }
 
     /// Records the validator's typing; a node is typed once, so a second value is ignored.

@@ -195,7 +195,7 @@ impl<'p> GoalChecks<'p> {
     ) -> Result<Vec<ItemReport>, Diagnostic> {
         let mut items = Vec::with_capacity(self.checks.len());
         for (check, lowered) in self.goal.checks.iter().zip(&self.checks) {
-            let start = evaluator.fuel();
+            let start = evaluator.spent();
             let cause = match evaluator.eval(lowered.node.trusted()) {
                 Ok(Value::Boolean(true)) => {
                     items.push(ItemReport {
@@ -224,8 +224,8 @@ impl<'p> GoalChecks<'p> {
                 },
                 Ok(_) => return Err(Diagnostic::internal_error()),
             };
-            // Only a failed item is probed: again, from the same fuel, so it goes exactly as before.
-            let report = self.probe(lowered, invocation, start)?;
+            // Only a failed item is probed: again, from the same fuel and memory, so it goes exactly as before.
+            let report = self.probe(lowered, invocation, start, check.span)?;
             items.push(ItemReport {
                 span: check.span,
                 parts: report.parts(check),
@@ -244,18 +244,30 @@ impl<'p> GoalChecks<'p> {
             .get(index)
             .zip(self.checks.get(index))
             .ok_or_else(Diagnostic::internal_error)?;
-        Ok(self.probe(lowered, invocation, invocation.fuel)?.parts(check))
+        let start = Spent {
+            fuel: invocation.fuel,
+            memory: invocation.memory,
+        };
+        Ok(self.probe(lowered, invocation, start, check.span)?.parts(check))
     }
 
-    /// `lowered` evaluated again with a [`Recorder`], starting from `fuel` spent.
-    fn probe(&self, lowered: &Lowered, invocation: &Invocation, fuel: u64) -> Result<Report<'p>, Diagnostic> {
+    /// `lowered` evaluated again with a [`Recorder`], starting from `start` spent. The outcome is already known, so
+    /// only a watchdog firing during the probe matters: what the report would hold then depends on timing, so the run
+    /// fails with `VL0603` instead of counting as reproducible.
+    fn probe(
+        &self,
+        lowered: &Lowered,
+        invocation: &Invocation,
+        start: Spent,
+        span: Span,
+    ) -> Result<Report<'p>, Diagnostic> {
         let mut recorder = Recorder::default();
-        let mut evaluator = self.scope(invocation)?.with_spent(Spent {
-            fuel,
-            memory: invocation.memory,
-        });
-        // The outcome is already known; the recorder holds what the report needs.
-        let _ = evaluator.eval_probed(lowered.node.trusted(), &mut recorder);
+        let mut evaluator = self.scope(invocation)?.with_spent(start);
+        if let Err(failure) = evaluator.eval_probed(lowered.node.trusted(), &mut recorder)
+            && matches!(failure.error, Error::Interrupted)
+        {
+            return Err(failure.diagnostic(&self.goal.name, span));
+        }
         Ok(Report::new(self.source, lowered, recorder))
     }
 
