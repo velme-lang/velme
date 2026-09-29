@@ -107,7 +107,9 @@ fn limit(item: &ast::BudgetItem, seen: &mut BTreeSet<BudgetKey>) -> Result<(Budg
         .map_err(|m| invalid(m.to_owned()))?;
     if item.value.text.contains('.') {
         let mut diag = invalid(format!("`{name}` is written as a whole number, without a `.`"));
-        if let Some(kb) = fractional_mb_as_kb(key, &item.value.text, item.unit.as_ref().map(|u| u.unit)) {
+        let unit = item.unit.as_ref().map(|u| u.unit);
+        if let Some(kb) = fractional_mb_as_kb(key, &item.value.text, unit).filter(|kb| kb * limits::KIB <= key.cap().0)
+        {
             diag = diag.with_help(format!("write `{name}={kb}kb`"));
         }
         return Err(diag);
@@ -145,8 +147,9 @@ fn fractional_mb_as_kb(key: BudgetKey, text: &str, unit: Option<Unit>) -> Option
     }
     let (int, fraction) = text.split_once('.')?;
     let int = whole(int)?;
+    let fraction: String = fraction.chars().filter(|&c| c != '_').collect();
     let scale = 10u64.checked_pow(u32::try_from(fraction.len()).ok()?)?;
-    let fraction = whole(fraction)?;
+    let fraction = whole(&fraction)?;
     let kb = int
         .checked_mul(scale)?
         .checked_add(fraction)?

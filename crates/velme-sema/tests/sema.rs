@@ -310,6 +310,14 @@ fn ac_goal_11_example_calls_its_own_goal() {
     );
 }
 
+/// A misspelled goal name in an example gets a "did you mean" help, not advice about `call:`.
+#[test]
+fn example_with_a_misspelled_goal_name_suggests_the_goal() {
+    let d = only("goal Score(x: Number) -> Number:\n    plan: \"x\"\n    examples:\n        - Scroe(2) == 1\n");
+    assert_eq!(d.code, Code::InvalidCall);
+    assert_eq!(d.help.as_deref(), Some("did you mean `Score`?"));
+}
+
 /// Examples follow R-TYP-20: a `Number` or `nothing` for a `T?` input (AC-TYP-02, static half).
 #[test]
 fn examples_assign_to_optional_inputs() {
@@ -609,6 +617,8 @@ fn ac_goal_14_fractional_and_wrong_unit_cpu() {
     let d = budget("memory=1.5mb");
     assert_eq!(d.message, "`memory` is written as a whole number, without a `.`");
     assert_eq!(d.help.as_deref(), Some("write `memory=1536kb`"));
+    assert_eq!(budget("memory=1.5_0mb").help.as_deref(), Some("write `memory=1536kb`"));
+    assert!(budget("memory=128.5mb").help.is_none());
     let d = budget("memory=1.0mb");
     assert_eq!(d.help.as_deref(), Some("write `memory=1024kb`"));
     program("goal G(x: Number) -> Number:\n    budget calls=1_0\n    plan: \"x\"\n");
