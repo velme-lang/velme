@@ -8,7 +8,7 @@ use velme_check::{GoalChecks, Invocation};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::encode_value;
-use velme_sema::hir::{GoalId, GoalKind, Program};
+use velme_sema::hir::{Goal, GoalId, GoalKind, Program};
 
 use std::sync::Arc;
 
@@ -34,6 +34,14 @@ pub fn run_leaf(
         return Err(vec![Diagnostic::internal_error()]);
     }
     run_body(program, goal, source, locked, inputs, Vec::new(), Progress::default()).result
+}
+
+/// The limits of one invocation of `goal`: its effective `max_fuel` and `max_memory` (R-RUN-16).
+pub(crate) fn limits(goal: &Goal) -> Limits {
+    Limits {
+        fuel: goal.budget.max_fuel,
+        memory: goal.budget.max_memory,
+    }
 }
 
 /// What an invocation brings to its body: what it already spent evaluating its calls' arguments, and the run's
@@ -191,11 +199,9 @@ fn invoke(
         .goals
         .get(goal.0)
         .ok_or_else(|| Box::new((Diagnostic::internal_error(), progress.spent)))?;
-    let limits = Limits {
-        fuel: target.budget.max_fuel,
-        memory: target.budget.max_memory,
-    };
-    let budget = Budget::new(limits).after(progress.spent).watched(progress.interrupt);
+    let budget = Budget::new(limits(target))
+        .after(progress.spent)
+        .watched(progress.interrupt);
     let (value, spent) = velme_interp::run_measured(&locked.ir, inputs.clone(), bindings.clone(), budget);
     let value = value.map_err(|failure| Box::new((failure.diagnostic(&target.name, target.span), spent)))?;
     if encode_value(&value).is_err() {
