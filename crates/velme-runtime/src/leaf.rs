@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::clock::Watchdog;
 use crate::locked::LockedGoal;
-use crate::sched::Options;
+use crate::sched::{CheckRun, Options};
 
 /// Runs the leaf goal `goal` of `program`, whose source is `source`, on `inputs` with its locked IR, then evaluates its
 /// checks on the invocation. Its value if every check holds; otherwise the failure, or every failed check in source
@@ -33,7 +33,7 @@ pub fn run_leaf(
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    run_body(program, goal, source, locked, inputs, Vec::new(), Progress::default())
+    run_body(program, goal, source, locked, inputs, Vec::new(), Progress::default()).result
 }
 
 /// What an invocation brings to its body: what it already spent evaluating its calls' arguments, and the run's
@@ -44,10 +44,36 @@ pub(crate) struct Progress {
     pub(crate) interrupt: Option<Interrupt>,
 }
 
+/// What running a body left, for the goal's trace event (`runtime/30` §8 `goal`, `check`).
+pub(crate) struct Body {
+    /// Its value if every check holds; otherwise the failure, or every failed check in source order (R-CHK-09).
+    pub(crate) result: Result<Value, Vec<Diagnostic>>,
+    /// Fuel and memory the invocation used in all — its calls' arguments, body and checks, which share one budget
+    /// (R-CHK-08) — up to where it stopped.
+    pub(crate) fuel: u64,
+    pub(crate) memory: u64,
+    /// Every check item, in source order, if the checks ran.
+    pub(crate) checks: Vec<CheckRun>,
+}
+
+impl Body {
+    /// A body that could not run for a bug of ours.
+    pub(crate) fn internal() -> Body {
+        Body::failed(Diagnostic::internal_error(), Spent::default())
+    }
+
+    fn failed(diagnostic: Diagnostic, spent: Spent) -> Body {
+        Body {
+            result: Err(vec![diagnostic]),
+            fuel: spent.fuel,
+            memory: spent.memory,
+            checks: Vec::new(),
+        }
+    }
+}
+
 /// Runs the body of `goal` on `inputs` and, for a goal with calls, on `bindings`, one value per call in block order,
 /// then its checks on the invocation (`runtime/30` §4 steps 6–7), `progress` being how far the invocation already is.
-/// Its value if every check holds; otherwise the
-/// failure, or every failed check in source order (R-CHK-09).
 pub(crate) fn run_body(
     program: &Program,
     goal: GoalId,
@@ -56,16 +82,43 @@ pub(crate) fn run_body(
     inputs: Vec<Value>,
     bindings: Vec<Value>,
     progress: Progress,
-) -> Result<Value, Vec<Diagnostic>> {
-    let checks = GoalChecks::new(program, goal, source)
-        .map_err(|d| vec![d])?
-        .watched(progress.interrupt.clone());
-    let invocation = invoke(program, goal, locked, inputs, bindings, progress).map_err(|d| vec![d])?;
-    let failures = checks.run(&invocation).map_err(|d| vec![d])?.failures();
-    if failures.is_empty() {
-        Ok(invocation.result)
-    } else {
-        Err(failures)
+) -> Body {
+    let checks = match GoalChecks::new(program, goal, source) {
+        Ok(checks) => checks.watched(progress.interrupt.clone()),
+        Err(diagnostic) => return Body::failed(diagnostic, progress.spent),
+    };
+    let invocation = match invoke(program, goal, locked, inputs, bindings, progress) {
+        Ok(invocation) => invocation,
+        Err(stopped) => return Body::failed(stopped.0, stopped.1),
+    };
+    let (checked, spent) = checks.run_measured(&invocation);
+    let checked = match checked {
+        Ok(checked) => checked,
+        Err(diagnostic) => return Body::failed(diagnostic, spent),
+    };
+    let failures = checked.failures();
+    let ran = checked
+        .items
+        .into_iter()
+        .map(|item| CheckRun {
+            text: source
+                .get(item.span.start..item.span.end)
+                .unwrap_or_default()
+                .to_owned(),
+            span: item.span,
+            passed: item.failure.is_none(),
+            values: item.parts,
+        })
+        .collect();
+    Body {
+        result: if failures.is_empty() {
+            Ok(invocation.result)
+        } else {
+            Err(failures)
+        },
+        fuel: spent.fuel,
+        memory: spent.memory,
+        checks: ran,
     }
 }
 
@@ -104,8 +157,8 @@ pub fn test_leaf(
             },
         ) {
             Ok(invocation) => invocation,
-            Err(diag) => {
-                failures.push(diag);
+            Err(stopped) => {
+                failures.push(stopped.0);
                 continue;
             }
         };
@@ -123,7 +176,7 @@ pub fn test_leaf(
 }
 
 /// The goal's body evaluated on `inputs`, within its fuel and memory budget (R-RUN-16) and with an answer of at most
-/// `max_output_bytes` of JSON (`runtime/30` §7).
+/// `max_output_bytes` of JSON (`runtime/30` §7). A failure comes with what the invocation had spent by then.
 fn invoke(
     program: &Program,
     goal: GoalId,
@@ -131,28 +184,32 @@ fn invoke(
     inputs: Vec<Value>,
     bindings: Vec<Value>,
     progress: Progress,
-) -> Result<Invocation, Diagnostic> {
-    let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
+) -> Result<Invocation, Box<(Diagnostic, Spent)>> {
+    let target = program
+        .goals
+        .get(goal.0)
+        .ok_or_else(|| Box::new((Diagnostic::internal_error(), progress.spent)))?;
     let limits = Limits {
         fuel: target.budget.max_fuel,
         memory: target.budget.max_memory,
     };
     let budget = Budget::new(limits).after(progress.spent).watched(progress.interrupt);
-    let output = velme_interp::run_after(&locked.ir, inputs.clone(), bindings.clone(), budget)
-        .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
-    if encode_value(&output.value).is_err() {
-        return Err(Diagnostic::new(
+    let (value, spent) = velme_interp::run_measured(&locked.ir, inputs.clone(), bindings.clone(), budget);
+    let value = value.map_err(|failure| Box::new((failure.diagnostic(&target.name, target.span), spent)))?;
+    if encode_value(&value).is_err() {
+        let diagnostic = Diagnostic::new(
             Code::SizeLimitExceeded,
             target.span,
             format!("`{}` made a list or answer that's too big.", target.name),
         )
-        .with_note(format!("its answer is more than {MAX_OUTPUT_BYTES} bytes as JSON")));
+        .with_note(format!("its answer is more than {MAX_OUTPUT_BYTES} bytes as JSON"));
+        return Err(Box::new((diagnostic, spent)));
     }
     Ok(Invocation {
         inputs,
         bindings,
-        result: output.value,
-        fuel: output.fuel,
-        memory: output.memory,
+        result: value,
+        fuel: spent.fuel,
+        memory: spent.memory,
     })
 }

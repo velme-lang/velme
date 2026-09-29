@@ -26,10 +26,6 @@ Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
    │ Note 4: `a` = 2
    │ 
    │ Note 5: `b` = 3
-   │ 
-   │ Note 6: input `a` = 2
-   │ 
-   │ Note 7: input `b` = 3
 ───╯
 Error: For Add(-1, 1), `Add` gave -1 but the example expects 0.  [VL0502]
     ╭─[ add.velme:10:11 ]
@@ -54,10 +50,6 @@ Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
    │ Note 4: `a` = -1
    │ 
    │ Note 5: `b` = 1
-   │ 
-   │ Note 6: input `a` = -1
-   │ 
-   │ Note 7: input `b` = 1
 ───╯
 Error: For Add(0.1, 0.2), `Add` gave 0.02 but the example expects 0.3.  [VL0502]
     ╭─[ add.velme:11:11 ]
@@ -82,8 +74,4 @@ Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
    │ Note 4: `a` = 0.1
    │ 
    │ Note 5: `b` = 0.2
-   │ 
-   │ Note 6: input `a` = 0.1
-   │ 
-   │ Note 7: input `b` = 0.2
 ───╯

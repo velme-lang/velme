@@ -11,9 +11,9 @@ expression: run.stdout
       "status": "ok",
       "diagnostics": [],
       "result": {
+        "score": 120,
         "difficulty": "Medium",
-        "reward": 270,
-        "score": 120
+        "reward": 270
       }
     }
   ],

@@ -1,0 +1,294 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: printed
+---
+{
+  "format": "velme-cli/1",
+  "status": "ok",
+  "results": [
+    {
+      "goal": "CreateLevelSummary",
+      "status": "ok",
+      "diagnostics": [],
+      "result": {
+        "score": 120,
+        "difficulty": "Medium",
+        "reward": 270
+      },
+      "trace": {
+        "version": 1,
+        "file": "level_summary.velme",
+        "reproducible": true,
+        "goal": {
+          "goal": "CreateLevelSummary",
+          "artifact": "b3:624ac05a6330db94bd40e79d2ca5357b5200fe9e40cbb9944edda6fb89b540c7",
+          "kind": "composite",
+          "inputs": [
+            {
+              "name": "level",
+              "value": {
+                "enemy_count": 7,
+                "treasure_count": 3,
+                "base_score": 120
+              }
+            }
+          ],
+          "outcome": "ok",
+          "value": {
+            "score": 120,
+            "difficulty": "Medium",
+            "reward": 270
+          },
+          "fuel": 24,
+          "memory": 72,
+          "calls": [
+            {
+              "binding": "enemies",
+              "goal": "CountEnemies",
+              "wave": 1,
+              "args": [
+                {
+                  "value": {
+                    "enemy_count": 7,
+                    "treasure_count": 3,
+                    "base_score": 120
+                  }
+                }
+              ],
+              "outcome": "ok",
+              "value": 7,
+              "run": {
+                "goal": "CountEnemies",
+                "artifact": "b3:8ac1cec35f76336460799cf98d2eeefdb6e5cc25e6447fa77bd0700113808e81",
+                "kind": "leaf",
+                "inputs": [
+                  {
+                    "name": "level",
+                    "value": {
+                      "enemy_count": 7,
+                      "treasure_count": 3,
+                      "base_score": 120
+                    }
+                  }
+                ],
+                "outcome": "ok",
+                "value": 7,
+                "fuel": 6,
+                "memory": 0,
+                "calls": [],
+                "checks": [
+                  {
+                    "text": "result == level.enemy_count",
+                    "span": {
+                      "start": 294,
+                      "end": 321
+                    },
+                    "passed": true,
+                    "values": []
+                  }
+                ]
+              }
+            },
+            {
+              "binding": "treasures",
+              "goal": "CountTreasures",
+              "wave": 1,
+              "args": [
+                {
+                  "value": {
+                    "enemy_count": 7,
+                    "treasure_count": 3,
+                    "base_score": 120
+                  }
+                }
+              ],
+              "outcome": "ok",
+              "value": 3,
+              "run": {
+                "goal": "CountTreasures",
+                "artifact": "b3:26a54102790c870a76305254a0bc41e1cb2c926dc5b2bce8887b5bd61b559a3d",
+                "kind": "leaf",
+                "inputs": [
+                  {
+                    "name": "level",
+                    "value": {
+                      "enemy_count": 7,
+                      "treasure_count": 3,
+                      "base_score": 120
+                    }
+                  }
+                ],
+                "outcome": "ok",
+                "value": 3,
+                "fuel": 6,
+                "memory": 0,
+                "calls": [],
+                "checks": [
+                  {
+                    "text": "result == level.treasure_count",
+                    "span": {
+                      "start": 436,
+                      "end": 466
+                    },
+                    "passed": true,
+                    "values": []
+                  }
+                ]
+              }
+            },
+            {
+              "binding": "score",
+              "goal": "CalculateLevelScore",
+              "wave": 1,
+              "args": [
+                {
+                  "value": {
+                    "enemy_count": 7,
+                    "treasure_count": 3,
+                    "base_score": 120
+                  }
+                }
+              ],
+              "outcome": "ok",
+              "value": 120,
+              "run": {
+                "goal": "CalculateLevelScore",
+                "artifact": "b3:e73052c600b311e887ace7afcd3758d3d165a9161784c2e83c2e104880d60676",
+                "kind": "leaf",
+                "inputs": [
+                  {
+                    "name": "level",
+                    "value": {
+                      "enemy_count": 7,
+                      "treasure_count": 3,
+                      "base_score": 120
+                    }
+                  }
+                ],
+                "outcome": "ok",
+                "value": 120,
+                "fuel": 6,
+                "memory": 0,
+                "calls": [],
+                "checks": [
+                  {
+                    "text": "result == level.base_score",
+                    "span": {
+                      "start": 582,
+                      "end": 608
+                    },
+                    "passed": true,
+                    "values": []
+                  }
+                ]
+              }
+            },
+            {
+              "binding": "difficulty",
+              "goal": "RateDifficulty",
+              "wave": 2,
+              "args": [
+                {
+                  "value": 7
+                },
+                {
+                  "value": 3
+                }
+              ],
+              "outcome": "ok",
+              "value": "Medium",
+              "run": {
+                "goal": "RateDifficulty",
+                "artifact": "b3:c9b3e74b937ca1aa23d8572c4c79ec4b1d3f65f3c456db6d4a77c170007b94f9",
+                "kind": "leaf",
+                "inputs": [
+                  {
+                    "name": "enemies",
+                    "value": 7
+                  },
+                  {
+                    "name": "treasures",
+                    "value": 3
+                  }
+                ],
+                "outcome": "ok",
+                "value": "Medium",
+                "fuel": 9,
+                "memory": 0,
+                "calls": [],
+                "checks": []
+              }
+            },
+            {
+              "binding": "reward",
+              "goal": "CalculateReward",
+              "wave": 2,
+              "args": [
+                {
+                  "value": 120
+                },
+                {
+                  "value": 3
+                }
+              ],
+              "outcome": "ok",
+              "value": 270,
+              "run": {
+                "goal": "CalculateReward",
+                "artifact": "b3:b3e78a9801e438872aa21e20ec4cd9bd8bbab00984a9f5f161b85c590654ce46",
+                "kind": "leaf",
+                "inputs": [
+                  {
+                    "name": "score",
+                    "value": 120
+                  },
+                  {
+                    "name": "treasures",
+                    "value": 3
+                  }
+                ],
+                "outcome": "ok",
+                "value": 270,
+                "fuel": 5,
+                "memory": 0,
+                "calls": [],
+                "checks": []
+              }
+            }
+          ],
+          "checks": [
+            {
+              "text": "result.score == score",
+              "span": {
+                "start": 1671,
+                "end": 1692
+              },
+              "passed": true,
+              "values": []
+            },
+            {
+              "text": "result.difficulty == difficulty",
+              "span": {
+                "start": 1703,
+                "end": 1734
+              },
+              "passed": true,
+              "values": []
+            },
+            {
+              "text": "result.reward == reward",
+              "span": {
+                "start": 1745,
+                "end": 1768
+              },
+              "passed": true,
+              "values": []
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

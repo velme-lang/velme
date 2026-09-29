@@ -96,6 +96,12 @@ goal Roomy(n: Number) -> Number:
         c = Double(n)
     plan: \"Add up ranges.\"
 
+goal Greedy(n: Number) -> Number:
+    budget cpu=1ms
+    plan: \"Return n.\"
+    check:
+        - sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) > 0
+
 goal Split(slow: Number, fast: Number) -> Number:
     call:
         first = SlowBoom(slow)
@@ -148,7 +154,7 @@ fn ir(program: &Program, name: &str) -> String {
     let (inputs, body) = match name {
         "Spin" => (json!([["n", number()]]), count("n")),
         "SlowBoom" | "FastBoom" => (json!([["n", number()]]), binary("div", count("n"), literal(0))),
-        "Heavy" => (json!([["n", number()]]), input("n")),
+        "Heavy" | "Greedy" => (json!([["n", number()]]), input("n")),
         "Tight" => (json!([["n", number()]]), count("n")),
         "Capped" => (json!([["n", number()]]), edge(9)),
         "Roomy" => (json!([["n", number()]]), edge(8)),
@@ -264,6 +270,150 @@ fn ac_run_01_independent_children_overlap_in_time() {
     let (serial, peak) = run_peak(&project, &program, "Fan", &[400], 1);
     assert_eq!(peak, 1);
     assert_eq!(parallel, serial);
+    // The trace shows the three children's spans overlapping, listed in source order (AC-RDM-03, `runtime/30` §8).
+    let trace = parallel.trace(FILE).to_json();
+    let calls = trace["goal"]["calls"].as_array().expect("calls");
+    let bindings: Vec<&str> = calls.iter().map(|c| c["binding"].as_str().expect("binding")).collect();
+    assert_eq!(bindings, ["a", "b", "c"]);
+    let spans: Vec<(u64, u64)> = calls
+        .iter()
+        .map(|c| {
+            let run = &c["run"];
+            (
+                run["start_us"].as_u64().expect("start"),
+                run["end_us"].as_u64().expect("end"),
+            )
+        })
+        .collect();
+    for (i, (start, end)) in spans.iter().enumerate() {
+        for (other_start, other_end) in &spans[i + 1..] {
+            assert!(start < other_end && other_start < end, "{spans:?}");
+        }
+    }
+}
+
+/// The trace as JSON without its timing fields, which differ from run to run (`runtime/30` §8): they end in `_us`.
+fn without_durations(json: &Json) -> Json {
+    match json {
+        Json::Object(map) => Json::Object(
+            map.iter()
+                .filter(|(key, _)| !key.ends_with("_us"))
+                .map(|(key, value)| (key.clone(), without_durations(value)))
+                .collect(),
+        ),
+        Json::Array(items) => Json::Array(items.iter().map(without_durations).collect()),
+        other => other.clone(),
+    }
+}
+
+/// The trace, without durations, is byte-identical for one worker and for eight, including the two failing siblings
+/// where the slower is first in source order, and it lists every call in source order with its real outcome
+/// (AC-RUN-04 trace half, D-9).
+#[test]
+fn ac_run_04_the_trace_is_the_same_for_every_job_count() {
+    let (project, program) = installed("ac_run_04_trace");
+    let cases: [(&str, &[i64]); 5] = [
+        ("Main", &[4]),
+        ("Fan", &[100]),
+        ("Split", &[250, 0]),
+        ("Split", &[0, 250]),
+        ("Split", &[100, 100]),
+    ];
+    for (goal, inputs) in cases {
+        let one = without_durations(&run(&project, &program, goal, inputs, 1).trace(FILE).to_json()).to_string();
+        for jobs in [2, 8] {
+            let many =
+                without_durations(&run(&project, &program, goal, inputs, jobs).trace(FILE).to_json()).to_string();
+            assert_eq!(one, many, "{goal} {inputs:?} with {jobs} jobs");
+        }
+    }
+    let trace = run(&project, &program, "Split", &[250, 0], 8).trace(FILE).to_json();
+    let calls = trace["goal"]["calls"].as_array().expect("calls");
+    let seen: Vec<(&str, &str)> = calls
+        .iter()
+        .map(|c| {
+            (
+                c["binding"].as_str().expect("binding"),
+                c["outcome"].as_str().expect("outcome"),
+            )
+        })
+        .collect();
+    // Both siblings' real outcomes appear, and the wave that never started is `skipped`, not `cancelled`.
+    assert_eq!(
+        seen,
+        [
+            ("first", "failed"),
+            ("second", "failed"),
+            ("third", "ok"),
+            ("after", "skipped")
+        ]
+    );
+    let failure = &trace["goal"]["failure"];
+    assert_eq!(failure["code"], "VL0602");
+    assert_eq!(failure["path"], json!(["Split", "SlowBoom"]));
+}
+
+/// Same source, inputs and lock: the result and the trace without durations are byte-identical over 100 runs, with
+/// the workers varying (AC-RDM-09 interpreter half, INV-3).
+#[test]
+fn ac_rdm_09_a_hundred_runs_give_the_same_result_and_trace() {
+    let (project, program) = installed("ac_rdm_09");
+    for (goal, inputs) in [("Main", &[4][..]), ("Fan", &[30]), ("Split", &[40, 0])] {
+        let mut reference: Option<(String, String)> = None;
+        for i in 0..100 {
+            let done = run(&project, &program, goal, inputs, [1, 3, 8][i % 3]);
+            let seen = (
+                format!("{:?}", done.result()),
+                without_durations(&done.trace(FILE).to_json()).to_string(),
+            );
+            assert_eq!(reference.get_or_insert_with(|| seen.clone()), &seen, "{goal} run {i}");
+        }
+    }
+}
+
+/// A trace holds each goal's fuel and memory, its inputs, the arguments of each call and each check's text and verdict
+/// (`runtime/30` §8), and a failed check's values.
+#[test]
+fn the_trace_holds_the_fields_of_runtime_30_section_8() {
+    let (project, program) = installed("trace_fields");
+    let main = run(&project, &program, "Main", &[4], 1).trace(FILE).to_json();
+    assert_eq!(main["version"], 1);
+    assert_eq!(main["file"], FILE);
+    assert_eq!(main["reproducible"], true);
+    let goal = &main["goal"];
+    assert_eq!(goal["goal"], "Main");
+    assert_eq!(goal["kind"], "wired");
+    assert!(goal["artifact"].as_str().expect("a hash").starts_with("b3:"));
+    assert_eq!(goal["inputs"], json!([{"name": "x", "value": 4}]));
+    assert_eq!((&goal["outcome"], &goal["value"]), (&json!("ok"), &json!(9)));
+    let second = &goal["calls"][1];
+    assert_eq!(
+        (&second["binding"], &second["goal"], &second["wave"]),
+        (&json!("result"), &json!("AddOne"), &json!(2))
+    );
+    assert_eq!((&second["args"], &second["value"]), (&json!([{"value": 8}]), &json!(9)));
+    assert_eq!(second["run"]["kind"], "leaf");
+    assert!(second["run"]["fuel"].as_u64().expect("fuel") > 0);
+    // `Checked`'s two checks contradict each other: the first fails and its values are in the trace.
+    let wrap = run(&project, &program, "Wrap", &[3], 1).trace(FILE).to_json();
+    let checked = &wrap["goal"]["calls"][0]["run"];
+    assert_eq!(checked["outcome"], "failed");
+    assert_eq!(checked["failure"]["code"], "VL0501");
+    let checks = checked["checks"].as_array().expect("checks");
+    assert_eq!(checks.len(), 2);
+    assert_eq!(
+        (&checks[0]["text"], &checks[0]["passed"]),
+        (&json!("result > n"), &json!(false))
+    );
+    assert!(
+        checks[0]["values"]
+            .as_array()
+            .expect("values")
+            .iter()
+            .any(|v| v["text"] == "result" && v["value"] == 3)
+    );
+    assert_eq!(wrap["goal"]["failure"]["path"], json!(["Wrap", "Checked"]));
+    assert_eq!(wrap["goal"]["outcome"], "failed");
 }
 
 /// `Main` runs `Double` then `AddOne` in two waves and returns `2x + 1` (AC-RUN-02, AC-RDM-02).
@@ -491,6 +641,34 @@ fn ac_run_05_an_over_budget_leaf_fails_with_vl0601_every_time() {
     for jobs in [1, 4] {
         assert_eq!(run(&project, &program, "Spin", &[10_000], jobs), first);
     }
+    // The trace shows the same non-zero fuel figure, the whole limit, every time.
+    let fuel = first.trace(FILE).to_json()["goal"]["fuel"].as_u64().expect("fuel");
+    assert_eq!(fuel, 10_000_000);
+    for jobs in [1, 4] {
+        let again = run(&project, &program, "Spin", &[10_000], jobs);
+        assert_eq!(again.fuel, fuel);
+    }
+}
+
+/// A failed goal's trace shows the work it did before it failed, and checks are charged to the invocation's budget:
+/// a check that runs out of fuel reports the limit, not the body's figure (R-CHK-08, `runtime/30` §8).
+#[test]
+fn a_failed_goals_trace_shows_the_work_it_did() {
+    let (project, program) = installed("failed_fuel");
+    let ok = run(&project, &program, "Spin", &[5], 1);
+    let boom = run(&project, &program, "FastBoom", &[5], 1);
+    assert_eq!(code_of(&boom), Some(Code::ArithmeticError));
+    // `FastBoom` counts as `Spin` does, then divides: at least what the count cost.
+    assert!(ok.fuel > 0 && boom.fuel >= ok.fuel, "{} {}", ok.fuel, boom.fuel);
+    let greedy = run(&project, &program, "Greedy", &[1], 1);
+    assert_eq!(code_of(&greedy), Some(Code::BudgetExceeded));
+    // `budget cpu=1ms` is 100 000 fuel; the body used 1, the checks the rest.
+    assert_eq!(greedy.fuel, FUEL_PER_MS);
+    let heavy = run(&project, &program, "Heavy", &[1], 1);
+    assert!(heavy.fuel > 60_000, "{}", heavy.fuel);
+    // A passing goal's figure includes its checks too.
+    let plain = run(&project, &program, "Spin", &[1], 1);
+    assert!(heavy.fuel > plain.fuel);
 }
 
 /// `x / 0` is `VL0602` and no value comes out of the run, however far the other goals got (AC-RUN-08).
@@ -570,6 +748,20 @@ fn ac_run_11_a_wall_clock_timeout_is_not_reproducible_and_writes_nothing() {
         "`Spin` ran too long and was stopped."
     );
     assert!(!run.reproducible());
+    assert_eq!(run.trace(FILE).to_json()["reproducible"], false);
+    // Whatever would store the run — a cache entry, a verdict, a saved trace — is only ever called for a reproducible
+    // one: a timeout is handed to nothing, and the same path does take a run that finished.
+    let mut stored = Vec::new();
+    assert_eq!(run.persist_if_reproducible(|r| stored.push(r.goal.clone())), None);
+    assert!(stored.is_empty());
+    let finished = run_with(&project, &program, "Spin", &[3], Options::default().with_jobs(1));
+    assert_eq!(finished.trace(FILE).to_json()["reproducible"], true);
+    assert!(
+        finished
+            .persist_if_reproducible(|r| stored.push(r.goal.clone()))
+            .is_some()
+    );
+    assert_eq!(stored, ["Spin"]);
     assert_eq!(tree(&project), before, "a timeout leaves the project as it was");
     // Nothing is left of a goal's siblings either: past the limit before the first wave, `Fan` stops with `VL0603`.
     let options = Options {

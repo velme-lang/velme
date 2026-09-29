@@ -1,0 +1,9 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+BuildPlayerSummary
+At the same time:
+  - Calculate score — Return the player's score.
+  - Find badge — Give the player Gold for a score of at least 1000, Silver for a score of at least 500, Bronze otherwise.
+Finally: Build a player summary using the player's name, calculated score, and badge.

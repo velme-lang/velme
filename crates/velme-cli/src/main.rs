@@ -7,13 +7,13 @@ use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
-use velme_ir::encode_value;
 use velme_runtime::{
-    EntryError, Lock, LockedGoal, Options, Registry, Store, decode_inputs, find_goal, load, run_goal, test_leaf,
+    CallStatus, EntryError, GoalRun, Lock, LockedGoal, Options, OrderedValue, Registry, Store, Trace, decode_inputs,
+    explain, find_goal, load, run_goal, test_leaf,
 };
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_syntax::SourceFile;
@@ -59,6 +59,8 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
+                     velme explain FILE --goal G [--json]\n       \
+                     velme trace FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme --version";
 
 /// The `velme check` line for locked IR (`tooling/40` §3.3), shown when the project has a lock.
@@ -92,6 +94,19 @@ enum Command {
         file: String,
         json: bool,
         goal: Option<String>,
+    },
+    Explain {
+        file: String,
+        json: bool,
+        goal: String,
+    },
+    Trace {
+        file: String,
+        json: bool,
+        goal: String,
+        input: Option<String>,
+        args: Vec<(String, String)>,
+        jobs: Option<usize>,
     },
 }
 
@@ -129,6 +144,19 @@ fn parse_args(args: &[String]) -> Option<Command> {
             input,
             args: pairs,
             jobs,
+        }),
+        "trace" => Some(Command::Trace {
+            file,
+            json,
+            goal: goal?,
+            input,
+            args: pairs,
+            jobs,
+        }),
+        "explain" if !inputs && jobs.is_none() => Some(Command::Explain {
+            file,
+            json,
+            goal: goal?,
         }),
         "test" if !inputs && jobs.is_none() => Some(Command::Test { file, json, goal }),
         _ => None,
@@ -194,7 +222,16 @@ fn command(args: &[String]) -> u8 {
             input,
             args,
             jobs,
-        }) => run(&file, json, &goal, input.as_deref(), &args, jobs),
+        }) => run(&file, json, &goal, input.as_deref(), &args, jobs, false),
+        Some(Command::Trace {
+            file,
+            json,
+            goal,
+            input,
+            args,
+            jobs,
+        }) => run(&file, json, &goal, input.as_deref(), &args, jobs, true),
+        Some(Command::Explain { file, json, goal }) => explain_goal(&file, json, &goal),
         Some(Command::Test { file, json, goal }) => test(&file, json, goal.as_deref()),
         None => {
             print_err(&format!("{USAGE}\n"));
@@ -274,6 +311,8 @@ struct GoalResult {
     status: &'static str,
     diagnostics: Vec<Diagnostic>,
     result: Option<Value>,
+    /// The run and the file it is of, for `velme trace` to show its trace (`runtime/30` §8).
+    trace: Option<(GoalRun, String)>,
 }
 
 impl GoalResult {
@@ -287,6 +326,7 @@ impl GoalResult {
             status,
             diagnostics,
             result,
+            trace: None,
         }
     }
 }
@@ -338,8 +378,17 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
 }
 
 /// `velme run FILE --goal G`: runs a goal with its locked artifact and those of the goals it calls on the reference
-/// interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `jobs` is `--jobs`.
-fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, String)], jobs: Option<usize>) -> u8 {
+/// interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `jobs` is `--jobs`. With
+/// `traced` (`velme trace`) the whole execution trace is printed too (`runtime/30` §8).
+fn run(
+    arg: &str,
+    json: bool,
+    goal: &str,
+    input: Option<&str>,
+    args: &[(String, String)],
+    jobs: Option<usize>,
+    traced: bool,
+) -> u8 {
     let analyzed = analyze(arg);
     let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
         return finish(&analyzed, &Outcome::file(&analyzed), json);
@@ -356,26 +405,89 @@ fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, 
     let inputs = decode_inputs(program, id, input.as_deref(), args);
     let registry = registry(project, program, id);
     let options = jobs.map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
-    let result = match (inputs, registry) {
-        (Ok(inputs), Ok(registry)) => run_goal(program, id, text, &registry, inputs, options)
-            .result()
-            .map(Some),
-        (inputs, registry) => Err(inputs
-            .err()
-            .into_iter()
-            .flatten()
-            .chain(registry.err().into_iter().flatten())
-            .collect()),
+    let (executed, result) = match (inputs, registry) {
+        (Ok(inputs), Ok(registry)) => {
+            let executed = run_goal(program, id, text, &registry, inputs, options);
+            let result = executed.result().map(Some);
+            (Some(executed), result)
+        }
+        (inputs, registry) => (
+            None,
+            Err(inputs
+                .err()
+                .into_iter()
+                .flatten()
+                .chain(registry.err().into_iter().flatten())
+                .collect()),
+        ),
     };
-    let mark = if result.is_ok() { "✓" } else { "✗" };
-    let mut progress = format!("{goal}  {mark}\n");
+    let mut progress = match &executed {
+        Some(executed) if traced => executed.trace_text(),
+        Some(executed) => call_lines(executed),
+        None => format!("{goal}  ✗\n"),
+    };
     if let Ok(Some(value)) = &result {
         progress.push_str(&format!("\nResult:\n{}\n", pretty(value)));
+    }
+    let mut goal_result = GoalResult::new(goal, result);
+    if traced {
+        goal_result.trace = executed.map(|executed| (executed, analyzed.path.clone()));
     }
     let outcome = Outcome {
         progress,
         diagnostics: Vec::new(),
-        results: vec![GoalResult::new(goal, result)],
+        results: vec![goal_result],
+    };
+    finish(&analyzed, &outcome, json)
+}
+
+/// The call-by-call view of a run (`tooling/40` §3.3): each call of the goal in source order with ✓ or ✗, then the goal
+/// itself; on failure the values of the calls that ran follow their marks, cut as `runtime/30` R-RUN-20 says.
+fn call_lines(run: &GoalRun) -> String {
+    let failed = run.outcome.is_err();
+    let width = run
+        .calls
+        .iter()
+        .map(|call| call.callee.chars().count())
+        .chain([run.goal.chars().count()])
+        .max()
+        .unwrap_or(0)
+        + 2;
+    let mut out = String::new();
+    for call in &run.calls {
+        let shown = match (call.status(), &call.run) {
+            (CallStatus::Skipped, _) => "skipped".to_owned(),
+            (CallStatus::Failed, _) => "✗".to_owned(),
+            (CallStatus::Ok, Some(GoalRun { outcome: Ok(value), .. })) if failed => {
+                format!("✓ {}", velme_ir::display_value(value))
+            }
+            (CallStatus::Ok, _) => "✓".to_owned(),
+        };
+        out.push_str(&format!("{:<width$}{shown}\n", call.callee));
+    }
+    let mark = if failed { "✗" } else { "✓" };
+    out.push_str(&format!("{:<width$}{mark}\n", run.goal));
+    out
+}
+
+/// `velme explain FILE --goal G`: the goal's calls as plain-language steps, from the call DAG alone (`tooling/40` §3.4,
+/// `runtime/30` §9). It reads no lock, builds nothing and asks no provider.
+fn explain_goal(arg: &str, json: bool, goal: &str) -> u8 {
+    let analyzed = analyze(arg);
+    let Some(program) = &analyzed.program else {
+        return finish(&analyzed, &Outcome::file(&analyzed), json);
+    };
+    let id = match find_goal(program, goal) {
+        Ok(id) => id,
+        Err(diag) => return finish(&analyzed, &Outcome::with(vec![diag]), json),
+    };
+    let Some(text) = explain(program, id) else {
+        return finish(&analyzed, &Outcome::with(vec![Diagnostic::internal_error()]), json);
+    };
+    let outcome = Outcome {
+        progress: text.clone(),
+        diagnostics: Vec::new(),
+        results: vec![GoalResult::new(goal, Ok(Some(Value::text(&text))))],
     };
     finish(&analyzed, &outcome, json)
 }
@@ -405,6 +517,7 @@ fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
                 status: "skipped",
                 diagnostics: Vec::new(),
                 result: None,
+                trace: None,
             });
             continue;
         }
@@ -461,20 +574,9 @@ fn read_input(input: &str) -> Result<String, Diagnostic> {
     velme_runtime::read_input(file, &path)
 }
 
-/// A value as pretty JSON, by the one mapping (`tooling/40` §3.2, D-23).
+/// A value as pretty JSON, by the one mapping (`tooling/40` §3.2, D-23): records' fields in declaration order.
 fn pretty(value: &Value) -> String {
-    to_json(value)
-        .and_then(|json| serde_json::to_string_pretty(&json).ok())
-        .unwrap_or_default()
-}
-
-/// A value as JSON, by the one mapping (D-23); `None` only past `max_output_bytes`, which a run has already refused
-/// with `VL0606` (`runtime/30` §7). Values nest as deep as their types, so the parse has no depth limit of its own.
-fn to_json(value: &Value) -> Option<serde_json::Value> {
-    let text = encode_value(value).ok()?;
-    let mut parser = serde_json::Deserializer::from_str(&text);
-    parser.disable_recursion_limit();
-    serde_json::Value::deserialize(&mut parser).ok()
+    serde_json::to_string_pretty(&OrderedValue(value)).unwrap_or_default()
 }
 
 impl Outcome {
@@ -521,7 +623,8 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, json: bool) -> u8 {
                     .iter()
                     .map(|d| JsonDiagnostic::new(d, path, &lines))
                     .collect(),
-                result: r.result.as_ref().and_then(to_json),
+                result: r.result.as_ref().map(OrderedValue),
+                trace: r.trace.as_ref().map(|(run, file)| run.trace(file)),
             })
             .collect();
         let failed = exit != EXIT_OK || results.iter().any(|r| r.status == "failed");
@@ -598,22 +701,24 @@ fn on_big_stack<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
 /// The `--json` envelope (`tooling/40` §3.2). `diagnostics` holds the ones that belong to the file rather than to one
 /// goal, such as syntax errors (D-72).
 #[derive(Serialize)]
-struct Envelope {
+struct Envelope<'a> {
     format: &'static str,
     status: &'static str,
-    results: Vec<JsonResult>,
+    results: Vec<JsonResult<'a>>,
     diagnostics: Vec<JsonDiagnostic>,
     notices: Vec<String>,
 }
 
 /// One goal in the `--json` envelope (R-CLI-15).
 #[derive(Serialize)]
-struct JsonResult {
+struct JsonResult<'a> {
     goal: String,
     status: &'static str,
     diagnostics: Vec<JsonDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<serde_json::Value>,
+    result: Option<OrderedValue<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace: Option<Trace<'a>>,
 }
 
 /// Paths are shown with `/` separators on every platform (R-CLI-19).

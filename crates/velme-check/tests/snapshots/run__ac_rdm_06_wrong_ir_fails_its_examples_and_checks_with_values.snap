@@ -1,6 +1,5 @@
 ---
 source: crates/velme-check/tests/run.rs
-assertion_line: 371
 expression: "render_human(&diags, \"double.velme\", Some(&source), false)"
 ---
 Error: For Double(2), `Double` gave 3 but the example expects 4.  [VL0502]
@@ -24,8 +23,6 @@ Error: `Double` didn't pass its check: `result == x * 2`.  [VL0501]
    │ Note 3: `result` = 3
    │ 
    │ Note 4: `x` = 2
-   │ 
-   │ Note 5: input `x` = 2
 ───╯
 Error: For Double(-3), `Double` gave -2 but the example expects -6.  [VL0502]
     ╭─[ double.velme:13:11 ]
@@ -48,6 +45,4 @@ Error: `Double` didn't pass its check: `result == x * 2`.  [VL0501]
    │ Note 3: `result` = -2
    │ 
    │ Note 4: `x` = -3
-   │ 
-   │ Note 5: input `x` = -3
 ───╯
