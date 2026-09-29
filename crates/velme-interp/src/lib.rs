@@ -158,17 +158,21 @@ pub fn run_measured(
 /// call in `calls` order, `None` for a call that has not run. An argument names only inputs and earlier bindings
 /// (R-IR-09), so the slots it reads are filled when the scheduler asks (`runtime/30` R-RUN-06). The arguments are
 /// expressions of the goal's body, so they spend from the invocation's limits after what it has already spent
-/// (R-RUN-17): the arguments and what has been spent in all.
+/// (R-RUN-17): the arguments and what has been spent in all. What was spent is returned whether the arguments
+/// evaluated or not, like [`run_measured`].
 pub fn call_args(
     ir: &ValidIr,
     index: usize,
     inputs: &[Value],
     bindings: &[Option<Value>],
     budget: Budget,
-) -> Result<(Vec<Value>, Spent), Failure> {
+) -> (Result<Vec<Value>, Failure>, Spent) {
     let goal = ir.goal();
     if inputs.len() != goal.inputs.len() || bindings.len() != goal.calls.len() || index >= goal.calls.len() {
-        return Err(Error::Builtin(velme_builtins::Error::Internal).into());
+        return (
+            Err(Error::Builtin(velme_builtins::Error::Internal).into()),
+            budget.spent,
+        );
     }
     let mut evaluator = Evaluator::from_budget(budget);
     for ((name, _), value) in goal.inputs.iter().zip(inputs) {
@@ -183,8 +187,8 @@ pub fn call_args(
         .call_args(index)
         .into_iter()
         .map(|arg| evaluator.eval(arg))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok((args, evaluator.spent()))
+        .collect::<Result<Vec<_>, _>>();
+    (args, evaluator.spent())
 }
 
 /// Why evaluation stopped without a value.

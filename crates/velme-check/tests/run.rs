@@ -8,7 +8,7 @@ use velme_builtins::{Number, Value};
 use velme_check::{Checked, GoalChecks, Invocation, Part};
 use velme_diagnostics::render::render_human;
 use velme_diagnostics::{Code, Diagnostic};
-use velme_interp::{Limits, run};
+use velme_interp::{Interrupt, Limits, POLL_FUEL, run};
 use velme_ir::{SHOWN_ITEMS, decode_str};
 use velme_sema::hir::Program;
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
@@ -267,6 +267,36 @@ fn ac_chk_10_running_out_of_fuel_in_a_check_is_a_budget_failure() {
             "this happened at item 0 of a list (counting from 0)".to_owned()
         ]
     );
+}
+
+/// The probe of a failed item runs the item again; a watchdog firing there makes the report timing-dependent, so the
+/// run is `VL0603` and never a reproducible `VL0501`.
+#[test]
+fn ac_chk_10_an_interrupt_during_the_probe_of_a_failed_item_is_a_timeout() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let program = program(SOURCE);
+    // The item's evaluation passes exactly one look of the watchdog, and fails at its last element.
+    let mut invocation = invocation(&program, "Tenths", &["[1, 1, 1, 10]"], &[], "0");
+    invocation.fuel = POLL_FUEL - 10;
+    let (unwatched, spent) = checks(&program, "Tenths").run_measured(&invocation);
+    assert!(
+        spent.fuel > POLL_FUEL && spent.fuel < 2 * POLL_FUEL,
+        "one look per evaluation"
+    );
+    assert_eq!(failures(&unwatched.expect("runs")).len(), 1);
+
+    // The watchdog is quiet for the item's own evaluation and fires at its next look, in the probe.
+    let looks = Arc::new(AtomicU64::new(0));
+    let counted = Arc::clone(&looks);
+    let interrupt = Interrupt::new(move || counted.fetch_add(1, Ordering::SeqCst) >= 1);
+    let diag = checks(&program, "Tenths")
+        .watched(Some(interrupt))
+        .run(&invocation)
+        .expect_err("stopped in the probe");
+    assert_eq!(diag.code, Code::Timeout);
+    assert_eq!(looks.load(Ordering::SeqCst), 2);
 }
 
 /// A list past its limit stops the checks like running out of fuel does (R-CHK-08), instead of failing the item.

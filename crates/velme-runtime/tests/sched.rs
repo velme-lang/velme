@@ -102,6 +102,15 @@ goal Greedy(n: Number) -> Number:
     check:
         - sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) > 0
 
+goal Sink(xs: List<Number>) -> Number:
+    plan: \"Return zero.\"
+
+goal Bulky(n: Number) -> Number:
+    budget memory=1kb
+    call:
+        s = Sink([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+    plan: \"Sink a list bigger than the budget.\"
+
 goal Split(slow: Number, fast: Number) -> Number:
     call:
         first = SlowBoom(slow)
@@ -168,6 +177,8 @@ fn ir(program: &Program, name: &str) -> String {
         "Checked" => (json!([["n", number()]]), input("n")),
         "Wrap" => (json!([["n", number()]]), local("c")),
         "Outer" => (json!([["n", number()]]), local("b")),
+        "Sink" => (json!([["xs", json!({"t": "List", "of": number()})]]), literal(0)),
+        "Bulky" => (json!([["n", number()]]), local("s")),
         "Split" => (
             json!([["slow", number()], ["fast", number()]]),
             binary("add", local("third"), local("after")),
@@ -729,6 +740,17 @@ fn a_calls_arguments_spend_the_callers_fuel() {
         failed.diagnostics()[0].message,
         "`Capped` took too many steps and was stopped."
     );
+}
+
+/// A call's arguments are the parent's expressions: one that allocates past the parent's memory limit fails the
+/// parent with `VL0604`, and its trace shows the memory it spent, clamped to the limit (`runtime/30` §7.1, §8).
+#[test]
+fn ac_run_10_a_memory_failure_in_an_argument_shows_the_memory_spent() {
+    let (project, program) = installed("call_arguments_memory");
+    let bulky = run(&project, &program, "Bulky", &[1], 1);
+    assert_eq!(code_of(&bulky), Some(Code::MemoryLimitExceeded));
+    assert_eq!(bulky.memory, 1024);
+    assert!(bulky.fuel > 0);
 }
 
 /// A wall-clock timeout is `VL0603`, `reproducible: false`, and writes no artifact and no cache (AC-RUN-11, AC-RDM-07).

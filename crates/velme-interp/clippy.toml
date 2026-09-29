@@ -1,0 +1,35 @@
+# CC-ERR-01 applies to non-test code only. A crate's own `clippy.toml` replaces the workspace one, so these repeat it.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+
+# R-RUN-05, INV-4: no clocks, environment or I/O in a crate whose results must be deterministic.
+disallowed-types = [
+    { path = "std::time::Instant", reason = "R-RUN-05: no clocks in the pure crates (INV-4)" },
+    { path = "std::time::SystemTime", reason = "R-RUN-05: no clocks in the pure crates (INV-4)" },
+]
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "R-RUN-05: no clocks in the pure crates (INV-4)" },
+    { path = "std::time::SystemTime::now", reason = "R-RUN-05: no clocks in the pure crates (INV-4)" },
+    { path = "std::thread::sleep", reason = "R-RUN-05: no waiting in the pure crates (INV-4)" },
+    { path = "std::env::var", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::var_os", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::vars", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::vars_os", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::args", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::args_os", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::current_dir", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::current_exe", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::env::temp_dir", reason = "R-RUN-05: no environment in the pure crates (INV-4)" },
+    { path = "std::fs::read", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::read_to_string", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::write", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::read_dir", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::create_dir", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::create_dir_all", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::remove_file", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::remove_dir_all", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::File::open", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+    { path = "std::fs::File::create", reason = "R-RUN-05: no I/O in the pure crates (INV-4)" },
+]

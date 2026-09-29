@@ -282,7 +282,7 @@ impl<'ir> Evaluator<'ir> {
             },
             Node::Map { list, func, items } => {
                 let list = self.list(list, probe)?;
-                let optional = items.optional();
+                let optional = items.optional().ok_or_else(internal)?;
                 let mut out = Vec::with_capacity(list.len());
                 for (i, element) in list.iter().enumerate() {
                     out.push(self.visit(node, func, i, element, probe)?);

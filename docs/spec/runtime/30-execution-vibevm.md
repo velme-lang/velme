@@ -51,7 +51,8 @@ evaluates its arguments, computes, then charges the rest of its catalog cost; a 
 on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`. Allocating the
 result is part of computing it, so memory is checked there too: when one step would pass both limits, the first crossed in
 this order is reported — the entry charge (`VL0601`), then computing and allocating the result (`VL0604`, or `VL0606` for
-a size limit), then the remaining fuel (`VL0601`) (D-88). A builtin whose cost follows from its arguments' sizes (`length`
+a size limit), then the remaining fuel (`VL0601`) (D-88). Within the computing step a size limit is found before the
+result is allocated, so `VL0606` wins over `VL0604`, and `VL0602`, raised while computing, wins over both. A builtin whose cost follows from its arguments' sizes (`length`
 of a text, `concat`, `range`) checks its result's bytes and then its fuel before the work, so it never computes or
 allocates what it can't pay for; the outcome is the same.
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
@@ -114,7 +115,8 @@ Worked example (12 §8.4) — `CreateLevelSummary`:
 **R-RUN-09** A required child failure fails the parent, but every sibling in that binding's wave still runs to
 completion — no cancellation — and no later wave starts (D-9). The reported failure is that of the **lowest
 source-order** binding that failed among the wave(s) that ran; every other failure in those waves is listed as a note,
-in source order. A binding in a wave that never started appears in the trace as `skipped`, not `cancelled`.
+in source order. A binding in a wave that never started appears in the trace as `skipped`, not `cancelled`. A wave
+whose call arguments fail to evaluate never starts either: the parent's own failure is reported (R-RUN-17, D-91).
 **R-RUN-10** The parent's failure wraps the child's: `BuildPlayerSummary failed because FindBadge failed: …`, keeping the
 child's code as the root cause. The top-level exit status uses the root cause's code (tooling/40).
 **R-RUN-11** `fallback`, `retry` and optional calls are Future (reserved, D-24).
@@ -146,7 +148,11 @@ so diagnostic text is itself deterministic.
 `memory=` → `max_memory`; `calls=`/`depth=` → limits for the subtree rooted at that goal. A value above the system cap
 is rejected by `velme check` with `VL0308 InvalidBudget` (language/12 R-GOAL-20).
 **R-RUN-17** Fuel and memory are per invocation, not a shared pool, so concurrent siblings cannot affect each other's
-outcome (INV-3). The whole tree is still bounded: ≤ 128 invocations × per-invocation limits, plus the watchdog.
+outcome (INV-3). The whole tree is still bounded: ≤ 128 invocations × per-invocation limits, plus the watchdog. A
+wave's call arguments are all evaluated, in source order, on the parent invocation's budget — after the earlier waves'
+and before any call of the wave starts (§4 step 4); if one fails, the parent fails with its own diagnostic, not
+wrapped in a child's, and every call of that wave is `skipped` (D-91). A wave therefore starts only if all of it can,
+which keeps "the waves that ran" well defined (R-RUN-09) and the trace independent of where a failure fell.
 **R-RUN-18** Budget constants are defined once in `velme-builtins` (a leaf crate, so `velme check` can enforce them
 statically, D-77) and referenced by name by the runtime, the CLI, the prompt builder (22 §4) and tests.
 **R-RUN-24** The static bound of R-RUN-17 (at most `max_goal_calls` × `max_fuel` = 1.28 × 10⁹ fuel, about 12.8 s at
@@ -158,13 +164,22 @@ a fake clock instead of real time (R-QA-02).
 
 The interpreter charges each Text, List and Record it creates by a fixed size function (Number 16, Boolean 8, Nothing
 0, `T?` 8 + `T`, Text 16 + ⌈bytes/8⌉ · 8, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes
-in the WASM ABI's 8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first). A Number, Boolean or
-optional scalar result on its own is charged nothing, since only Text, List and Record values live in linear memory;
-scalars count at the sizes above inside a List or Record (D-89). The size is logical, whatever the value's
+in the WASM ABI's 8-byte-aligned slots, 31 §3). The WASM backend keeps in linear memory only the values charged here,
+each in no more than its charged size, plus the invocation's inputs, literal data segments and one fixed scratch
+region (31 §3, D-90), and its `StoreLimits` backstop allows for those besides `max_memory` (31 §6), so it can't fire
+before `VL0604`. A Number, Boolean or optional scalar result on its own is charged nothing, since only Text, List and
+Record values live in linear memory; scalars count at the sizes above inside a List or Record (D-89). The 8 of `T?`
+is charged only for a List item or Record field of optional type; a standalone `T?` result of any kind is charged as
+its value. Whether the items of a `map` result are optional comes from the validator's typing of the lambda body.
+The size is logical, whatever the value's
 parts share: a list built from references to existing values — by a `list` node, `map`, `filter` or `sort_by` — is
 charged 16 + the full size of each item, as copying them into WASM memory costs (D-83). A `literal`'s value is decoded
 once, when its IR is validated, so evaluating a `literal` allocates nothing; a value built from it charges its full
-size. The interpreter tracks
+size. A `list`, `record`, `map` or `filter` node charges its result's size once its operands are evaluated (the
+elements visited, for `map` and `filter`); `sort_by` charges its result after its keys, before its remaining fuel. The
+fuel and memory a failed invocation reports at a limit are clamped to that limit. A size-derived builtin (`length` of
+a text, `concat`, `range`) that can afford its memory but not its fuel charges no memory; `to_text` and `sort_by`
+charge their memory first and then fail on fuel (D-88). The interpreter tracks
 the **cumulative bytes allocated** during the invocation, not the peak of live bytes (D-53). The function is part
 of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not its linear-memory size. Building a
 value one item at a time with `reduce` + `concat` therefore allocates `O(n²)` bytes; the synthesis prompt steers
