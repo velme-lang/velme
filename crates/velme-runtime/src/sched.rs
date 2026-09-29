@@ -15,12 +15,12 @@ use velme_builtins::Value;
 use velme_builtins::limits::MAX_WALL_CLOCK_MS;
 use velme_check::Part;
 use velme_diagnostics::{Code, Diagnostic, Span};
-use velme_interp::{Budget, Error, Failure, Interrupt, Limits, Spent};
+use velme_interp::{Budget, Error, Failure, Interrupt, Spent};
 use velme_ir::Fingerprint;
 use velme_sema::hir::{GoalId, GoalKind, Program};
 
 use crate::clock::{Clock, SystemClock, Watchdog};
-use crate::leaf::{Body, Progress, run_body};
+use crate::leaf::{Body, Progress, limits, run_body};
 use crate::plan::waves;
 use crate::registry::Registry;
 
@@ -360,15 +360,21 @@ fn watchdog(shared: &Shared) -> Interrupt {
     shared.watchdog.interrupt()
 }
 
-/// `run`, its goal declared at `span` and started at `started`, stopped by the watchdog before it finished.
-fn stop_timed_out(shared: &Shared, mut run: GoalRun, span: Span, started: Duration) -> GoalRun {
-    let diagnostic = Failure::from(Error::Interrupted).diagnostic(&run.goal, span);
-    run.outcome = Err(Failed::new(&run.goal, vec![diagnostic]));
+/// `run`, which started at `started`, ending now with `failed`.
+fn fail(shared: &Shared, mut run: GoalRun, started: Duration, failed: Failed) -> GoalRun {
+    run.outcome = Err(failed);
     run.timing = Timing {
         start: started,
         end: shared.origin.elapsed(),
     };
     run
+}
+
+/// `run`, its goal declared at `span` and started at `started`, stopped by the watchdog before it finished.
+fn stop_timed_out(shared: &Shared, run: GoalRun, span: Span, started: Duration) -> GoalRun {
+    let diagnostic = Failure::from(Error::Interrupted).diagnostic(&run.goal, span);
+    let failed = Failed::new(&run.goal, vec![diagnostic]);
+    fail(shared, run, started, failed)
 }
 
 /// One invocation, boxed because a goal's calls are invocations too.
@@ -411,10 +417,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         return run;
     }
     let mut values: Vec<Option<Value>> = vec![None; target.bindings.len()];
-    let limits = Limits {
-        fuel: target.budget.max_fuel,
-        memory: target.budget.max_memory,
-    };
+    let limits = limits(target);
     // What this invocation has spent on its calls' arguments, which its body spends after (R-RUN-17).
     let mut spent = Spent::default();
     for wave in waves(target) {
@@ -456,14 +459,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         (run.fuel, run.memory) = (spent.fuel, spent.memory);
         let evaluated = match evaluated {
             Ok(evaluated) => evaluated,
-            Err(diagnostic) => {
-                run.outcome = Err(Failed::new(name, vec![diagnostic]));
-                run.timing = Timing {
-                    start: started,
-                    end: shared.origin.elapsed(),
-                };
-                return run;
-            }
+            Err(diagnostic) => return fail(&shared, run, started, Failed::new(name, vec![diagnostic])),
         };
         let mut starts = Vec::new();
         for (i, args) in evaluated {
@@ -514,16 +510,12 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             for other in others {
                 notes.extend(other.as_notes(name));
             }
-            run.outcome = Err(Failed {
+            let failed = Failed {
                 path,
                 diagnostics: first.diagnostics.clone(),
                 notes,
-            });
-            run.timing = Timing {
-                start: started,
-                end: shared.origin.elapsed(),
             };
-            return run;
+            return fail(&shared, run, started, failed);
         }
     }
     let bindings: Vec<Value> = values.into_iter().flatten().collect();
