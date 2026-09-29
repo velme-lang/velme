@@ -44,7 +44,7 @@ diagnostic's data.
 | VL0305 | BindingUsedBeforeDefinition | calls/graph | binding referenced before its line (§12.5) | `{name}` is used before it's made — move its line up. | — |
 | VL0306 | DuplicateBinding | calls/graph | two bindings share a name, or a binding shadows an input | `{name}` is already used in this goal. | — |
 | VL0307 | GoalHasNoBody | calls/graph | goal has neither `plan` nor `result` binding (D-4) | `{goal}` needs a `plan:` that says what it should do. | — |
-| VL0308 | InvalidBudget | calls/graph | `budget` line has an unknown key or unit, a bad or repeated value, or a value above the system cap (D-8, `language/12` R-GOAL-20) | `budget` can only make limits smaller — `{key}` can be at most `{cap}`. | — |
+| VL0308 | InvalidBudget | calls/graph | `budget` line has an unknown key or unit, a bad (including any `.`, D-78) or repeated value, or a value above the system cap (D-8, `language/12` R-GOAL-20) | `budget` can only make limits smaller — `{key}` can be at most `{cap}`. | — |
 | VL0401 | IRSchemaInvalid | IR/synthesis | IR JSON fails the schema | The generated program wasn't in the right shape. | A007 |
 | VL0402 | IRInvalid | IR/synthesis | IR schema-valid but fails validation (names, types, capabilities, `Call`) | The generated program broke a rule: {rule}. | A007 |
 | VL0403 | SynthesisFailed | IR/synthesis | no accepted IR after max retries, or `max_calls_per_build` reached; states the cause (`compiler/22` R-SYNTH-31) | Velme couldn't build `{goal}`: {cause} ({count} of {tries} tries). | A008 |
@@ -61,7 +61,7 @@ diagnostic's data.
 | VL0602 | ArithmeticError | runtime | divide by zero, overflow, non-integer or out-of-range integer argument (D-22, D-36) | `{goal}` tried to {op}, which has no answer. | — |
 | VL0603 | Timeout | runtime | wall-clock watchdog fired (non-reproducible, D-10) | `{goal}` ran too long and was stopped. | A011 |
 | VL0604 | MemoryLimitExceeded | runtime | memory limit reached | `{goal}` needed more memory than it's allowed. | A012 |
-| VL0605 | CallLimitExceeded | runtime | `max_goal_calls` or `max_call_depth` exceeded | Too many goals were called while running `{goal}`. | A010 |
+| VL0605 | CallLimitExceeded | runtime | `max_goal_calls` or `max_call_depth` exceeded | Too many goals were called while running `{goal}`. (`max_goal_calls`) / Goals call each other too deeply while running `{goal}`. (`max_call_depth`) | A010 |
 | VL0606 | SizeLimitExceeded | runtime | list size or output size cap exceeded | `{goal}` made a list or answer that's too big. | A010 |
 | VL0607 | InternalError | any | invariant violated inside Velme (a bug) | Something went wrong inside Velme. Please report it: {report_url}. | — |
 | VL0701 | ArtifactUnavailable | artifacts | referenced artifact missing from store | The built version of `{goal}` is missing — run `velme build`. | A013 |

@@ -661,7 +661,7 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
             },
             {
               "kind": "record",
-              "ty": 0,
+              "record": 0,
               "fields": [
                 {
                   "kind": "text",
@@ -1463,7 +1463,7 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
               "items": [
                 {
                   "kind": "record",
-                  "ty": 0,
+                  "record": 0,
                   "fields": [
                     {
                       "kind": "text",
@@ -1535,7 +1535,7 @@ input_file: tests/golden/sema/accept/checks_and_examples.velme
           ],
           "expected": {
             "kind": "record",
-            "ty": 0,
+            "record": 0,
             "fields": [
               {
                 "kind": "text",

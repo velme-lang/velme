@@ -333,7 +333,8 @@ fn report_recursive_types(types: &[RecordType], decls: &[&ast::TypeDecl], diags:
             format!("`{}` contains itself, which Velme doesn't allow yet.", decl.name.name),
         )
         .with_note(path.join(" → "));
-        if let Some(field) = decl.fields.get(field) {
+        let span = types.get(start.0).and_then(|t| t.fields.get(field)).map(|f| f.span);
+        if let Some(field) = decl.fields.iter().find(|f| Some(f.span) == span) {
             diag = diag.with_label(field.span, "this field leads back to it");
         }
         diags.push(diag.with_help("store the related values in a separate list instead of inside each other"));

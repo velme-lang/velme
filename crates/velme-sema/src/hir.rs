@@ -210,7 +210,7 @@ pub struct Expr {
     /// What the expression is.
     #[serde(flatten)]
     pub kind: ExprKind,
-    /// Its type, after narrowing (`language/11` §9).
+    /// Its type. Operands of `==`, `!=` and `is empty` keep their declared type, not a narrowed one (`language/11` §9).
     pub ty: Type,
     /// The source it came from.
     pub span: Span,
@@ -264,7 +264,7 @@ pub enum ExprKind {
     /// `Type(field: value, …)`, fields in declaration order.
     Record {
         /// The record type.
-        ty: TypeId,
+        record: TypeId,
         /// One value per field, in declaration order.
         fields: Vec<Expr>,
     },

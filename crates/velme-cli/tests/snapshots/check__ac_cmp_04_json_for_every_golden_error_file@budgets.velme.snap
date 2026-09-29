@@ -9,7 +9,7 @@ input_file: tests/golden/sema/reject/budgets.velme
       "code": "VL0308",
       "file": "tests/golden/sema/reject/budgets.velme",
       "labels": [],
-      "message": "`cpu` must be a whole number.",
+      "message": "`cpu` is written as a whole number, without a `.`",
       "notes": [],
       "severity": "error",
       "span": {
@@ -134,6 +134,49 @@ input_file: tests/golden/sema/reject/budgets.velme
       }
     },
     {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`depth` is written as a whole number, without a `.`",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 39,
+        "end": 418,
+        "line": 13,
+        "start": 409
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "labels": [],
+      "message": "`cpu` is written as a whole number, without a `.`",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 500,
+        "line": 17,
+        "start": 490
+      }
+    },
+    {
+      "code": "VL0308",
+      "file": "tests/golden/sema/reject/budgets.velme",
+      "help": "write `memory=1536kb`",
+      "labels": [],
+      "message": "`memory` is written as a whole number, without a `.`",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 23,
+        "end": 513,
+        "line": 17,
+        "start": 501
+      }
+    },
+    {
       "code": "VL0605",
       "file": "tests/golden/sema/reject/budgets.velme",
       "help": "raise `calls=` in its budget, or call fewer goals below it — every call counts, even of the same goal",
@@ -141,9 +184,9 @@ input_file: tests/golden/sema/reject/budgets.velme
         {
           "span": {
             "column": 12,
-            "end": 491,
-            "line": 17,
-            "start": 484
+            "end": 586,
+            "line": 21,
+            "start": 579
           },
           "text": "the limit set here"
         }
@@ -155,9 +198,9 @@ input_file: tests/golden/sema/reject/budgets.velme
       "severity": "error",
       "span": {
         "column": 6,
-        "end": 450,
-        "line": 16,
-        "start": 447
+        "end": 545,
+        "line": 20,
+        "start": 542
       }
     },
     {
@@ -168,23 +211,23 @@ input_file: tests/golden/sema/reject/budgets.velme
         {
           "span": {
             "column": 12,
-            "end": 626,
-            "line": 24,
-            "start": 619
+            "end": 721,
+            "line": 28,
+            "start": 714
           },
           "text": "the limit set here"
         }
       ],
-      "message": "Too many goals were called while running `Deep`.",
+      "message": "Goals call each other too deeply while running `Deep`.",
       "notes": [
         "its calls would nest 2 deep, but its limit is 1"
       ],
       "severity": "error",
       "span": {
         "column": 6,
-        "end": 585,
-        "line": 23,
-        "start": 581
+        "end": 680,
+        "line": 27,
+        "start": 676
       }
     }
   ],

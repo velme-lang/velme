@@ -8,9 +8,9 @@ input_file: tests/golden/sema/reject/example_errors.velme
     {
       "code": "VL0303",
       "file": "tests/golden/sema/reject/example_errors.velme",
-      "help": "an example calls the goal it belongs to, `Greet`",
+      "help": "write `Greet(…) == …`; to use `Hello`, list it in `call:` and test it in a check",
       "labels": [],
-      "message": "`Hello` can only be used after it's listed in `call:`.",
+      "message": "An example can only call `Greet`, the goal it belongs to.",
       "notes": [],
       "severity": "error",
       "span": {

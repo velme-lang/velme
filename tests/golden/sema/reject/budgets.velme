@@ -13,6 +13,10 @@ goal Units(x: Number) -> Number:
     budget cpu=10s memory=4 calls=2kb depth=1.0
     plan: "Return x."
 
+goal Fractions(x: Number) -> Number:
+    budget cpu=10.0ms memory=1.5mb
+    plan: "Return x."
+
 goal Two(x: Number) -> Number:
     budget calls=2 depth=1
     call:

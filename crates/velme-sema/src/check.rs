@@ -424,9 +424,12 @@ impl<'f, 'a> Body<'f, 'a> {
                 Diagnostic::new(
                     Code::InvalidCall,
                     example.goal.span,
-                    format!("`{}` can only be used after it's listed in `call:`.", example.goal.name),
+                    format!("An example can only call `{}`, the goal it belongs to.", goal.name),
                 )
-                .with_help(format!("an example calls the goal it belongs to, `{}`", goal.name)),
+                .with_help(format!(
+                    "write `{}(…) == …`; to use `{}`, list it in `call:` and test it in a check",
+                    goal.name, example.goal.name
+                )),
             );
             None
         } else if example.args.len() != goal.params.len() {
@@ -863,7 +866,7 @@ impl<'f, 'a> Body<'f, 'a> {
         }
         (
             ExprKind::Record {
-                ty: id,
+                record: id,
                 fields: values.into_iter().flatten().collect(),
             },
             Type::Record(id),
