@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "Double",
+  "types": {},
+  "inputs": [["x", {"t": "Number"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "x"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}
+}

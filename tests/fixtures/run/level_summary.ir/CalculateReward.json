@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "CalculateReward",
+  "types": {},
+  "inputs": [["score", {"t": "Number"}], ["treasures", {"t": "Number"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "binary", "op": "add", "left": {"kind": "input", "name": "score"}, "right": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "treasures"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 50}}}
+}

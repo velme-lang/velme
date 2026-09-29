@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "BuildPlayerSummary",
+  "types": {"Player": {"fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]]}, "PlayerSummary": {"fields": [["name", {"t": "Text"}], ["score", {"t": "Number"}], ["badge", {"t": "Text"}]]}},
+  "inputs": [["player", {"t": "Record", "name": "Player"}]],
+  "output": {"t": "Record", "name": "PlayerSummary"},
+  "body": {"kind": "record", "type": "PlayerSummary", "fields": {"name": {"kind": "field", "of": {"kind": "input", "name": "player"}, "field": "name"}, "score": {"kind": "local", "name": "score"}, "badge": {"kind": "local", "name": "badge"}}}
+}

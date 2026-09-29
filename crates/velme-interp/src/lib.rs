@@ -23,11 +23,23 @@ pub struct Output {
 /// order, with at most `max_fuel` fuel (`runtime/30` §4 step 6, R-RUN-16). The runtime has already decoded the inputs
 /// against the signature and run the calls.
 pub fn run(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, max_fuel: u64) -> Result<Output, Failure> {
+    run_after(ir, inputs, bindings, 0, max_fuel)
+}
+
+/// [`run`] for an invocation that has already spent `spent` fuel of its `max_fuel`, evaluating the arguments of its calls
+/// (`runtime/30` R-RUN-17): the body spends from what is left, and [`Output::fuel`] counts all of it.
+pub fn run_after(
+    ir: &ValidIr,
+    inputs: Vec<Value>,
+    bindings: Vec<Value>,
+    spent: u64,
+    max_fuel: u64,
+) -> Result<Output, Failure> {
     let goal = ir.goal();
     if inputs.len() != goal.inputs.len() || bindings.len() != goal.calls.len() {
         return Err(Error::Builtin(velme_builtins::Error::Internal).into());
     }
-    let mut evaluator = Evaluator::new(max_fuel);
+    let mut evaluator = Evaluator::new(max_fuel).with_fuel_spent(spent);
     for ((name, _), value) in goal.inputs.iter().zip(inputs) {
         evaluator.bind_input(name, value);
     }
@@ -39,6 +51,40 @@ pub fn run(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, max_fuel: u64
         value,
         fuel: evaluator.fuel(),
     })
+}
+
+/// The arguments of the `index`th call of `ir`, evaluated on `inputs` and on the `bindings` known so far: one slot per
+/// call in `calls` order, `None` for a call that has not run. An argument names only inputs and earlier bindings
+/// (R-IR-09), so the slots it reads are filled when the scheduler asks (`runtime/30` R-RUN-06). The arguments are
+/// expressions of the goal's body, so they spend from the invocation's `max_fuel` after the `spent` it has already
+/// used (R-RUN-17): the arguments and the fuel spent in all.
+pub fn call_args(
+    ir: &ValidIr,
+    index: usize,
+    inputs: &[Value],
+    bindings: &[Option<Value>],
+    spent: u64,
+    max_fuel: u64,
+) -> Result<(Vec<Value>, u64), Failure> {
+    let goal = ir.goal();
+    if inputs.len() != goal.inputs.len() || bindings.len() != goal.calls.len() || index >= goal.calls.len() {
+        return Err(Error::Builtin(velme_builtins::Error::Internal).into());
+    }
+    let mut evaluator = Evaluator::new(max_fuel).with_fuel_spent(spent);
+    for ((name, _), value) in goal.inputs.iter().zip(inputs) {
+        evaluator.bind_input(name, value.clone());
+    }
+    for (velme_ir::CallNode::Call(call), value) in goal.calls.iter().zip(bindings) {
+        if let Some(value) = value {
+            evaluator.bind_local(&call.binding, value.clone());
+        }
+    }
+    let args = ir
+        .call_args(index)
+        .into_iter()
+        .map(|arg| evaluator.eval(arg))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((args, evaluator.fuel()))
 }
 
 /// Why evaluation stopped without a value.

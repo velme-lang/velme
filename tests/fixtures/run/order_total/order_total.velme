@@ -1,0 +1,30 @@
+language: velme/0.1
+
+type Item:
+    price: Number
+    quantity: Number
+
+goal Subtotal(items: List<Item>) -> Number:
+    plan: "Add up price times quantity for every item."
+    examples:
+        - Subtotal([]) == 0
+        - Subtotal([Item(price: 10, quantity: 3), Item(price: 5, quantity: 1)]) == 35
+
+goal Discount(total: Number) -> Number:
+    plan: "Take 10% off totals over 100."
+    examples:
+        - Discount(100) == 100
+        - Discount(200) == 180
+
+goal Shipping(total: Number) -> Number:
+    plan: "Add 5 for shipping unless the total is over 50."
+    examples:
+        - Shipping(50) == 55
+        - Shipping(51) == 51
+
+goal OrderTotal(items: List<Item>) -> Number:
+    call:
+        subtotal = Subtotal(items)
+        discounted = Discount(subtotal)
+        result = Shipping(discounted)
+    plan: "Price the items, then apply the discount, then shipping."

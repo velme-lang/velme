@@ -1,0 +1,22 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+{
+  "format": "velme-cli/1",
+  "status": "ok",
+  "results": [
+    {
+      "goal": "BuildPlayerSummary",
+      "status": "ok",
+      "diagnostics": [],
+      "result": {
+        "badge": "Silver",
+        "name": "Lina",
+        "score": 820
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

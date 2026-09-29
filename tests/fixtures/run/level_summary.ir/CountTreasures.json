@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "CountTreasures",
+  "types": {"Level": {"fields": [["enemy_count", {"t": "Number"}], ["treasure_count", {"t": "Number"}], ["base_score", {"t": "Number"}]]}},
+  "inputs": [["level", {"t": "Record", "name": "Level"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "field", "of": {"kind": "input", "name": "level"}, "field": "treasure_count"}
+}

@@ -55,6 +55,22 @@ impl ValidIr {
         &self.0
     }
 
+    /// The arguments of the goal's `index`th call, one expression per parameter of the callee, for a back end to
+    /// evaluate before it runs the callee; empty if there is no such call. They were validated with the rest of the
+    /// goal (R-IR-09) and equal the compiler's (R-IR-16).
+    pub fn call_args(&self, index: usize) -> Vec<Trusted<'_>> {
+        let Some(CallNode::Call(call)) = self.0.calls.get(index) else {
+            return Vec::new();
+        };
+        call.args
+            .iter()
+            .map(|node| Trusted {
+                node,
+                types: &self.0.types,
+            })
+            .collect()
+    }
+
     /// The goal's body, for a back end to evaluate.
     pub fn body(&self) -> Trusted<'_> {
         Trusted {

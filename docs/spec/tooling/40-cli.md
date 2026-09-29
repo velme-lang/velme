@@ -62,7 +62,7 @@ spelling suggestion.
 | `--locked` | off | see R-CLI-04 |
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14) |
-| `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` §6); results are identical for every value, including 1 (INV-3) |
+| `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` R-RUN-07); results are identical for every value, including 1 (INV-3) |
 | `--backend interp\|wasm` | `interp` until M7, then `wasm` for leaf goals | execution backend for `run`/`test`/`trace` (`runtime/31`); results must be identical (INV-3) |
 | `--config PATH` | nearest `velme.toml` upward from `FILE` | alternative project config |
 | `-q` / `-v` | normal | quieter / add phase timings and cache hits |

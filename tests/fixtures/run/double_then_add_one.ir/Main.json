@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "Main",
+  "types": {},
+  "inputs": [["x", {"t": "Number"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "local", "name": "result"}
+}

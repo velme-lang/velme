@@ -1,0 +1,39 @@
+language: velme/0.1
+
+type Player:
+    name: Text
+    jump_height: Number
+    score: Number
+
+type PlayerSummary:
+    name: Text
+    score: Number
+    badge: Text
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score."
+    check:
+        - result == player.score
+
+goal FindBadge(player: Player) -> Text:
+    plan: |
+        Give the player Gold for a score of at least 1000,
+        Silver for a score of at least 500, Bronze otherwise.
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+    examples:
+        - FindBadge(Player(name: "Lina", jump_height: 3, score: 820)) == "Silver"
+        - FindBadge(Player(name: "Tom", jump_height: 5, score: 1000)) == "Gold"
+
+# CalculateScore and FindBadge don't depend on each other, so they run at the same time; the summary is built last.
+goal BuildPlayerSummary(player: Player) -> PlayerSummary:
+    call:
+        score = CalculateScore(player)
+        badge = FindBadge(player)
+    plan: |
+        Build a player summary using the player's name,
+        calculated score, and badge.
+    check:
+        - result.name == player.name
+        - result.score == score
+        - result.badge == badge

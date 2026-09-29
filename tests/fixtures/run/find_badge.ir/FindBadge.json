@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindBadge",
+  "types": {"Player": {"fields": [["name", {"t": "Text"}], ["score", {"t": "Number"}]]}},
+  "inputs": [["player", {"t": "Record", "name": "Player"}]],
+  "output": {"t": "Text"},
+  "body": {"kind": "if", "cond": {"kind": "binary", "op": "ge", "left": {"kind": "field", "of": {"kind": "input", "name": "player"}, "field": "score"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 1000}}, "then": {"kind": "literal", "type": {"t": "Text"}, "value": "Gold"}, "else": {"kind": "if", "cond": {"kind": "binary", "op": "ge", "left": {"kind": "field", "of": {"kind": "input", "name": "player"}, "field": "score"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 500}}, "then": {"kind": "literal", "type": {"t": "Text"}, "value": "Silver"}, "else": {"kind": "literal", "type": {"t": "Text"}, "value": "Bronze"}}}
+}

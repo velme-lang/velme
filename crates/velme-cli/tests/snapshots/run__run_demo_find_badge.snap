@@ -1,0 +1,18 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+{
+  "format": "velme-cli/1",
+  "status": "ok",
+  "results": [
+    {
+      "goal": "FindBadge",
+      "status": "ok",
+      "diagnostics": [],
+      "result": "Silver"
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

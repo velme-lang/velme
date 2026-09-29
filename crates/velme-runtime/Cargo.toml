@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json = { workspace = true, features = ["arbitrary_precision"] }
+tokio.workspace = true
 toml.workspace = true
 velme-builtins.workspace = true
 velme-check.workspace = true

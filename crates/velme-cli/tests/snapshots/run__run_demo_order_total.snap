@@ -1,0 +1,18 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+{
+  "format": "velme-cli/1",
+  "status": "ok",
+  "results": [
+    {
+      "goal": "OrderTotal",
+      "status": "ok",
+      "diagnostics": [],
+      "result": 40
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

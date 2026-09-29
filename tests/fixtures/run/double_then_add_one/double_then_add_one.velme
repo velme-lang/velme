@@ -1,0 +1,20 @@
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Multiply x by 2."
+    check:
+        - result == x * 2
+
+goal AddOne(x: Number) -> Number:
+    plan: "Add 1 to x."
+    check:
+        - result == x + 1
+
+# `call:` wires other goals together. A binding named `result` is the answer, so no code is written for Main.
+goal Main(x: Number) -> Number:
+    call:
+        doubled = Double(x)
+        result = AddOne(doubled)
+    plan: "Double x, then add one."
+    examples:
+        - Main(4) == 9

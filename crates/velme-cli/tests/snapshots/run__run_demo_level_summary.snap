@@ -1,0 +1,22 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+{
+  "format": "velme-cli/1",
+  "status": "ok",
+  "results": [
+    {
+      "goal": "CreateLevelSummary",
+      "status": "ok",
+      "diagnostics": [],
+      "result": {
+        "difficulty": "Medium",
+        "reward": 270,
+        "score": 120
+      }
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

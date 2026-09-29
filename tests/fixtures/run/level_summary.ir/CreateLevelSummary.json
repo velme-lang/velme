@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "CreateLevelSummary",
+  "types": {"Level": {"fields": [["enemy_count", {"t": "Number"}], ["treasure_count", {"t": "Number"}], ["base_score", {"t": "Number"}]]}, "LevelSummary": {"fields": [["score", {"t": "Number"}], ["difficulty", {"t": "Text"}], ["reward", {"t": "Number"}]]}},
+  "inputs": [["level", {"t": "Record", "name": "Level"}]],
+  "output": {"t": "Record", "name": "LevelSummary"},
+  "body": {"kind": "record", "type": "LevelSummary", "fields": {"score": {"kind": "local", "name": "score"}, "difficulty": {"kind": "local", "name": "difficulty"}, "reward": {"kind": "local", "name": "reward"}}}
+}

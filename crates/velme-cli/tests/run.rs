@@ -11,13 +11,24 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 use velme_runtime::{ARTIFACTS_DIR, LOCK_FILE, VELME_DIR};
-use velme_test_support::{install, program, read, repo};
+use velme_test_support::{goal_id, install, program, read, repo};
 
 /// Set to rewrite the committed fixture projects from their hand-written IR, then review the diff.
 const BLESS: &str = "VELME_BLESS_FIXTURES";
 
-/// The fixture projects: each is `examples/beginner/add.velme` with the IR of `tests/fixtures/run/<name>.json`.
+/// The single-goal fixture projects: each is `examples/beginner/add.velme` with the IR of
+/// `tests/fixtures/run/<name>.json`.
 const FIXTURES: [&str; 2] = ["add", "add_broken"];
+
+/// The fixture projects made from an example of the launch demos, with the IR of each of its goals in
+/// `tests/fixtures/run/<name>.ir/<Goal>.json`: the example's path by fixture name.
+const EXAMPLES: [(&str, &str); 5] = [
+    ("find_badge", "examples/beginner/find_badge.velme"),
+    ("double_then_add_one", "examples/beginner/double_then_add_one.velme"),
+    ("player_summary", "examples/intermediate/player_summary.velme"),
+    ("level_summary", "examples/games/level_summary.velme"),
+    ("order_total", "examples/professional/order_total.velme"),
+];
 
 /// The project configuration file (`tooling/40` §5.1); the binary's own constant isn't reachable from a test.
 const CONFIG_FILE: &str = "velme.toml";
@@ -101,6 +112,35 @@ fn made(name: &str) -> PathBuf {
     dir
 }
 
+/// The fixture project `name` made from its example as the installer makes it: every goal's hand-written IR, with the
+/// compiler's `calls` joined in as a synthesized reply's are (`compiler/21` R-IR-02), so a fixture doesn't spell out
+/// signature fingerprints.
+fn made_example(name: &str, example: &str) -> PathBuf {
+    let dir = scratch(&format!("made_{name}"));
+    let source = read(&repo(example));
+    let file = Path::new(example)
+        .file_name()
+        .expect("a file name")
+        .to_string_lossy()
+        .into_owned();
+    fs::write(dir.join(&file), &source).expect("source");
+    let program = program(&source);
+    let mut irs: Vec<PathBuf> = fs::read_dir(repo(&format!("tests/fixtures/run/{name}.ir")))
+        .expect("the IR directory")
+        .map(|e| e.expect("entry").path())
+        .collect();
+    irs.sort();
+    for path in irs {
+        let mut ir: Value = serde_json::from_str(&read(&path)).expect("IR JSON");
+        let goal = ir["goal"].as_str().expect("a goal name").to_owned();
+        let calls = velme_ir::calls(&program, goal_id(&program, &goal)).expect("calls");
+        ir["calls"] = serde_json::to_value(calls).expect("calls as JSON");
+        install(&dir, &file, &program, &ir.to_string());
+    }
+    fs::remove_dir_all(dir.join(VELME_DIR).join("tmp")).expect("temporary directory");
+    dir
+}
+
 /// An empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("run").join(name);
@@ -130,9 +170,18 @@ fn json(run: &Run) -> Value {
 /// The committed fixture projects are exactly what the installer makes from their IR (D-16).
 #[test]
 fn fixture_projects_are_the_installers_output() {
-    for name in FIXTURES {
+    let projects = FIXTURES
+        .iter()
+        .map(|name| (*name, made(name), 1))
+        .chain(EXAMPLES.iter().map(|(name, example)| {
+            let goals = fs::read_dir(repo(&format!("tests/fixtures/run/{name}.ir")))
+                .expect("IR")
+                .count();
+            (*name, made_example(name, example), goals)
+        }));
+    for (name, project, goals) in projects {
         let committed = repo(&format!("tests/fixtures/run/{name}"));
-        let made = tree(&made(name));
+        let made = tree(&project);
         if std::env::var_os(BLESS).is_some() {
             let _ = fs::remove_dir_all(&committed);
             for (file, bytes) in &made {
@@ -151,7 +200,7 @@ fn fixture_projects_are_the_installers_output() {
             made.keys()
                 .filter(|f| f.starts_with(&format!("{VELME_DIR}/{ARTIFACTS_DIR}/")))
                 .count(),
-            1
+            goals
         );
     }
 }
@@ -303,8 +352,10 @@ fn run_of_a_changed_goal_is_stale() {
     assert_eq!(run.code, 64, "{}", run.stderr);
 }
 
+/// Nothing is synthesized by `velme run`: a goal with calls whose goals aren't built stops the run before it starts,
+/// naming each (R-ART-16).
 #[test]
-fn run_of_a_goal_with_calls_is_a_usage_error_until_the_scheduler() {
+fn run_of_a_goal_with_calls_needs_every_goal_built() {
     let run = velme(&[
         "run",
         "examples/beginner/double_then_add_one.velme",
@@ -313,11 +364,179 @@ fn run_of_a_goal_with_calls_is_a_usage_error_until_the_scheduler() {
         "--arg",
         "x=4",
     ]);
-    assert_eq!(run.code, 64);
+    assert_eq!(run.code, 4, "{}", run.stderr);
+    assert_eq!(run.stdout, "Main  ✗\n");
+    for goal in ["Main", "Double", "AddOne"] {
+        assert!(
+            run.stderr
+                .contains(&format!("`{goal}` changed since it was last built")),
+            "{}",
+            run.stderr
+        );
+    }
+}
+
+/// The path of the fixture project `name` made from an example.
+fn example_file(name: &str, file: &str) -> String {
+    format!("tests/fixtures/run/{name}/{file}")
+}
+
+/// `Main` calls `Double`, then `AddOne`, in two waves: `2x + 1` (AC-RUN-02, AC-RDM-02).
+#[test]
+fn ac_run_02_run_of_a_wired_goal_shows_its_result() {
+    let file = example_file("double_then_add_one", "double_then_add_one.velme");
+    let run = velme(&["run", &file, "--goal", "Main", "--arg", "x=4"]);
+    assert_eq!(
+        (run.stdout.as_str(), run.stderr.as_str(), run.code),
+        ("Main  ✓\n\nResult:\n9\n", "", 0)
+    );
+    let run = velme(&["run", &file, "--goal", "Main", "--arg", "x=0.5", "--json"]);
+    assert_eq!(run.code, 0, "{}", run.stdout);
+    let envelope = json(&run);
+    assert_eq!(envelope["status"], "ok");
+    assert_eq!(envelope["results"][0]["goal"], "Main");
+    assert_eq!(envelope["results"][0]["result"].to_string(), "2");
+}
+
+/// The launch demos run end to end from hand-written IR: the mixed-wave games example, the sequential order total, the
+/// parallel player summary and the beginner leaf.
+#[test]
+fn the_launch_demos_run_end_to_end() {
+    let level = r#"level={"enemy_count":7,"treasure_count":3,"base_score":120}"#;
+    let player = r#"player={"name":"Lina","jump_height":3,"score":820}"#;
+    let items = r#"items=[{"price":10,"quantity":3},{"price":5,"quantity":1}]"#;
+    let cases = [
+        ("level_summary", "level_summary", "CreateLevelSummary", level),
+        ("order_total", "order_total", "OrderTotal", items),
+        ("player_summary", "player_summary", "BuildPlayerSummary", player),
+        (
+            "find_badge",
+            "find_badge",
+            "FindBadge",
+            r#"player={"name":"Lina","score":820}"#,
+        ),
+    ];
+    for (name, file, goal, arg) in cases {
+        let file = example_file(name, &format!("{file}.velme"));
+        let run = velme(&["run", &file, "--goal", goal, "--arg", arg, "--json"]);
+        assert_eq!(run.code, 0, "{name}: {}{}", run.stdout, run.stderr);
+        insta::assert_snapshot!(format!("run_demo_{name}"), run.stdout);
+    }
+    let file = example_file("order_total", "order_total.velme");
+    let big = r#"items=[{"price":100,"quantity":3}]"#;
+    let run = velme(&["run", &file, "--goal", "OrderTotal", "--arg", big]);
+    assert_eq!(run.stdout, "OrderTotal  ✓\n\nResult:\n270\n");
+}
+
+/// The result is byte-identical for `--jobs 1` and `--jobs 8` on the golden programs (AC-RUN-04, result half; the trace
+/// half follows the trace model in M4c).
+#[test]
+fn ac_run_04_the_output_is_the_same_for_every_jobs_value() {
+    let level = r#"level={"enemy_count":12,"treasure_count":0,"base_score":9}"#;
+    let file = example_file("level_summary", "level_summary.velme");
+    let one = velme(&[
+        "run",
+        &file,
+        "--goal",
+        "CreateLevelSummary",
+        "--arg",
+        level,
+        "--jobs",
+        "1",
+        "--json",
+    ]);
+    let eight = velme(&[
+        "run",
+        &file,
+        "--goal",
+        "CreateLevelSummary",
+        "--arg",
+        level,
+        "--jobs",
+        "8",
+        "--json",
+    ]);
+    assert_eq!(one.code, 0, "{}", one.stderr);
+    assert_eq!(
+        (one.stdout, one.stderr, one.code),
+        (eight.stdout, eight.stderr, eight.code)
+    );
+}
+
+/// `--jobs` is a positive whole number, and only `velme run` takes it.
+#[test]
+fn jobs_must_be_a_positive_number() {
+    let file = example_file("double_then_add_one", "double_then_add_one.velme");
+    for jobs in ["0", "-1", "many"] {
+        let run = velme(&["run", &file, "--goal", "Main", "--arg", "x=4", "--jobs", jobs]);
+        assert_eq!(run.code, 64, "{jobs}: {}", run.stderr);
+        assert!(run.stderr.starts_with("usage: velme check"), "{}", run.stderr);
+    }
+    assert_eq!(velme(&["check", &file, "--jobs", "2"]).code, 64);
+}
+
+/// Two siblings fail: the exit status and message are the lower source-order binding's, with the other failure a note,
+/// and the envelope is the same for every `--jobs` (AC-RUN-03, AC-RUN-04, D-9).
+#[test]
+fn failed_siblings_report_the_lowest_source_order_failure() {
+    let dir = scratch("siblings");
+    let source = "language: velme/0.1\n\n\
+goal Slow(n: Number) -> Number:\n    plan: \"Count, then divide by zero.\"\n\n\
+goal Fast(n: Number) -> Number:\n    plan: \"Divide by zero.\"\n\n\
+goal Later(n: Number) -> Number:\n    plan: \"Return n.\"\n\n\
+goal Both(n: Number) -> Number:\n    call:\n        first = Slow(n)\n        second = Fast(n)\n        \
+third = Later(first)\n    plan: \"Add them.\"\n";
+    fs::write(dir.join("both.velme"), source).expect("source");
+    let program = program(source);
+    let number = serde_json::json!({"t": "Number"});
+    let n = serde_json::json!({"kind": "input", "name": "n"});
+    let zero = serde_json::json!({"kind": "literal", "type": number, "value": 0});
+    let range = serde_json::json!({"kind": "builtin", "name": "range", "args": [n]});
+    let count = serde_json::json!({"kind": "reduce", "list": range, "init": zero,
+        "fn": {"acc": "a", "param": "i", "body": {"kind": "binary", "op": "add",
+               "left": {"kind": "local", "name": "a"}, "right": {"kind": "local", "name": "i"}}}});
+    let divide = |left: &Value| serde_json::json!({"kind": "binary", "op": "div", "left": left, "right": zero});
+    let bodies = [
+        ("Slow", divide(&count)),
+        ("Fast", divide(&n)),
+        ("Later", n.clone()),
+        ("Both", serde_json::json!({"kind": "local", "name": "third"})),
+    ];
+    for (goal, body) in bodies {
+        let calls = velme_ir::calls(&program, goal_id(&program, goal)).expect("calls");
+        let ir = serde_json::json!({"ir_version": "0.1", "builtins_version": "0.1", "goal": goal, "types": {},
+            "inputs": [["n", number]], "output": number, "calls": calls, "body": body});
+        install(&dir, "both.velme", &program, &ir.to_string());
+    }
+    let file = dir.join("both.velme");
+    let file = file.to_str().expect("UTF-8 path");
+    let run = |jobs: &str| {
+        velme(&[
+            "run", file, "--goal", "Both", "--arg", "n=3000", "--jobs", jobs, "--json",
+        ])
+    };
+    let (one, eight) = (run("1"), run("8"));
+    assert_eq!(one.code, 3, "{}", one.stderr);
+    assert_eq!(
+        (&one.stdout, &one.stderr, one.code),
+        (&eight.stdout, &eight.stderr, eight.code)
+    );
+    let envelope = json(&one);
+    let diagnostics = envelope["results"][0]["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "VL0602");
+    let message = diagnostics[0]["message"].as_str().expect("a message");
     assert!(
-        run.stderr.starts_with("velme run: `Main` calls other goals"),
+        message.starts_with("`Both` failed because `Slow` failed: "),
+        "{message}"
+    );
+    insta::assert_snapshot!(one.stdout);
+    let human = velme(&["run", file, "--goal", "Both", "--arg", "n=3"]);
+    assert_eq!(human.code, 3);
+    assert!(
+        human.stderr.contains("`Both` also failed because `Fast` failed"),
         "{}",
-        run.stderr
+        human.stderr
     );
 }
 
