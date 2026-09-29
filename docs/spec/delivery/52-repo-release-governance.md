@@ -4,7 +4,6 @@
 **Read when:** changing repo layout, adding a crate, editing CI or release workflows, versioning, publishing, licensing,
 or proposing a language change (RFC).
 **Depends on:** [SPEC](../SPEC.md), [51-testing-quality](51-testing-quality.md), [41-security-privacy](../tooling/41-security-privacy.md)
-**Source:** §42A, §43.1–§43.15
 
 ## 1. Purpose & boundaries
 
@@ -34,7 +33,7 @@ velme/
 ```
 
 **R-REL-01** A new crate needs a real API or ownership boundary and an update to SPEC.md §5 and INV-9's order; a
-directory alone is never a reason (§43.4).
+directory alone is never a reason.
 **R-REL-02** Grows later, not in v0.1: `language/spec/0.1/` (published, versioned mirror of the language chapters of
 `docs/spec` — created at the first release), `editors/{tree-sitter,vscode}/` (post-MVP, D-25), `stdlib/` (when goals
 can be imported, Future).
@@ -52,7 +51,7 @@ their enforcement. `velme-test-support` is a dev-dependency only.
 `provider-ollama` and `provider-external`, all default on in the CLI); core crates compile with no provider feature
 enabled.
 
-## 4. Branches, reviews and CI (§43.6, §43.7)
+## 4. Branches, reviews and CI
 
 **R-REL-05** `main` is protected: changes land by pull request with green required checks and one approving review;
 no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/velme-sema/`, `crates/velme-runtime/`,
@@ -81,7 +80,7 @@ no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/vel
 **R-REL-06** CI uses the pinned toolchain from `rust-toolchain.toml`; `Cargo.lock` is committed; workflows pin actions
 by commit SHA.
 
-## 5. Versions and release channels (§43.8, §48)
+## 5. Versions and release channels
 
 | Version | Example | Bumped when |
 |---|---|---|
@@ -98,7 +97,7 @@ changes before 1.0 bump the minor version — `ir_version` and `builtins_version
 therefore MAJOR.MINOR while MAJOR is 0 (D-85); the CLI exit codes (R-CLI-10), diagnostic codes (INV-10) and `--json`
 schema count as public API.
 
-## 6. Distribution and docs (§43.9, §43.10)
+## 6. Distribution and docs
 
 | Channel | When | Source of truth |
 |---|---|---|
@@ -111,7 +110,7 @@ Docs live in `docs/` in this repo during the MVP and are published from the same
 Learn (First Goal, Types, Calls, Checks) · Language Reference · Standard Library · Compiler · Runtime · Security ·
 RFCs · Contributor Guide. The Learn track is written for children; the reference is precise enough for professionals.
 
-## 7. Licensing and open core (§42A, D-38)
+## 7. Licensing and open core (D-38)
 
 | Asset | License |
 |---|---|
@@ -121,11 +120,11 @@ RFCs · Contributor Guide. The Learn track is written for children; the referenc
 
 Commercial boundary: open — language, compiler, runtime, CLI, WASM backend, VibeVM, spec, examples; hosted — Velme
 Cloud (hosted Spellbook, model routing, Coach service, artifact service, telemetry, collaboration, deployment).
-**R-REL-09** The open distribution never requires a Velme account or hosted service (INV-7, §42A.3); the moat is
+**R-REL-09** The open distribution never requires a Velme account or hosted service (INV-7); the moat is
 operations and developer experience, not hidden semantics. Legal review of license and trademark before public
 commercial launch (D-38).
 
-## 8. Repositories (§43.2, §43.12, §43.13)
+## 8. Repositories
 
 | Repo | Visibility | When |
 |---|---|---|
@@ -150,7 +149,7 @@ new host functions. Reserved words (D-24) mark expected RFC topics: effects, mod
 
 **R-REL-11** No syntax or semantics change merges without an accepted RFC and a spec update in the same release.
 
-## 10. First commit and README (§43.14)
+## 10. First commit and README
 
 The first public commit contains: README, both licenses, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG,
 workspace `Cargo.toml`, `rust-toolchain.toml`, `crates/`, `examples/`, `tests/`, `docs/`, `rfc/`, `.github/`.

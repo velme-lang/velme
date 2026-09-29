@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** CMP
 **Read when:** creating or wiring a crate, deciding where code belongs, adding a compiler phase, or changing how diagnostics are produced or rendered.
 **Depends on:** [SPEC](../SPEC.md), [21-ir](21-ir.md), [22-spellbook-synthesis](22-spellbook-synthesis.md), [90-errors-glossary](../reference/90-errors-glossary.md)
-**Source:** §18, §19, §42, §43.4, §43.5, §53, §54
 
 ## 1. Purpose & boundaries
 
@@ -35,7 +34,7 @@ public compiler API that the CLI, a future LSP and the playground share. Syntax 
 lives only inside the provider module of `velme-synth` behind the `SynthProvider` trait (INV-7).
 **R-CMP-03** Only `velme-cli` prints, reads environment variables or chooses exit codes. Libraries return values and
 `Diagnostic`s.
-**R-CMP-04** A new crate needs a real API or ownership boundary (§43.4); a module inside an existing crate is the default.
+**R-CMP-04** A new crate needs a real API or ownership boundary; a module inside an existing crate is the default.
 
 ```
             diagnostics
@@ -136,7 +135,7 @@ The first line ends with the code (AC-ERR-03, D-72); past 20 diagnostics the res
 
 ## 6. Public compiler API
 
-The API is the same for CLI, LSP and playground (§43.5). Sketch (names normative, signatures indicative):
+The API is the same for CLI, LSP and playground. Sketch (names normative, signatures indicative):
 
 ```rust
 pub struct SourceFile { pub id: FileId, pub path: Utf8PathBuf, pub text: String }

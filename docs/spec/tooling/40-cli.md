@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** CLI
 **Read when:** adding or changing a `velme` command, flag, config key, environment variable, exit code or output format.
 **Depends on:** [SPEC](../SPEC.md), [11-types](../language/11-types.md) (JSON mapping), [30-execution-vibevm](../runtime/30-execution-vibevm.md), [32-artifacts-cache](../runtime/32-artifacts-cache.md), [90-errors-glossary](../reference/90-errors-glossary.md)
-**Source:** §34, §42A.3, §47, §48
 
 ## 1. Purpose & boundaries
 
@@ -114,7 +113,7 @@ carries the R-SEC-12 notice lines as plain strings instead of stderr. A committe
 `--json` output. Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the
 trace schema; a breaking change ships as `velme-cli/2` (`delivery/52` R-REL-08).
 
-### 3.3 Sample output (corrected §47, F-2)
+### 3.3 Sample output (F-2)
 
 ```text
 $ velme check player.velme
@@ -157,7 +156,7 @@ BuildPlayerSummary didn't pass its check  [VL0501]
 
 ### 3.4 `explain`
 
-Built from the deterministic DAG only — no LLM (§34). Waves render as "First:", "At the same time:", "Then:",
+Built from the deterministic DAG only — no LLM. Waves render as "First:", "At the same time:", "Then:",
 "Finally:" with each call's goal name turned into words, and the plan text quoted for the tail. Wired goals (D-4) end
 with "The answer is <binding>."
 

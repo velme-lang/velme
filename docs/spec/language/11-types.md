@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** TYP
 **Read when:** changing type checking, assignability, equality, `Number` arithmetic, narrowing, or the JSON value mapping.
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-3, D-6, D-23, D-36)
-**Source:** §5, §5.1, §5.2, §5.3, §31
 
 ## 1. Purpose & boundaries
 

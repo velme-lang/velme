@@ -3,14 +3,13 @@
 **Status:** v0.1 · **Area:** CHK
 **Read when:** changing check type rules, check evaluation, check failure reports, or how checks are lowered for the runtime.
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md) §4, [11-types](11-types.md), [14-builtins](14-builtins.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-6, D-20)
-**Source:** §3.2, §7, §23, §33
 
 ## 1. Purpose & boundaries
 
 `check` is a small, deterministic assertion language. The runtime — never an LLM — decides whether a result passes
 (INV-2). The grammar is the `expr` production of [10-syntax-grammar](10-syntax-grammar.md) §4; operator types are in
 [11-types](11-types.md) §8; helper signatures in [14-builtins](14-builtins.md). A check is a property of the result,
-not a proof (§23): it is evaluated on concrete inputs.
+not a proof: it is evaluated on concrete inputs.
 
 ```text
 check:
@@ -82,7 +81,7 @@ budget failure (`VL0601`, `VL0603`, `VL0604`, `VL0606`), not `VL0501` — the ru
 **R-CHK-09** If several items fail, all are reported in source order; the goal's failure (and its trace entry, D-9)
 cites the first.
 
-## 5. Failure report (§33)
+## 5. Failure report
 
 **R-CHK-10** A `VL0501` report contains:
 

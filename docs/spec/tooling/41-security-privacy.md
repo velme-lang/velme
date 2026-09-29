@@ -4,7 +4,6 @@
 **Read when:** touching a trust boundary (IR validation, host functions, sandbox limits, artifact loading, provider
 calls), handling secrets, adding telemetry, or preparing a release.
 **Depends on:** [SPEC](../SPEC.md), [21-ir](../compiler/21-ir.md), [22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md), [31-wasm-sandbox](../runtime/31-wasm-sandbox.md), [32-artifacts-cache](../runtime/32-artifacts-cache.md)
-**Source:** §27, §42A.1, §43.11, §49
 
 ## 1. Purpose & boundaries
 
@@ -12,7 +11,7 @@ Velme asks an AI system to write the logic that runs on a learner's machine. Sec
 **grants**, not on what the model is told. This file owns the capability model, the threat model, secret handling and
 privacy defaults. Mechanisms live in the files cited per row.
 
-**R-SEC-01** Compiler/runtime security defects are release-blocking (§43.11): no release ships with a known open
+**R-SEC-01** Compiler/runtime security defects are release-blocking: no release ships with a known open
 sandbox escape, validator bypass or secret leak.
 
 ## 2. Capability model (INV-4)
@@ -86,7 +85,7 @@ requested model or limits were clamped to a user-level ceiling (D-50), the notic
 requested and which ceiling applied. `--json` puts it in the output's `notices` array instead. Builds served entirely
 from the cache print nothing.
 
-## 6. Security baseline before first public release (§43.11)
+## 6. Security baseline before first public release
 
 | Item | Where |
 |---|---|

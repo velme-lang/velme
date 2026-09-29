@@ -4,7 +4,6 @@
 **Read when:** emitting or matching a diagnostic, adding a code, needing the exact values of a failure kind or reserved
 word, or checking what a term means.
 **Depends on:** [SPEC](../SPEC.md), [92-decisions-questions](92-decisions-questions.md)
-**Source:** §30, §50, §24, glossary terms throughout
 
 ## 1. Purpose & boundaries
 
@@ -41,7 +40,7 @@ diagnostic's data.
 | VL0302 | CallArityMismatch | calls/graph | wrong number of arguments | `{goal}` needs {expected} inputs, but got {found}. | A006 |
 | VL0303 | InvalidCall | calls/graph | call not allowed here (e.g. goal used outside its `call` block, self-call outside `examples`) | `{goal}` can only be used after it's listed in `call:`. | A006 |
 | VL0304 | CallCycle | calls/graph | cycle in the goal call graph, incl. self-call | These goals call each other in a circle: {cycle}. | A005 |
-| VL0305 | BindingUsedBeforeDefinition | calls/graph | binding referenced before its line (§12.5) | `{name}` is used before it's made — move its line up. | — |
+| VL0305 | BindingUsedBeforeDefinition | calls/graph | binding referenced before its line | `{name}` is used before it's made — move its line up. | — |
 | VL0306 | DuplicateBinding | calls/graph | two bindings share a name, or a binding shadows an input | `{name}` is already used in this goal. | — |
 | VL0307 | GoalHasNoBody | calls/graph | goal has neither `plan` nor `result` binding (D-4) | `{goal}` needs a `plan:` that says what it should do. | — |
 | VL0308 | InvalidBudget | calls/graph | `budget` line has an unknown key or unit, a bad (including any `.`, D-78) or repeated value, or a value above the system cap (D-8, `language/12` R-GOAL-20) | `budget` can only make limits smaller — `{key}` can be at most `{cap}`. | — |
@@ -77,7 +76,7 @@ use the same groups with names ending in `Warning`.
 
 ## 3. Runtime result and failure kinds
 
-Each goal invocation ends in exactly one outcome (§30, `runtime/30`):
+Each goal invocation ends in exactly one outcome (`runtime/30` §5):
 
 | Kind | Code | Reproducible |
 |---|---|---|

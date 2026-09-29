@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** SYN
 **Read when:** writing or changing the lexer or parser, adding syntax, reading a parse diagnostic, or adding golden parser tests.
 **Depends on:** [SPEC](../SPEC.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-7, D-8, D-18, D-19, D-24, D-25)
-**Source:** §4, §6, §7, §8, §19, §48
 
 ## 1. Purpose & boundaries
 
@@ -25,7 +24,7 @@ offset into the file as saved (D-75).
 |---|---|---|
 | `NAME` | ASCII letter or `_`, then letters, digits, `_` | ASCII only in v0.1; Unicode identifiers Future. Text and plans are full Unicode. A word with a non-ASCII letter is one `VL0101` (D-76). |
 | `NUMBER` | `digits [ "." digits ]`, `_` allowed between digits | no exponent, no leading `.`, no sign (unary `-` is an operator). |
-| `UNIT` | `ms` `s` `kb` `mb` written directly after a `NUMBER` (no space) | only valid inside `budget` (§4.5). |
+| `UNIT` | `ms` `s` `kb` `mb` written directly after a `NUMBER` (no space) | only valid inside `budget` (`language/12` §6). |
 | `VERSION` | `digits "." digits` | only valid after `language: velme/` in the header (§4); compared as text, not decoded as a `Number` (R-SYN-21). |
 | `TEXT` | `"` … `"` on one line | escapes in §2.3. |
 | `BLOCK_TEXT` | lines of a `plan: \|` block scalar | §3.2. |

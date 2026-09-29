@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** GOAL
 **Read when:** changing goal declarations, call-block checking, the call graph, cycle detection, `budget` or `examples`, deciding what gets synthesized, or writing a plan (§8.4).
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md), [11-types](11-types.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-4, D-5, D-7, D-8, D-9, D-18)
-**Source:** §4, §6, §8, §8.1, §9, §10, §11, §12, §13, §14, §17, §44, §45, §46, §52
 
 ## 1. Purpose & boundaries
 
@@ -53,7 +52,7 @@ cannot cause a call.
 | **R-GOAL-06** Argument count equals the callee's parameter count. | | `VL0302 CallArityMismatch` |
 | **R-GOAL-07** Each argument is assignable to its parameter type (R-TYP-20). Message: "Expected Player, but got Text." (`reference/90`). | `CalculateScore("hello")` | `VL0204 TypeMismatch` |
 | **R-GOAL-08** An argument is a path (input, earlier binding, and field accesses on them) or a literal — no arithmetic, no built-ins. Computation belongs in a goal (P-3). A type name used as a callee is also rejected here. | `s = Score(x + 1)` | `VL0303 InvalidCall` |
-| **R-GOAL-09** A binding may reference only inputs and bindings defined on **earlier lines** (§12.5). | `b = Second(a)` above `a = First(x)` | `VL0305 BindingUsedBeforeDefinition` |
+| **R-GOAL-09** A binding may reference only inputs and bindings defined on **earlier lines**. | `b = Second(a)` above `a = First(x)` | `VL0305 BindingUsedBeforeDefinition` |
 | **R-GOAL-10** Binding names are unique and do not reuse a parameter name. | | `VL0306 DuplicateBinding` |
 | **R-GOAL-11** The whole-file goal graph is acyclic, including self-calls and mutual recursion. The diagnostic prints the cycle path `A → B → A`. | `value = A(x)` inside `A` | `VL0304 CallCycle` |
 
@@ -193,7 +192,7 @@ goal FindHighestJumpingPlayer(players: List<Player>) -> Player?:
         - if result is not empty then every p in players has result.jump_height >= p.jump_height
 ```
 
-### 8.3 Wired goal (legal form of the original Test 2)
+### 8.3 Wired goal (AC-RDM-02)
 
 ```text
 goal Double(x: Number) -> Number:

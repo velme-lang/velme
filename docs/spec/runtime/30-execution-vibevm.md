@@ -3,7 +3,6 @@
 **Status:** v0.1 · **Area:** RUN
 **Read when:** working on the interpreter, the composite-goal scheduler, budgets, failure handling, determinism, traces or `velme explain`.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [language/12](../language/12-goals-calls.md), [language/13](../language/13-check-dsl.md), [32-artifacts-cache](32-artifacts-cache.md)
-**Source:** §3.4, §9–§11, §24, §28 (Calls), §29, §30, §31, §33, §34, §39
 
 ## 1. Purpose & boundaries
 
@@ -12,11 +11,11 @@ enforces budgets, evaluates checks and records a deterministic trace. The **refe
 defines what IR means (P-4); the WASM backend ([31](31-wasm-sandbox.md)) must agree with it (INV-3). Artifact
 identity and loading are in [32](32-artifacts-cache.md).
 
-## 2. Components (§24.1)
+## 2. Components
 
 | Component | Responsibility | Crate |
 |---|---|---|
-| GoalRegistry | goal id → signature, kind, artifact hash (from `velme.lock`), dependencies (§24.2 fields, minus hashes now held by the manifest, 32 §3) | `velme-runtime` |
+| GoalRegistry | goal id → signature, kind, artifact hash (from `velme.lock`), dependencies (hashes are held by the manifest, 32 §3) | `velme-runtime` |
 | ArtifactStore | load + re-validate artifacts by hash (32) | `velme-runtime` |
 | CallPlanner | per composite goal: binding DAG → waves (static, from HIR/IR `args`) | `velme-runtime` |
 | Scheduler | runs ready bindings on a bounded worker pool; applies D-9 on failure | `velme-runtime` |
@@ -69,7 +68,7 @@ deep. A goal's output nests no deeper than its declared type. The CLI runs every
 stack, which a test at that deepest value checks (a debug build needs between 4 and 8 MiB); the M4 worker pool and the
 M7 WASM backend (31 §3) must size their stacks for max(T, 512) + 5 000 value levels, or walk values iteratively.
 
-## 4. Composite goal execution (§29)
+## 4. Composite goal execution
 
 ```
 run(goal, input)
@@ -90,7 +89,7 @@ run(goal, input)
 **R-RUN-08** No memoization across calls in v0.1: the same child called twice with equal arguments runs twice (keeps
 call counts and traces simple and static).
 
-Worked example (§11) — `CreateLevelSummary`:
+Worked example (12 §8.4) — `CreateLevelSummary`:
 
 | Wave | Bindings |
 |---|---|
@@ -98,7 +97,7 @@ Worked example (§11) — `CreateLevelSummary`:
 | 2 | `difficulty = EstimateDifficulty(enemies)`, `reward = CalculateReward(treasures, score)` |
 | tail | `CreateLevelSummary` body over all five bindings |
 
-## 5. Failure semantics (§30)
+## 5. Failure semantics
 
 | Outcome | Meaning | Codes |
 |---|---|---|
@@ -109,7 +108,7 @@ Worked example (§11) — `CreateLevelSummary`:
 | `ValidationFailed` | a loaded artifact failed re-validation or its hash | `VL0402`, `VL0703` |
 | `Unavailable` | no artifact for the goal (not built / not locked) | `VL0701` |
 
-**R-RUN-09** A required child failure fails the parent (§30), but every sibling in that binding's wave still runs to
+**R-RUN-09** A required child failure fails the parent, but every sibling in that binding's wave still runs to
 completion — no cancellation — and no later wave starts (D-9). The reported failure is that of the **lowest
 source-order** binding that failed among the wave(s) that ran; every other failure in those waves is listed as a note,
 in source order. A binding in a wave that never started appears in the trace as `skipped`, not `cancelled`.
@@ -117,7 +116,7 @@ in source order. A binding in a wave that never started appears in the trace as 
 child's code as the root cause. The top-level exit status uses the root cause's code (tooling/40).
 **R-RUN-11** `fallback`, `retry` and optional calls are Future (reserved, D-24).
 
-## 6. Determinism (§31, INV-3)
+## 6. Determinism (INV-3)
 
 **R-RUN-12** Same source + input + locked artifacts + seed ⇒ same result value, same outcome code and same trace
 (modulo timing fields) — across runs, `--jobs` values, OSes and backends.
@@ -127,7 +126,7 @@ cached or used as a verification verdict (D-10).
 **R-RUN-15** Failure messages render values with the canonical number format and sorted-by-declaration record fields,
 so diagnostic text is itself deterministic.
 
-## 7. Budgets (§3.4, §28, D-8)
+## 7. Budgets (D-8)
 
 | Field | Default (system cap) | Scope | Checked | Code |
 |---|---|---|---|---|
@@ -166,7 +165,7 @@ of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not i
 value one item at a time with `reduce` + `concat` therefore allocates `O(n²)` bytes; the synthesis prompt steers
 plans toward `map`/`filter`/`range` instead (compiler/22 §4).
 
-## 8. Trace (§33)
+## 8. Trace
 
 A trace is a tree of events, ordered by **source order**, never by completion time:
 
@@ -178,32 +177,32 @@ A trace is a tree of events, ordered by **source order**, never by completion ti
 | `failure` | code, message, root-cause path (`BuildPlayerSummary › FindBadge`) |
 
 **R-RUN-19** Trace JSON is versioned and additive-only; `velme trace --json` emits it; `velme run` renders the human
-view on failure (§33 layout: each call with ✓/✗ and value, then the failed check with expected vs received).
+view on failure (layout: each call with ✓/✗ and value, then the failed check with expected vs received).
 **R-RUN-20** Values in the human view are truncated (lists > 10 items, text > 80 chars) with a count of what was
 elided, and a whole value is cut after 1 000 bytes of its rendering, ending in `…`, so a deep value renders in bounded
 time; the JSON form is complete up to `max_output_bytes`, and encoding stops once it passes that.
 **R-RUN-21** Traces are local. Telemetry is a local aggregation of traces (counts, durations); nothing is sent
 anywhere in v0.1 (tooling/41).
 
-## 9. Explain mode (§34)
+## 9. Explain mode
 
 **R-RUN-22** `velme explain` renders a goal from its waves, deterministically and without an LLM:
 one binding in a wave → "First: …" / "Then: …"; several → "At the same time: …"; the tail → "Finally: " + the plan's
 first sentence. Binding lines use the child's plan first sentence, or "run `Child`" if it has none.
-**R-RUN-23** Correction to §34: all three bindings of `BuildPlayerSummary` are in wave 1, so the explanation is a
+**R-RUN-23** All three bindings of `BuildPlayerSummary` are in wave 1, so the explanation is a
 single "At the same time:" group, not "First … At the same time …".
 
 ## 10. Acceptance criteria
 
 | ID | Criterion |
 |---|---|
-| AC-RUN-01 | Three independent children with equal heavy workloads are all in wave 1 and their executions overlap in time with `--jobs 3` — §52 Test 3. |
-| AC-RUN-02 | `Main` → `Double` then `AddOne` runs in 2 waves and returns `2x + 1` — §52 Test 2. |
+| AC-RUN-01 | Three independent children with equal heavy workloads are all in wave 1 and their executions overlap in time with `--jobs 3` — AC-RDM-03. |
+| AC-RUN-02 | `Main` → `Double` then `AddOne` runs in 2 waves and returns `2x + 1` — AC-RDM-02. |
 | AC-RUN-03 | Two siblings both fail: the reported failure is always the lower source-order binding, and both siblings' real outcomes (not `skipped`) appear in the trace, across 100 runs with random scheduling delays (D-9). |
 | AC-RUN-04 | Result and trace (excluding durations) are byte-identical for `--jobs 1` and `--jobs 8` on the golden programs, including two failing siblings where the slower one is first in source order (D-9). |
-| AC-RUN-05 | An over-budget leaf (a `reduce` over `range(10000)` whose lambda reduces over `range(10000)`) fails with `VL0601` deterministically, with the same fuel figure every run — §52 Test 7. |
+| AC-RUN-05 | An over-budget leaf (a `reduce` over `range(10000)` whose lambda reduces over `range(10000)`) fails with `VL0601` deterministically, with the same fuel figure every run — AC-RDM-07. |
 | AC-RUN-06 | A call tree needing 129 invocations is rejected by `velme check` with `VL0605` before any execution. |
-| AC-RUN-07 | A failing check reports the assertion text, the expected and received values — §52 Test 6. |
+| AC-RUN-07 | A failing check reports the assertion text, the expected and received values — AC-RDM-06. |
 | AC-RUN-08 | `x / 0` in a leaf yields `VL0602`; no partial or special value appears in any output. |
 | AC-RUN-09 | `budget cpu=1ms` on a goal whose run needs more than 100 000 fuel yields `VL0601`; the same goal without the line succeeds. |
 | AC-RUN-10 | `velme explain` output for `BuildPlayerSummary` and `CreateLevelSummary` matches the golden text; no provider is constructed. |
