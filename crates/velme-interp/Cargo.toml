@@ -8,5 +8,15 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+velme-builtins.workspace = true
+velme-diagnostics.workspace = true
+velme-ir.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+serde_json.workspace = true
+velme-test-support.workspace = true
+
 [lints]
 workspace = true

@@ -96,13 +96,16 @@ cites the first.
 | cause code, if R-CHK-07 applied | `VL0602` |
 | the goal's inputs and binding values (via the trace) | [30-execution-vibevm](../runtime/30-execution-vibevm.md) |
 
-Values render in the canonical JSON form ([11-types](11-types.md) §10), truncated for display with the full value
+Values render in the canonical JSON form ([11-types](11-types.md) §10), truncated for display as in
+[30-execution-vibevm](../runtime/30-execution-vibevm.md) R-RUN-20, with the full value
 available in `velme trace --json`.
 
 ## 6. Lowering
 
-**R-CHK-11** The compiler lowers each check item to the IR expression subset ([21-ir](../compiler/21-ir.md)) — the same
-representation the interpreter and WASM backend execute, so checks share one semantics (INV-3). Lowering is
+**R-CHK-11** The compiler lowers each check item to the IR expression subset ([21-ir](../compiler/21-ir.md)), whose
+meaning the reference interpreter defines, so a check means what the goal's own IR would (INV-3). Checks and examples
+always evaluate on the reference interpreter, whichever executor ran the goal body (D-80): a report depends only on the
+lowered check and the invocation's values and spent budget, which INV-3 makes the same on every backend. Lowering is
 deterministic and never involves an LLM:
 
 | Surface | Lowered form |

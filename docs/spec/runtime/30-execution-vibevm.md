@@ -21,7 +21,7 @@ identity and loading are in [32](32-artifacts-cache.md).
 | CallPlanner | per composite goal: binding DAG → waves (static, from HIR/IR `args`) | `velme-runtime` |
 | Scheduler | runs ready bindings on a bounded worker pool; applies D-9 on failure | `velme-runtime` |
 | Executor | evaluates one goal body: interpreter (default) or WASM (M7) | `velme-interp`, `velme-wasm` |
-| CheckRunner | evaluates lowered checks on every run (D-20) | `velme-check` |
+| CheckRunner | evaluates lowered checks and examples on every run (D-20), always on the reference interpreter (D-80) | `velme-check` |
 | BudgetManager | static call/depth limits, per-invocation fuel/memory/size, wall-clock watchdog | `velme-runtime` |
 | Trace | ordered execution record; source of `velme trace`, debugging and telemetry | `velme-runtime` |
 
@@ -38,7 +38,11 @@ overflow is `VL0602`; `-0` results are normalized to `0` (D-36).
 `map`/`filter`/`find`/`reduce`/`all`/`any` costs 1 more; `==`/`!=` on a `List`/`Record` value costs 1 + the scalar
 leaves compared, stopping at the first difference; `sort_by` and every value/text builtin cost what their catalog
 entry says (language/14 §2, §4, D-52). This **Velme fuel** cost model is part of the semantics — both backends
-meter it identically (31 R-SBX-05).
+meter it identically (31 R-SBX-05). Its edge cases: lists of different lengths differ before any leaf is compared, so
+their `==`/`!=` charges no leaf; whether an operand is a `List`/`Record` is decided by the runtime values, so one
+compared with `nothing` costs 1 leaf, and `nothing` with `nothing` none. A `builtin` node charges its unit on entry like
+any node, evaluates its arguments, computes, then charges the rest of its catalog cost; a failure while computing wins
+over fuel on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`.
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
 builtin of its arguments (D-22).
 

@@ -6,7 +6,10 @@ use velme_builtins::limits::MAX_LIST_SIZE;
 use velme_builtins::{Number, Value};
 use velme_diagnostics::Code;
 use velme_diagnostics::Span;
-use velme_ir::{DecodeError, DecodeProblem, decode_str, decode_value, encode_value, from_json_str};
+use velme_ir::{
+    DecodeError, DecodeProblem, SHOWN_CHARS, SHOWN_ITEMS, decode_str, decode_value, display_value, encode_value,
+    from_json_str,
+};
 use velme_sema::hir::{FieldDef, Program, RecordType, Type, TypeId};
 use velme_sema::{SourceFile, analyze};
 
@@ -205,4 +208,18 @@ fn a_type_that_already_has_an_error_accepts_any_json() {
     // The error is inside the list, so a non-list is still wrong.
     let error = reject(r#"{"x": 1}"#, &Type::Record(TypeId(0)), &program);
     assert_eq!(error.pointer(), "/x");
+}
+
+/// The human view cuts long lists and texts with a count of what was left out, at any depth (`runtime/30` R-RUN-20).
+#[test]
+fn display_cuts_long_lists_and_texts() {
+    let numbers = |n: i64| Value::list((0..n).map(|i| Value::Number(Number::from(i))).collect());
+    assert_eq!(display_value(&numbers(10)), encode_value(&numbers(10)));
+    assert_eq!(display_value(&numbers(12)), "[0,1,2,3,4,5,6,7,8,9,…(+2 items)]");
+    assert_eq!(SHOWN_ITEMS, 10);
+
+    let text = |n: usize| Value::text(&"é".repeat(n));
+    assert_eq!(display_value(&text(SHOWN_CHARS)), encode_value(&text(SHOWN_CHARS)));
+    let long = display_value(&Value::list(vec![text(SHOWN_CHARS + 3)]));
+    assert_eq!(long, format!("[\"{}\"…(+3 characters)]", "é".repeat(SHOWN_CHARS)));
 }
