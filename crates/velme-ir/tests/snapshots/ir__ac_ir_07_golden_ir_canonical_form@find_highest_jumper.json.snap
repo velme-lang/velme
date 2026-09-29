@@ -1,0 +1,7 @@
+---
+source: crates/velme-ir/tests/ir.rs
+assertion_line: 46
+expression: bytes
+input_file: tests/golden/ir/accept/find_highest_jumper.json
+---
+{"body":{"bind":[["best",{"args":[{"fn":{"body":{"field":"jump_height","kind":"field","of":{"kind":"local","name":"p"}},"param":"p"},"kind":"map","list":{"kind":"input","name":"players"}}],"kind":"builtin","name":"maximum"}]],"body":{"fn":{"body":{"kind":"binary","left":{"field":"jump_height","kind":"field","of":{"kind":"local","name":"p"}},"op":"eq","right":{"default":{"kind":"literal","type":{"t":"Number"},"value":0},"kind":"unwrap_or","of":{"kind":"local","name":"best"}}},"param":"p"},"kind":"find","list":{"kind":"input","name":"players"}},"kind":"let"},"builtins_version":"0.1","goal":"FindHighestJumpingPlayer","inputs":[["players",{"of":{"name":"Player","t":"Record"},"t":"List"}]],"ir_version":"0.1","output":{"of":{"name":"Player","t":"Record"},"t":"Optional"},"types":{"Player":{"fields":[["name",{"t":"Text"}],["jump_height",{"t":"Number"}],["score",{"t":"Number"}]]}}}

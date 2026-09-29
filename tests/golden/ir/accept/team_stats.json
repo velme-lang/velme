@@ -1,0 +1,62 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "SummarizeTeam",
+  "types": {
+    "Player": { "fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]] },
+    "TeamStats": { "fields": [["total", {"t": "Number"}], ["deficit", {"t": "Number"}], ["ranked", {"t": "List", "of": {"t": "Record", "name": "Player"}}],
+                              ["top", {"t": "Optional", "of": {"t": "Record", "name": "Player"}}], ["all_jump", {"t": "Boolean"}],
+                              ["any_star", {"t": "Boolean"}], ["tags", {"t": "List", "of": {"t": "Text"}}]] }
+  },
+  "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}], ["target", {"t": "Number"}]],
+  "output": {"t": "Record", "name": "TeamStats"},
+  "body": {
+    "kind": "let",
+    "bind": [
+      ["active", {"kind": "filter", "list": {"kind": "input", "name": "players"},
+                  "fn": {"param": "p", "body": {"kind": "unary", "op": "not",
+                         "arg": {"kind": "unary", "op": "is_empty", "arg": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "name"}}}}}],
+      ["total", {"kind": "reduce", "list": {"kind": "local", "name": "active"},
+                 "init": {"kind": "literal", "type": {"t": "Number"}, "value": -0},
+                 "fn": {"acc": "sum", "param": "p", "body": {"kind": "binary", "op": "add",
+                        "left": {"kind": "local", "name": "sum"},
+                        "right": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "score"}}}}],
+      ["ranked", {"kind": "sort_by", "list": {"kind": "local", "name": "active"},
+                  "key": {"param": "p", "body": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "score"}},
+                  "descending": true}]
+    ],
+    "body": {
+      "kind": "record", "type": "TeamStats",
+      "fields": {
+        "total": {"kind": "local", "name": "total"},
+        "deficit": {"kind": "unary", "op": "neg",
+                    "arg": {"kind": "binary", "op": "sub", "left": {"kind": "local", "name": "total"}, "right": {"kind": "input", "name": "target"}}},
+        "ranked": {"kind": "local", "name": "ranked"},
+        "top": {"kind": "find", "list": {"kind": "local", "name": "ranked"},
+                "fn": {"param": "p", "body": {"kind": "binary", "op": "ne",
+                       "left": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "score"},
+                       "right": {"kind": "literal", "type": {"t": "Number"}, "value": 0}}}},
+        "all_jump": {"kind": "all", "list": {"kind": "local", "name": "active"},
+                     "fn": {"param": "p", "body": {"kind": "binary", "op": "gt",
+                            "left": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "jump_height"},
+                            "right": {"kind": "literal", "type": {"t": "Number"}, "value": 0.0}}}},
+        "any_star": {"kind": "any", "list": {"kind": "local", "name": "active"},
+                     "fn": {"param": "p", "body": {"kind": "binary", "op": "or",
+                            "left": {"kind": "binary", "op": "ge",
+                                     "left": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "score"},
+                                     "right": {"kind": "literal", "type": {"t": "Number"}, "value": 1000}},
+                            "right": {"kind": "binary", "op": "lt",
+                                      "left": {"kind": "binary", "op": "div",
+                                               "left": {"kind": "field", "of": {"kind": "local", "name": "p"}, "field": "jump_height"},
+                                               "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}},
+                                      "right": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "target"},
+                                                "right": {"kind": "literal", "type": {"t": "Number"}, "value": 1.5E-1}}}}}},
+        "tags": {"kind": "list", "of": {"t": "Text"},
+                 "items": [{"kind": "literal", "type": {"t": "Text"}, "value": "team"},
+                           {"kind": "if", "cond": {"kind": "binary", "op": "le", "left": {"kind": "local", "name": "total"}, "right": {"kind": "input", "name": "target"}},
+                            "then": {"kind": "literal", "type": {"t": "Text"}, "value": "behind"},
+                            "else": {"kind": "literal", "type": {"t": "Text"}, "value": "ahead"}}]}
+      }
+    }
+  }
+}
