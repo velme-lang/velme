@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stderr
+---
+Error: Input `a` should be Number, but got text.  [VL0902]
+   ╭─[ add.velme:4:10 ]
+   │
+ 4 │ goal Add(a: Number, b: Number) -> Number:
+   │          ────┬────  
+   │              ╰────── here
+───╯
+Error: Input `b` should be Number, but got no value.  [VL0902]
+   ╭─[ add.velme:4:21 ]
+   │
+ 4 │ goal Add(a: Number, b: Number) -> Number:
+   │                     ────┬────  
+   │                         ╰────── here
+   │ 
+   │ Help: give it with `--arg b=<json>`
+───╯
+Error: `Add` has no input called `c`.  [VL0902]
+   ╭─[ add.velme:4:1 ]
+   │
+ 4 │ goal Add(a: Number, b: Number) -> Number:
+   │ ──────────────┬──────────────  
+   │               ╰──────────────── here
+───╯

@@ -3,7 +3,7 @@ source: crates/velme-cli/tests/check.rs
 expression: run.stderr
 ---
 Error: Please indent with spaces, not tabs.  [VL0103]
-   ╭─[ tests/golden/parser/reject/tab_then_errors.velme:3:1 ]
+   ╭─[ tab_then_errors.velme:3:1 ]
    │
  3 │     x: Number
    │ ┬───  
@@ -12,7 +12,7 @@ Error: Please indent with spaces, not tabs.  [VL0103]
    │ Help: replace the tab with spaces
 ───╯
 Error: I didn't expect `Number` here — I was looking for `:`.  [VL0101]
-   ╭─[ tests/golden/parser/reject/tab_then_errors.velme:6:7 ]
+   ╭─[ tab_then_errors.velme:6:7 ]
    │
  6 │     y Number
    │       ───┬──  

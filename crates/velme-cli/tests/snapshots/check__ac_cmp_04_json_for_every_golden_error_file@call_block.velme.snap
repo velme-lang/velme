@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/call_block.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "rename one of them",
       "labels": [],
       "message": "`a` is already defined on line 22.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "labels": [],
       "message": "Expected Player, but got Text.",
       "notes": [],
@@ -36,7 +36,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0301",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "did you mean `CalculateScore`?",
       "labels": [],
       "message": "I don't know a goal called `CalculateScor`.",
@@ -51,7 +51,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0302",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "labels": [],
       "message": "`CalculateScore` needs 1 input, but got 2.",
       "notes": [],
@@ -65,7 +65,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0303",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "work this out in a goal of its own, and call that goal on an earlier line",
       "labels": [],
       "message": "A call's inputs can only be names, their fields, or plain values.",
@@ -80,7 +80,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0303",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "a `call:` line runs a goal; its inputs can be values of this type",
       "labels": [],
       "message": "`Player` is a type, not a goal.",
@@ -95,7 +95,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0303",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "a `call:` line runs a goal declared in this file",
       "labels": [],
       "message": "`maximum` is a built-in, not a goal.",
@@ -110,7 +110,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0303",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "work this out in a goal of its own, and call that goal on an earlier line",
       "labels": [],
       "message": "`.length` is a built-in, which a call's inputs can't use.",
@@ -125,7 +125,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0305",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "a call can use only the names made on the lines above it",
       "labels": [],
       "message": "`later` is used before it's made — move its line up.",
@@ -140,7 +140,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0202",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "did you mean `player`?",
       "labels": [],
       "message": "I don't know what `playr` is here.",
@@ -155,7 +155,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "it might be empty, and a call can't check that first — make that input `Rival?` to accept it",
       "labels": [],
       "message": "Expected Rival, but got Rival?.",
@@ -170,7 +170,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "a call can't check that first — pass `player.rival` itself to an input of type `Rival?`",
       "labels": [],
       "message": "`player.rival` might be empty, so a call can't use its `name`.",
@@ -185,7 +185,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0302",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "labels": [],
       "message": "`Pair` needs 2 inputs, but got 1.",
       "notes": [],
@@ -199,7 +199,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0306",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "give this call its own name",
       "labels": [],
       "message": "`pair` is already used in this goal.",
@@ -214,7 +214,7 @@ input_file: tests/golden/sema/reject/call_block.velme
     },
     {
       "code": "VL0306",
-      "file": "tests/golden/sema/reject/call_block.velme",
+      "file": "call_block.velme",
       "help": "give this call its own name",
       "labels": [],
       "message": "`x` is already used in this goal.",

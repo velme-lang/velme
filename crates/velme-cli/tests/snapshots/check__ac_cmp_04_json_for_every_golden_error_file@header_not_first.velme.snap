@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/header_not_first.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/header_not_first.velme",
+      "file": "header_not_first.velme",
       "help": "move it to the top of the file",
       "labels": [],
       "message": "The `language:` line has to be the first line of the file.",

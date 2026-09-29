@@ -11,7 +11,9 @@ use velme_builtins::limits::MAX_LIST_SIZE;
 use velme_diagnostics::render::{JsonDiagnostic, LineIndex, render_human};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
-use velme_ir::{CallNode, Goal, IR_VERSION, MAX_JSON_DEPTH, Origin, Request, ValidIr, from_json_str, validate};
+use velme_ir::{
+    CallNode, Goal, IR_VERSION, MAX_JSON_DEPTH, Origin, Request, ValidIr, calls, from_json_str, signature, validate,
+};
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
 
@@ -44,18 +46,13 @@ fn goal_id(program: &Program, name: &str) -> GoalId {
     )
 }
 
-/// The compiler's call section of a golden goal: the calls of its accept file, whose signatures are the children's
-/// (`tests/fingerprint.rs`).
-fn compiler_calls(goal: &str) -> Vec<CallNode> {
-    if goal != "BuildPlayerSummary" {
-        return Vec::new();
-    }
-    let golden: Goal = from_json_str(&read(&repo("tests/golden/ir/accept/player_summary.json"))).expect("parses");
-    golden.calls
+/// The compiler's call section of `goal` (R-CMP-08).
+fn compiler_calls(program: &Program, goal: &str) -> Vec<CallNode> {
+    calls(program, goal_id(program, goal)).expect("a checked goal has a call section")
 }
 
 fn run(program: &Program, goal: &str, origin: Origin, text: &str) -> Result<ValidIr, Vec<Diagnostic>> {
-    let calls = compiler_calls(goal);
+    let calls = compiler_calls(program, goal);
     let request = Request {
         program,
         goal: goal_id(program, goal),
@@ -136,7 +133,7 @@ fn candidates_get_the_compiler_calls_joined_in() {
         &candidate.to_string(),
     )
     .expect("valid");
-    assert_eq!(valid.into_goal().calls, compiler_calls("BuildPlayerSummary"));
+    assert_eq!(valid.into_goal().calls, compiler_calls(&program, "BuildPlayerSummary"));
 }
 
 /// Rejecting golden IR: each file is validated against the goal it names (or `FindBadge`), and its diagnostics are
@@ -712,6 +709,52 @@ fn calls_must_equal_the_compiler_calls() {
     let diag = invalid(&program, "BuildPlayerSummary", &extra.to_string());
     at(&diag, "/calls/3");
     assert!(diag.message.contains("`again`"), "{diag:#?}");
+}
+
+/// R-IR-09: every argument form R-GOAL-08 allows, lowered in source order; a stored goal with these calls validates.
+#[test]
+fn compiler_calls_lower_every_argument_form() {
+    let program = program(
+        "language: velme/0.1\n\n\
+         type Player:\n    name: Text\n    score: Number\n\n\
+         goal Pick(players: List<Player>, best: Player?, tags: List<Text>, n: Number) -> Player:\n    plan: \"Test.\"\n\n\
+         goal Label(name: Text, scores: List<Number>, flag: Boolean, p: Player) -> Text:\n    plan: \"Test.\"\n\n\
+         goal Show(players: List<Player>) -> Text:\n    call:\n\
+         \x20       top = Pick(players, nothing, [\"a\"], 0820.50)\n\
+         \x20       label = Label(top.name, players.score, true, Player(score: 1, name: \"Ada\"))\n\
+         \x20   plan: \"Test.\"\n",
+    );
+    let sig = |name: &str| {
+        signature(&program, goal_id(&program, name))
+            .expect("signature")
+            .to_string()
+    };
+    let input = |name: &str| json!({"kind": "input", "name": name});
+    let literal = |t: &str, value: Value| json!({"kind": "literal", "type": {"t": t}, "value": value});
+    let expected = json!([
+        {"kind": "call", "binding": "top", "goal": "Pick", "goal_signature": sig("Pick"), "args": [
+            input("players"),
+            literal("Nothing", Value::Null),
+            {"kind": "list", "of": {"t": "Text"}, "items": [literal("Text", json!("a"))]},
+            literal("Number", json!(820.5)),
+        ]},
+        {"kind": "call", "binding": "label", "goal": "Label", "goal_signature": sig("Label"), "args": [
+            {"kind": "field", "of": {"kind": "local", "name": "top"}, "field": "name"},
+            {"kind": "map", "list": input("players"),
+             "fn": {"param": "#0", "body": {"kind": "field", "of": {"kind": "local", "name": "#0"}, "field": "score"}}},
+            literal("Boolean", json!(true)),
+            {"kind": "record", "type": "Player",
+             "fields": {"name": literal("Text", json!("Ada")), "score": literal("Number", json!(1))}},
+        ]},
+    ]);
+    let calls = compiler_calls(&program, "Show");
+    assert_eq!(serde_json::to_value(&calls).expect("serializes"), expected);
+    let player = json!({"fields": [["name", {"t": "Text"}], ["score", {"t": "Number"}]]});
+    let doc = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Show",
+                     "types": {"Player": player},
+                     "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}]],
+                     "output": {"t": "Text"}, "calls": calls, "body": {"kind": "local", "name": "label"}});
+    accepts(&program, "Show", &doc.to_string());
 }
 
 fn json_value() -> impl Strategy<Value = Value> {

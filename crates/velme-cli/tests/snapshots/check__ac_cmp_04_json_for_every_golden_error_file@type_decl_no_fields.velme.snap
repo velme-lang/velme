@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/type_decl_no_fields.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/type_decl_no_fields.velme",
+      "file": "type_decl_no_fields.velme",
       "labels": [],
       "message": "I didn't expect `type` here — I was looking for an indented line.",
       "notes": [],

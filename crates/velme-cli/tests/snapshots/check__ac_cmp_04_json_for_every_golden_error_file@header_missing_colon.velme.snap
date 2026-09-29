@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/header_missing_colon.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/header_missing_colon.velme",
+      "file": "header_missing_colon.velme",
       "labels": [],
       "message": "I didn't expect `velme` here — I was looking for `:`.",
       "notes": [],

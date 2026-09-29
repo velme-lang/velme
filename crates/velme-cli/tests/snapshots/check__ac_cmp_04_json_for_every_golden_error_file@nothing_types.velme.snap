@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/nothing_types.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/nothing_types.velme",
+      "file": "nothing_types.velme",
       "help": "use the type of the value, with `?` if it may be missing, like `Number?`",
       "labels": [],
       "message": "A value that can only be `nothing` carries no information.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/nothing_types.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/nothing_types.velme",
+      "file": "nothing_types.velme",
       "help": "use the type of the value, with `?` if it may be missing, like `Number?`",
       "labels": [],
       "message": "A value that can only be `nothing` carries no information.",
@@ -37,7 +37,7 @@ input_file: tests/golden/sema/reject/nothing_types.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/nothing_types.velme",
+      "file": "nothing_types.velme",
       "help": "use the type of the value, with `?` if it may be missing, like `Number?`",
       "labels": [],
       "message": "A value that can only be `nothing` carries no information.",
@@ -52,7 +52,7 @@ input_file: tests/golden/sema/reject/nothing_types.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/nothing_types.velme",
+      "file": "nothing_types.velme",
       "help": "use the type of the value, with `?` if it may be missing, like `Number?`",
       "labels": [],
       "message": "A value that can only be `nothing` carries no information.",

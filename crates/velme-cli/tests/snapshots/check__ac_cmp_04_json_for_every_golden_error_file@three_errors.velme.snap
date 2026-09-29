@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/three_errors.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/three_errors.velme",
+      "file": "three_errors.velme",
       "labels": [],
       "message": "I didn't expect `Number` here — I was looking for `:`.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/parser/reject/three_errors.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/three_errors.velme",
+      "file": "three_errors.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for an expression.",
       "notes": [],
@@ -35,7 +35,7 @@ input_file: tests/golden/parser/reject/three_errors.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/three_errors.velme",
+      "file": "three_errors.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for `:`, `<` or `?`.",
       "notes": [],

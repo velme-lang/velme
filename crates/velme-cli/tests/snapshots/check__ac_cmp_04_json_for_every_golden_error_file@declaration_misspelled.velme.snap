@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/declaration_misspelled.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/declaration_misspelled.velme",
+      "file": "declaration_misspelled.velme",
       "help": "did you mean `type`?",
       "labels": [],
       "message": "I didn't expect `tpye` here — I was looking for `goal`, `language` or `type`.",

@@ -14,13 +14,18 @@ path = "src/main.rs"
 
 [dependencies]
 serde.workspace = true
-serde_json.workspace = true
+# Number text is kept exactly, never read through `f64` (CC-DET-03).
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+velme-builtins.workspace = true
 velme-diagnostics.workspace = true
+velme-ir.workspace = true
+velme-runtime.workspace = true
 velme-sema.workspace = true
 velme-syntax.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+velme-test-support.workspace = true
 
 [lints]
 workspace = true

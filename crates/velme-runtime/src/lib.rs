@@ -2,7 +2,15 @@
 #![forbid(unsafe_code)]
 
 mod artifact;
+mod input;
+mod leaf;
+mod lock;
+mod locked;
 mod store;
 
 pub use artifact::{Artifact, Child, Manifest, Verification};
+pub use input::{MAX_INPUT_BYTES, decode_inputs, find_goal, read_input};
+pub use leaf::{run_leaf, test_leaf};
+pub use lock::{Entry, LOCK_FILE, LOCK_VERSION, Lock, LockError};
+pub use locked::{Cause, EntryError, LockedGoal, RecordChange, Versioned, load};
 pub use store::{ARTIFACTS_DIR, LoadError, Store, StoreError, TMP_DIR, VELME_DIR};

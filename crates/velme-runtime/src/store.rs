@@ -83,7 +83,8 @@ impl Store {
         }
         fs::create_dir_all(&self.dir).map_err(StoreError::Io)?;
         fs::create_dir_all(&self.tmp).map_err(StoreError::Io)?;
-        let temp = self.write_temp(id, bytes.as_bytes()).map_err(StoreError::Io)?;
+        let stem = format!("{ARTIFACT_PREFIX}{}", id.hex());
+        let temp = write_temp(&self.tmp, &stem, bytes.as_bytes()).map_err(StoreError::Io)?;
         let placed = place(&temp, &path);
         // Leaves no temporary file behind, whether or not the artifact was placed; a rename already moved it.
         let removed = match fs::remove_file(&temp) {
@@ -98,7 +99,7 @@ impl Store {
     }
 
     /// Reads the artifact `id`, checking that its bytes still hash to `id` (R-ART-10). The IR in it is not validated
-    /// and the manifest not cross-checked here: the caller does both before trusting it.
+    /// and the manifest not cross-checked here: [`load`](crate::load) does both before trusting it.
     pub fn get(&self, id: Fingerprint) -> Result<Artifact, LoadError> {
         let path = self.path(id);
         let bytes = fs::read(&path).map_err(|error| match error.kind() {
@@ -118,25 +119,25 @@ impl Store {
             reason: e.to_string(),
         })
     }
+}
 
-    /// Writes `bytes` to a new file in [`TMP_DIR`], flushed to disk, so it can be placed whole.
-    fn write_temp(&self, id: Fingerprint, bytes: &[u8]) -> io::Result<PathBuf> {
-        loop {
-            let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let name = format!(".{ARTIFACT_PREFIX}{}.{}-{n}.tmp", id.hex(), std::process::id());
-            let temp = self.tmp.join(name);
-            let mut file = match OpenOptions::new().write(true).create_new(true).open(&temp) {
-                // Left behind by an earlier process with the same id: take the next name.
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-                other => other?,
-            };
-            let written = file.write_all(bytes).and_then(|()| file.sync_all());
-            if let Err(e) = written {
-                let _ = fs::remove_file(&temp);
-                return Err(e);
-            }
-            return Ok(temp);
+/// Writes `bytes` to a new file in the directory `tmp`, named after `stem` and flushed to disk, so it can be placed
+/// whole.
+pub(crate) fn write_temp(tmp: &Path, stem: &str, bytes: &[u8]) -> io::Result<PathBuf> {
+    loop {
+        let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temp = tmp.join(format!(".{stem}.{}-{n}.tmp", std::process::id()));
+        let mut file = match OpenOptions::new().write(true).create_new(true).open(&temp) {
+            // Left behind by an earlier process with the same id: take the next name.
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            other => other?,
+        };
+        let written = file.write_all(bytes).and_then(|()| file.sync_all());
+        if let Err(e) = written {
+            let _ = fs::remove_file(&temp);
+            return Err(e);
         }
+        return Ok(temp);
     }
 }
 
@@ -154,7 +155,7 @@ fn place(temp: &Path, path: &Path) -> io::Result<()> {
 
 /// Makes the new entry in `dir` durable, as the file's own `sync_all` does not. Only Unix can open a directory to
 /// sync it.
-fn sync_dir(dir: &Path) -> io::Result<()> {
+pub(crate) fn sync_dir(dir: &Path) -> io::Result<()> {
     if cfg!(unix) {
         fs::File::open(dir)?.sync_all()?;
     }

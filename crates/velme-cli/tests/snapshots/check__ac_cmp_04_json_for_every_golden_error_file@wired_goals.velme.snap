@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/wired_goals.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "file": "wired_goals.velme",
       "help": "`result` is what `Main` gives back, so `Name` must give back Number too",
       "labels": [],
       "message": "Expected Number, but got Text.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/wired_goals.velme
     },
     {
       "code": "VL0307",
-      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "file": "wired_goals.velme",
       "help": "tell Velme what this goal should do in `plan:`",
       "labels": [],
       "message": "`NoPlan` needs a `plan:` that says what it should do.",
@@ -37,7 +37,7 @@ input_file: tests/golden/sema/reject/wired_goals.velme
     },
     {
       "code": "VL0307",
-      "file": "tests/golden/sema/reject/wired_goals.velme",
+      "file": "wired_goals.velme",
       "help": "tell Velme what this goal should do in `plan:`",
       "labels": [],
       "message": "`Empty` needs a `plan:` that says what it should do.",

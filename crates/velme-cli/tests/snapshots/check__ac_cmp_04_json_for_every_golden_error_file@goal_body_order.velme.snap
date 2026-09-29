@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/goal_body_order.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/goal_body_order.velme",
+      "file": "goal_body_order.velme",
       "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
       "labels": [],
       "message": "`plan:` has to come before `check:`.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/goal_body_order.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/goal_body_order.velme",
+      "file": "goal_body_order.velme",
       "help": "a goal's parts go in this order: `budget`, `call:`, `plan:`, `check:`, `examples:`",
       "labels": [],
       "message": "This goal already has a `plan:` part.",

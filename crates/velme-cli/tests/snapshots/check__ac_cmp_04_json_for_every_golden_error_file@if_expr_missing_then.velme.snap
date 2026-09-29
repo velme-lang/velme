@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/if_expr_missing_then.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/if_expr_missing_then.velme",
+      "file": "if_expr_missing_then.velme",
       "labels": [],
       "message": "I didn't expect `b` here — I was looking for `(`, `.`, `and`, `is`, `or` or `then`.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/parser/reject/if_expr_missing_then.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/if_expr_missing_then.velme",
+      "file": "if_expr_missing_then.velme",
       "help": "put it in parentheses, like `a and (if b then c)`",
       "labels": [],
       "message": "I didn't expect `if` here — I was looking for an expression.",

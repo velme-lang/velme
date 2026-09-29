@@ -18,6 +18,7 @@ velme-builtins = { path = "crates/velme-builtins", version = "0.1.0" }
 velme-sema = { path = "crates/velme-sema", version = "0.1.0" }
 velme-ir = { path = "crates/velme-ir", version = "0.1.0" }
 velme-interp = { path = "crates/velme-interp", version = "0.1.0" }
+velme-check = { path = "crates/velme-check", version = "0.1.0" }
 velme-runtime = { path = "crates/velme-runtime", version = "0.1.0" }
 velme-test-support = { path = "crates/velme-test-support", version = "0.1.0" }
 
@@ -31,6 +32,8 @@ proptest = { version = "1", default-features = false, features = ["std"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Reads and writes `velme.lock` (`runtime/32` §5) and, later, `velme.toml` (`tooling/40` §5).
+toml = { version = "1", default-features = false, features = ["std", "serde", "parse", "display"] }
 
 # CC-ERR-01, CC-STY-03. `unsafe_code` is forbidden per crate (`#![forbid(unsafe_code)]`), not here, because
 # `velme-wasm` is the one crate that may use it (CC-API-04).

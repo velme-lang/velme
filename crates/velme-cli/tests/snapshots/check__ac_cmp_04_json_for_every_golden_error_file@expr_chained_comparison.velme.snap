@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/expr_chained_comparison.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "file": "expr_chained_comparison.velme",
       "help": "join two comparisons with `and`, like `a < b and b < c`",
       "labels": [],
       "message": "Comparisons can't be chained like this.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/expr_chained_comparison.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "file": "expr_chained_comparison.velme",
       "help": "join two comparisons with `and`, like `a < b and b < c`",
       "labels": [],
       "message": "Comparisons can't be chained like this.",
@@ -37,7 +37,7 @@ input_file: tests/golden/parser/reject/expr_chained_comparison.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/expr_chained_comparison.velme",
+      "file": "expr_chained_comparison.velme",
       "labels": [],
       "message": "I didn't expect `=` here — I was looking for `(`, `.`, `and`, `is`, `or` or the end of the line.",
       "notes": [],

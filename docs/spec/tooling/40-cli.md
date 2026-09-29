@@ -43,6 +43,10 @@ R-ART-10) only.
 **R-CLI-05** `--offline` forbids network access and constructs no provider at all, including the local `ollama`
 and `external` ones (D-41). When a build needs synthesis, a stale goal fails with `VL0404 ProviderUnavailable`
 instead of attempting a request.
+**R-CLI-20** A source file's project root is the directory of the nearest `velme.toml` upward from the file, or the
+file's own directory when there is none (D-82). `velme.lock` and `.velme/` (`runtime/32` §4) live in the project root.
+The file's path is resolved first (`..`, links, and the case of each name as stored on disk), and the lock's `file`
+field is that on-disk path from the root with `/` separators, so every spelling of one file names one lock entry.
 **R-CLI-06** `--goal` names must match a declared goal exactly; otherwise `VL0903 GoalNotFound` with the nearest
 spelling suggestion.
 

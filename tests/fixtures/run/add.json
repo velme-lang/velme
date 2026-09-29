@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "Add",
+  "types": {},
+  "inputs": [["a", {"t": "Number"}], ["b", {"t": "Number"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "binary", "op": "add", "left": {"kind": "input", "name": "a"}, "right": {"kind": "input", "name": "b"}}
+}

@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/param_missing_type.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/param_missing_type.velme",
+      "file": "param_missing_type.velme",
       "labels": [],
       "message": "I didn't expect `)` here — I was looking for `:`.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/parser/reject/param_missing_type.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/param_missing_type.velme",
+      "file": "param_missing_type.velme",
       "labels": [],
       "message": "I didn't expect `result` here — I was looking for `)` or a name.",
       "notes": [],

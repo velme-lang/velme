@@ -4,15 +4,17 @@
 mod fingerprint;
 mod json;
 pub mod limits;
+mod lower;
 mod mapping;
 mod node;
 mod validate;
 
 pub use fingerprint::{Fingerprint, FingerprintError, Synthesis, contract_key, execution_id, signature, synthesis_key};
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
+pub use lower::{calls, ir_type};
 pub use mapping::{
     DecodeError, DecodeProblem, SHOWN_CHARS, SHOWN_ITEMS, decode_literal, decode_str, decode_value, display_value,
-    encode_value,
+    encode_value, json_kind,
 };
 pub use node::{BinaryOperator, Call, CallNode, Goal, Lambda, Node, RecordType, ReduceLambda, Type, UnaryOperator};
 pub use validate::{Origin, Request, ValidIr, validate};
