@@ -9,9 +9,9 @@
   "inputs": [["player", {"t": "Record", "name": "Player"}]],
   "output": {"t": "Record", "name": "Summary"},
   "calls": [
-    {"kind": "call", "binding": "score", "goal": "CalculateScore", "goal_signature": "b3:1111111111111111111111111111111111111111111111111111111111111111", "args": [{"kind": "input", "name": "player"}]},
-    {"kind": "call", "binding": "rank",  "goal": "CalculateRank",  "goal_signature": "b3:2222222222222222222222222222222222222222222222222222222222222222", "args": [{"kind": "input", "name": "player"}]},
-    {"kind": "call", "binding": "badge", "goal": "FindBadge",      "goal_signature": "b3:3333333333333333333333333333333333333333333333333333333333333333", "args": [{"kind": "input", "name": "player"}]}
+    {"kind": "call", "binding": "score", "goal": "CalculateScore", "goal_signature": "b3:93d8c7902fedad3d56f7de91641cc500546563a9305d265cf96f2771f163d876", "args": [{"kind": "input", "name": "player"}]},
+    {"kind": "call", "binding": "rank",  "goal": "CalculateRank",  "goal_signature": "b3:3a2b352b920ac3ac2e2c693a854af1d03582abfe56f2d6cac324e7e9ac6cb273", "args": [{"kind": "input", "name": "player"}]},
+    {"kind": "call", "binding": "badge", "goal": "FindBadge",      "goal_signature": "b3:fae14969bcded347fe0b153a9462bb105843b8a5f869179359077e8cccc9ce5d", "args": [{"kind": "input", "name": "player"}]}
   ],
   "body": {
     "kind": "record", "type": "Summary",

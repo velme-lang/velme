@@ -1,0 +1,163 @@
+---
+source: crates/velme-runtime/tests/store.rs
+expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
+---
+{
+  "ir": {
+    "body": {
+      "fields": {
+        "badge": {
+          "kind": "local",
+          "name": "badge"
+        },
+        "rank": {
+          "kind": "local",
+          "name": "rank"
+        },
+        "score": {
+          "kind": "local",
+          "name": "score"
+        }
+      },
+      "kind": "record",
+      "type": "Summary"
+    },
+    "builtins_version": "0.1",
+    "calls": [
+      {
+        "args": [
+          {
+            "kind": "input",
+            "name": "player"
+          }
+        ],
+        "binding": "score",
+        "goal": "CalculateScore",
+        "goal_signature": "b3:93d8c7902fedad3d56f7de91641cc500546563a9305d265cf96f2771f163d876",
+        "kind": "call"
+      },
+      {
+        "args": [
+          {
+            "kind": "input",
+            "name": "player"
+          }
+        ],
+        "binding": "rank",
+        "goal": "CalculateRank",
+        "goal_signature": "b3:3a2b352b920ac3ac2e2c693a854af1d03582abfe56f2d6cac324e7e9ac6cb273",
+        "kind": "call"
+      },
+      {
+        "args": [
+          {
+            "kind": "input",
+            "name": "player"
+          }
+        ],
+        "binding": "badge",
+        "goal": "FindBadge",
+        "goal_signature": "b3:fae14969bcded347fe0b153a9462bb105843b8a5f869179359077e8cccc9ce5d",
+        "kind": "call"
+      }
+    ],
+    "goal": "BuildPlayerSummary",
+    "inputs": [
+      [
+        "player",
+        {
+          "name": "Player",
+          "t": "Record"
+        }
+      ]
+    ],
+    "ir_version": "0.1",
+    "output": {
+      "name": "Summary",
+      "t": "Record"
+    },
+    "types": {
+      "Player": {
+        "fields": [
+          [
+            "name",
+            {
+              "t": "Text"
+            }
+          ],
+          [
+            "jump_height",
+            {
+              "t": "Number"
+            }
+          ],
+          [
+            "score",
+            {
+              "t": "Number"
+            }
+          ]
+        ]
+      },
+      "Summary": {
+        "fields": [
+          [
+            "score",
+            {
+              "t": "Number"
+            }
+          ],
+          [
+            "rank",
+            {
+              "t": "Number"
+            }
+          ],
+          [
+            "badge",
+            {
+              "t": "Text"
+            }
+          ]
+        ]
+      }
+    }
+  },
+  "manifest": {
+    "builtins_version": "0.1",
+    "children": [
+      {
+        "binding": "score",
+        "goal": "CalculateScore",
+        "signature": "b3:93d8c7902fedad3d56f7de91641cc500546563a9305d265cf96f2771f163d876"
+      },
+      {
+        "binding": "rank",
+        "goal": "CalculateRank",
+        "signature": "b3:3a2b352b920ac3ac2e2c693a854af1d03582abfe56f2d6cac324e7e9ac6cb273"
+      },
+      {
+        "binding": "badge",
+        "goal": "FindBadge",
+        "signature": "b3:fae14969bcded347fe0b153a9462bb105843b8a5f869179359077e8cccc9ce5d"
+      }
+    ],
+    "compiler_version": "0.1.4",
+    "contract_key": "b3:1e1732a716d46f49a094378f122efdbda1145b17d7908de015f811fd4968eb6c",
+    "goal": "BuildPlayerSummary",
+    "ir_version": "0.1",
+    "kind": "composite",
+    "language_version": "0.1",
+    "model_version": "model-a",
+    "prompt_version": "leaf-v1",
+    "provider": "anthropic",
+    "signature": "b3:ab92627fe12e92ede0753f955cd76067be0814b0ddb4853c220e9baeb72a8100",
+    "synthesis_key": "b3:cd1642227d0148bd49daa681ebbb2736d61d305252c784bb1269ff9ecbd2e252",
+    "verification": {
+      "examples": 3,
+      "generated_inputs": 61,
+      "input_set": "b3:12c765d5e02fa11404094b211d50feae989cd5808a59f3671a13eb80e67cb734",
+      "max_fuel_observed": 412
+    }
+  }
+}

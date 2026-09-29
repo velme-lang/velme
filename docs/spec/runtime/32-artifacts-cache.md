@@ -19,7 +19,7 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 | Identity | Hash of | Used for |
 |---|---|---|
 | `signature` | goal name, param names + types, output type, every reachable record type | `Call.goal_signature`; parents' keys |
-| `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + `ir_version` major + `builtins_version` | lock staleness (§5); generated-input seed (22 §7) |
+| `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + `ir_version` major + `builtins_version` major (D-55) | lock staleness (§5); generated-input seed (22 §7) |
 | `synthesis_key` | `contract_key` + provider `input_version` (the `prompt_version`, or the external `request_version`) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `backend_version`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
 | `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces (§25) |
@@ -34,6 +34,10 @@ ordinary synthesis (`compiler/22`); its diagnostic names the child that changed.
 those enter `synthesis_key` (cache reuse) but not `contract_key` (validity). Switching models never forces
 re-synthesis of a locked project.
 **R-ART-04** Compiler patch versions never enter any key; `compiler_version` is recorded in the manifest only.
+**R-ART-23** `contract_key` hashes `{signature, plan, calls, checks, examples, budget, language_version, ir_major,
+builtins_major}` (D-81). Source enters as span-free structure, so layout and comments never change it; a quantifier
+variable is its nesting depth, a number literal its R-TYP-08 value, a record by its type and field names; `calls` hold
+each binding, callee name, callee `signature` and arguments; `budget` is the effective limits, system caps included.
 
 ## 3. Artifact document & manifest (§43.8, §48)
 
@@ -58,7 +62,7 @@ hash.
 **R-ART-06** `stdlib_version` (§43.8) is `builtins_version` in v0.1 — there is no separate standard library.
 **R-ART-07** Wired goals (D-4) produce artifacts too, with `"provider": "compiler"` and no `model_version`, so every
 goal resolves through the lock the same way.
-**R-ART-21** An `external` artifact records `"provider": "external"`, the backend name, `model_version` =
+**R-ART-21** An `external` artifact records `"provider": "external"`, the backend name as `backend`, `model_version` =
 `backend_version` and `prompt_version` = `request_version`; an `ollama` artifact records `model_version` =
 `<model>@<digest>` (D-41, D-42).
 **R-ART-08** `children` lists `{binding, goal, signature}` in source order, mirroring the IR `calls`.
@@ -73,10 +77,11 @@ goal resolves through the lock the same way.
     artifacts/b3-<hex>.json   verified artifacts — commit (D-12)
     cache/wasm/…              derived modules (31 §7) — ignore
     synth-log.jsonl           local attempt log — ignore
+    tmp/                      in-progress artifact writes (R-ART-09) — ignore
 ```
 
-**R-ART-09** The store is append-only and write-once: a file is written to a temp name and atomically renamed; an
-existing file with the same name is never rewritten.
+**R-ART-09** The store is append-only and write-once: a file is written to a temp name under `.velme/tmp/` and
+atomically placed; an existing file with the same name is never rewritten.
 **R-ART-10** Every load re-hashes the file, re-runs IR validation (21 §6, cached per hash for the process), and
 cross-checks the manifest's `goal`, `signature` and `contract_key` against the lock entry and against the key computed
 from current source (D-46): the manifest's claims are informational, never trusted on their own. A hash mismatch is
