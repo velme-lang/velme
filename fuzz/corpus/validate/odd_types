@@ -1,0 +1,1 @@
+{"ir_version":"9","builtins_version":"","goal":"","types":{"A":{"fields":[["a",{"t":"Record","name":"A"}]]}},"inputs":[["x",{"t":"Optional","of":{"t":"Optional","of":{"t":"Nothing"}}}]],"output":{"t":"Nothing"},"body":{"kind":"unwrap_or","of":{"kind":"input","name":"x"},"default":{"kind":"literal","type":{"t":"Nothing"},"value":null}}}

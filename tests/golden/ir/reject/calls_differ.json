@@ -1,0 +1,120 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "BuildPlayerSummary",
+  "types": {
+    "Player": {
+      "fields": [
+        [
+          "name",
+          {
+            "t": "Text"
+          }
+        ],
+        [
+          "jump_height",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ]
+      ]
+    },
+    "Summary": {
+      "fields": [
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "rank",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "badge",
+          {
+            "t": "Text"
+          }
+        ]
+      ]
+    }
+  },
+  "inputs": [
+    [
+      "player",
+      {
+        "t": "Record",
+        "name": "Player"
+      }
+    ]
+  ],
+  "output": {
+    "t": "Record",
+    "name": "Summary"
+  },
+  "calls": [
+    {
+      "kind": "call",
+      "binding": "score",
+      "goal": "CalculateScore",
+      "goal_signature": "b3:1111111111111111111111111111111111111111111111111111111111111111",
+      "args": [
+        {
+          "kind": "input",
+          "name": "player"
+        }
+      ]
+    },
+    {
+      "kind": "call",
+      "binding": "rank",
+      "goal": "CalculateRank",
+      "goal_signature": "b3:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "args": [
+        {
+          "kind": "input",
+          "name": "player"
+        }
+      ]
+    },
+    {
+      "kind": "call",
+      "binding": "badge",
+      "goal": "FindBadge",
+      "goal_signature": "b3:3333333333333333333333333333333333333333333333333333333333333333",
+      "args": [
+        {
+          "kind": "input",
+          "name": "player"
+        }
+      ]
+    }
+  ],
+  "body": {
+    "kind": "record",
+    "type": "Summary",
+    "fields": {
+      "score": {
+        "kind": "local",
+        "name": "score"
+      },
+      "rank": {
+        "kind": "local",
+        "name": "rank"
+      },
+      "badge": {
+        "kind": "local",
+        "name": "badge"
+      }
+    }
+  }
+}

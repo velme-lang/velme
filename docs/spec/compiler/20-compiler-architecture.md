@@ -142,7 +142,9 @@ pub struct SourceFile { pub id: FileId, pub path: Utf8PathBuf, pub text: String 
 pub fn parse(file: &SourceFile) -> (Option<ast::Program>, Vec<Diagnostic>);            // velme-syntax
 pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>);          // velme-sema (phases 1–6)
 pub fn lower_goal(p: &hir::Program, g: GoalId) -> ir::GoalSkeleton;                     // velme-ir (call section / wired body)
-pub fn validate(p: &hir::Program, g: GoalId, ir: &ir::Goal) -> Result<ValidIr, Vec<Diagnostic>>; // velme-ir
+pub fn validate(ir_json: &str, req: &ir::Request) -> Result<ValidIr, Vec<Diagnostic>>; // velme-ir
+// Request { program, goal, calls, origin }: text in, since stage 1 is the schema; `calls` is the compiler's call
+// section (with child signatures) and `origin` says whether it is joined into a candidate or compared (21 §6).
 pub async fn build(p: &hir::Program, opts: BuildOptions, store: &dyn ArtifactStore,
                    provider: Option<&dyn SynthProvider>) -> BuildReport;                // velme-runtime (D-54)
 pub async fn run(p: &hir::Program, lock: &Lockfile, goal: GoalId, input: Value,

@@ -1,0 +1,48 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindBadge",
+  "types": {
+    "Player": {
+      "fields": [
+        [
+          "name",
+          {
+            "t": "Text"
+          }
+        ],
+        [
+          "jump_height",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ]
+      ]
+    }
+  },
+  "inputs": [
+    [
+      "player",
+      {
+        "t": "Record",
+        "name": "Player"
+      }
+    ]
+  ],
+  "output": {
+    "t": "Text"
+  },
+  "body": {
+    "kind": "loop",
+    "body": {
+      "kind": "input",
+      "name": "player"
+    }
+  }
+}

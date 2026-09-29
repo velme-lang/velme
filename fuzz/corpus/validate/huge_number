@@ -1,0 +1,1 @@
+{"ir_version":"0.1","builtins_version":"0.1","goal":"FindBadge","types":{},"inputs":[],"output":{"t":"Number"},"body":{"kind":"literal","type":{"t":"Number"},"value":1e99999999999999999999}}

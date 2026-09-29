@@ -179,7 +179,7 @@ const COEFFICIENT_LIMIT: &str = "79228162514264337593543950336";
 const MAX_SCALE: usize = 28;
 
 /// The R-TYP-08 rendering of the JSON number `text`, read exactly from its digits; `None` if no `Number` holds it.
-fn canonical_number(text: &str) -> Option<String> {
+pub(crate) fn canonical_number(text: &str) -> Option<String> {
     let (negative, rest) = match text.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, text),
@@ -239,7 +239,7 @@ fn below_limit(digits: &str) -> bool {
 }
 
 /// A JSON Pointer (RFC 6901) for `path`.
-fn pointer(path: &[String]) -> String {
+pub(crate) fn pointer(path: &[String]) -> String {
     path.iter()
         .map(|segment| format!("/{}", segment.replace('~', "~0").replace('/', "~1")))
         .collect()

@@ -587,6 +587,9 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "velme-builtins",
+ "velme-diagnostics",
+ "velme-sema",
 ]
 
 [[package]]

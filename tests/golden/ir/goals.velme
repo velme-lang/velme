@@ -1,0 +1,44 @@
+language: velme/0.1
+
+# The goals the golden IR files implement; `crates/velme-ir/tests/validate.rs` validates each file against its goal.
+
+type Player:
+    name: Text
+    jump_height: Number
+    score: Number
+
+type Summary:
+    score: Number
+    rank: Number
+    badge: Text
+
+type TeamStats:
+    total: Number
+    deficit: Number
+    ranked: List<Player>
+    top: Player?
+    all_jump: Boolean
+    any_star: Boolean
+    tags: List<Text>
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score."
+
+goal CalculateRank(player: Player) -> Number:
+    plan: "Rank the player by score: 1 for 1000 or more, 2 for 500 or more, 3 otherwise."
+
+goal FindBadge(player: Player) -> Text:
+    plan: "Gold for a score of 100 or more; Jumper and the height for a named player jumping over 2.5; else Rookie."
+
+goal BuildPlayerSummary(player: Player) -> Summary:
+    call:
+        score = CalculateScore(player)
+        rank = CalculateRank(player)
+        badge = FindBadge(player)
+    plan: "Build the summary from the score, rank and badge."
+
+goal FindHighestJumpingPlayer(players: List<Player>) -> Player?:
+    plan: "Return the player who jumps highest, or nothing for no players."
+
+goal SummarizeTeam(players: List<Player>, target: Number) -> TeamStats:
+    plan: "Summarize the named players against the target score."

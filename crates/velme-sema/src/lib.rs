@@ -8,7 +8,9 @@ pub mod hir;
 mod resolve;
 
 use velme_diagnostics::Diagnostic;
-use velme_syntax::{LANGUAGE_VERSION, SourceFile};
+use velme_syntax::LANGUAGE_VERSION;
+/// The input of [`analyze`], so its callers need not depend on `velme-syntax`.
+pub use velme_syntax::SourceFile;
 
 /// Parses and checks a whole file (`compiler/20` §6): phases 1–6, never touching the network, the store or the clock
 /// (R-CMP-05). The program is returned only when there is no error; warnings don't count (D-69). Diagnostics are
