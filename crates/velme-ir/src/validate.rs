@@ -13,8 +13,9 @@ use velme_builtins::{BUILTINS_VERSION, Builtin, CATALOG, Shape};
 use velme_diagnostics::{Code, Diagnostic, Span, did_you_mean};
 use velme_sema::hir::{self, GoalId, Program, Type as HirType, TypeId, assignable, join, signature_output};
 
-use crate::json::{canonical_number, pointer};
+use crate::json::pointer;
 use crate::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
+use crate::mapping::{DecodeProblem, decode_value};
 use crate::node::{BinaryOperator, Call, CallNode, Goal, Lambda, Node, RecordType, ReduceLambda, Type, UnaryOperator};
 use crate::{IR_VERSION, MAX_JSON_DEPTH, ParseError, from_json_str};
 
@@ -681,72 +682,20 @@ impl<'a> Validator<'a> {
     fn literal(&mut self, ty: &Type, value: &Value) -> HirType {
         let ty = self.resolve_at("type", ty);
         self.path.push("value".to_owned());
-        self.fits(value, &ty);
+        // `literal_sizes` reports long arrays against the tighter §7 limit.
+        if let Err(error) = decode_value(value, &ty, self.program)
+            && !matches!(error.problem, DecodeProblem::TooManyItems { .. })
+        {
+            let help = match &error.problem {
+                DecodeProblem::UnknownField { help, .. } => help.clone(),
+                _ => None,
+            };
+            let segments: Vec<&str> = error.path.iter().map(String::as_str).collect();
+            self.find_at(&segments, Stage::Types, error.problem.to_string(), help);
+        }
         self.literal_sizes(value);
         self.path.pop();
         ty
-    }
-
-    /// Whether `value` decodes as `ty` (`language/11` §10); on the first mismatch, a finding says where.
-    fn fits(&mut self, value: &Value, ty: &HirType) -> bool {
-        let rule = match (ty, value) {
-            (HirType::Error, _)
-            | (HirType::Text, Value::String(_))
-            | (HirType::Boolean, Value::Bool(_))
-            | (HirType::Nothing | HirType::Optional(_), Value::Null) => return true,
-            (HirType::Number, Value::Number(n)) => {
-                // In range and scale, so exactly a `Number` (R-TYP-04); JSON has no NaN or infinity.
-                if canonical_number(&n.to_string()).is_some() {
-                    return true;
-                }
-                format!("the number {n} is outside the range of Number")
-            }
-            (HirType::Optional(inner), _) => return self.fits(value, inner),
-            (HirType::List(element), Value::Array(items)) => {
-                for (i, item) in items.iter().enumerate() {
-                    self.path.push(i.to_string());
-                    let ok = self.fits(item, element);
-                    self.path.pop();
-                    if !ok {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            (HirType::Record(id), Value::Object(members)) => return self.fits_record(*id, members),
-            _ => format!("this value isn't {}", self.name(ty)),
-        };
-        self.find(Stage::Types, rule);
-        false
-    }
-
-    /// A record value has exactly the declared fields, each of its type.
-    fn fits_record(&mut self, id: TypeId, members: &serde_json::Map<String, Value>) -> bool {
-        let Some(record) = self.program.record(id) else {
-            return true;
-        };
-        if let Some(extra) = members.keys().find(|k| record.field(k).is_none()) {
-            let help = did_you_mean(extra, record.fields.iter().map(|f| f.name.as_str()));
-            let rule = format!("`{}` has no field `{extra}`", record.name);
-            self.find_at(&[extra], Stage::Types, rule, help);
-            return false;
-        }
-        for field in &record.fields {
-            let Some(member) = members.get(&field.name) else {
-                self.find(
-                    Stage::Types,
-                    format!("a `{}` needs the field `{}`", record.name, field.name),
-                );
-                return false;
-            };
-            self.path.push(field.name.clone());
-            let ok = self.fits(member, &field.ty);
-            self.path.pop();
-            if !ok {
-                return false;
-            }
-        }
-        true
     }
 
     /// §7 limits on a literal's arrays and texts.

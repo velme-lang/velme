@@ -6,6 +6,7 @@ use std::fmt::{self, Write as _};
 use serde::Serialize;
 use serde::de::{self, DeserializeOwned, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::Value;
+use velme_builtins::Number;
 
 /// Why a value has no canonical form.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +154,7 @@ fn write_value(value: &Value, out: &mut String, path: &mut Vec<String>) -> Resul
     Ok(())
 }
 
-fn write_string(s: &str, out: &mut String) {
+pub(crate) fn write_string(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
         match c {
@@ -173,69 +174,9 @@ fn write_string(s: &str, out: &mut String) {
     out.push('"');
 }
 
-/// 2^96: every `Number` coefficient is below it (R-TYP-04 range).
-const COEFFICIENT_LIMIT: &str = "79228162514264337593543950336";
-/// The largest `Number` scale (R-TYP-04).
-const MAX_SCALE: usize = 28;
-
 /// The R-TYP-08 rendering of the JSON number `text`, read exactly from its digits; `None` if no `Number` holds it.
 pub(crate) fn canonical_number(text: &str) -> Option<String> {
-    let (negative, rest) = match text.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, text),
-    };
-    let (mantissa, exponent) = match rest.find(['e', 'E']) {
-        Some(at) => (rest.get(..at)?, rest.get(at + 1..)?),
-        None => (rest, "0"),
-    };
-    let (int, frac) = mantissa.split_once('.').unwrap_or((mantissa, ""));
-    let exponent = exponent.strip_prefix('+').unwrap_or(exponent);
-    let exponent_digits = exponent.strip_prefix('-').unwrap_or(exponent);
-    if int.is_empty()
-        || exponent_digits.is_empty()
-        || !int
-            .bytes()
-            .chain(frac.bytes())
-            .chain(exponent_digits.bytes())
-            .all(|b| b.is_ascii_digit())
-    {
-        return None;
-    }
-    let digits = format!("{int}{frac}");
-    let significant = digits.trim_start_matches('0');
-    let coefficient = significant.trim_end_matches('0');
-    if coefficient.is_empty() {
-        // Zero in any spelling, `-0` included, is `0` (R-TYP-06).
-        return Some("0".to_owned());
-    }
-    // Value = coefficient × 10^power, with `power` bounded by the text length plus the exponent.
-    let exponent: i64 = exponent.parse().ok()?;
-    let trailing = i64::try_from(significant.len() - coefficient.len()).ok()?;
-    let power = exponent
-        .checked_sub(i64::try_from(frac.len()).ok()?)?
-        .checked_add(trailing)?;
-    let body = if power >= 0 {
-        let zeros = usize::try_from(power)
-            .ok()
-            .filter(|z| coefficient.len() + z <= COEFFICIENT_LIMIT.len())?;
-        let whole = format!("{coefficient}{}", "0".repeat(zeros));
-        below_limit(&whole).then_some(whole)?
-    } else {
-        let scale = usize::try_from(power.unsigned_abs()).ok().filter(|s| *s <= MAX_SCALE)?;
-        if !below_limit(coefficient) {
-            return None;
-        }
-        match coefficient.len().checked_sub(scale) {
-            Some(0) | None => format!("0.{}{coefficient}", "0".repeat(scale - coefficient.len())),
-            Some(split) => format!("{}.{}", coefficient.get(..split)?, coefficient.get(split..)?),
-        }
-    };
-    Some(if negative { format!("-{body}") } else { body })
-}
-
-/// `digits` (no leading zeros) is below 2^96.
-fn below_limit(digits: &str) -> bool {
-    digits.len() < COEFFICIENT_LIMIT.len() || (digits.len() == COEFFICIENT_LIMIT.len() && digits < COEFFICIENT_LIMIT)
+    Number::parse(text).map(|n| n.to_string())
 }
 
 /// A JSON Pointer (RFC 6901) for `path`.
@@ -405,7 +346,8 @@ mod tests {
             ("-1.5e1", "-15"),
             ("12.34e-1", "1.234"),
             ("0.1", "0.1"),
-            ("0012.00", "12"),
+            ("12.00", "12"),
+            ("0.0e-5", "0"),
             ("1e28", "10000000000000000000000000000"),
             ("1e-28", "0.0000000000000000000000000001"),
             ("1.0000000000000000000000000000000", "1"),
@@ -430,6 +372,13 @@ mod tests {
             "1.2.3",
             "1e",
             "0e+",
+            "0012.00",
+            "1.",
+            ".5",
+            "1e+-5",
+            "+1",
+            "-01",
+            "1.e5",
             "NaN",
         ] {
             assert_eq!(canonical_number(text), None, "{text}");

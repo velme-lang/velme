@@ -3,10 +3,12 @@
 
 mod json;
 pub mod limits;
+mod mapping;
 mod node;
 mod validate;
 
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
+pub use mapping::{DecodeError, DecodeProblem, decode_str, decode_value, encode_value};
 pub use node::{BinaryOperator, Call, CallNode, Goal, Lambda, Node, RecordType, ReduceLambda, Type, UnaryOperator};
 pub use validate::{Origin, Request, ValidIr, validate};
 
