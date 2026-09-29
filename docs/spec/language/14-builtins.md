@@ -36,7 +36,7 @@ length of a `Text` argument (or the larger of input/output where noted). `⌈x�
 | `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | 1 | |
 | `round` | `(Number) -> Number` | ✓ | ✓ | 1 | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
 | `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | 1 | `low > high` → `VL0602` |
-| `concat` | `(Text, Text) -> Text` | ✓ | ✓ | 1 + ⌈bytes/64⌉ of both inputs (and of the output where larger) | |
+| `concat` | `(Text, Text) -> Text` | ✓ | ✓ | 1 + ⌈(bytes of both inputs together)/64⌉, i.e. of the output | |
 | `to_text` | `(Number) -> Text` | ✓ | ✓ | 1 + ⌈output bytes/64⌉ | plain decimal rendering (R-TYP-08) |
 | `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | 1 + n | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `VL0602`; `n` above the list limit → `VL0606` |
 | `random` | `(seed: Number, index: Number) -> Number` | ✓ | ✓ | 1 | §3 |
