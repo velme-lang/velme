@@ -12,7 +12,7 @@ mod validate;
 pub use fingerprint::{
     Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, execution_id, signature, synthesis_key,
 };
-pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
+pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, from_json_str_within, to_canonical_string};
 pub use lower::{calls, ir_type};
 pub use mapping::{
     DecodeError, DecodeProblem, OutputTooBig, SHOWN_CHARS, SHOWN_ITEMS, SHOWN_TOTAL, decode_str, decode_value,

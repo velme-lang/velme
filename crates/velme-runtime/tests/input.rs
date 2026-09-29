@@ -77,3 +77,57 @@ fn values_nest_at_most_the_limit_either_way() {
         }
     }
 }
+
+/// A value that fails the mapping is worded as `reference/90`'s VL0902 message; a list over `max_list_size` stays
+/// VL0606 (R-TYP-24), naming the input in a note.
+#[test]
+fn value_problems_follow_the_catalog_messages() {
+    let program = program(
+        "language: velme/0.1\n\ntype Player:\n    name: Text\n    score: Number\n\n\
+         goal Rank(player: Player, scores: List<Number>) -> Number:\n    plan: \"Rank.\"\n",
+    );
+    let decode = |player: &str, scores: &str| {
+        let args = [
+            ("player".to_owned(), player.to_owned()),
+            ("scores".to_owned(), scores.to_owned()),
+        ];
+        match decode_inputs(&program, goal_id(&program, "Rank"), None, &args) {
+            Ok(_) => Vec::new(),
+            Err(diags) => diags,
+        }
+    };
+    let good = r#"{"name": "A", "score": 1}"#;
+    let cases = [
+        (
+            r#"{"name": "A"}"#,
+            "Input `player` should be Player, but got a `Player` without the field `score`.",
+        ),
+        (
+            r#"{"name": "A", "score": 1, "rank": 2}"#,
+            "Input `player` should be Player, but got a field `rank` that `Player` doesn't have.",
+        ),
+        (
+            r#"{"name": "A", "score": 1e+999}"#,
+            "Input `player` should be Player, but got 1e+999, which no Number holds exactly.",
+        ),
+    ];
+    for (player, message) in cases {
+        let diags = decode(player, "[]");
+        assert_eq!(diags.len(), 1, "{player}: {diags:#?}");
+        assert_eq!(diags[0].code, Code::InvalidInput);
+        assert_eq!(diags[0].message, message);
+    }
+    let items = usize::try_from(velme_builtins::limits::MAX_LIST_SIZE).expect("fits") + 1;
+    let long = format!("[{}]", vec!["0"; items].join(","));
+    let diags = decode(good, &long);
+    assert_eq!(diags.len(), 1, "{diags:#?}");
+    assert_eq!(diags[0].code, Code::SizeLimitExceeded);
+    assert_eq!(diags[0].message, "`Rank` made a list or answer that's too big.");
+    assert_eq!(
+        diags[0].notes,
+        [format!(
+            "input `scores` has a list of {items} items; at most {} are allowed",
+            velme_builtins::limits::MAX_LIST_SIZE
+        )]
+    );
+}

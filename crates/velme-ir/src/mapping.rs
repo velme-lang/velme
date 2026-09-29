@@ -10,7 +10,7 @@ use velme_diagnostics::{Code, did_you_mean};
 use velme_sema::hir::{Program, RecordType, Type};
 
 use crate::json::{pointer, write_string};
-use crate::{MAX_JSON_DEPTH, ParseError, from_json_str};
+use crate::{ParseError, from_json_str};
 
 /// Why JSON doesn't decode as a type: the first problem, in document order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,7 +106,7 @@ pub fn decode_str(text: &str, ty: &Type, program: &Program) -> Result<Value, Dec
         let (at, reason) = match error {
             ParseError::DuplicateKey { pointer } => (pointer, "an object repeats this key".to_owned()),
             ParseError::ReservedKey { pointer } => (pointer, "this object key is reserved".to_owned()),
-            ParseError::TooDeep { pointer } => (pointer, format!("it nests deeper than {MAX_JSON_DEPTH} levels")),
+            ParseError::TooDeep { pointer, limit } => (pointer, format!("it nests deeper than {limit} levels")),
             ParseError::Json(error) => (String::new(), error.to_string()),
         };
         DecodeError {
