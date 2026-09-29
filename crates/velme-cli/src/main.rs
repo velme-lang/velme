@@ -12,7 +12,9 @@ use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::encode_value;
-use velme_runtime::{EntryError, Lock, LockedGoal, Store, decode_inputs, find_goal, load, run_leaf, test_leaf};
+use velme_runtime::{
+    EntryError, Lock, LockedGoal, Options, Registry, Store, decode_inputs, find_goal, load, run_goal, test_leaf,
+};
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_syntax::SourceFile;
 
@@ -55,7 +57,7 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
-                     velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--json]\n       \
+                     velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme --version";
 
@@ -84,6 +86,7 @@ enum Command {
         goal: String,
         input: Option<String>,
         args: Vec<(String, String)>,
+        jobs: Option<usize>,
     },
     Test {
         file: String,
@@ -101,11 +104,12 @@ fn parse_args(args: &[String]) -> Option<Command> {
     if matches!(command, "--version" | "-V") {
         return (!json && rest.next().is_none()).then_some(Command::Version);
     }
-    let (mut file, mut goal, mut input, mut pairs) = (None, None, None, Vec::new());
+    let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
     while let Some(arg) = rest.next() {
         match arg {
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
+            "--jobs" if jobs.is_none() => jobs = Some(rest.next()?.parse().ok().filter(|n| *n >= 1)?),
             "--arg" => {
                 let (name, value) = rest.next()?.split_once('=')?;
                 pairs.push((name.to_owned(), value.to_owned()));
@@ -117,15 +121,16 @@ fn parse_args(args: &[String]) -> Option<Command> {
     let file = file?;
     let inputs = input.is_some() || !pairs.is_empty();
     match command {
-        "check" if goal.is_none() && !inputs => Some(Command::Check { file, json }),
+        "check" if goal.is_none() && !inputs && jobs.is_none() => Some(Command::Check { file, json }),
         "run" => Some(Command::Run {
             file,
             json,
             goal: goal?,
             input,
             args: pairs,
+            jobs,
         }),
-        "test" if !inputs => Some(Command::Test { file, json, goal }),
+        "test" if !inputs && jobs.is_none() => Some(Command::Test { file, json, goal }),
         _ => None,
     }
 }
@@ -188,7 +193,8 @@ fn command(args: &[String]) -> u8 {
             goal,
             input,
             args,
-        }) => run(&file, json, &goal, input.as_deref(), &args),
+            jobs,
+        }) => run(&file, json, &goal, input.as_deref(), &args, jobs),
         Some(Command::Test { file, json, goal }) => test(&file, json, goal.as_deref()),
         None => {
             print_err(&format!("{USAGE}\n"));
@@ -331,9 +337,9 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
     Ok(Some((locked, failed)))
 }
 
-/// `velme run FILE --goal G`: runs a leaf goal with its locked artifact on the reference interpreter, then its checks
-/// (`tooling/40` §2, `runtime/30` §4). Goals with calls run once the scheduler exists.
-fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, String)]) -> u8 {
+/// `velme run FILE --goal G`: runs a goal with its locked artifact and those of the goals it calls on the reference
+/// interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `jobs` is `--jobs`.
+fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, String)], jobs: Option<usize>) -> u8 {
     let analyzed = analyze(arg);
     let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
         return finish(&analyzed, &Outcome::file(&analyzed), json);
@@ -342,29 +348,27 @@ fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, 
         Ok(id) => id,
         Err(diag) => return finish(&analyzed, &Outcome::with(vec![diag]), json),
     };
-    let Some(target) = leaf(program, id) else {
-        return usage(&format!(
-            "velme run: `{goal}` calls other goals, which `velme run` can't run yet"
-        ));
-    };
     let input = match input.map(read_input).transpose() {
         Ok(input) => input,
         Err(diag) => return finish(&analyzed, &Outcome::with(vec![diag]), json),
     };
     // Input and lock problems are both reported, so the exit code follows R-CLI-16's precedence.
     let inputs = decode_inputs(program, id, input.as_deref(), args);
-    let locked = locked_goal(project, program, id);
-    let result = match (inputs, locked) {
-        (Ok(inputs), Ok(locked)) => run_leaf(program, id, text, &locked, inputs).map(Some),
-        (inputs, locked) => Err(inputs
+    let registry = registry(project, program, id);
+    let options = jobs.map_or_else(Options::default, |jobs| Options { jobs });
+    let result = match (inputs, registry) {
+        (Ok(inputs), Ok(registry)) => run_goal(program, id, text, &registry, inputs, options)
+            .result()
+            .map(Some),
+        (inputs, registry) => Err(inputs
             .err()
             .into_iter()
             .flatten()
-            .chain(locked.err().into_iter().flatten())
+            .chain(registry.err().into_iter().flatten())
             .collect()),
     };
     let mark = if result.is_ok() { "✓" } else { "✗" };
-    let mut progress = format!("{}  {mark}\n", target);
+    let mut progress = format!("{goal}  {mark}\n");
     if let Ok(Some(value)) = &result {
         progress.push_str(&format!("\nResult:\n{}\n", pretty(value)));
     }
@@ -378,7 +382,7 @@ fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, 
 
 /// `velme test FILE [--goal G]`: runs the `examples:` of each leaf goal, or of `G`, with its locked artifact, and its
 /// checks on each (`tooling/40` §2, R-GOAL-22). Generated inputs follow with the test-input generator; goals with calls
-/// are skipped until the scheduler exists.
+/// are skipped: testing composite goals follows in a later phase.
 fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
     let analyzed = analyze(arg);
     let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
@@ -416,7 +420,7 @@ fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
     finish(&analyzed, &outcome, json)
 }
 
-/// The name of goal `id` if it is a leaf goal, the only kind that runs before the scheduler exists.
+/// The name of goal `id` if it is a leaf goal, the only kind `velme test` runs yet.
 fn leaf(program: &Program, id: GoalId) -> Option<&str> {
     program
         .goals
@@ -436,6 +440,14 @@ fn locked_goal(project: &Project, program: &Program, id: GoalId) -> Result<Locke
         .unwrap_or_else(|| Lock::new(program.language_version.clone()));
     load(program, id, &project.file, &lock, &Store::new(&project.root))
         .map_err(|e| vec![e.diagnostic(&goal.name, goal.span)])
+}
+
+/// The locked artifacts of goal `id` and of every goal it calls (R-ART-10, R-ART-16): never synthesized here.
+fn registry(project: &Project, program: &Program, id: GoalId) -> Result<Registry, Vec<Diagnostic>> {
+    let lock = Lock::read(&project.root)
+        .map_err(|e| vec![e.diagnostic()])?
+        .unwrap_or_else(|| Lock::new(program.language_version.clone()));
+    Registry::load(program, id, &project.file, &lock, &Store::new(&project.root))
 }
 
 /// The text of `--input`: a file, or standard input for `-` (`tooling/40` §3.1), read no further than the input limit.
@@ -462,12 +474,6 @@ fn to_json(value: &Value) -> Option<serde_json::Value> {
     let mut parser = serde_json::Deserializer::from_str(&text);
     parser.disable_recursion_limit();
     serde_json::Value::deserialize(&mut parser).ok()
-}
-
-/// A usage error: `message` and the usage lines on stderr, exit 64.
-fn usage(message: &str) -> u8 {
-    print_err(&format!("{message}\n{USAGE}\n"));
-    EXIT_USAGE
 }
 
 impl Outcome {

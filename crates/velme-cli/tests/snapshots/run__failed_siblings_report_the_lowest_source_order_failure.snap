@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: one.stdout
+---
+{
+  "format": "velme-cli/1",
+  "status": "failed",
+  "results": [
+    {
+      "goal": "Both",
+      "status": "failed",
+      "diagnostics": [
+        {
+          "code": "VL0602",
+          "severity": "error",
+          "message": "`Both` failed because `Slow` failed: `Slow` tried to divide 4498500 by 0, which has no answer.",
+          "file": "both.velme",
+          "span": {
+            "start": 21,
+            "end": 92,
+            "line": 3,
+            "column": 1
+          },
+          "labels": [],
+          "notes": [
+            "`Both` also failed because `Fast` failed: `Fast` tried to divide 3000 by 0, which has no answer. [VL0602]"
+          ]
+        }
+      ]
+    }
+  ],
+  "diagnostics": [],
+  "notices": []
+}

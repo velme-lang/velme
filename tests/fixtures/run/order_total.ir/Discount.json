@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "Discount",
+  "types": {},
+  "inputs": [["total", {"t": "Number"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "if", "cond": {"kind": "binary", "op": "gt", "left": {"kind": "input", "name": "total"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 100}}, "then": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "total"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 0.9}}, "else": {"kind": "input", "name": "total"}}
+}

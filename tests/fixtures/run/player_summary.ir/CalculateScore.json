@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "CalculateScore",
+  "types": {"Player": {"fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]]}},
+  "inputs": [["player", {"t": "Record", "name": "Player"}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "field", "of": {"kind": "input", "name": "player"}, "field": "score"}
+}

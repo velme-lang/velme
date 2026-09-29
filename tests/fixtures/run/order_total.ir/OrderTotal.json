@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "OrderTotal",
+  "types": {"Item": {"fields": [["price", {"t": "Number"}], ["quantity", {"t": "Number"}]]}},
+  "inputs": [["items", {"t": "List", "of": {"t": "Record", "name": "Item"}}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "local", "name": "result"}
+}

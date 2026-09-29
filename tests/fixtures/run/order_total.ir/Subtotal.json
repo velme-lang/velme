@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "Subtotal",
+  "types": {"Item": {"fields": [["price", {"t": "Number"}], ["quantity", {"t": "Number"}]]}},
+  "inputs": [["items", {"t": "List", "of": {"t": "Record", "name": "Item"}}]],
+  "output": {"t": "Number"},
+  "body": {"kind": "reduce", "list": {"kind": "input", "name": "items"}, "init": {"kind": "literal", "type": {"t": "Number"}, "value": 0}, "fn": {"acc": "sum", "param": "item", "body": {"kind": "binary", "op": "add", "left": {"kind": "local", "name": "sum"}, "right": {"kind": "binary", "op": "mul", "left": {"kind": "field", "of": {"kind": "local", "name": "item"}, "field": "price"}, "right": {"kind": "field", "of": {"kind": "local", "name": "item"}, "field": "quantity"}}}}}
+}

@@ -1,0 +1,9 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "RateDifficulty",
+  "types": {},
+  "inputs": [["enemies", {"t": "Number"}], ["treasures", {"t": "Number"}]],
+  "output": {"t": "Text"},
+  "body": {"kind": "if", "cond": {"kind": "binary", "op": "ge", "left": {"kind": "input", "name": "enemies"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 10}}, "then": {"kind": "literal", "type": {"t": "Text"}, "value": "Hard"}, "else": {"kind": "if", "cond": {"kind": "binary", "op": "ge", "left": {"kind": "input", "name": "enemies"}, "right": {"kind": "literal", "type": {"t": "Number"}, "value": 5}}, "then": {"kind": "literal", "type": {"t": "Text"}, "value": "Medium"}, "else": {"kind": "literal", "type": {"t": "Text"}, "value": "Easy"}}}
+}
