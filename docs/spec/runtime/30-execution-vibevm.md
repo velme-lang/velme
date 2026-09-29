@@ -30,21 +30,43 @@ identity and loading are in [32](32-artifacts-cache.md).
 **R-RUN-01** Values: `Number` (exact decimal, D-36), `Text` (UTF-8), `Boolean`, `Nothing`, `List` (immutable), `Record` (fields
 in declared order). Values are immutable and structurally compared.
 **R-RUN-02** Evaluation is strict and left-to-right: `binary` left then right (except short-circuit `and`/`or`),
-record fields in declared order, list items in order, `let` binds in order, collection lambdas over elements in list
-order. Evaluation order is observable only through which error is reported first, and it is fixed.
+record fields in declared order, list items in order, `let` binds in order, `reduce` its `list` before its `init`,
+collection lambdas over elements in list order. Evaluation order is observable only through which error is reported
+first, and it is fixed.
 **R-RUN-03** Arithmetic follows `language/11` R-TYP-04..06: exact decimal, half-to-even rounding; division by zero or
 overflow is `VL0602`; `-0` results are normalized to `0` (D-36).
 **R-RUN-04** Every IR node evaluation costs 1 fuel unit; each element visited by
-`map`/`filter`/`find`/`reduce`/`all`/`any` costs 1 more; `==`/`!=` on a `List`/`Record` value costs 1 + the scalar
-leaves compared, stopping at the first difference; `sort_by` and every value/text builtin cost what their catalog
-entry says (language/14 §2, §4, D-52). This **Velme fuel** cost model is part of the semantics — both backends
-meter it identically (31 R-SBX-05). Its edge cases: lists of different lengths differ before any leaf is compared, so
-their `==`/`!=` charges no leaf; whether an operand is a `List`/`Record` is decided by the runtime values, so one
-compared with `nothing` costs 1 leaf, and `nothing` with `nothing` none. A `builtin` node charges its unit on entry like
-any node, evaluates its arguments, computes, then charges the rest of its catalog cost; a failure while computing wins
-over fuel on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`.
+`map`/`filter`/`find`/`reduce`/`all`/`any` costs 1 more; `==`/`!=` where either operand is a `List`/`Record` value
+costs 1 + 1 per pair of values visited — the operands' own pair, every list, record and scalar pair under it —
+stopping at the first difference, and each pair of `Text` values of equal byte length compared, at the top or inside,
+costs ⌈bytes/64⌉ more (D-83); `sort_by` and every value/text builtin cost what their catalog entry says (language/14
+§2, §4, D-52). This **Velme fuel** cost model is part of the semantics — both backends meter it identically (31
+R-SBX-05). Its edge cases: `[1, 2] == [1, 2]` visits three pairs, so costs 1 + 3; lists of different lengths differ
+once their own pair is visited, before any item, so they cost 1 + 1; texts of different byte lengths differ before any
+byte, so they add nothing, as empty text doesn't; whether an operand is a `List`/`Record` is decided by the runtime
+values, so one compared with `nothing` costs 1 + 1, and `nothing` with `nothing` (like any two scalars) just 1. Values
+share their parts, so a comparison can visit far more pairs than its values take bytes; since every pair visited is
+paid for, the work never outgrows the fuel: `==`, `!=` and `contains` charge as they compare and stop with `VL0601`
+once the fuel runs out, never after the whole walk (D-83). A `builtin` node charges its unit on entry like any node,
+evaluates its arguments, computes, then charges the rest of its catalog cost; a failure while computing wins over fuel
+on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`. A builtin
+whose cost follows from its arguments' sizes (`length` of a text, `concat`, `range`) checks it before the work, so it
+never computes what it can't pay for; the outcome is the same.
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
 builtin of its arguments (D-22).
+**R-RUN-25** Validated IR never fails for lack of stack, on any backend: its recursion is statically bounded.
+Evaluation nests at most one level per expression level — `compiler/21` §7's 128 for a goal body; for a lowered check
+or example, the one source line it comes from, within `language/10` D-71's 32 levels of nesting and 256 chained
+operators, times the few nodes a surface form lowers to (`language/13` R-CHK-11). Validating, comparing, rendering,
+encoding and dropping a value, and the validator's walk over its type, nest one level per level of the value. An
+invocation's inputs, call bindings and literals nest at most max(T, 512) levels, T being the deepest type the program
+declares (finite: no type is recursive, `language/11` R-TYP-18) and 512 `MAX_JSON_DEPTH`, which bounds input JSON and
+the IR document, so a literal and every type a `list` node spells. A goal body adds at most `MAX_NODES` / 2 = 5 000
+levels to that, since each level takes a node and one under it; the most it can reach is 3 331 levels by `map`
+(`(MAX_NODES − 5) / 3`: a `let`, the first binding, three nodes per level and a use) on top of a literal nearly 512
+deep. A goal's output nests no deeper than its declared type. The CLI runs every command on a thread with a 64 MiB
+stack, which a test at that deepest value checks (a debug build needs between 4 and 8 MiB); the M4 worker pool and the
+M7 WASM backend (31 §3) must size their stacks for max(T, 512) + 5 000 value levels, or walk values iteratively.
 
 ## 4. Composite goal execution (§29)
 
@@ -133,7 +155,11 @@ a fake clock instead of real time (R-QA-02).
 
 The interpreter charges each value it creates by a fixed size function (Number 16, Boolean 8, Nothing 0, `T?` 8 +
 `T`, Text 16 + bytes, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes in the WASM ABI's
-8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first) and tracks
+8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first). The size is logical, whatever the value's
+parts share: a list built from references to existing values — by a `list` node, `map`, `filter` or `sort_by` — is
+charged 16 + the full size of each item, as copying them into WASM memory costs (D-83). A `literal`'s value is decoded
+once, when its IR is validated, so evaluating a `literal` allocates nothing; a value built from it charges its full
+size. The interpreter tracks
 the **cumulative bytes allocated** during the invocation, not the peak of live bytes (D-53). The function is part
 of the semantics; the WASM backend charges the same numbers (31 R-SBX-05), not its linear-memory size. Building a
 value one item at a time with `reduce` + `concat` therefore allocates `O(n²)` bytes; the synthesis prompt steers
@@ -153,7 +179,8 @@ A trace is a tree of events, ordered by **source order**, never by completion ti
 **R-RUN-19** Trace JSON is versioned and additive-only; `velme trace --json` emits it; `velme run` renders the human
 view on failure (§33 layout: each call with ✓/✗ and value, then the failed check with expected vs received).
 **R-RUN-20** Values in the human view are truncated (lists > 10 items, text > 80 chars) with a count of what was
-elided; the JSON form is complete up to `max_output_bytes`.
+elided, and a whole value is cut after 1 000 bytes of its rendering, ending in `…`, so a deep value renders in bounded
+time; the JSON form is complete up to `max_output_bytes`, and encoding stops once it passes that.
 **R-RUN-21** Traces are local. Telemetry is a local aggregation of traces (counts, durations); nothing is sent
 anywhere in v0.1 (tooling/41).
 

@@ -1,7 +1,9 @@
 //! Fingerprints (`runtime/32` §2, D-11, D-26): BLAKE3 over canonical JSON (D-21), written `b3:<hex>`.
 //!
-//! Each key hashes a small JSON document built here, never a Rust type's own serialization, so a compiler refactor
-//! cannot change a key (R-ART-04). The goal source enters as normalized structure (R-ART-23, D-81).
+//! Each key hashes a small JSON document built here, never a Rust type's derived serialization, so a compiler refactor
+//! cannot change a key (R-ART-04): operators are their surface spelling, and the only serialized types are the IR's own
+//! (`Type`, `RecordType`), whose form is the versioned IR schema (`compiler/21` R-IR-20). The goal source enters as
+//! normalized structure (R-ART-23, D-81).
 use std::collections::BTreeMap;
 use std::fmt;
 use std::str::FromStr;
@@ -10,6 +12,7 @@ use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Value as Json, json};
 use velme_builtins::BUILTINS_VERSION;
+use velme_builtins::limits::{MAX_LIST_SIZE, MAX_OUTPUT_BYTES};
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType, TypeId};
 
@@ -92,8 +95,8 @@ pub fn signature(program: &Program, goal: GoalId) -> Result<Fingerprint, Diagnos
     signature_of(program, goal).ok_or_else(Diagnostic::internal_error)
 }
 
-/// The `contract_key` of `goal`: its normalized source, its children's signatures and the language, IR-major and
-/// builtins-major versions (`runtime/32` §2, D-26). It decides lock staleness and seeds generated inputs.
+/// The `contract_key` of `goal`: its normalized source, its children's signatures, the language version and the IR and
+/// builtins compatibility units (`runtime/32` §2, D-26, D-85). It decides lock staleness and seeds generated inputs.
 pub fn contract_key(program: &Program, goal: GoalId) -> Result<Fingerprint, Diagnostic> {
     let goal = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
     Contract { program, goal }
@@ -138,9 +141,14 @@ pub fn execution_id(artifact: Fingerprint, children: &[Fingerprint]) -> Fingerpr
     Fingerprint::of_bytes(doc.as_bytes())
 }
 
-/// `MAJOR` of a `MAJOR.MINOR` version.
-fn major(version: &str) -> &str {
-    version.split_once('.').map_or(version, |(major, _)| major)
+/// The compatibility unit of a `MAJOR.MINOR` version (D-85): `MAJOR`, or `MAJOR.MINOR` while `MAJOR` is 0, as Cargo
+/// reads versions. Versions of one unit read each other's artifacts; a new unit makes them stale.
+pub fn compatibility(version: &str) -> &str {
+    match version.split_once('.') {
+        Some(("0", _)) => major_minor(version),
+        Some((major, _)) => major,
+        None => version,
+    }
 }
 
 /// `MAJOR.MINOR` of a `MAJOR.MINOR.PATCH` version, so a patch release changes no key (R-ART-04).
@@ -240,10 +248,12 @@ impl<'p> Contract<'p> {
                 "max_memory": budget.max_memory,
                 "max_goal_calls": budget.max_goal_calls,
                 "max_call_depth": budget.max_call_depth,
+                "max_list_size": MAX_LIST_SIZE,
+                "max_output_bytes": MAX_OUTPUT_BYTES,
             },
             "language_version": self.program.language_version,
-            "ir_major": major(IR_VERSION),
-            "builtins_major": major(BUILTINS_VERSION),
+            "ir_compatibility": compatibility(IR_VERSION),
+            "builtins_compatibility": compatibility(BUILTINS_VERSION),
         }))
     }
 
@@ -286,9 +296,11 @@ impl<'p> Contract<'p> {
                 };
                 json!({"kind": "project", "base": self.expr(base)?, "field": self.field_name(element, *field)?})
             }
-            ExprKind::Unary { op, operand } => json!({"kind": "unary", "op": op, "operand": self.expr(operand)?}),
+            ExprKind::Unary { op, operand } => {
+                json!({"kind": "unary", "op": op.as_str(), "operand": self.expr(operand)?})
+            }
             ExprKind::Binary { op, lhs, rhs } => {
-                json!({"kind": "binary", "op": op, "lhs": self.expr(lhs)?, "rhs": self.expr(rhs)?})
+                json!({"kind": "binary", "op": op.as_str(), "lhs": self.expr(lhs)?, "rhs": self.expr(rhs)?})
             }
             ExprKind::IsEmpty { operand, negated } => {
                 json!({"kind": "is_empty", "operand": self.expr(operand)?, "negated": negated})
@@ -304,7 +316,7 @@ impl<'p> Contract<'p> {
                 ..
             } => json!({
                 "kind": "quantified",
-                "quantifier": quantifier,
+                "quantifier": quantifier.as_str(),
                 "collection": self.expr(collection)?,
                 "body": self.expr(body)?,
             }),

@@ -22,6 +22,10 @@ pub enum Error {
     },
     /// `VL0607 InternalError`: arguments that don't match the built-in's signature, which the validator rules out.
     Internal,
+    /// `VL0601 BudgetExceeded`: the call would cost more than the fuel it was given, so it stopped before finishing
+    /// the work (`runtime/30` R-RUN-04, D-83). Only a call that can't otherwise fail stops early, so a failure while
+    /// computing still wins over fuel.
+    OutOfFuel,
 }
 
 impl Error {
@@ -35,6 +39,7 @@ impl Error {
             Error::Arithmetic { .. } => Code::ArithmeticError,
             Error::ListTooLong { .. } => Code::SizeLimitExceeded,
             Error::Internal => Code::InternalError,
+            Error::OutOfFuel => Code::BudgetExceeded,
         }
     }
 }
@@ -85,13 +90,20 @@ pub enum Function {
 }
 
 impl Function {
-    /// Calls the built-in on `args`, which the validator has checked against its signature.
-    pub fn call(self, args: &[Value]) -> Result<Output, Error> {
+    /// Calls the built-in on `args`, which the validator has checked against its signature, with at most `budget` fuel
+    /// to spend, its own unit included. A call whose cost follows from its arguments' sizes alone (`length` of a text,
+    /// `contains`, `concat`, `range`) stops with [`Error::OutOfFuel`] before doing work it can't pay for; any other
+    /// returns its cost, which may pass `budget`, for the caller to charge.
+    pub fn call(self, args: &[Value], budget: u64) -> Result<Output, Error> {
         use Value::{Boolean, List, Nothing, Text};
         let n = |len: usize| u64::try_from(len).unwrap_or(u64::MAX);
+        let afford = |fuel: u64| if fuel > budget { Err(Error::OutOfFuel) } else { Ok(fuel) };
         let (value, fuel) = match (self, args) {
             (Function::Length, [List(items)]) => (Number::from(n(items.len())).into(), 1),
-            (Function::Length, [Text(text)]) => (Number::from(n(text.chars().count())).into(), 1),
+            (Function::Length, [Text(text)]) => {
+                let fuel = afford(1 + blocks(text.len()))?;
+                (Number::from(n(text.chars().count())).into(), fuel)
+            }
             (Function::IsEmpty, [value]) => {
                 let empty = match value {
                     Nothing => true,
@@ -110,10 +122,19 @@ impl Function {
                     .try_fold(Number::ZERO, Number::checked_add)?;
                 (total.into(), 1 + n(items.len()))
             }
+            // Each item scanned costs what `item == wanted` would: its unit, and the pairs it visits (D-83).
             (Function::Contains, [List(items), wanted]) => {
-                let at = items.iter().position(|item| item == wanted);
-                let scanned = at.map_or(items.len(), |i| i + 1);
-                (Boolean(at.is_some()), 1 + n(scanned))
+                let mut meter = Meter { spent: 0, budget };
+                meter.charge(1)?;
+                let mut found = false;
+                for item in items.iter() {
+                    meter.charge(1)?;
+                    if equal(item, wanted, composite(item) || composite(wanted), &mut meter)? {
+                        found = true;
+                        break;
+                    }
+                }
+                (Boolean(found), meter.spent)
             }
             (Function::Abs, [Value::Number(x)]) => (x.abs().into(), 1),
             (Function::Floor, [Value::Number(x)]) => (x.floor().into(), 1),
@@ -126,19 +147,19 @@ impl Function {
                 ((*x).clamp(*low, *high).into(), 1)
             }
             (Function::Concat, [Text(a), Text(b)]) => {
-                let joined = format!("{a}{b}");
-                let fuel = 1 + blocks(joined.len());
-                (Text(joined.into()), fuel)
+                let fuel = afford(1 + blocks(a.len().saturating_add(b.len())))?;
+                (Text(format!("{a}{b}").into()), fuel)
             }
             (Function::ToText, [Value::Number(x)]) => {
                 let text = x.to_string();
                 let fuel = 1 + blocks(text.len());
                 (Text(text.into()), fuel)
             }
+            // The count is checked first, so a size error wins over fuel (R-RUN-04).
             (Function::Range, [Value::Number(count)]) => {
-                let items = range(*count)?;
-                let fuel = 1 + n(items.len());
-                (Value::list(items), fuel)
+                let length = range_length(*count)?;
+                let fuel = afford(1u64.saturating_add(length))?;
+                (Value::list((0..length).map(|i| Number::from(i).into()).collect()), fuel)
             }
             (Function::Random, [Value::Number(seed), Value::Number(index)]) => (random(*seed, *index)?.into(), 1),
             _ => return Err(Error::Internal),
@@ -167,16 +188,92 @@ fn blocks(bytes: usize) -> u64 {
     u64::try_from(bytes.div_ceil(64)).unwrap_or(u64::MAX)
 }
 
-/// `[0, 1, …, count - 1]`: `count` integer-valued and `≥ 0`, else `VL0602`; above `max_list_size`, `VL0606`.
-fn range(count: Number) -> Result<Vec<Value>, Error> {
+/// The length of `range(count)`: `count` integer-valued and `≥ 0`, else `VL0602`; above `max_list_size`, `VL0606`.
+fn range_length(count: Number) -> Result<u64, Error> {
     if !count.is_integer() || count < Number::ZERO {
         return Err(Error::arithmetic(format!("make a list of {count} numbers with range")));
     }
-    let length = count
+    count
         .to_i64()
-        .filter(|n| n.unsigned_abs() <= MAX_LIST_SIZE)
-        .ok_or(Error::ListTooLong { length: count })?;
-    Ok((0..length).map(|i| Number::from(i).into()).collect())
+        .map(i64::unsigned_abs)
+        .filter(|n| *n <= MAX_LIST_SIZE)
+        .ok_or(Error::ListTooLong { length: count })
+}
+
+/// What `a == b` costs beyond its node's own unit, as the output's fuel, and whether they are equal (`runtime/30`
+/// R-RUN-04, D-83): when either side is a `List` or `Record`, 1 per pair of values visited, lists and records
+/// included, up to the first difference (lists of different lengths differ once their pair is visited); and
+/// ⌈bytes/64⌉ per pair of texts of the same byte length compared, at the top or inside, so two empty texts cost
+/// nothing more. Every pair visited is paid for, so the work never outgrows the fuel: values share their parts, and a
+/// comparison can visit far more pairs than the values take bytes. It stops with [`Error::OutOfFuel`] once its cost
+/// passes `budget` instead of finishing.
+pub fn equals(a: &Value, b: &Value, budget: u64) -> Result<Output, Error> {
+    let mut meter = Meter { spent: 0, budget };
+    let equal = equal(a, b, composite(a) || composite(b), &mut meter)?;
+    Ok(Output {
+        value: Value::Boolean(equal),
+        fuel: meter.spent,
+    })
+}
+
+/// Fuel spent so far against a budget.
+struct Meter {
+    spent: u64,
+    budget: u64,
+}
+
+impl Meter {
+    fn charge(&mut self, fuel: u64) -> Result<(), Error> {
+        self.spent = self.spent.saturating_add(fuel);
+        if self.spent > self.budget {
+            return Err(Error::OutOfFuel);
+        }
+        Ok(())
+    }
+}
+
+fn composite(value: &Value) -> bool {
+    matches!(value, Value::List(_) | Value::Record(_))
+}
+
+/// Structural equality (R-TYP-20, D-61), charging `meter` 1 for each pair of values visited if `pairs`.
+fn equal(a: &Value, b: &Value, pairs: bool, meter: &mut Meter) -> Result<bool, Error> {
+    if pairs {
+        meter.charge(1)?;
+    }
+    match (a, b) {
+        (Value::List(a), Value::List(b)) => {
+            if a.len() != b.len() {
+                return Ok(false);
+            }
+            for (a, b) in a.iter().zip(b.iter()) {
+                if !equal(a, b, true, meter)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        (Value::Record(a), Value::Record(b)) => {
+            if a.name != b.name || a.fields.len() != b.fields.len() {
+                return Ok(false);
+            }
+            for ((_, a), (_, b)) in a.fields.iter().zip(&b.fields) {
+                if !equal(a, b, true, meter)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        _ => {
+            // Texts of different byte lengths differ before any byte is compared.
+            if let (Value::Text(x), Value::Text(y)) = (a, b)
+                && x.len() == y.len()
+            {
+                meter.charge(blocks(x.len()))?;
+            }
+            Ok(a == b)
+        }
+    }
 }
 
 /// SplitMix64's increment (R-BLT-04).

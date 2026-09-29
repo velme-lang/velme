@@ -432,3 +432,26 @@ fn check_skips_entries_the_source_changed_even_without_a_store() {
         run.stdout
     );
 }
+
+/// The lock records a source file's path from the project root as text (R-CLI-19), so a name on that path that isn't
+/// UTF-8 is a file error, not a lossy lock entry. Only Linux file systems accept such a name.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_path_that_isnt_utf8_is_a_file_error() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let root = scratch("not_utf8");
+    fs::write(root.join(CONFIG_FILE), "").expect("config");
+    let dir = root.join(OsStr::from_bytes(b"bad\xff"));
+    fs::create_dir_all(&dir).expect("directory");
+    fs::write(dir.join("add.velme"), read(&repo(EXAMPLE))).expect("source");
+    std::os::unix::fs::symlink(&dir, root.join("link")).expect("linked");
+    let run = velme_in(&root, &["check", "link/add.velme"], b"");
+    assert!(
+        run.stderr.contains("VL0901") && run.stderr.contains("isn't UTF-8"),
+        "{}",
+        run.stderr
+    );
+    assert_ne!(run.code, 0);
+}

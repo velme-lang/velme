@@ -28,6 +28,8 @@ ariadne = { version = "0.6", default-features = false }
 blake3 = "1"
 chumsky = { version = "0.12", default-features = false, features = ["std"] }
 insta = { version = "1", features = ["glob", "json"] }
+# `O_NOFOLLOW` and `O_NONBLOCK` for reading the artifact store and lock (`runtime/32` R-ART-09); Unix only.
+libc = "0.2"
 proptest = { version = "1", default-features = false, features = ["std"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }

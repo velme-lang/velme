@@ -8,6 +8,7 @@ use velme_builtins::limits::MAX_FUEL;
 use velme_builtins::{BUILTINS_VERSION, Value};
 use velme_diagnostics::{Code, Span};
 use velme_interp::{Error, Evaluator, Failure, Output, Probe, run};
+use velme_ir::limits::MAX_NODES;
 use velme_ir::{IR_VERSION, Node, ValidIr, decode_str, encode_value, from_json_str};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 
@@ -86,6 +87,11 @@ fn document(goal: &str, body: &str) -> String {
     )
 }
 
+/// `value` as JSON, which fits the output limit.
+fn encode(value: &Value) -> String {
+    encode_value(value).expect("fits the output limit")
+}
+
 /// Runs `body` as the goal `goal` of [`GOALS`] on the JSON `inputs`, one per parameter.
 fn eval(goal: &str, body: &str, inputs: &[&str]) -> Result<Output, Failure> {
     eval_with(goal, body, inputs, MAX_FUEL)
@@ -106,7 +112,7 @@ fn eval_with(goal: &str, body: &str, inputs: &[&str], max_fuel: u64) -> Result<O
 
 /// The output of a run that must succeed, as JSON.
 fn value(goal: &str, body: &str, inputs: &[&str]) -> String {
-    encode_value(&eval(goal, body, inputs).unwrap_or_else(|f| panic!("{f:?}")).value)
+    encode(&eval(goal, body, inputs).unwrap_or_else(|f| panic!("{f:?}")).value)
 }
 
 fn failure(goal: &str, body: &str, inputs: &[&str]) -> Failure {
@@ -163,11 +169,7 @@ fn golden_ir_runs() {
                 .map(|b| decode(&case["bindings"][&b.name], &b.ty))
                 .collect();
             let Output { value, fuel } = run(&ir, inputs, bindings, MAX_FUEL).expect("runs");
-            out.push_str(&format!(
-                "{} -> {} (fuel {fuel})\n",
-                case["inputs"],
-                encode_value(&value)
-            ));
+            out.push_str(&format!("{} -> {} (fuel {fuel})\n", case["inputs"], encode(&value)));
         }
         insta::assert_snapshot!(out);
     });
@@ -192,10 +194,7 @@ fn ac_ir_08_player_summary_runs_with_stub_children() {
         Value::text("Jumper"),
     ];
     let output = run(&ir, vec![player], bindings, MAX_FUEL).expect("runs");
-    assert_eq!(
-        encode_value(&output.value),
-        r#"{"score":820,"rank":2,"badge":"Jumper"}"#
-    );
+    assert_eq!(encode(&output.value), r#"{"score":820,"rank":2,"badge":"Jumper"}"#);
     // The record node and its three locals.
     assert_eq!(output.fuel, 4);
 }
@@ -226,7 +225,7 @@ impl Probe for Visits {
     fn value(&mut self, _: &Node, _: &Value) {}
 
     fn element(&mut self, _: &Node, index: usize, element: &Value) {
-        self.0.push((index, encode_value(element)));
+        self.0.push((index, encode(element)));
     }
 
     fn failed(&mut self, _: &Node, _: &Failure) {}
@@ -251,10 +250,10 @@ fn ac_blt_15_failing_lambda_names_its_element_and_stops() {
     let ir = valid_ir(&program, &document("Inverses", &body));
     let params = &program.goals[goal_id(&program, "Inverses").0].params;
     let xs = decode_str("[2, 0, 3]", &params[0].ty, &program).expect("decodes");
-    let mut evaluator = Evaluator::new(&ir.goal().types, MAX_FUEL);
+    let mut evaluator = Evaluator::new(MAX_FUEL);
     evaluator.bind_input("xs", xs);
     let mut visits = Visits::default();
-    assert!(evaluator.eval_probed(&ir.goal().body, &mut visits).is_err());
+    assert!(evaluator.eval_probed(ir.body(), &mut visits).is_err());
     assert_eq!(visits.0, [(0, "2".to_owned()), (1, "0".to_owned())]);
 }
 
@@ -368,7 +367,7 @@ fn ac_run_08_division_by_zero_fails_with_no_value() {
 fn ac_blt_12_builtin_fuel_is_its_catalog_cost() {
     let sum = builtin("sum", &[&builtin("range", &[&number("1000")])]);
     let output = eval("Compute", &sum, &["null"]).expect("runs");
-    assert_eq!(encode_value(&output.value), "499500");
+    assert_eq!(encode(&output.value), "499500");
     // sum 1 + 1000, range 1 + 1000, and the literal.
     assert_eq!(output.fuel, 2003);
 
@@ -409,7 +408,7 @@ fn collections_charge_one_per_element_visited() {
 }
 
 #[test]
-fn equality_of_composite_values_charges_the_leaves_compared() {
+fn equality_of_composite_values_charges_the_pairs_visited() {
     let list = |items: &[&str]| {
         let items: Vec<String> = items.iter().map(|n| number(n)).collect();
         format!(
@@ -425,13 +424,20 @@ fn equality_of_composite_values_charges_the_leaves_compared() {
             number("0")
         );
         let output = eval("Compute", &body, &["null"]).expect("runs");
-        (encode_value(&output.value), output.fuel)
+        (encode(&output.value), output.fuel)
     };
-    // `if`, `eq`, both lists and their literals, and the branch's literal; then the leaves compared.
-    assert_eq!(outcome(&["1", "2", "3"], &["1", "2", "3"]), ("1".to_owned(), 11 + 3));
-    assert_eq!(outcome(&["1", "3", "2"], &["1", "2", "3"]), ("0".to_owned(), 11 + 2));
-    // Lists of different lengths differ before any leaf.
-    assert_eq!(outcome(&["1", "2"], &["1", "2", "3"]), ("0".to_owned(), 10));
+    // `if`, `eq`, both lists and their literals, and the branch's literal; then the pairs visited, the lists' own
+    // included (D-83).
+    assert_eq!(
+        outcome(&["1", "2", "3"], &["1", "2", "3"]),
+        ("1".to_owned(), 11 + 1 + 3)
+    );
+    assert_eq!(
+        outcome(&["1", "3", "2"], &["1", "2", "3"]),
+        ("0".to_owned(), 11 + 1 + 2)
+    );
+    // Lists of different lengths differ once their own pair is visited, before any item.
+    assert_eq!(outcome(&["1", "2"], &["1", "2", "3"]), ("0".to_owned(), 10 + 1));
 }
 
 #[test]
@@ -474,18 +480,18 @@ fn record_fields_evaluate_in_declaration_order() {
 }
 
 #[test]
-fn equality_of_a_record_with_nothing_charges_one_leaf() {
+fn equality_of_a_record_with_nothing_charges_one_pair() {
     let body = binary(
         "ne",
         &input("p"),
         r#"{"kind": "literal", "type": {"t": "Nothing"}, "value": null}"#,
     );
     let present = eval("Present", &body, &[r#"{"score": 1, "name": "Lina"}"#]).expect("runs");
-    // `ne`, the input and the literal, then the one leaf.
-    assert_eq!((encode_value(&present.value), present.fuel), ("true".to_owned(), 4));
+    // `ne`, the input and the literal, then the one pair visited.
+    assert_eq!((encode(&present.value), present.fuel), ("true".to_owned(), 4));
     // `nothing` against `nothing` compares no composite value.
     let absent = eval("Present", &body, &["null"]).expect("runs");
-    assert_eq!((encode_value(&absent.value), absent.fuel), ("false".to_owned(), 3));
+    assert_eq!((encode(&absent.value), absent.fuel), ("false".to_owned(), 3));
 }
 
 /// A builtin's catalog cost is charged after it computes, so its own failure wins over running out of fuel on the
@@ -497,35 +503,146 @@ fn a_builtin_failure_wins_over_running_out_of_fuel() {
     assert_eq!(f.code(), Code::SizeLimitExceeded);
 }
 
+/// `Present`'s body `let a0 = <first>, a1 = map(range(2), p1 -> a0), …, a60 = … in <test>`: `a60` holds 2^60 copies
+/// of `a0`, which share their parts, so building it is cheap and only walking it isn't.
+fn shared_from(first: &str, test: &str) -> String {
+    let mut bind = vec![format!(r#"["a0", {first}]"#)];
+    for i in 1..=60 {
+        let map = format!(
+            r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
+            builtin("range", &[&number("2")]),
+            lambda(&format!("p{i}"), &local(&format!("a{}", i - 1)))
+        );
+        bind.push(format!(r#"["a{i}", {map}]"#));
+    }
+    format!(r#"{{"kind": "let", "bind": [{}], "body": {test}}}"#, bind.join(", "))
+}
+
+/// [`shared_from`] with `a0 = [1]`.
+fn shared(test: &str) -> String {
+    let first = format!(
+        r#"{{"kind": "list", "of": {{"t": "Number"}}, "items": [{}]}}"#,
+        number("1")
+    );
+    shared_from(&first, test)
+}
+
+/// Equality is charged as it compares (D-83): comparing values that share their parts stops where the fuel runs out,
+/// with `VL0601`, rather than first walking 2^60 leaves.
 #[test]
-fn an_evaluator_is_reusable_after_a_failure() {
-    // The `let` fails with `a` bound; the `map` fails inside its lambda with `x` bound.
-    let failing_let = format!(
-        r#"{{"kind": "let", "bind": [["a", {}], ["b", {}]], "body": {}}}"#,
-        number("1"),
+fn ac_run_05_equality_over_shared_values_stops_at_the_fuel_limit() {
+    let eq = shared(&binary("eq", &local("a60"), &local("a60")));
+    let f = failure("Present", &eq, &["null"]);
+    assert_eq!(f.error, Error::OutOfFuel { max_fuel: MAX_FUEL });
+    // With `a0 = []` there is no leaf at all, but every pair of lists visited is paid for.
+    let empty = shared_from(
+        r#"{"kind": "list", "of": {"t": "Number"}, "items": []}"#,
+        &binary("eq", &local("a60"), &local("a60")),
+    );
+    assert_eq!(
+        failure("Present", &empty, &["null"]).error,
+        Error::OutOfFuel { max_fuel: MAX_FUEL }
+    );
+    // `contains([ak], ak)`, where `ak` is a `List` nested k + 1 deep.
+    let contains = |k: usize| {
+        let of = (0..k).fold(r#"{"t": "List", "of": {"t": "Number"}}"#.to_owned(), |of, _| {
+            format!(r#"{{"t": "List", "of": {of}}}"#)
+        });
+        let item = local(&format!("a{k}"));
+        let list = format!(r#"{{"kind": "list", "of": {of}, "items": [{item}]}}"#);
+        shared(&builtin("contains", &[&list, &item]))
+    };
+    assert_eq!(value("Present", &contains(1), &["null"]), "true");
+    assert_eq!(
+        failure("Present", &contains(60), &["null"]).code(),
+        Code::BudgetExceeded
+    );
+}
+
+/// `runtime/30` R-RUN-25: the deepest value a goal body can build — a literal nested nearly as deep as the JSON limit
+/// allows, then a `map` per level with the rest of `MAX_NODES` — is validated, built, compared and dropped within the
+/// CLI's stack.
+#[test]
+fn the_deepest_value_ir_can_build_fits_the_stack() {
+    const LITERAL_DEPTH: usize = 480;
+    // `let`, `a0`, three nodes per level, and `an == an`.
+    let levels = (MAX_NODES - 5) / 3;
+    let body = |levels: usize| {
+        let ty = (0..LITERAL_DEPTH).fold(r#"{"t": "Number"}"#.to_owned(), |of, _| {
+            format!(r#"{{"t": "List", "of": {of}}}"#)
+        });
+        let value = format!("{}1{}", "[".repeat(LITERAL_DEPTH), "]".repeat(LITERAL_DEPTH));
+        let mut bind = vec![format!(
+            r#"["a0", {{"kind": "literal", "type": {ty}, "value": {value}}}]"#
+        )];
+        for i in 1..=levels {
+            let map = format!(
+                r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
+                local("a0"),
+                lambda(&format!("p{i}"), &local(&format!("a{}", i - 1)))
+            );
+            bind.push(format!(r#"["a{i}", {map}]"#));
+        }
+        let last = local(&format!("a{levels}"));
+        format!(
+            r#"{{"kind": "let", "bind": [{}], "body": {}}}"#,
+            bind.join(", "),
+            binary("eq", &last, &last)
+        )
+    };
+    let deepest = body(levels);
+    let outcome = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            let program = program(GOALS);
+            let doc = document("Present", &deepest);
+            let one_more = document("Present", &body(levels + 1));
+            let calls = velme_ir::calls(&program, goal_id(&program, "Present")).expect("calls");
+            let request = velme_ir::Request {
+                program: &program,
+                goal: goal_id(&program, "Present"),
+                calls: &calls,
+                origin: velme_ir::Origin::Complete,
+            };
+            // One level more passes `MAX_NODES` (stage 7).
+            let rejected = velme_ir::validate(&one_more, &request)
+                .is_err_and(|diags| diags.iter().any(|d| d.message.contains("expressions")));
+            let ir = valid_ir(&program, &doc);
+            let output = run(&ir, vec![Value::Nothing], Vec::new(), MAX_FUEL).expect("runs");
+            (rejected, output.value)
+        })
+        .expect("thread")
+        .join()
+        .expect("fits the stack");
+    assert_eq!(outcome, (true, Value::Boolean(true)));
+    assert_eq!(levels, 3331);
+}
+
+/// Text equality and `length` of a text cost ⌈bytes/64⌉ more, and nothing more for empty text (D-83).
+#[test]
+fn ac_blt_12_text_equality_and_length_charge_their_bytes() {
+    let text = |t: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Text"}}, "value": "{t}"}}"#);
+    let long = "a".repeat(65);
+    let fuel = |body: &str| eval("Present", body, &["null"]).expect("runs").fuel;
+    // `eq` and its two literals, then ⌈65/64⌉ = 2.
+    assert_eq!(fuel(&binary("eq", &text(&long), &text(&long))), 3 + 2);
+    assert_eq!(fuel(&binary("eq", &text(""), &text(""))), 3);
+    // Texts of different byte lengths differ before any byte is compared.
+    assert_eq!(fuel(&binary("ne", &text(&long), &text("a"))), 3);
+    let length = binary("gt", &builtin("length", &[&text(&long)]), &number("0"));
+    // `gt`, `length` 1 + 2, its literal, and the `0`.
+    assert_eq!(fuel(&length), 1 + 3 + 1 + 1);
+}
+
+/// `reduce` evaluates its list, then its `init` (R-RUN-02): with both failing, the list's failure is reported.
+#[test]
+fn reduce_evaluates_its_list_before_init() {
+    let body = format!(
+        r#"{{"kind": "reduce", "list": {}, "init": {}, "fn": {{"acc": "acc", "param": "x", "body": {}}}}}"#,
+        builtin("range", &[&number("-1")]),
         binary("div", &number("1"), &number("0")),
-        local("a")
+        local("acc")
     );
-    let failing_map = format!(
-        r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
-        builtin("range", &[&number("2")]),
-        lambda("x", &binary("div", &local("x"), &number("0")))
-    );
-    let node = |json: &str| from_json_str::<Node>(json).expect("a node");
-    let nodes = [
-        node(&failing_let),
-        node(&failing_map),
-        node(&local("a")),
-        node(&local("x")),
-        node(&local("before")),
-    ];
-    let types = std::collections::BTreeMap::new();
-    let mut evaluator = Evaluator::new(&types, MAX_FUEL);
-    evaluator.bind_local("before", Value::Boolean(true));
-    assert!(evaluator.eval(&nodes[0]).is_err());
-    assert!(evaluator.eval(&nodes[1]).is_err());
-    // Nothing the failed nodes bound is left in scope; what was bound before them still is.
-    assert!(evaluator.eval(&nodes[2]).is_err());
-    assert!(evaluator.eval(&nodes[3]).is_err());
-    assert_eq!(evaluator.eval(&nodes[4]), Ok(Value::Boolean(true)));
+    let diag = failure("Compute", &body, &["null"]).diagnostic("Compute", Span::new(0, 4));
+    assert!(diag.message.contains("range"), "{}", diag.message);
 }

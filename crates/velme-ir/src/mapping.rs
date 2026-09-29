@@ -1,17 +1,15 @@
 //! The JSON value mapping of `language/11` §10 (D-23), shared by `velme run` input and output, examples, fixtures and
 //! IR literals: JSON decoded against a type into a [`Value`], and a value encoded back.
 
-use std::collections::BTreeMap;
 use std::fmt;
 
 use serde_json::Value as Json;
-use velme_builtins::limits::MAX_LIST_SIZE;
+use velme_builtins::limits::{MAX_LIST_SIZE, MAX_OUTPUT_BYTES};
 use velme_builtins::{Number, Value};
 use velme_diagnostics::{Code, did_you_mean};
 use velme_sema::hir::{Program, RecordType, Type};
 
 use crate::json::{pointer, write_string};
-use crate::node::{RecordType as IrRecordType, Type as IrType};
 use crate::{MAX_JSON_DEPTH, ParseError, from_json_str};
 
 /// Why JSON doesn't decode as a type: the first problem, in document order.
@@ -218,40 +216,17 @@ fn decode_record(
     Ok(Value::record(&record.name, fields))
 }
 
-/// A `literal` node's value, for a back end, which has the IR's own `types` but no HIR: the same mapping as
-/// [`decode_value`], which the validator already decoded it with (`compiler/21` §6 stage 4). `None` only for IR that
-/// didn't pass the validator.
-pub fn decode_literal(json: &Json, ty: &IrType, types: &BTreeMap<String, IrRecordType>) -> Option<Value> {
-    match (ty, json) {
-        (IrType::Number {}, Json::Number(n)) => Number::parse(&n.to_string()).map(Value::Number),
-        (IrType::Text {}, Json::String(s)) => Some(Value::text(s)),
-        (IrType::Boolean {}, Json::Bool(b)) => Some(Value::Boolean(*b)),
-        (IrType::Nothing {} | IrType::Optional { .. }, Json::Null) => Some(Value::Nothing),
-        (IrType::Optional { of }, _) => decode_literal(json, of, types),
-        (IrType::List { of }, Json::Array(items)) => items
-            .iter()
-            .map(|item| decode_literal(item, of, types))
-            .collect::<Option<Vec<_>>>()
-            .map(Value::list),
-        (IrType::Record { name }, Json::Object(members)) => {
-            let record = types.get(name).filter(|r| r.fields.len() == members.len())?;
-            let fields = record
-                .fields
-                .iter()
-                .map(|(field, ty)| Some((field.clone(), decode_literal(members.get(field)?, ty, types)?)))
-                .collect::<Option<Vec<_>>>()?;
-            Some(Value::record(name, fields))
-        }
-        _ => None,
-    }
-}
+/// A value whose JSON is longer than `max_output_bytes` (`runtime/30` §7): `VL0606`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutputTooBig;
 
 /// `value` as JSON output (`language/11` R-TYP-23): compact, records' fields in declaration order, numbers per
-/// R-TYP-08. Hashing uses the separate sorted-key form of D-21 ([`crate::to_canonical_string`]).
-pub fn encode_value(value: &Value) -> String {
-    let mut out = String::new();
-    encode_into(value, &mut out);
-    out
+/// R-TYP-08. Hashing uses the separate sorted-key form of D-21 ([`crate::to_canonical_string`]). It stops once the text
+/// passes `max_output_bytes`: values share their parts, so one can stand for far more text than it takes memory.
+pub fn encode_value(value: &Value) -> Result<String, OutputTooBig> {
+    let mut sink = Sink::new(usize::try_from(MAX_OUTPUT_BYTES).unwrap_or(usize::MAX));
+    encode_into(value, &mut sink).map_err(|Full| OutputTooBig)?;
+    Ok(sink.out)
 }
 
 /// Items of a list shown in the human view before the rest are counted (`runtime/30` R-RUN-20).
@@ -260,79 +235,124 @@ pub const SHOWN_ITEMS: usize = 10;
 /// Characters of a text shown in the human view before the rest are counted (R-RUN-20).
 pub const SHOWN_CHARS: usize = 80;
 
+/// Bytes of one value shown in the human view: past them, the rest is cut and marked `…` (R-RUN-20), so a value
+/// nested deep, with up to [`SHOWN_ITEMS`] shown at every level, still renders in bounded time.
+pub const SHOWN_TOTAL: usize = 1000;
+
 /// `value` for the human view (`runtime/30` R-RUN-20): the JSON of [`encode_value`], with a list past
-/// [`SHOWN_ITEMS`] items and a text past [`SHOWN_CHARS`] characters cut, and a count of what was left out. Check reports
-/// and traces both render values this way; `--json` output keeps them whole.
+/// [`SHOWN_ITEMS`] items and a text past [`SHOWN_CHARS`] characters cut, and a count of what was left out, and the
+/// whole cut after [`SHOWN_TOTAL`] bytes. Check reports and traces both render values this way; `--json` output keeps
+/// them whole.
 pub fn display_value(value: &Value) -> String {
-    let mut out = String::new();
-    display_into(value, &mut out);
-    out
+    let mut sink = Sink::new(SHOWN_TOTAL);
+    if display_into(value, &mut sink).is_err() {
+        let mut end = SHOWN_TOTAL;
+        while !sink.out.is_char_boundary(end) {
+            end -= 1;
+        }
+        sink.out.truncate(end);
+        sink.out.push('…');
+    }
+    sink.out
 }
 
-fn display_into(value: &Value, out: &mut String) {
+/// Rendering stopped at its limit.
+struct Full;
+
+/// Text being rendered, which stops once it passes `max` bytes. Every value adds at least one byte, so a rendering
+/// visits at most `max + 1` values, however many a value shares.
+struct Sink {
+    out: String,
+    max: usize,
+}
+
+impl Sink {
+    fn new(max: usize) -> Self {
+        Sink {
+            out: String::new(),
+            max,
+        }
+    }
+
+    fn push(&mut self, text: &str) -> Result<(), Full> {
+        self.out.push_str(text);
+        self.check()
+    }
+
+    fn string(&mut self, text: &str) -> Result<(), Full> {
+        write_string(text, &mut self.out);
+        self.check()
+    }
+
+    fn check(&self) -> Result<(), Full> {
+        if self.out.len() > self.max { Err(Full) } else { Ok(()) }
+    }
+}
+
+fn display_into(value: &Value, out: &mut Sink) -> Result<(), Full> {
     match value {
         Value::Text(t) if t.chars().count() > SHOWN_CHARS => {
             let shown: String = t.chars().take(SHOWN_CHARS).collect();
-            write_string(&shown, out);
+            out.string(&shown)?;
             let more = t.chars().count() - SHOWN_CHARS;
-            out.push_str(&format!("…(+{more} characters)"));
+            out.push(&format!("…(+{more} characters)"))
         }
         Value::List(items) => {
-            out.push('[');
+            out.push("[")?;
             for (i, item) in items.iter().take(SHOWN_ITEMS).enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push(",")?;
                 }
-                display_into(item, out);
+                display_into(item, out)?;
             }
             if items.len() > SHOWN_ITEMS {
-                out.push_str(&format!(",…(+{} items)", items.len() - SHOWN_ITEMS));
+                out.push(&format!(",…(+{} items)", items.len() - SHOWN_ITEMS))?;
             }
-            out.push(']');
+            out.push("]")
         }
         Value::Record(record) => {
-            out.push('{');
+            out.push("{")?;
             for (i, (name, item)) in record.fields.iter().enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push(",")?;
                 }
-                write_string(name, out);
-                out.push(':');
-                display_into(item, out);
+                out.string(name)?;
+                out.push(":")?;
+                display_into(item, out)?;
             }
-            out.push('}');
+            out.push("}")
         }
         _ => encode_into(value, out),
     }
 }
 
-fn encode_into(value: &Value, out: &mut String) {
+fn encode_into(value: &Value, out: &mut Sink) -> Result<(), Full> {
     match value {
-        Value::Number(n) => out.push_str(&n.to_string()),
-        Value::Text(t) => write_string(t, out),
-        Value::Boolean(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Nothing => out.push_str("null"),
+        Value::Number(n) => out.push(&n.to_string()),
+        Value::Text(t) => out.string(t),
+        Value::Boolean(b) => out.push(if *b { "true" } else { "false" }),
+        Value::Nothing => out.push("null"),
         Value::List(items) => {
-            out.push('[');
+            out.push("[")?;
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push(",")?;
                 }
-                encode_into(item, out);
+                encode_into(item, out)?;
             }
-            out.push(']');
+            out.push("]")
         }
         Value::Record(record) => {
-            out.push('{');
+            out.push("{")?;
             for (i, (name, item)) in record.fields.iter().enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push(",")?;
                 }
-                write_string(name, out);
-                out.push(':');
-                encode_into(item, out);
+                out.string(name)?;
+                out.push(":")?;
+                encode_into(item, out)?;
             }
-            out.push('}');
+            out.push("}")
         }
     }
 }

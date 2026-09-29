@@ -9,10 +9,15 @@ use serde::Deserialize;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::Fingerprint;
 
-use crate::store::{TMP_DIR, VELME_DIR, sync_dir, write_temp};
+use velme_builtins::limits::MIB;
+
+use crate::store::{TMP_DIR, VELME_DIR, read_file, refuse_links, sync_dir, write_temp};
 
 /// The lock's file name, in the project root (`runtime/32` §4).
 pub const LOCK_FILE: &str = "velme.lock";
+
+/// The largest lock read: some fifty thousand entries. A longer file is no lock Velme wrote, and is not read past this.
+pub const MAX_LOCK_BYTES: u64 = 16 * MIB;
 
 /// The lock format this build reads and writes.
 pub const LOCK_VERSION: i64 = 1;
@@ -78,12 +83,15 @@ impl Lock {
         project.join(LOCK_FILE)
     }
 
-    /// Reads the lock of `project`; `None` if it has none.
+    /// Reads the lock of `project`; `None` if it has none. It must be a regular file of at most [`MAX_LOCK_BYTES`].
     pub fn read(project: &Path) -> Result<Option<Lock>, LockError> {
-        match fs::read(Lock::path(project)) {
+        match read_file(&Lock::path(project), MAX_LOCK_BYTES) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(LockError::Unreadable { error }),
-            Ok(bytes) => {
+            Ok(None) => Err(LockError::Malformed {
+                reason: format!("it is longer than the {MAX_LOCK_BYTES} bytes a lock may be"),
+            }),
+            Ok(Some(bytes)) => {
                 let text = String::from_utf8(bytes).map_err(|e| LockError::Malformed { reason: e.to_string() })?;
                 Lock::parse(&text).map(Some)
             }
@@ -142,12 +150,14 @@ impl Lock {
     pub fn write(&self, project: &Path) -> io::Result<()> {
         let text = self.to_text();
         let path = Lock::path(project);
-        match fs::read(&path) {
-            Ok(old) if old == text.as_bytes() => return Ok(()),
-            Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
-            _ => {}
+        if let Ok(Some(old)) = read_file(&path, MAX_LOCK_BYTES)
+            && old == text.as_bytes()
+        {
+            return Ok(());
         }
-        let tmp = project.join(VELME_DIR).join(TMP_DIR);
+        let velme = project.join(VELME_DIR);
+        let tmp = velme.join(TMP_DIR);
+        refuse_links(&[&velme, &tmp])?;
         fs::create_dir_all(&tmp)?;
         let temp = write_temp(&tmp, LOCK_FILE, text.as_bytes())?;
         if let Err(e) = fs::rename(&temp, &path) {

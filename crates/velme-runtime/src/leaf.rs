@@ -2,8 +2,10 @@
 //! 6–7) and, for `velme test`, its examples (`language/12` R-GOAL-22). Goals with calls wait for the scheduler.
 
 use velme_builtins::Value;
+use velme_builtins::limits::MAX_OUTPUT_BYTES;
 use velme_check::{GoalChecks, Invocation};
-use velme_diagnostics::Diagnostic;
+use velme_diagnostics::{Code, Diagnostic};
+use velme_ir::encode_value;
 use velme_sema::hir::{GoalId, GoalKind, Program};
 
 use crate::locked::LockedGoal;
@@ -54,7 +56,8 @@ pub fn test_leaf(program: &Program, goal: GoalId, source: &str, locked: &LockedG
     }
 }
 
-/// The goal's body evaluated on `inputs`, within its fuel budget (R-RUN-16).
+/// The goal's body evaluated on `inputs`, within its fuel budget (R-RUN-16) and with an answer of at most
+/// `max_output_bytes` of JSON (`runtime/30` §7).
 fn invoke(program: &Program, goal: GoalId, locked: &LockedGoal, inputs: Vec<Value>) -> Result<Invocation, Diagnostic> {
     let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
     if target.kind != GoalKind::Leaf {
@@ -62,6 +65,14 @@ fn invoke(program: &Program, goal: GoalId, locked: &LockedGoal, inputs: Vec<Valu
     }
     let output = velme_interp::run(&locked.ir, inputs.clone(), Vec::new(), target.budget.max_fuel)
         .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
+    if encode_value(&output.value).is_err() {
+        return Err(Diagnostic::new(
+            Code::SizeLimitExceeded,
+            target.span,
+            format!("`{}` made a list or answer that's too big.", target.name),
+        )
+        .with_note(format!("its answer is more than {MAX_OUTPUT_BYTES} bytes as JSON")));
+    }
     Ok(Invocation {
         inputs,
         bindings: Vec::new(),

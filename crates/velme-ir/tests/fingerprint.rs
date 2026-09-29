@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 use velme_ir::{
-    CallNode, Fingerprint, Goal, Synthesis, contract_key, execution_id, from_json_str, signature, synthesis_key,
-    to_canonical_string,
+    CallNode, Fingerprint, Goal, Synthesis, compatibility, contract_key, execution_id, from_json_str, signature,
+    synthesis_key, to_canonical_string,
 };
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
@@ -107,6 +107,58 @@ fn blake3_golden_vectors_of_r_ir_21() {
         assert_eq!(fingerprint.hex(), hex);
         assert_eq!(fingerprint.to_string(), format!("b3:{hex}"));
         assert_eq!(fingerprint.to_string().parse::<Fingerprint>(), Ok(fingerprint));
+    }
+}
+
+/// R-IR-21's canonical form is JCS-like, not JCS: keys sort by code point (UTF-8 bytes), not UTF-16 code units, so
+/// `｡` (U+FF61) sorts before `😀` (U+1F600, the surrogates D83D DE00); and numbers are plain decimals (R-TYP-08), not
+/// ES6 renderings such as `1e+21` and `1e-7`.
+#[test]
+fn canonical_json_is_jcs_like_not_jcs() {
+    for (input, canonical, hex) in [
+        (
+            r#"{"😀":2,"｡":1}"#,
+            r#"{"｡":1,"😀":2}"#,
+            "899b786e1c7b7f49e7315b2211771e725f2fd047cf784a9400d66bca18e9f843",
+        ),
+        (
+            r#"{"n":1e21}"#,
+            r#"{"n":1000000000000000000000}"#,
+            "9fc33899cf05af9c90c9aceb75c5b16c651ecb9e0cc703147a574ea8d530e185",
+        ),
+        (
+            r#"{"n":1e-7}"#,
+            r#"{"n":0.0000001}"#,
+            "a06f5c50a25acd77e208ba662c6054caba0776076d697837e4cb0984fe154db9",
+        ),
+    ] {
+        let value: serde_json::Value = from_json_str(input).expect("parses");
+        assert_eq!(to_canonical_string(&value).expect("canonical"), canonical);
+        assert_eq!(Fingerprint::of(&value).expect("hashes").hex(), hex, "{canonical}");
+    }
+}
+
+/// The `contract_key` of one fixed goal, spelled out: the D-81 document is built by hand, so a change to a Rust
+/// type's serialization can't reach it. Changing this value invalidates every lock.
+#[test]
+fn contract_key_golden_value() {
+    assert_eq!(
+        key(&program(SUMMARY), "CalculateScore").to_string(),
+        "b3:f64dd8797d69b05fdf869357971f3b0b622346ac52127985659a2e6e33d33cfb"
+    );
+}
+
+/// D-85: the compatibility unit is `MAJOR`, or `MAJOR.MINOR` while `MAJOR` is 0, as Cargo reads versions.
+#[test]
+fn compatibility_units_follow_cargo() {
+    for (version, unit) in [
+        ("0.1", "0.1"),
+        ("0.1.4", "0.1"),
+        ("1.2", "1"),
+        ("12.0.3", "12"),
+        ("0", "0"),
+    ] {
+        assert_eq!(compatibility(version), unit, "{version}");
     }
 }
 

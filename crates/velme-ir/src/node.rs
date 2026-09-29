@@ -5,9 +5,10 @@
 //! may appear, so a synthesized one is rejected with `VL0402` rather than failing the schema (R-IR-02, AC-IR-02).
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// One IR goal: the envelope of `compiler/21` §2.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -106,7 +107,8 @@ pub enum Node {
         #[serde(rename = "type")]
         ty: Type,
         /// The value as JSON.
-        value: serde_json::Value,
+        #[schemars(with = "serde_json::Value")]
+        value: LiteralValue,
     },
     /// A goal input.
     Input {
@@ -326,6 +328,61 @@ impl Node {
             Node::Builtin { .. } => "builtin",
             Node::Call(_) => "call",
         }
+    }
+}
+
+/// A `literal` node's value: its JSON and, once the validator has decoded it (`compiler/21` §6 stage 4), the value it
+/// stands for, which a back end reads instead of decoding the JSON on every evaluation (D-83). Only the JSON is read,
+/// written and compared, so a decoded literal equals one never validated.
+#[derive(Debug, Clone, Default)]
+pub struct LiteralValue {
+    json: serde_json::Value,
+    decoded: OnceLock<velme_builtins::Value>,
+}
+
+impl LiteralValue {
+    /// The value as JSON.
+    pub fn json(&self) -> &serde_json::Value {
+        &self.json
+    }
+
+    /// The value the validator decoded it to; `None` for a literal that hasn't passed the validator.
+    pub fn decoded(&self) -> Option<&velme_builtins::Value> {
+        self.decoded.get()
+    }
+
+    /// Records what the validator decoded the JSON to; a literal is decoded once, so a second value is ignored.
+    pub(crate) fn set_decoded(&self, value: velme_builtins::Value) {
+        let _ = self.decoded.set(value);
+    }
+}
+
+impl From<serde_json::Value> for LiteralValue {
+    fn from(json: serde_json::Value) -> Self {
+        LiteralValue {
+            json,
+            decoded: OnceLock::new(),
+        }
+    }
+}
+
+impl PartialEq for LiteralValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.json == other.json
+    }
+}
+
+impl Eq for LiteralValue {}
+
+impl Serialize for LiteralValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.json.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LiteralValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde_json::Value::deserialize(deserializer).map(LiteralValue::from)
     }
 }
 

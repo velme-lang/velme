@@ -94,7 +94,8 @@ by commit SHA.
 **R-REL-07** Versions are independent and all recorded in every artifact manifest (INV-8). Any bump that changes a
 fingerprint input is noted in `CHANGELOG.md` with "invalidates locks: yes/no".
 **R-REL-08** Channels: `nightly` (from `main`, unsigned tags), `alpha`/`beta` (pre-release tags), `stable`. Breaking
-changes before 1.0 bump the minor version; the CLI exit codes (R-CLI-10), diagnostic codes (INV-10) and `--json`
+changes before 1.0 bump the minor version — `ir_version` and `builtins_version` included, whose compatibility unit is
+therefore MAJOR.MINOR while MAJOR is 0 (D-85); the CLI exit codes (R-CLI-10), diagnostic codes (INV-10) and `--json`
 schema count as public API.
 
 ## 6. Distribution and docs (§43.9, §43.10)

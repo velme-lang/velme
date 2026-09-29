@@ -117,7 +117,12 @@ deterministic and never involves an LLM:
 | `x.length` | `length(x)` |
 | `x is empty` / `is not empty` | `is_empty(x)` / `not is_empty(x)` |
 
-Each lowered node keeps its source span so reports (§5) point at the learner's text.
+Each lowered node keeps its source span so reports (§5) point at the learner's text. A lowered check or example passes
+the validator's structure, name and type stages (21 §6 stages 2–4: no `call` node, no name bound twice) in its goal's
+check scope — its inputs, call bindings and `result`, and every record type of the program — before anything evaluates
+it, so the interpreter runs only validated IR (INV-1, D-84); a failure there is a compiler bug (`VL0607`). Stage 7's
+limits bound what an LLM writes, not checked source, which can pass them (a 200-operator chain, five nested
+quantifiers, a 1 001-item list); a lowered check's depth is bounded by its source line instead (`runtime/30` R-RUN-25).
 
 **R-CHK-12** Checks are part of the goal's normalized source and therefore of its fingerprint (D-11); they are sent to
 the LLM as the specification to satisfy ([22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md)), but their

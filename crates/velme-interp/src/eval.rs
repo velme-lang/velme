@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use velme_builtins::{Builtin, Function, Value, sort_by_fuel, sort_order};
-use velme_ir::{BinaryOperator, Lambda, Node, RecordType, ReduceLambda, UnaryOperator, decode_literal};
+use velme_builtins::{Builtin, Function, Value, equals, sort_by_fuel, sort_order};
+use velme_ir::{BinaryOperator, Lambda, Node, RecordType, ReduceLambda, Trusted, UnaryOperator};
 
 use crate::{Error, Failure};
 
@@ -31,11 +31,15 @@ impl Probe for NoProbe {
     fn failed(&mut self, _: &Node, _: &Failure) {}
 }
 
+/// The record types of an evaluator that has evaluated nothing yet.
+static NO_TYPES: BTreeMap<String, RecordType> = BTreeMap::new();
+
 /// Evaluates IR expressions over named inputs and locals, charging one fuel budget across every evaluation it runs
-/// (`runtime/30` R-RUN-04, R-RUN-17).
+/// (`runtime/30` R-RUN-04, R-RUN-17). It evaluates only [`Trusted`] IR: a validated goal's body, or a lowered check or
+/// example that passed the validator (INV-1).
 #[derive(Debug)]
 pub struct Evaluator<'ir> {
-    /// The record types in scope, by name (`compiler/21` R-IR-01).
+    /// The record types of the expression being evaluated, by name (`compiler/21` R-IR-01).
     types: &'ir BTreeMap<String, RecordType>,
     inputs: Vec<(&'ir str, Value)>,
     /// Call bindings, then `let` names and lambda parameters as they come into scope; names never repeat (R-IR-12).
@@ -47,10 +51,10 @@ pub struct Evaluator<'ir> {
 type Eval = Result<Value, Failure>;
 
 impl<'ir> Evaluator<'ir> {
-    /// An evaluator with no names in scope, over the record types `types`, that may spend `max_fuel`.
-    pub fn new(types: &'ir BTreeMap<String, RecordType>, max_fuel: u64) -> Self {
+    /// An evaluator with no names in scope that may spend `max_fuel`.
+    pub fn new(max_fuel: u64) -> Self {
         Evaluator {
-            types,
+            types: &NO_TYPES,
             inputs: Vec::new(),
             locals: Vec::new(),
             fuel: 0,
@@ -80,13 +84,19 @@ impl<'ir> Evaluator<'ir> {
         self.fuel
     }
 
-    /// The value of `node`.
-    pub fn eval(&mut self, node: &'ir Node) -> Eval {
-        self.eval_probed(node, &mut NoProbe)
+    /// The value of `expr`.
+    pub fn eval(&mut self, expr: Trusted<'ir>) -> Eval {
+        self.eval_probed(expr, &mut NoProbe)
     }
 
-    /// The value of `node`, showing `probe` every value computed on the way and every element visited.
-    pub fn eval_probed<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Eval {
+    /// The value of `expr`, showing `probe` every value computed on the way and every element visited.
+    pub fn eval_probed<P: Probe>(&mut self, expr: Trusted<'ir>, probe: &mut P) -> Eval {
+        self.types = expr.types();
+        self.probed(expr.node(), probe)
+    }
+
+    /// The value of `node`, a part of the expression being evaluated.
+    fn probed<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Eval {
         // Whatever a node brings into scope leaves with it, on failure too, so the evaluator stays usable.
         let scope = self.locals.len();
         let value = self.node(node, probe);
@@ -114,53 +124,81 @@ impl<'ir> Evaluator<'ir> {
         Ok(())
     }
 
+    /// The fuel left to spend.
+    fn left(&self) -> u64 {
+        self.max_fuel.saturating_sub(self.fuel)
+    }
+
+    /// Charges what a metered call cost beyond the `charged` fuel already charged for it; a call that stopped at the
+    /// budget it was given is out of fuel.
+    fn settle(&mut self, output: Result<velme_builtins::Output, velme_builtins::Error>, charged: u64) -> Eval {
+        match output {
+            Ok(output) => {
+                self.charge(output.fuel.saturating_sub(charged))?;
+                Ok(output.value)
+            }
+            Err(velme_builtins::Error::OutOfFuel) => {
+                self.fuel = self.max_fuel.saturating_add(1);
+                Err(Error::OutOfFuel {
+                    max_fuel: self.max_fuel,
+                }
+                .into())
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     /// Each node costs one fuel unit before anything else (R-RUN-04).
     fn node<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Eval {
         self.charge(1)?;
         match node {
-            Node::Literal { ty, value } => decode_literal(value, ty, self.types).ok_or_else(internal),
+            // Decoded once, by the validator (D-83); evaluating it allocates nothing (§7.1).
+            Node::Literal { value, .. } => value.decoded().cloned().ok_or_else(internal),
             Node::Input { name } => lookup(&self.inputs, name),
             Node::Local { name } => lookup(&self.locals, name),
             Node::Record { ty, fields } => self.record(ty, fields, probe),
             Node::List { items, .. } => {
                 let items = items
                     .iter()
-                    .map(|item| self.eval_probed(item, probe))
+                    .map(|item| self.probed(item, probe))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Value::list(items))
             }
-            Node::FieldGet { of, field } => match self.eval_probed(of, probe)? {
+            Node::FieldGet { of, field } => match self.probed(of, probe)? {
                 Value::Record(record) => record.get(field).cloned().ok_or_else(internal),
                 _ => Err(internal()),
             },
             Node::BinaryOp { op, left, right } => self.binary(*op, left, right, probe),
             Node::UnaryOp { op, arg } => {
-                let arg = self.eval_probed(arg, probe)?;
+                let arg = self.probed(arg, probe)?;
                 match (op, arg) {
                     (UnaryOperator::Neg, Value::Number(x)) => Ok(Value::Number(-x)),
                     (UnaryOperator::Not, Value::Boolean(b)) => Ok(Value::Boolean(!b)),
                     // The built-in's own unit is this node's (D-60).
-                    (UnaryOperator::IsEmpty, arg) => Ok(Function::IsEmpty.call(&[arg])?.value),
+                    (UnaryOperator::IsEmpty, arg) => {
+                        let output = Function::IsEmpty.call(&[arg], self.left().saturating_add(1));
+                        self.settle(output, 1)
+                    }
                     _ => Err(internal()),
                 }
             }
             Node::Let { bind, body } => {
                 for (name, value) in bind {
-                    let value = self.eval_probed(value, probe)?;
+                    let value = self.probed(value, probe)?;
                     self.locals.push((name, value));
                 }
-                self.eval_probed(body, probe)
+                self.probed(body, probe)
             }
             Node::Condition { cond, then, otherwise } => {
-                if truth(self.eval_probed(cond, probe)?)? {
-                    self.eval_probed(then, probe)
+                if truth(self.probed(cond, probe)?)? {
+                    self.probed(then, probe)
                 } else {
-                    self.eval_probed(otherwise, probe)
+                    self.probed(otherwise, probe)
                 }
             }
             // `default` only when it is needed, so a narrowed path never evaluates it (R-IR-05).
-            Node::Narrow { of, default } => match self.eval_probed(of, probe)? {
-                Value::Nothing => self.eval_probed(default, probe),
+            Node::Narrow { of, default } => match self.probed(of, probe)? {
+                Value::Nothing => self.probed(default, probe),
                 present => Ok(present),
             },
             Node::Map { list, func } => {
@@ -207,12 +245,11 @@ impl<'ir> Evaluator<'ir> {
                 let function = Builtin::find(name).and_then(|b| b.function).ok_or_else(internal)?;
                 let args = args
                     .iter()
-                    .map(|arg| self.eval_probed(arg, probe))
+                    .map(|arg| self.probed(arg, probe))
                     .collect::<Result<Vec<_>, _>>()?;
-                let output = function.call(&args)?;
                 // The catalog cost already counts this node's unit (D-52).
-                self.charge(output.fuel.saturating_sub(1))?;
-                Ok(output.value)
+                let output = function.call(&args, self.left().saturating_add(1));
+                self.settle(output, 1)
             }
             Node::Call(_) => Err(internal()),
         }
@@ -225,28 +262,26 @@ impl<'ir> Evaluator<'ir> {
         let mut values = Vec::with_capacity(declared.fields.len());
         for (name, _) in &declared.fields {
             let field = fields.get(name).ok_or_else(internal)?;
-            values.push((name.clone(), self.eval_probed(field, probe)?));
+            values.push((name.clone(), self.probed(field, probe)?));
         }
         Ok(Value::record(ty, values))
     }
 
     fn binary<P: Probe>(&mut self, op: BinaryOperator, left: &'ir Node, right: &'ir Node, probe: &mut P) -> Eval {
-        let left = self.eval_probed(left, probe)?;
+        let left = self.probed(left, probe)?;
         if let BinaryOperator::And | BinaryOperator::Or = op {
             let left = truth(left)?;
             // `and` stops at `false`, `or` at `true`.
             if left == (op == BinaryOperator::Or) {
                 return Ok(Value::Boolean(left));
             }
-            return Ok(Value::Boolean(truth(self.eval_probed(right, probe)?)?));
+            return Ok(Value::Boolean(truth(self.probed(right, probe)?)?));
         }
-        let right = self.eval_probed(right, probe)?;
+        let right = self.probed(right, probe)?;
         if let BinaryOperator::Eq | BinaryOperator::Ne = op {
-            let mut leaves = 0;
-            let equal = compare(&left, &right, &mut leaves);
-            if composite(&left) || composite(&right) {
-                self.charge(leaves)?;
-            }
+            // Metered as it compares, so it stops where the fuel runs out (D-83).
+            let output = equals(&left, &right, self.left());
+            let equal = truth(self.settle(output, 0)?)?;
             return Ok(Value::Boolean(equal == (op == BinaryOperator::Eq)));
         }
         let (Value::Number(a), Value::Number(b)) = (left, right) else {
@@ -269,7 +304,7 @@ impl<'ir> Evaluator<'ir> {
 
     /// The items of the list `node` evaluates to.
     fn list<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Result<std::sync::Arc<[Value]>, Failure> {
-        match self.eval_probed(node, probe)? {
+        match self.probed(node, probe)? {
             Value::List(items) => Ok(items),
             _ => Err(internal()),
         }
@@ -289,7 +324,7 @@ impl<'ir> Evaluator<'ir> {
         probe.element(node, index, element);
         let scope = self.locals.len();
         self.locals.push((&func.param, element.clone()));
-        let value = self.eval_probed(&func.body, probe);
+        let value = self.probed(&func.body, probe);
         self.locals.truncate(scope);
         value.map_err(|mut failure| {
             failure.elements.push(index);
@@ -305,15 +340,16 @@ impl<'ir> Evaluator<'ir> {
         func: &'ir ReduceLambda,
         probe: &mut P,
     ) -> Eval {
+        // The list first, then `init` (R-RUN-02).
         let list = self.list(list, probe)?;
-        let mut acc = self.eval_probed(init, probe)?;
+        let mut acc = self.probed(init, probe)?;
         for (i, element) in list.iter().enumerate() {
             self.charge(1)?;
             probe.element(node, i, element);
             let scope = self.locals.len();
             self.locals.push((&func.acc, acc));
             self.locals.push((&func.param, element.clone()));
-            let next = self.eval_probed(&func.body, probe);
+            let next = self.probed(&func.body, probe);
             self.locals.truncate(scope);
             acc = next.map_err(|mut failure| {
                 failure.elements.push(i);
@@ -373,28 +409,55 @@ fn truth(value: Value) -> Result<bool, Failure> {
     }
 }
 
-fn composite(value: &Value) -> bool {
-    matches!(value, Value::List(_) | Value::Record(_))
-}
+#[cfg(test)]
+mod tests {
+    use velme_builtins::limits::MAX_FUEL;
+    use velme_builtins::{BUILTINS_VERSION, Value};
+    use velme_ir::IR_VERSION;
+    use velme_test_support::{program, valid_ir};
 
-/// Structural equality (R-TYP-20, D-61), counting the scalar leaves compared up to the first difference (R-RUN-04).
-/// Lists of different lengths differ before any leaf is compared.
-fn compare(a: &Value, b: &Value, leaves: &mut u64) -> bool {
-    match (a, b) {
-        (Value::List(a), Value::List(b)) => {
-            a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| compare(a, b, leaves))
-        }
-        (Value::Record(a), Value::Record(b)) => {
-            a.name == b.name
-                && a.fields.len() == b.fields.len()
-                && a.fields
-                    .iter()
-                    .zip(&b.fields)
-                    .all(|((_, a), (_, b))| compare(a, b, leaves))
-        }
-        _ => {
-            *leaves += 1;
-            a == b
+    use super::Evaluator;
+
+    /// Whatever a failed evaluation brought into scope leaves with it, and what was bound before stays: the `let`
+    /// fails with `a` bound, the `map` inside its lambda with `x` bound.
+    #[test]
+    fn an_evaluator_is_reusable_after_a_failure() {
+        let program =
+            program("language: velme/0.1\n\ngoal Compute(n: Number) -> Number:\n    plan: \"Something of n.\"\n");
+        let number = |n: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Number"}}, "value": {n}}}"#);
+        let div = |left: &str| {
+            format!(
+                r#"{{"kind": "binary", "op": "div", "left": {left}, "right": {}}}"#,
+                number("0")
+            )
+        };
+        let failing_let = format!(
+            r#"{{"kind": "let", "bind": [["a", {}], ["b", {}]], "body": {{"kind": "local", "name": "a"}}}}"#,
+            number("1"),
+            div(&number("1"))
+        );
+        let failing_map = format!(
+            r#"{{"kind": "builtin", "name": "sum", "args": [{{"kind": "map",
+                "list": {{"kind": "builtin", "name": "range", "args": [{}]}},
+                "fn": {{"param": "x", "body": {}}}}}]}}"#,
+            number("2"),
+            div(r#"{"kind": "local", "name": "x"}"#)
+        );
+        let irs: Vec<_> = [failing_let, failing_map]
+            .iter()
+            .map(|body| {
+                let doc = format!(
+                    r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Compute",
+                        "types": {{}}, "inputs": [["n", {{"t": "Number"}}]], "output": {{"t": "Number"}}, "body": {body}}}"#
+                );
+                valid_ir(&program, &doc)
+            })
+            .collect();
+        let mut evaluator = Evaluator::new(MAX_FUEL);
+        evaluator.bind_local("before", Value::Boolean(true));
+        for ir in &irs {
+            assert!(evaluator.eval(ir.body()).is_err());
+            assert_eq!(evaluator.locals, [("before", Value::Boolean(true))]);
         }
     }
 }

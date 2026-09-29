@@ -533,3 +533,13 @@ pub enum Quantifier {
     /// `some`
     Some,
 }
+
+impl Quantifier {
+    /// The quantifier as written.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Quantifier::Every => "every",
+            Quantifier::Some => "some",
+        }
+    }
+}

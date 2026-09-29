@@ -26,12 +26,12 @@ length of a `Text` argument (or the larger of input/output where noted). `⌈x�
 
 | Name | Signature | checks | IR | Fuel | Behaviour / errors |
 |---|---|---|---|---|---|
-| `length` | `(List<T>) -> Number`, `(Text) -> Number` | ✓ | ✓ | 1 | surface `x.length`; Text counts Unicode scalar values |
+| `length` | `(List<T>) -> Number`, `(Text) -> Number` | ✓ | ✓ | 1 for a List; 1 + ⌈bytes/64⌉ for a Text (D-83) | surface `x.length`; Text counts Unicode scalar values |
 | `is_empty` | `(T?) / (List<T>) / (Text) -> Boolean` | ✓ | ✓ | 1 | surface `is empty` |
 | `maximum` | `(List<Number>) -> Number?` | ✓ | ✓ | 1 + n | `nothing` for `[]` |
 | `minimum` | `(List<Number>) -> Number?` | ✓ | ✓ | 1 + n | `nothing` for `[]` |
 | `sum` | `(List<Number>) -> Number` | ✓ | ✓ | 1 + n | `0` for `[]`; strict left-to-right addition; overflow `VL0602` |
-| `contains` | `(List<T>, T) -> Boolean` | ✓ | ✓ | 1 + items scanned up to and including the match (n if no match) | structural equality (R-TYP-20) |
+| `contains` | `(List<T>, T) -> Boolean` | ✓ | ✓ | 1 + for each item scanned up to and including the match (all n if none), what `item == x` costs: 1, plus, when either is a List or Record, 1 per pair of values visited, and the text blocks it compares (`runtime/30` R-RUN-04, D-83) | structural equality (R-TYP-20) |
 | `abs` | `(Number) -> Number` | ✓ | ✓ | 1 | |
 | `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | 1 | |
 | `round` | `(Number) -> Number` | ✓ | ✓ | 1 | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
@@ -121,8 +121,8 @@ manifest and in the synthesis cache key (D-11, INV-8).
 
 | Change | Version effect |
 |---|---|
-| add a built-in | MINOR bump — existing artifacts stay valid |
-| change any observable behaviour, signature, error or fuel cost of an existing built-in (including float formatting or rounding) | MAJOR bump — enters `contract_key` (D-55), so every artifact built against the old version is stale and goes through ordinary synthesis |
+| add a built-in | MINOR bump — from 1.0, existing artifacts stay valid; while MAJOR is 0 the compatibility unit is MAJOR.MINOR (D-85), so they are stale |
+| change any observable behaviour, signature, error or fuel cost of an existing built-in (including float formatting or rounding) | MAJOR bump, or MINOR while MAJOR is 0 — a new compatibility unit enters `contract_key` (D-55, D-85), so every artifact built against the old version is stale and goes through ordinary synthesis |
 | remove a built-in | only with a new language version (P-1) |
 | fix an implementation bug so a backend matches this spec | no bump; differential tests ([51-testing-quality](../delivery/51-testing-quality.md)) must catch the mismatch first |
 
@@ -142,9 +142,9 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | AC-BLT-07 | `find` on a list with two matches returns the first; on no match returns `nothing`. |
 | AC-BLT-08 | IR calling an unknown built-in, or `map` from a check, is rejected (`VL0402` / `VL0202`). |
 | AC-BLT-09 | `to_text(820) == "820"`, `to_text(0.1) == "0.1"`, `to_text(-0) == "0"`. |
-| AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `velme run --locked` rejects artifacts built on an older MAJOR with `VL0702 LockStale`. |
+| AC-BLT-10 | Changing `builtins_version` changes every goal's synthesis cache key; `velme run --locked` rejects artifacts built on an older compatibility unit (MAJOR, or MAJOR.MINOR while MAJOR is 0, D-85) with `VL0702 LockStale`. |
 | AC-BLT-11 | `clamp(5, 10, 1)` yields `VL0602`; `contains([Player(…)], same Player(…))` is `true`. |
-| AC-BLT-12 | `sum(range(1000))` costs `1 + 1000` fuel for `sum` plus `1 + 1000` for `range`, deterministically on every run; `contains` that matches at index 4 of a 100-item list costs `1 + 5` (D-52). |
+| AC-BLT-12 | `sum(range(1000))` costs `1 + 1000` fuel for `sum` plus `1 + 1000` for `range`, deterministically on every run; `contains` that matches at index 4 of a 100-item list costs `1 + 5` (D-52); `length` of a 65-byte text costs `1 + 2`, `==` of two equal 65-byte texts `1 + 2`, and `[1, 2] == [1, 2]` `1 + 3` (D-83); `==` of values that share their parts — even empty lists all the way down — stops with `VL0601` once the fuel runs out. |
 | AC-BLT-13 | `sort_by([Item(k:2),Item(k:1),Item(k:1)], i -> i.k, descending: false)` keeps the two `k:1` items in their original relative order; the same with `descending: true` also keeps them in original order. |
 | AC-BLT-14 | Inside a goal with parameter `sum: Number`, the check `- sum(scores) > 0` still calls the built-in `sum`, not the parameter; a `goal sum(x: Number) -> Number:` declaration compiles with a lint warning, not an error. |
 | AC-BLT-15 | `map(xs, p -> 1 / p)` over `[2, 0, 3]` fails with `VL0602` attributing the second element (index 1); the third element is never evaluated. |

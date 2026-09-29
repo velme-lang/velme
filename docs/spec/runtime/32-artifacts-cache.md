@@ -19,7 +19,7 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 | Identity | Hash of | Used for |
 |---|---|---|
 | `signature` | goal name, param names + types, output type, every reachable record type | `Call.goal_signature`; parents' keys |
-| `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + `ir_version` major + `builtins_version` major (D-55) | lock staleness (§5); generated-input seed (22 §7) |
+| `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + the compatibility units of `ir_version` and `builtins_version` (D-55, D-85) | lock staleness (§5); generated-input seed (22 §7) |
 | `synthesis_key` | `contract_key` + provider `input_version` (the `prompt_version`, or the external `request_version`) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `backend_version`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
 | `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces (§25) |
@@ -34,16 +34,21 @@ ordinary synthesis (`compiler/22`); its diagnostic names the child that changed.
 those enter `synthesis_key` (cache reuse) but not `contract_key` (validity). Switching models never forces
 re-synthesis of a locked project.
 **R-ART-04** Compiler patch versions never enter any key; `compiler_version` is recorded in the manifest only.
-**R-ART-23** `contract_key` hashes `{signature, plan, calls, checks, examples, budget, language_version, ir_major,
-builtins_major}` (D-81). Source enters as span-free structure, so layout and comments never change it; a quantifier
-variable is its nesting depth, a number literal its R-TYP-08 value, a record by its type and field names; `calls` hold
-each binding, callee name, callee `signature` and arguments; `budget` is the effective limits, system caps included.
+**R-ART-23** `contract_key` hashes `{signature, plan, calls, checks, examples, budget, language_version,
+ir_compatibility, builtins_compatibility}` (D-81), the last two each version's compatibility unit — MAJOR, or
+MAJOR.MINOR while MAJOR is 0 (D-85). Source enters as span-free structure, so layout and comments never change it; a
+quantifier variable is its nesting depth, a number literal its R-TYP-08 value, an operator or quantifier its surface
+spelling, a record by its type and field names; `calls` hold each binding, callee name, callee `signature` and
+arguments; `budget` is the effective limits, system caps included: `max_fuel`, `max_memory`, `max_goal_calls`,
+`max_call_depth`, `max_list_size` and `max_output_bytes`. The document is built field by field, never from a Rust
+type's derived serialization, and a hard-coded golden key pins it: changing it invalidates every lock.
 
 ## 3. Artifact document & manifest (§43.8, §48)
 
 ```json
 {
   "manifest": {
+    "format": "velme-artifact/1",
     "goal": "FindBadge", "kind": "leaf",
     "signature": "b3:…", "contract_key": "b3:…", "synthesis_key": "b3:…",
     "language_version": "0.1", "compiler_version": "0.1.4", "ir_version": "0.1",
@@ -57,8 +62,12 @@ each binding, callee name, callee `signature` and arguments; `budget` is the eff
 ```
 
 **R-ART-05** The artifact document is deterministic: no timestamps, hostnames, usernames, token counts or retry
-counts (those go to the local synth log, 22 R-SYNTH-23). Two machines accepting the same IR produce the same `artifact`
-hash.
+counts (those go to the local synth log, 22 R-SYNTH-23). Two machines accepting the same IR with the same compiler
+version produce the same `artifact` hash; the manifest records `compiler_version`, so another compiler version gives
+another hash (D-86).
+**R-ART-24** `format` is `"velme-artifact/1"`, the artifact format; a manifest without it or with another value is no
+artifact this build reads, and is rejected like any document that is no artifact (R-ART-10, D-86). `kind` is `leaf`,
+`composite` or `wired`, the artifact's own spelling.
 **R-ART-06** `stdlib_version` (§43.8) is `builtins_version` in v0.1 — there is no separate standard library.
 **R-ART-07** Wired goals (D-4) produce artifacts too, with `"provider": "compiler"` and no `model_version`, so every
 goal resolves through the lock the same way.
@@ -84,12 +93,21 @@ goal resolves through the lock the same way.
 own directory (`tooling/40` R-CLI-20, D-82).
 
 **R-ART-09** The store is append-only and write-once: a file is written to a temp name under `.velme/tmp/` and
-atomically placed; an existing file with the same name is never rewritten.
+atomically placed; an existing file with the same name and the same bytes is never rewritten. Write-once protects
+content, not names: a regular file whose bytes don't match its name isn't that artifact, so storing the artifact
+replaces it whole, atomically; anything else under the name — a link, a directory, an unreadable file — is left alone
+and is `VL0901`. An artifact whose canonical JSON passes the read limit of R-ART-10 is not stored. Velme reads and
+writes only regular files, never through a symbolic link: a stored file or `velme.lock` is opened without following a
+link and without blocking (on Unix), then checked to be a regular file, else `VL0901`; a `.velme`, `.velme/artifacts`
+or `.velme/tmp` that is a link is `VL0901` too, checked before use — best effort, since a directory swapped for a link
+after that check is not caught.
 **R-ART-10** Every load re-hashes the file, re-runs IR validation (21 §6, cached per hash for the process), and
 cross-checks the manifest's `goal`, `signature` and `contract_key` against the lock entry and against the key computed
-from current source (D-46): the manifest's claims are informational, never trusted on their own. A hash mismatch is
-`VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a manifest/lock/computed mismatch or a
-re-validation failure makes the entry stale (R-ART-14).
+from current source (D-46): the manifest's claims are informational, never trusted on their own. A read stops past the
+largest artifact, 1 MiB of IR (21 §7) plus 64 KiB for the manifest, and past 16 MiB for `velme.lock`. A hash mismatch,
+a file past that size, or bytes that hash to their name but aren't the canonical JSON the store writes are
+`VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a document of another `format` (R-ART-24), a
+manifest/lock/computed mismatch or a re-validation failure makes the entry stale (R-ART-14).
 **R-ART-11** Only candidates that passed the full verification pipeline (22 §6) are written (§22). A failed or
 timed-out candidate leaves no file.
 **R-ART-12** Artifacts not referenced by `velme.lock` may be garbage-collected by a CLI command (tooling/40); nothing is

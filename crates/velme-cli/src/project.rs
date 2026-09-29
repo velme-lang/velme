@@ -17,7 +17,8 @@ pub struct Project {
 impl Project {
     /// The project of the source file `file`: the directory of the nearest `velme.toml` above it, else the file's own
     /// directory (D-82). The path is resolved first — `..`, links, and on a case-insensitive file system the case of
-    /// each name as stored — so every spelling of one file finds the same root and the same lock entry.
+    /// each name as stored — so every spelling of one file finds the same root and the same lock entry. A name on the
+    /// way from the root that isn't UTF-8 is an error: the lock records the path as text (R-CLI-19).
     pub fn of(file: &Path) -> io::Result<Project> {
         let file = std::fs::canonicalize(file)?;
         let dir = file.parent().unwrap_or(Path::new(""));
@@ -25,15 +26,18 @@ impl Project {
             .ancestors()
             .find(|ancestor| ancestor.join(CONFIG_FILE).is_file())
             .unwrap_or(dir);
-        let relative: Vec<String> = file
+        let relative = file
             .strip_prefix(root)
             .unwrap_or(&file)
             .components()
             .filter_map(|c| match c {
-                Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+                Component::Normal(part) => Some(part.to_str().map(str::to_owned).ok_or_else(|| {
+                    let name = part.to_string_lossy();
+                    io::Error::new(io::ErrorKind::InvalidData, format!("the name `{name}` isn't UTF-8"))
+                })),
                 _ => None,
             })
-            .collect();
+            .collect::<io::Result<Vec<String>>>()?;
         Ok(Project {
             root: root.to_path_buf(),
             file: relative.join("/"),

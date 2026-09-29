@@ -9,15 +9,19 @@ mod mapping;
 mod node;
 mod validate;
 
-pub use fingerprint::{Fingerprint, FingerprintError, Synthesis, contract_key, execution_id, signature, synthesis_key};
+pub use fingerprint::{
+    Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, execution_id, signature, synthesis_key,
+};
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
 pub use lower::{calls, ir_type};
 pub use mapping::{
-    DecodeError, DecodeProblem, SHOWN_CHARS, SHOWN_ITEMS, decode_literal, decode_str, decode_value, display_value,
-    encode_value, json_kind,
+    DecodeError, DecodeProblem, OutputTooBig, SHOWN_CHARS, SHOWN_ITEMS, SHOWN_TOTAL, decode_str, decode_value,
+    display_value, encode_value, json_kind,
 };
-pub use node::{BinaryOperator, Call, CallNode, Goal, Lambda, Node, RecordType, ReduceLambda, Type, UnaryOperator};
-pub use validate::{Origin, Request, ValidIr, validate};
+pub use node::{
+    BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
+};
+pub use validate::{CheckScope, Origin, Request, Trusted, TrustedExpr, ValidIr, validate};
 
 /// The IR version this crate reads and writes (`compiler/21` R-IR-22).
 pub const IR_VERSION: &str = "0.1";

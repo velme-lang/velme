@@ -12,9 +12,10 @@ use velme_diagnostics::render::{JsonDiagnostic, LineIndex, render_human};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
 use velme_ir::{
-    CallNode, Goal, IR_VERSION, MAX_JSON_DEPTH, Origin, Request, ValidIr, calls, from_json_str, signature, validate,
+    CallNode, CheckScope, Goal, IR_VERSION, MAX_JSON_DEPTH, Node, Origin, Request, ValidIr, calls, from_json_str,
+    signature, validate,
 };
-use velme_sema::hir::{GoalId, Program};
+use velme_sema::hir::{GoalId, Program, Type as HirType};
 use velme_sema::{SourceFile, analyze};
 
 fn repo(path: &str) -> PathBuf {
@@ -393,6 +394,37 @@ fn deepest_parsable_ir_is_rejected_without_overflow() {
     );
 }
 
+/// R-IR-18: valid IR as deep as the JSON limit lets a literal nest validates — decoding, type-checking and measuring
+/// its canonical form — within the 2 MiB stack the parser is held to.
+#[test]
+fn deepest_valid_literal_validates_on_a_small_stack() {
+    // The literal's type sits 8 levels into the document, under `body`, `cond`, `left` and the node itself.
+    let depth = MAX_JSON_DEPTH - 10;
+    let ty = (0..depth).fold(r#"{"t": "Number"}"#.to_owned(), |of, _| {
+        format!(r#"{{"t": "List", "of": {of}}}"#)
+    });
+    let value = format!("{}1{}", "[".repeat(depth), "]".repeat(depth));
+    let literal = format!(r#"{{"kind": "literal", "type": {ty}, "value": {value}}}"#);
+    let text = |t: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Text"}}, "value": "{t}"}}"#);
+    let body = format!(
+        r#"{{"kind": "if", "cond": {{"kind": "binary", "op": "eq", "left": {literal}, "right": {literal}}},
+            "then": {}, "else": {}}}"#,
+        text("same"),
+        text("different")
+    );
+    let doc = limit_doc("Words", json!({"t": "Text"}), &body);
+    let valid = std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            let program = program(LIMITS);
+            run(&program, "Words", Origin::Complete, &doc).is_ok()
+        })
+        .expect("thread")
+        .join()
+        .expect("fits the stack");
+    assert!(valid);
+}
+
 #[test]
 fn ac_ir_09_newer_ir_version_names_both_versions() {
     let program = goals();
@@ -526,8 +558,9 @@ fn ac_ir_14_versions_must_equal_the_request() {
         let diag = rejects(&program, "FindBadge", Origin::Candidate, &older, Code::IRInvalid);
         at(&diag, pointer);
         assert!(diag.message.contains("0.0") && diag.message.contains(own), "{diag:#?}");
-        // R-IR-22: a complete goal, such as a stored artifact, of an older minor of the same major is still read.
-        accepts(&program, "FindBadge", &older);
+        // R-IR-22, D-85: while MAJOR is 0, MAJOR.MINOR is the compatibility unit, so a complete goal, such as a stored
+        // artifact, of an older minor isn't read either.
+        at(&invalid(&program, "FindBadge", &older), pointer);
         let diag = invalid(
             &program,
             "FindBadge",
@@ -538,6 +571,53 @@ fn ac_ir_14_versions_must_equal_the_request() {
 }
 
 // ---- other validator rules ----
+
+/// R-CHK-11, INV-1: a lowered check or example is evaluated only once it passes stages 2–4 in its goal's check
+/// scope — inputs, call bindings and `result`, and every record type — with a type that fits where it is used.
+#[test]
+fn check_scope_validates_names_and_types() {
+    let program = goals();
+    let goal = &program.goals[goal_id(&program, "BuildPlayerSummary").0];
+    let scope = CheckScope::new(&program, goal).expect("scope");
+    let node = |json: Value| from_json_str::<Node>(&json.to_string()).expect("a node");
+    let local = |name: &str| json!({"kind": "local", "name": name});
+    let field = |of: Value, name: &str| json!({"kind": "field", "of": of, "field": name});
+    let eq = |left: Value, right: Value| json!({"kind": "binary", "op": "eq", "left": left, "right": right});
+    // `result.score == score`: `result` is the output, `score` a call binding.
+    let check = scope
+        .validate(
+            node(eq(field(local("result"), "score"), local("score"))),
+            &HirType::Boolean,
+        )
+        .expect("valid");
+    assert!(matches!(check.node(), Node::BinaryOp { .. }));
+    // A literal is decoded as it is validated, so no back end decodes it again (D-83).
+    let literal = json!({"kind": "literal", "type": {"t": "Number"}, "value": 1e2});
+    let valid = scope.validate(node(literal), &HirType::Number).expect("valid");
+    let Node::Literal { value, .. } = valid.node() else {
+        panic!("a literal")
+    };
+    assert_eq!(value.decoded(), Some(&velme_builtins::Value::Number(100i64.into())));
+    for (bad, expected) in [
+        (eq(local("nope"), local("score")), HirType::Boolean),
+        (json!({"kind": "input", "name": "players"}), HirType::Boolean),
+        (field(local("result"), "score"), HirType::Boolean),
+        (eq(local("result"), local("score")), HirType::Boolean),
+        // Nothing a lowering makes: a goal call, or a name bound twice (stage 2).
+        (
+            json!({"kind": "call", "binding": "b", "goal": "FindBadge", "goal_signature": "b3:00", "args": []}),
+            HirType::Text,
+        ),
+        (
+            json!({"kind": "let", "bind": [["score", {"kind": "literal", "type": {"t": "Number"}, "value": 1}]],
+                   "body": {"kind": "literal", "type": {"t": "Boolean"}, "value": true}}),
+            HirType::Boolean,
+        ),
+    ] {
+        let diags = scope.validate(node(bad.clone()), &expected).expect_err("invalid");
+        assert!(diags.iter().all(|d| d.code == Code::IRInvalid), "{bad}: {diags:#?}");
+    }
+}
 
 #[test]
 fn schema_failures_are_vl0401() {
@@ -711,6 +791,29 @@ fn calls_must_equal_the_compiler_calls() {
     assert!(diag.message.contains("`again`"), "{diag:#?}");
 }
 
+/// D-84: what `types` may hold follows the compiler's calls, so a stored goal that drops a call is named at stage 6,
+/// not as describing a record type only that call reaches.
+#[test]
+fn a_dropped_call_is_a_call_graph_error_not_an_unused_type() {
+    let program = program(
+        "language: velme/0.1\n\n\
+         type Inner:\n    v: Number\n\n\
+         goal Child(x: Number) -> Inner:\n    plan: \"Wrap x.\"\n\n\
+         goal Parent(x: Number) -> Number:\n    call:\n        i = Child(x)\n    plan: \"Unwrap it.\"\n",
+    );
+    let mut ir = json!({
+        "ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Parent",
+        "types": {"Inner": {"fields": [["v", {"t": "Number"}]]}},
+        "inputs": [["x", {"t": "Number"}]], "output": {"t": "Number"},
+        "calls": serde_json::to_value(compiler_calls(&program, "Parent")).expect("calls"),
+        "body": {"kind": "input", "name": "x"},
+    });
+    accepts(&program, "Parent", &ir.to_string());
+    ir["calls"] = json!([]);
+    let diag = invalid(&program, "Parent", &ir.to_string());
+    assert!(diag.message.contains("leaves out the call `i`"), "{diag:#?}");
+}
+
 /// R-IR-09: every argument form R-GOAL-08 allows, lowered in source order; a stored goal with these calls validates.
 #[test]
 fn compiler_calls_lower_every_argument_form() {
@@ -873,6 +976,29 @@ fn oversized_documents_are_rejected_before_parsing() {
     let text = format!("{{{}", " ".repeat(MAX_IR_BYTES));
     let diag = invalid(&program, "FindBadge", &text);
     assert!(diag.message.contains(&MAX_IR_BYTES.to_string()), "{diag:#?}");
+}
+
+/// The size limit holds for the canonical form a store keeps too: `1e27` written in 4 bytes is 28 digits there.
+#[test]
+fn documents_whose_canonical_form_is_too_long_are_rejected() {
+    let program =
+        program("language: velme/0.1\n\ngoal Big(x: Number) -> List<List<Number>>:\n    plan: \"Many big numbers.\"\n");
+    let numbers = vec!["1e27"; MAX_LIST_ITEMS].join(",");
+    let item =
+        format!(r#"{{"kind": "literal", "type": {{"t": "List", "of": {{"t": "Number"}}}}, "value": [{numbers}]}}"#);
+    let doc = |items: usize| {
+        format!(
+            r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Big", "types": {{}},
+                "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "List", "of": {{"t": "Number"}}}}}},
+                "body": {{"kind": "list", "of": {{"t": "List", "of": {{"t": "Number"}}}}, "items": [{}]}}}}"#,
+            vec![item.as_str(); items].join(",")
+        )
+    };
+    accepts(&program, "Big", &doc(30));
+    let long = doc(40);
+    assert!(long.len() < MAX_IR_BYTES);
+    let diag = invalid(&program, "Big", &long);
+    assert!(diag.message.contains("canonical form"), "{diag:#?}");
 }
 
 #[test]

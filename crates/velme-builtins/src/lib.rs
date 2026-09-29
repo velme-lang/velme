@@ -7,7 +7,7 @@ pub mod limits;
 mod number;
 mod value;
 
-pub use function::{Error, Function, Output, sort_by_fuel, sort_order};
+pub use function::{Error, Function, Output, equals, sort_by_fuel, sort_order};
 pub use number::Number;
 pub use value::{Record, Value};
 
