@@ -8,5 +8,18 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+velme-builtins.workspace = true
+velme-diagnostics.workspace = true
+velme-interp.workspace = true
+velme-ir.workspace = true
+velme-sema.workspace = true
+# Number text is kept exactly, never read through `f64` (CC-DET-03).
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+
+[dev-dependencies]
+insta.workspace = true
+velme-test-support.workspace = true
+
 [lints]
 workspace = true

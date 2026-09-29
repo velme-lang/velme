@@ -1,0 +1,8 @@
+---
+source: crates/velme-interp/tests/interp.rs
+assertion_line: 149
+expression: out
+input_file: tests/golden/ir/accept/team_stats.json
+---
+{"players":[{"jump_height":2,"name":"Ana","score":40},{"jump_height":9,"name":"","score":500},{"jump_height":3,"name":"Lina","score":70},{"jump_height":1,"name":"Bo","score":40}],"target":100} -> {"total":150,"deficit":-50,"ranked":[{"name":"Lina","jump_height":3,"score":70},{"name":"Ana","jump_height":2,"score":40},{"name":"Bo","jump_height":1,"score":40}],"top":{"name":"Lina","jump_height":3,"score":70},"all_jump":true,"any_star":true,"tags":["team","ahead"]} (fuel 112)
+{"players":[],"target":0} -> {"total":0,"deficit":0,"ranked":[],"top":null,"all_jump":true,"any_star":false,"tags":["team","behind"]} (fuel 28)

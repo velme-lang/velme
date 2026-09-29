@@ -16,6 +16,9 @@ velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0" }
 velme-syntax = { path = "crates/velme-syntax", version = "0.1.0" }
 velme-builtins = { path = "crates/velme-builtins", version = "0.1.0" }
 velme-sema = { path = "crates/velme-sema", version = "0.1.0" }
+velme-ir = { path = "crates/velme-ir", version = "0.1.0" }
+velme-interp = { path = "crates/velme-interp", version = "0.1.0" }
+velme-test-support = { path = "crates/velme-test-support", version = "0.1.0" }
 
 anyhow = "1"
 ariadne = { version = "0.6", default-features = false }

@@ -8,5 +8,10 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+velme-diagnostics.workspace = true
+velme-ir.workspace = true
+velme-sema.workspace = true
+
 [lints]
 workspace = true

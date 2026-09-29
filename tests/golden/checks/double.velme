@@ -1,0 +1,13 @@
+language: velme/0.1
+
+# `double.json` is a wrong implementation of `Double` (x + 1); `crates/velme-check/tests/run.rs` runs its example and
+# checks and snapshots the failures.
+
+goal Double(x: Number) -> Number:
+    plan: "Return twice x."
+    check:
+        - result == x * 2
+        - if x > 0 then result > x
+    examples:
+        - Double(2) == 4
+        - Double(-3) == -6

@@ -27,7 +27,16 @@ pub const ALLOWED: &[(&str, &[&str])] = &[
     ("velme-builtins", &["velme-diagnostics"]),
     ("velme-sema", &["velme-syntax", "velme-builtins", "velme-diagnostics"]),
     ("velme-ir", &["velme-sema", "velme-builtins", "velme-diagnostics"]),
-    ("velme-check", &["velme-ir", "velme-sema", "velme-diagnostics"]),
+    (
+        "velme-check",
+        &[
+            "velme-ir",
+            "velme-interp",
+            "velme-sema",
+            "velme-builtins",
+            "velme-diagnostics",
+        ],
+    ),
     ("velme-interp", &["velme-ir", "velme-builtins", "velme-diagnostics"]),
     (
         "velme-synth",
@@ -48,6 +57,7 @@ pub const ALLOWED: &[(&str, &[&str])] = &[
             "velme-interp",
             "velme-wasm",
             "velme-synth",
+            "velme-sema",
             "velme-builtins",
             "velme-diagnostics",
         ],

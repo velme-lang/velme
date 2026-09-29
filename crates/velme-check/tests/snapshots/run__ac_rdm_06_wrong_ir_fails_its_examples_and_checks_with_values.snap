@@ -1,0 +1,53 @@
+---
+source: crates/velme-check/tests/run.rs
+assertion_line: 371
+expression: "render_human(&diags, \"double.velme\", Some(&source), false)"
+---
+Error: For Double(2), `Double` gave 3 but the example expects 4.  [VL0502]
+    ╭─[ double.velme:12:11 ]
+    │
+ 12 │         - Double(2) == 4
+    │           ───────┬──────  
+    │                  ╰──────── here
+────╯
+Error: `Double` didn't pass its check: `result == x * 2`.  [VL0501]
+   ╭─[ double.velme:9:11 ]
+   │
+ 9 │         - result == x * 2
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: 4
+   │ 
+   │ Note 2: Received: 3
+   │ 
+   │ Note 3: `result` = 3
+   │ 
+   │ Note 4: `x` = 2
+   │ 
+   │ Note 5: input `x` = 2
+───╯
+Error: For Double(-3), `Double` gave -2 but the example expects -6.  [VL0502]
+    ╭─[ double.velme:13:11 ]
+    │
+ 13 │         - Double(-3) == -6
+    │           ────────┬───────  
+    │                   ╰───────── here
+────╯
+Error: `Double` didn't pass its check: `result == x * 2`.  [VL0501]
+   ╭─[ double.velme:9:11 ]
+   │
+ 9 │         - result == x * 2
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: -6
+   │ 
+   │ Note 2: Received: -2
+   │ 
+   │ Note 3: `result` = -2
+   │ 
+   │ Note 4: `x` = -3
+   │ 
+   │ Note 5: input `x` = -3
+───╯

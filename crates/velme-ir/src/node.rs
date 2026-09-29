@@ -257,6 +257,51 @@ pub enum Node {
 }
 
 impl Node {
+    /// This node and every node under it in pre-order: each node, then its children in field order, a `record`'s
+    /// fields by name and a collection node's lambda body after its list (and `init`).
+    pub fn preorder(&self) -> Vec<&Node> {
+        let mut out = Vec::new();
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            out.push(node);
+            let children: Vec<&Node> = match node {
+                Node::Literal { .. } | Node::Input { .. } | Node::Local { .. } => Vec::new(),
+                Node::Record { fields, .. } => fields.values().collect(),
+                Node::List { items, .. } | Node::Builtin { args: items, .. } => items.iter().collect(),
+                Node::FieldGet { of, .. } => vec![of],
+                Node::BinaryOp { left, right, .. } => vec![left, right],
+                Node::UnaryOp { arg, .. } => vec![arg],
+                Node::Let { bind, body } => bind.iter().map(|(_, v)| v).chain([&**body]).collect(),
+                Node::Condition { cond, then, otherwise } => vec![cond, then, otherwise],
+                Node::Narrow { of, default } => vec![of, default],
+                Node::Map { list, func }
+                | Node::Filter { list, func }
+                | Node::Find { list, func }
+                | Node::All { list, func }
+                | Node::Any { list, func }
+                | Node::Sort { list, key: func, .. } => vec![list, &func.body],
+                Node::Reduce { list, init, func } => vec![list, init, &func.body],
+                Node::Call(call) => call.args.iter().collect(),
+            };
+            stack.extend(children.into_iter().rev());
+        }
+        out
+    }
+
+    /// The lambda body of a collection node, which runs once per element.
+    pub fn lambda_body(&self) -> Option<&Node> {
+        match self {
+            Node::Map { func, .. }
+            | Node::Filter { func, .. }
+            | Node::Find { func, .. }
+            | Node::All { func, .. }
+            | Node::Any { func, .. }
+            | Node::Sort { key: func, .. } => Some(&func.body),
+            Node::Reduce { func, .. } => Some(&func.body),
+            _ => None,
+        }
+    }
+
     /// The node's `kind` tag, for diagnostics; `kind_matches_the_serialized_tag` keeps it equal to the serde spelling.
     pub(crate) fn kind(&self) -> &'static str {
         match self {

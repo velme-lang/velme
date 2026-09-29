@@ -555,6 +555,16 @@ dependencies = [
 [[package]]
 name = "velme-check"
 version = "0.1.0"
+dependencies = [
+ "insta",
+ "serde_json",
+ "velme-builtins",
+ "velme-diagnostics",
+ "velme-interp",
+ "velme-ir",
+ "velme-sema",
+ "velme-test-support",
+]
 
 [[package]]
 name = "velme-cli"
@@ -581,6 +591,14 @@ dependencies = [
 [[package]]
 name = "velme-interp"
 version = "0.1.0"
+dependencies = [
+ "insta",
+ "serde_json",
+ "velme-builtins",
+ "velme-diagnostics",
+ "velme-ir",
+ "velme-test-support",
+]
 
 [[package]]
 name = "velme-ir"
@@ -631,6 +649,11 @@ version = "0.1.0"
 [[package]]
 name = "velme-test-support"
 version = "0.1.0"
+dependencies = [
+ "velme-diagnostics",
+ "velme-ir",
+ "velme-sema",
+]
 
 [[package]]
 name = "velme-wasm"

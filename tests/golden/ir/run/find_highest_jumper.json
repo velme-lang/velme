@@ -1,0 +1,8 @@
+[
+  {"inputs": {"players": [
+    {"name": "Ana", "jump_height": 2, "score": 10},
+    {"name": "Lina", "jump_height": 3, "score": 20},
+    {"name": "Bo", "jump_height": 3.0, "score": 30}
+  ]}},
+  {"inputs": {"players": []}}
+]

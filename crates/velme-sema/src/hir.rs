@@ -3,7 +3,9 @@
 use serde::Serialize;
 use velme_builtins::{Shape, Signature, limits};
 use velme_diagnostics::Span;
-use velme_syntax::ast::{BinaryOp, Quantifier, UnaryOp};
+/// The operators and keywords HIR expressions use, so HIR's consumers need not depend on `velme-syntax`.
+pub use velme_syntax::Keyword;
+pub use velme_syntax::ast::{BinaryOp, Quantifier, UnaryOp};
 
 /// A record type: an index into [`Program::types`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]

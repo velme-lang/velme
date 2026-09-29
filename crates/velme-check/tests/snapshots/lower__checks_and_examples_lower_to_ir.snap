@@ -1,0 +1,376 @@
+---
+source: crates/velme-check/tests/lower.rs
+assertion_line: 60
+expression: out
+---
+{
+  "kind": "all",
+  "list": {
+    "kind": "local",
+    "name": "result"
+  },
+  "fn": {
+    "param": "ball",
+    "body": {
+      "kind": "binary",
+      "op": "ge",
+      "left": {
+        "kind": "field",
+        "of": {
+          "kind": "local",
+          "name": "ball"
+        },
+        "field": "bounce"
+      },
+      "right": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 5
+      }
+    }
+  }
+}
+every ball in result has ball.bounce >= 5 | result | ball.bounce >= 5 | ball.bounce | ball | 5
+{
+  "kind": "any",
+  "list": {
+    "kind": "input",
+    "name": "players"
+  },
+  "fn": {
+    "param": "p",
+    "body": {
+      "kind": "binary",
+      "op": "eq",
+      "left": {
+        "kind": "field",
+        "of": {
+          "kind": "local",
+          "name": "p"
+        },
+        "field": "name"
+      },
+      "right": {
+        "kind": "literal",
+        "type": {
+          "t": "Text"
+        },
+        "value": "Lina"
+      }
+    }
+  }
+}
+some p in players has p.name == "Lina" | players | p.name == "Lina" | p.name | p | "Lina"
+{
+  "kind": "binary",
+  "op": "or",
+  "left": {
+    "kind": "unary",
+    "op": "not",
+    "arg": {
+      "kind": "unary",
+      "op": "is_empty",
+      "arg": {
+        "kind": "input",
+        "name": "players"
+      }
+    }
+  },
+  "right": {
+    "kind": "unary",
+    "op": "is_empty",
+    "arg": {
+      "kind": "local",
+      "name": "result"
+    }
+  }
+}
+if players is empty then result is empty | if players is empty then result is empty | players is empty | players | result is empty | result
+{
+  "kind": "binary",
+  "op": "eq",
+  "left": {
+    "kind": "builtin",
+    "name": "length",
+    "args": [
+      {
+        "kind": "map",
+        "list": {
+          "kind": "input",
+          "name": "players"
+        },
+        "fn": {
+          "param": "#0",
+          "body": {
+            "kind": "field",
+            "of": {
+              "kind": "local",
+              "name": "#0"
+            },
+            "field": "name"
+          }
+        }
+      }
+    ]
+  },
+  "right": {
+    "kind": "input",
+    "name": "count"
+  }
+}
+players.name.length == count | players.name.length | players.name | players | players.name | players.name | count
+{
+  "kind": "binary",
+  "op": "and",
+  "left": {
+    "kind": "binary",
+    "op": "and",
+    "left": {
+      "kind": "unary",
+      "op": "not",
+      "arg": {
+        "kind": "unary",
+        "op": "is_empty",
+        "arg": {
+          "kind": "input",
+          "name": "top"
+        }
+      }
+    },
+    "right": {
+      "kind": "unary",
+      "op": "not",
+      "arg": {
+        "kind": "unary",
+        "op": "is_empty",
+        "arg": {
+          "kind": "field",
+          "of": {
+            "kind": "unwrap_or",
+            "of": {
+              "kind": "input",
+              "name": "top"
+            },
+            "default": {
+              "kind": "literal",
+              "type": {
+                "t": "Record",
+                "name": "Player"
+              },
+              "value": {
+                "best": null,
+                "name": ""
+              }
+            }
+          },
+          "field": "best"
+        }
+      }
+    }
+  },
+  "right": {
+    "kind": "binary",
+    "op": "gt",
+    "left": {
+      "kind": "field",
+      "of": {
+        "kind": "unwrap_or",
+        "of": {
+          "kind": "field",
+          "of": {
+            "kind": "unwrap_or",
+            "of": {
+              "kind": "input",
+              "name": "top"
+            },
+            "default": {
+              "kind": "literal",
+              "type": {
+                "t": "Record",
+                "name": "Player"
+              },
+              "value": {
+                "best": null,
+                "name": ""
+              }
+            }
+          },
+          "field": "best"
+        },
+        "default": {
+          "kind": "literal",
+          "type": {
+            "t": "Record",
+            "name": "Ball"
+          },
+          "value": {
+            "bounce": 0
+          }
+        }
+      },
+      "field": "bounce"
+    },
+    "right": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 0
+    }
+  }
+}
+top is not empty and top.best is not empty and top.best.bounce > 0 | top is not empty and top.best is not empty | top is not empty | top is not empty | top | top.best is not empty | top.best is not empty | top.best | top | top | top | top.best.bounce > 0 | top.best.bounce | top.best | top.best | top | top | top | top.best | 0
+{
+  "kind": "binary",
+  "op": "lt",
+  "left": {
+    "kind": "binary",
+    "op": "div",
+    "left": {
+      "kind": "unary",
+      "op": "neg",
+      "arg": {
+        "kind": "input",
+        "name": "count"
+      }
+    },
+    "right": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 2
+    }
+  },
+  "right": {
+    "kind": "literal",
+    "type": {
+      "t": "Number"
+    },
+    "value": 7.50
+  }
+}
+-count / 2 < 007.50 | -count / 2 | -count | count | 2 | 007.50
+{
+  "kind": "binary",
+  "op": "or",
+  "left": {
+    "kind": "builtin",
+    "name": "contains",
+    "args": [
+      {
+        "kind": "local",
+        "name": "result"
+      },
+      {
+        "kind": "record",
+        "type": "Ball",
+        "fields": {
+          "bounce": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 1
+          }
+        }
+      }
+    ]
+  },
+  "right": {
+    "kind": "unary",
+    "op": "not",
+    "arg": {
+      "kind": "binary",
+      "op": "eq",
+      "left": {
+        "kind": "local",
+        "name": "result"
+      },
+      "right": {
+        "kind": "list",
+        "of": {
+          "t": "Record",
+          "name": "Ball"
+        },
+        "items": []
+      }
+    }
+  }
+}
+contains(result, Ball(bounce: 1)) or not (result == []) | contains(result, Ball(bounce: 1)) | result | Ball(bounce: 1) | 1 | not (result == []) | (result == []) | result | []
+[
+  [
+    {
+      "kind": "list",
+      "of": {
+        "t": "Record",
+        "name": "Player"
+      },
+      "items": [
+        {
+          "kind": "record",
+          "type": "Player",
+          "fields": {
+            "best": {
+              "kind": "literal",
+              "type": {
+                "t": "Nothing"
+              },
+              "value": null
+            },
+            "name": {
+              "kind": "literal",
+              "type": {
+                "t": "Text"
+              },
+              "value": "Lina"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "kind": "literal",
+      "type": {
+        "t": "Nothing"
+      },
+      "value": null
+    },
+    {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 1
+    }
+  ],
+  {
+    "kind": "list",
+    "of": {
+      "t": "Record",
+      "name": "Ball"
+    },
+    "items": [
+      {
+        "kind": "record",
+        "type": "Ball",
+        "fields": {
+          "bounce": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 5
+          }
+        }
+      }
+    ]
+  }
+]
+[Player(name: "Lina", best: nothing)] | Player(name: "Lina", best: nothing) | nothing | "Lina"
+nothing
+1
+[Ball(bounce: 5)] | Ball(bounce: 5) | 5
