@@ -420,16 +420,24 @@ impl<'f, 'a> Body<'f, 'a> {
     fn example(&mut self, example: &'a ast::Example) -> Option<Example> {
         let goal = self.goal;
         let args = if example.goal.name != goal.name {
+            let other = &example.goal.name;
+            let help = if matches!(self.file.scope.names.get(other.as_str()), Some(Declared::Goal(_))) {
+                format!(
+                    "write `{}(…) == …`; to use `{other}`, list it in `call:` and test it in a check",
+                    goal.name
+                )
+            } else if closest(other, [goal.name.as_str()]).is_some() {
+                format!("did you mean `{}`?", goal.name)
+            } else {
+                format!("write `{}(…) == …`", goal.name)
+            };
             self.diags.push(
                 Diagnostic::new(
                     Code::InvalidCall,
                     example.goal.span,
                     format!("An example can only call `{}`, the goal it belongs to.", goal.name),
                 )
-                .with_help(format!(
-                    "write `{}(…) == …`; to use `{}`, list it in `call:` and test it in a check",
-                    goal.name, example.goal.name
-                )),
+                .with_help(help),
             );
             None
         } else if example.args.len() != goal.params.len() {
