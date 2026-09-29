@@ -151,7 +151,7 @@ fn stopped(args: &[String]) -> u8 {
             return EXIT_INTERNAL;
         }
     };
-    if let Some(out) = internal_envelope(&shown_path(&file)) {
+    if let Some(out) = internal_envelope(&shown_path(&Project::of(Path::new(&file)), &file)) {
         print_out(&out);
     }
     EXIT_INTERNAL
@@ -221,13 +221,13 @@ struct Analyzed {
 }
 
 /// How the file `arg` is shown: from its project's root (R-CLI-19), or as given if it can't be found.
-fn shown_path(arg: &str) -> String {
-    Project::of(Path::new(arg)).map_or_else(|_| display_path(arg), |p| p.file)
+fn shown_path(project: &std::io::Result<Project>, arg: &str) -> String {
+    project.as_ref().map_or_else(|_| display_path(arg), |p| p.file.clone())
 }
 
 fn analyze(arg: &str) -> Analyzed {
     let project = Project::of(Path::new(arg));
-    let path = project.as_ref().map_or_else(|_| display_path(arg), |p| p.file.clone());
+    let path = shown_path(&project, arg);
     let read = std::fs::read(arg).and_then(|bytes| project.as_ref().map(|_| bytes).map_err(clone_error));
     let (text, program, diagnostics) = match read {
         Err(err) => (None, None, vec![SourceFile::unreadable(&path, &err)]),
