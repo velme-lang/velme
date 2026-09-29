@@ -6,4 +6,4 @@ mod lower;
 mod run;
 
 pub use lower::{Lowered, lower_check, lower_example, result_local};
-pub use run::{Checked, ExampleCase, GoalChecks, Invocation, ItemReport, Part};
+pub use run::{Checked, ExampleCase, GoalChecks, Invocation, ItemReport, Part, Stopped};

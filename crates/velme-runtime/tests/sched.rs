@@ -80,6 +80,24 @@ goal Heavy(n: Number) -> Number:
     examples:
         - Heavy(1) == 1
 
+goal Repeat(n: Number) -> Number:
+    plan: \"Return n.\"
+    check:
+        - sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) > 0
+    examples:
+        - Repeat(1) == 1
+        - Repeat(2) == 2
+        - Repeat(3) == 3
+        - Repeat(4) == 4
+
+goal Trio(n: Number) -> Number:
+    budget cpu=1ms
+    plan: \"Return n.\"
+    check:
+        - n == n
+        - n >= 0
+        - sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) + sum(range(10000)) > 0
+
 goal Tight(n: Number) -> Number:
     budget cpu=1ms
     plan: \"Count up to n.\"
@@ -163,7 +181,7 @@ fn ir(program: &Program, name: &str) -> String {
     let (inputs, body) = match name {
         "Spin" => (json!([["n", number()]]), count("n")),
         "SlowBoom" | "FastBoom" => (json!([["n", number()]]), binary("div", count("n"), literal(0))),
-        "Heavy" | "Greedy" => (json!([["n", number()]]), input("n")),
+        "Heavy" | "Greedy" | "Repeat" | "Trio" => (json!([["n", number()]]), input("n")),
         "Tight" => (json!([["n", number()]]), count("n")),
         "Capped" => (json!([["n", number()]]), edge(9)),
         "Roomy" => (json!([["n", number()]]), edge(8)),
@@ -745,7 +763,7 @@ fn a_calls_arguments_spend_the_callers_fuel() {
 /// A call's arguments are the parent's expressions: one that allocates past the parent's memory limit fails the
 /// parent with `VL0604`, and its trace shows the memory it spent, clamped to the limit (`runtime/30` §7.1, §8).
 #[test]
-fn ac_run_10_a_memory_failure_in_an_argument_shows_the_memory_spent() {
+fn a_memory_failure_in_an_argument_shows_the_memory_spent() {
     let (project, program) = installed("call_arguments_memory");
     let bulky = run(&project, &program, "Bulky", &[1], 1);
     assert_eq!(code_of(&bulky), Some(Code::MemoryLimitExceeded));
@@ -905,4 +923,40 @@ fn a_check_is_stopped_by_the_watchdog_too() {
     };
     let failures = test_leaf(&program, id, SOURCE, &locked, &options).expect_err("timed out");
     assert!(failures.iter().any(|d| d.code == Code::Timeout), "{failures:?}");
+}
+
+/// The watchdog bounds one run, and each example of `velme test` is its own run (`runtime/30` D-51): examples that
+/// together take more than 60 s of a fake clock, each well under it, all pass.
+#[test]
+fn each_example_is_its_own_run_for_the_watchdog() {
+    let (project, program) = installed("example_watchdog");
+    let id = goal_id(&program, "Repeat");
+    let lock = Lock::read(&project).expect("lock").expect("a lock");
+    let locked = load(&program, id, FILE, &lock, &Store::new(&project)).expect("locked");
+    // The check of each example is looked at once, at 100 000 fuel; the clock moves 20 s per reading.
+    let clock = Arc::new(Ticking {
+        step: 20_000,
+        reads: AtomicU64::new(0),
+    });
+    let options = Options {
+        clock: Arc::clone(&clock) as Arc<dyn Clock>,
+        ..Options::default()
+    };
+    assert_eq!(test_leaf(&program, id, SOURCE, &locked, &options), Ok(4));
+    assert!(clock.reads.load(Ordering::SeqCst) * 20_000 > MAX_WALL_CLOCK_MS);
+}
+
+/// Checks that finished before one ran out of fuel stay in the trace, with the fuel they cost (R-CHK-08, `runtime/30`
+/// §8).
+#[test]
+fn checks_finished_before_a_limit_stay_in_the_trace() {
+    let (project, program) = installed("checks_before_limit");
+    let trio = run(&project, &program, "Trio", &[1], 1);
+    assert_eq!(code_of(&trio), Some(Code::BudgetExceeded));
+    let checks = &trio.checks;
+    assert_eq!(
+        checks.iter().map(|c| (c.text.as_str(), c.passed)).collect::<Vec<_>>(),
+        [("n == n", true), ("n >= 0", true)]
+    );
+    assert_eq!(trio.fuel, FUEL_PER_MS);
 }
