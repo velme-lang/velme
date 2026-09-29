@@ -1,0 +1,7 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "SummarizeTeam",
+  "types": {
+    "Player": { "fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]] },
+    "TeamStats": { "fields": [["total", {"t": "Number"}], ["deficit", {"t": "Number"}], [

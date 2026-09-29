@@ -3,13 +3,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use velme_builtins::{Builtin, Shape};
+use velme_builtins::Builtin;
 use velme_diagnostics::{Code, Diagnostic, Span, closest, did_you_mean};
 use velme_syntax::Keyword;
 use velme_syntax::ast::{self, BinaryOp, CallArg, ExprKind as Ast, LiteralKind, UnaryOp};
 
 use crate::budget::budget;
-use crate::hir::{Binding, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type, TypeId};
+use crate::hir::{
+    Binding, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type, TypeId, Vars, assignable, join,
+    signature_output,
+};
 use crate::resolve::{Declared, Scope};
 
 /// Checks every goal's body and budget and fills them in. Goals whose name is taken are checked too (CC-ERR-04).
@@ -779,10 +782,9 @@ impl<'f, 'a> Body<'f, 'a> {
                 e
             })
             .collect();
+        let arg_types: Vec<Type> = args.iter().map(|a| a.ty.clone()).collect();
         for signature in &candidates {
-            let mut vars = Vars::default();
-            if signature.params.iter().zip(&args).all(|(s, a)| vars.unify(s, &a.ty)) {
-                let ty = vars.instantiate(&signature.output).unwrap_or(Type::Error);
+            if let Some(ty) = signature_output(signature, &arg_types) {
                 return (
                     ExprKind::Builtin {
                         name: builtin.name,
@@ -1326,35 +1328,6 @@ fn is(ty: &Type, wanted: &Type) -> bool {
     *ty == Type::Error || ty == wanted
 }
 
-/// The same type, where a type with an error matches anything (R-CMP-10).
-fn same(a: &Type, b: &Type) -> bool {
-    match (a, b) {
-        (Type::Error, _) | (_, Type::Error) => true,
-        (Type::Optional(a), Type::Optional(b)) | (Type::List(a), Type::List(b)) => same(a, b),
-        _ => a == b,
-    }
-}
-
-/// R-TYP-20: `from` is assignable to `to` iff they're the same, or `to` is `U?` and `from` is `U` or `Nothing`.
-pub(crate) fn assignable(from: &Type, to: &Type) -> bool {
-    same(from, to) || matches!(to, Type::Optional(inner) if *from == Type::Nothing || same(from, inner))
-}
-
-/// R-TYP-26: the least type both `a` and `b` are assignable to, if there is one.
-fn join(a: &Type, b: &Type) -> Option<Type> {
-    if assignable(a, b) {
-        Some(b.clone())
-    } else if assignable(b, a) {
-        Some(a.clone())
-    } else if *a == Type::Nothing {
-        Some(Type::Optional(Box::new(b.clone())))
-    } else if *b == Type::Nothing {
-        Some(Type::Optional(Box::new(a.clone())))
-    } else {
-        None
-    }
-}
-
 /// `a`, `a or b`, `a, b or c`.
 fn or_list(items: &[String]) -> String {
     joined(items, "or")
@@ -1370,85 +1343,5 @@ fn joined(items: &[String], word: &str) -> String {
         [] => String::new(),
         [one] => one.clone(),
         [init @ .., last] => format!("{} {word} {last}", init.join(", ")),
-    }
-}
-
-/// What `T` and `U` stand for in one call of a built-in.
-#[derive(Default)]
-struct Vars {
-    t: Option<Type>,
-    u: Option<Type>,
-}
-
-impl Vars {
-    fn slot(&mut self, shape: &Shape) -> Option<&mut Option<Type>> {
-        match shape {
-            Shape::T => Some(&mut self.t),
-            Shape::U => Some(&mut self.u),
-            _ => None,
-        }
-    }
-
-    /// `shape` as a type, if everything in it is known.
-    fn instantiate(&self, shape: &Shape) -> Option<Type> {
-        Some(match shape {
-            Shape::Number => Type::Number,
-            Shape::Text => Type::Text,
-            Shape::Boolean => Type::Boolean,
-            Shape::T => self.t.clone()?,
-            Shape::U => self.u.clone()?,
-            Shape::List(element) => Type::List(Box::new(self.instantiate(element)?)),
-            Shape::Optional(inner) => Type::Optional(Box::new(self.instantiate(inner)?)),
-            Shape::Lambda(..) => return None,
-        })
-    }
-
-    /// Whether an argument of type `ty` fits `shape`, fixing `T` and `U` the first time they're seen.
-    fn unify(&mut self, shape: &Shape, ty: &Type) -> bool {
-        match (shape, ty) {
-            (_, Type::Error) => true,
-            (Shape::T | Shape::U, _) => match self.slot(shape) {
-                Some(Some(bound)) => assignable(ty, bound),
-                Some(slot) => {
-                    *slot = Some(ty.clone());
-                    true
-                }
-                None => false,
-            },
-            (Shape::Optional(_), Type::Nothing) => true,
-            _ => self.exact(shape, ty),
-        }
-    }
-
-    /// Whether `ty` is exactly `shape`: inside a list, types are invariant (R-TYP-13).
-    fn exact(&mut self, shape: &Shape, ty: &Type) -> bool {
-        match (shape, ty) {
-            (_, Type::Error)
-            | (Shape::Number, Type::Number)
-            | (Shape::Text, Type::Text)
-            | (Shape::Boolean, Type::Boolean) => true,
-            (Shape::T | Shape::U, _) => match self.slot(shape) {
-                Some(Some(bound)) => same(ty, bound),
-                Some(slot) => {
-                    *slot = Some(ty.clone());
-                    true
-                }
-                None => false,
-            },
-            (Shape::List(s), Type::List(t)) | (Shape::Optional(s), Type::Optional(t)) => self.exact(s, t),
-            _ => false,
-        }
-    }
-
-    /// `shape` for a learner: its type if known, else what kind of value it is.
-    fn describe(&self, shape: &Shape, types: &[RecordType]) -> String {
-        if let Some(ty) = self.instantiate(shape) {
-            return ty.display(types);
-        }
-        match shape {
-            Shape::List(_) => "a list".to_owned(),
-            Shape::Optional(_) => "a value that may be `nothing`".to_owned(),
-            _ => "a value".to_owned(),
-        }
     }
 }

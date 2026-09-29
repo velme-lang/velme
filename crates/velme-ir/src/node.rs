@@ -256,6 +256,34 @@ pub enum Node {
     Call(Call),
 }
 
+impl Node {
+    /// The node's `kind` tag, for diagnostics; `kind_matches_the_serialized_tag` keeps it equal to the serde spelling.
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Node::Literal { .. } => "literal",
+            Node::Input { .. } => "input",
+            Node::Local { .. } => "local",
+            Node::Record { .. } => "record",
+            Node::List { .. } => "list",
+            Node::FieldGet { .. } => "field",
+            Node::BinaryOp { .. } => "binary",
+            Node::UnaryOp { .. } => "unary",
+            Node::Let { .. } => "let",
+            Node::Condition { .. } => "if",
+            Node::Narrow { .. } => "unwrap_or",
+            Node::Map { .. } => "map",
+            Node::Filter { .. } => "filter",
+            Node::Find { .. } => "find",
+            Node::Reduce { .. } => "reduce",
+            Node::Sort { .. } => "sort_by",
+            Node::All { .. } => "all",
+            Node::Any { .. } => "any",
+            Node::Builtin { .. } => "builtin",
+            Node::Call(_) => "call",
+        }
+    }
+}
+
 /// The `fn` or `key` of a collection node; lambdas are not values (R-IR-04).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -340,4 +368,49 @@ pub enum UnaryOperator {
     Not,
     /// True for nothing, an empty list or empty text (D-60).
     IsEmpty,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Node;
+
+    #[test]
+    fn kind_matches_the_serialized_tag() {
+        let input = r#"{"kind": "input", "name": "x"}"#;
+        let lambda = format!(r#"{{"param": "p", "body": {input}}}"#);
+        let nodes = [
+            r#"{"kind": "literal", "type": {"t": "Nothing"}, "value": null}"#.to_owned(),
+            input.to_owned(),
+            r#"{"kind": "local", "name": "x"}"#.to_owned(),
+            r#"{"kind": "record", "type": "R", "fields": {}}"#.to_owned(),
+            r#"{"kind": "list", "of": {"t": "Number"}, "items": []}"#.to_owned(),
+            format!(r#"{{"kind": "field", "of": {input}, "field": "f"}}"#),
+            format!(r#"{{"kind": "binary", "op": "add", "left": {input}, "right": {input}}}"#),
+            format!(r#"{{"kind": "unary", "op": "neg", "arg": {input}}}"#),
+            format!(r#"{{"kind": "let", "bind": [], "body": {input}}}"#),
+            format!(r#"{{"kind": "if", "cond": {input}, "then": {input}, "else": {input}}}"#),
+            format!(r#"{{"kind": "unwrap_or", "of": {input}, "default": {input}}}"#),
+            format!(r#"{{"kind": "map", "list": {input}, "fn": {lambda}}}"#),
+            format!(r#"{{"kind": "filter", "list": {input}, "fn": {lambda}}}"#),
+            format!(r#"{{"kind": "find", "list": {input}, "fn": {lambda}}}"#),
+            format!(
+                r#"{{"kind": "reduce", "list": {input}, "init": {input}, "fn": {{"acc": "a", "param": "p", "body": {input}}}}}"#
+            ),
+            format!(r#"{{"kind": "sort_by", "list": {input}, "key": {lambda}, "descending": false}}"#),
+            format!(r#"{{"kind": "all", "list": {input}, "fn": {lambda}}}"#),
+            format!(r#"{{"kind": "any", "list": {input}, "fn": {lambda}}}"#),
+            r#"{"kind": "builtin", "name": "sum", "args": []}"#.to_owned(),
+            r#"{"kind": "call", "binding": "b", "goal": "G", "goal_signature": "b3:00", "args": []}"#.to_owned(),
+        ];
+        let mut kinds = std::collections::BTreeSet::new();
+        for json in &nodes {
+            let node: Node = crate::from_json_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+            let tag = serde_json::to_value(&node)
+                .ok()
+                .and_then(|v| v["kind"].as_str().map(str::to_owned));
+            assert_eq!(tag.as_deref(), Some(node.kind()), "{json}");
+            kinds.insert(node.kind());
+        }
+        assert_eq!(kinds.len(), 20, "every variant is covered");
+    }
 }

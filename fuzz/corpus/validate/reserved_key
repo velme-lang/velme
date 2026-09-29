@@ -1,0 +1,1 @@
+{"ir_version":"0.1","builtins_version":"0.1","goal":"FindBadge","types":{},"inputs":[],"output":{"t":"Text"},"body":{"kind":"literal","type":{"t":"Number"},"value":{"$serde_json::private::Number":"1"}}}

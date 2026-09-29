@@ -1,0 +1,37 @@
+---
+source: crates/velme-ir/tests/validate.rs
+expression: "format!(\"{}\\n{}\", render_human(&diags, file, Some(&source), false),\nserde_json::to_string_pretty(&json).expect(\"diagnostics serialize\"))"
+input_file: tests/golden/ir/reject/field_on_optional.json
+---
+Error: The generated program broke a rule: this Player? may be nothing, so its fields can't be read yet.  [VL0402]
+    ╭─[ tests/golden/ir/goals.velme:40:1 ]
+    │
+ 40 │ ╭─▶ goal FindHighestJumpingPlayer(players: List<Player>) -> Player?:
+ 41 │ ├─▶     plan: "Return the player who jumps highest, or nothing for no players."
+    │ │                                                                                 
+    │ ╰───────────────────────────────────────────────────────────────────────────────── here
+    │     
+    │     Help: narrow it first with `unwrap_or`, or `if` and `is_empty`
+    │     
+    │     Note: at `/body/body`
+────╯
+
+[
+  {
+    "code": "VL0402",
+    "severity": "error",
+    "message": "The generated program broke a rule: this Player? may be nothing, so its fields can't be read yet.",
+    "file": "tests/golden/ir/goals.velme",
+    "span": {
+      "start": 1055,
+      "end": 1195,
+      "line": 40,
+      "column": 1
+    },
+    "labels": [],
+    "notes": [
+      "at `/body/body`"
+    ],
+    "help": "narrow it first with `unwrap_or`, or `if` and `is_empty`"
+  }
+]

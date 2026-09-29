@@ -11,6 +11,9 @@ authors.workspace = true
 [dependencies]
 schemars.workspace = true
 serde.workspace = true
+velme-builtins.workspace = true
+velme-diagnostics.workspace = true
+velme-sema.workspace = true
 # Number text is kept exactly, never read through `f64` (CC-DET-03, D-23); `from_json_str` bounds depth itself.
 serde_json = { workspace = true, features = ["arbitrary_precision", "unbounded_depth"] }
 

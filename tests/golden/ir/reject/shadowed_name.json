@@ -1,0 +1,116 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindHighestJumpingPlayer",
+  "types": {
+    "Player": {
+      "fields": [
+        [
+          "name",
+          {
+            "t": "Text"
+          }
+        ],
+        [
+          "jump_height",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ]
+      ]
+    }
+  },
+  "inputs": [
+    [
+      "players",
+      {
+        "t": "List",
+        "of": {
+          "t": "Record",
+          "name": "Player"
+        }
+      }
+    ]
+  ],
+  "output": {
+    "t": "Optional",
+    "of": {
+      "t": "Record",
+      "name": "Player"
+    }
+  },
+  "body": {
+    "kind": "let",
+    "bind": [
+      [
+        "p",
+        {
+          "kind": "builtin",
+          "name": "maximum",
+          "args": [
+            {
+              "kind": "map",
+              "list": {
+                "kind": "input",
+                "name": "players"
+              },
+              "fn": {
+                "param": "p",
+                "body": {
+                  "kind": "field",
+                  "of": {
+                    "kind": "local",
+                    "name": "p"
+                  },
+                  "field": "jump_height"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    ],
+    "body": {
+      "kind": "find",
+      "list": {
+        "kind": "input",
+        "name": "players"
+      },
+      "fn": {
+        "param": "p",
+        "body": {
+          "kind": "binary",
+          "op": "eq",
+          "left": {
+            "kind": "field",
+            "of": {
+              "kind": "local",
+              "name": "p"
+            },
+            "field": "jump_height"
+          },
+          "right": {
+            "kind": "unwrap_or",
+            "of": {
+              "kind": "local",
+              "name": "p"
+            },
+            "default": {
+              "kind": "literal",
+              "type": {
+                "t": "Number"
+              },
+              "value": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

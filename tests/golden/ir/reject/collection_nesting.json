@@ -1,0 +1,105 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindHighestJumpingPlayer",
+  "types": {
+    "Player": {
+      "fields": [
+        [
+          "name",
+          {
+            "t": "Text"
+          }
+        ],
+        [
+          "jump_height",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ]
+      ]
+    }
+  },
+  "inputs": [
+    [
+      "players",
+      {
+        "t": "List",
+        "of": {
+          "t": "Record",
+          "name": "Player"
+        }
+      }
+    ]
+  ],
+  "output": {
+    "t": "Optional",
+    "of": {
+      "t": "Record",
+      "name": "Player"
+    }
+  },
+  "body": {
+    "kind": "find",
+    "list": {
+      "kind": "input",
+      "name": "players"
+    },
+    "fn": {
+      "param": "p0",
+      "body": {
+        "kind": "any",
+        "list": {
+          "kind": "input",
+          "name": "players"
+        },
+        "fn": {
+          "param": "p1",
+          "body": {
+            "kind": "any",
+            "list": {
+              "kind": "input",
+              "name": "players"
+            },
+            "fn": {
+              "param": "p2",
+              "body": {
+                "kind": "any",
+                "list": {
+                  "kind": "input",
+                  "name": "players"
+                },
+                "fn": {
+                  "param": "p3",
+                  "body": {
+                    "kind": "any",
+                    "list": {
+                      "kind": "input",
+                      "name": "players"
+                    },
+                    "fn": {
+                      "param": "p4",
+                      "body": {
+                        "kind": "literal",
+                        "type": {
+                          "t": "Boolean"
+                        },
+                        "value": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

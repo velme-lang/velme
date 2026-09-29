@@ -1,0 +1,35 @@
+---
+source: crates/velme-ir/tests/validate.rs
+expression: "format!(\"{}\\n{}\", render_human(&diags, file, Some(&source), false),\nserde_json::to_string_pretty(&json).expect(\"diagnostics serialize\"))"
+input_file: tests/golden/ir/reject/calls_differ.json
+---
+Error: The generated program broke a rule: its call `rank` differs from the one in the goal's `call` block.  [VL0402]
+    ╭─[ tests/golden/ir/goals.velme:33:1 ]
+    │
+ 33 │ ╭─▶ goal BuildPlayerSummary(player: Player) -> Summary:
+    ┆ ┆   
+ 38 │ ├─▶     plan: "Build the summary from the score, rank and badge."
+    │ │                                                                   
+    │ ╰─────────────────────────────────────────────────────────────────── here
+    │     
+    │     Note: at `/calls/1`
+────╯
+
+[
+  {
+    "code": "VL0402",
+    "severity": "error",
+    "message": "The generated program broke a rule: its call `rank` differs from the one in the goal's `call` block.",
+    "file": "tests/golden/ir/goals.velme",
+    "span": {
+      "start": 820,
+      "end": 1053,
+      "line": 33,
+      "column": 1
+    },
+    "labels": [],
+    "notes": [
+      "at `/calls/1`"
+    ]
+  }
+]

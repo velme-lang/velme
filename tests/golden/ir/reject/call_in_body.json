@@ -1,0 +1,151 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindBadge",
+  "types": {
+    "Player": {
+      "fields": [
+        [
+          "name",
+          {
+            "t": "Text"
+          }
+        ],
+        [
+          "jump_height",
+          {
+            "t": "Number"
+          }
+        ],
+        [
+          "score",
+          {
+            "t": "Number"
+          }
+        ]
+      ]
+    }
+  },
+  "inputs": [
+    [
+      "player",
+      {
+        "t": "Record",
+        "name": "Player"
+      }
+    ]
+  ],
+  "output": {
+    "t": "Text"
+  },
+  "body": {
+    "kind": "if",
+    "cond": {
+      "kind": "binary",
+      "op": "ge",
+      "left": {
+        "kind": "field",
+        "of": {
+          "kind": "input",
+          "name": "player"
+        },
+        "field": "score"
+      },
+      "right": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 100.0
+      }
+    },
+    "then": {
+      "kind": "call",
+      "binding": "s",
+      "goal": "CalculateScore",
+      "goal_signature": "b3:00",
+      "args": [
+        {
+          "kind": "input",
+          "name": "player"
+        }
+      ]
+    },
+    "else": {
+      "kind": "if",
+      "cond": {
+        "kind": "binary",
+        "op": "and",
+        "left": {
+          "kind": "binary",
+          "op": "gt",
+          "left": {
+            "kind": "field",
+            "of": {
+              "kind": "input",
+              "name": "player"
+            },
+            "field": "jump_height"
+          },
+          "right": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 2.5
+          }
+        },
+        "right": {
+          "kind": "unary",
+          "op": "not",
+          "arg": {
+            "kind": "unary",
+            "op": "is_empty",
+            "arg": {
+              "kind": "field",
+              "of": {
+                "kind": "input",
+                "name": "player"
+              },
+              "field": "name"
+            }
+          }
+        }
+      },
+      "then": {
+        "kind": "builtin",
+        "name": "concat",
+        "args": [
+          {
+            "kind": "literal",
+            "type": {
+              "t": "Text"
+            },
+            "value": "Jumper\t"
+          },
+          {
+            "kind": "builtin",
+            "name": "to_text",
+            "args": [
+              {
+                "kind": "field",
+                "of": {
+                  "kind": "input",
+                  "name": "player"
+                },
+                "field": "jump_height"
+              }
+            ]
+          }
+        ]
+      },
+      "else": {
+        "kind": "literal",
+        "type": {
+          "t": "Text"
+        },
+        "value": "Rookie"
+      }
+    }
+  }
+}
