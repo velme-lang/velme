@@ -44,6 +44,15 @@ impl Checked {
     }
 }
 
+/// Why the checks stopped before the last item (R-CHK-08), and the items that had finished by then.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stopped {
+    /// The stopping failure.
+    pub diagnostic: Diagnostic,
+    /// The items evaluated before it, in source order.
+    pub finished: Vec<ItemReport>,
+}
+
 /// How one check item went.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemReport {
@@ -94,8 +103,13 @@ impl<'p> GoalChecks<'p> {
     /// The same checks, stopped from outside by `interrupt` — the run's wall-clock watchdog (`runtime/30` D-10) —
     /// wherever they are evaluated.
     pub fn watched(mut self, interrupt: Option<Interrupt>) -> Self {
-        self.interrupt = interrupt;
+        self.watch(interrupt);
         self
+    }
+
+    /// [`GoalChecks::watched`] in place, for a caller that starts a new run's watchdog for each of many invocations.
+    pub fn watch(&mut self, interrupt: Option<Interrupt>) {
+        self.interrupt = interrupt;
     }
 
     /// The checks and examples of `goal`, from the checked `program` whose source is `source`.
@@ -162,12 +176,12 @@ impl<'p> GoalChecks<'p> {
     /// `VL0606` for a list past its limit — stops the checks with that failure instead (R-CHK-08); `VL0607` reports a
     /// bug.
     pub fn run(&self, invocation: &Invocation) -> Result<Checked, Diagnostic> {
-        self.run_measured(invocation).0
+        self.run_measured(invocation).0.map_err(|stopped| stopped.diagnostic)
     }
 
     /// [`GoalChecks::run`], and what the checks spent whether they finished or not: the invocation's budget covers
-    /// them too (R-CHK-08), so a trace's figures include it.
-    pub fn run_measured(&self, invocation: &Invocation) -> (Result<Checked, Diagnostic>, Spent) {
+    /// them too (R-CHK-08), so a trace's figures include it. A run that stops keeps the items it finished first.
+    pub fn run_measured(&self, invocation: &Invocation) -> (Result<Checked, Stopped>, Spent) {
         let mut evaluator = match self.scope(invocation) {
             Ok(evaluator) => evaluator,
             Err(diagnostic) => {
@@ -175,16 +189,27 @@ impl<'p> GoalChecks<'p> {
                     fuel: invocation.fuel,
                     memory: invocation.memory,
                 };
-                return (Err(diagnostic), spent);
+                let stopped = Stopped {
+                    diagnostic,
+                    finished: Vec::new(),
+                };
+                return (Err(stopped), spent);
             }
         };
-        let checked = self.run_in(&mut evaluator, invocation);
+        let mut items = Vec::with_capacity(self.checks.len());
+        let outcome = self.run_in(&mut evaluator, invocation, &mut items);
         let spent = evaluator.spent();
-        let checked = checked.map(|items| Checked {
-            items,
-            fuel: spent.fuel.saturating_sub(invocation.fuel),
-            memory: spent.memory.saturating_sub(invocation.memory),
-        });
+        let checked = match outcome {
+            Ok(()) => Ok(Checked {
+                items,
+                fuel: spent.fuel.saturating_sub(invocation.fuel),
+                memory: spent.memory.saturating_sub(invocation.memory),
+            }),
+            Err(diagnostic) => Err(Stopped {
+                diagnostic,
+                finished: items,
+            }),
+        };
         (checked, spent)
     }
 
@@ -192,8 +217,8 @@ impl<'p> GoalChecks<'p> {
         &'s self,
         evaluator: &mut Evaluator<'s>,
         invocation: &Invocation,
-    ) -> Result<Vec<ItemReport>, Diagnostic> {
-        let mut items = Vec::with_capacity(self.checks.len());
+        items: &mut Vec<ItemReport>,
+    ) -> Result<(), Diagnostic> {
         for (check, lowered) in self.goal.checks.iter().zip(&self.checks) {
             let start = evaluator.spent();
             let cause = match evaluator.eval(lowered.node.trusted()) {
@@ -232,7 +257,7 @@ impl<'p> GoalChecks<'p> {
                 failure: Some(report.failure(self.goal, check, cause.as_ref(), invocation)),
             });
         }
-        Ok(items)
+        Ok(())
     }
 
     /// The parts of check item `index` evaluated on `invocation` (R-CHK-10), whether it holds or not: which values it

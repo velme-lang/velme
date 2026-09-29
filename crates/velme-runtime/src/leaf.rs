@@ -92,13 +92,15 @@ pub(crate) fn run_body(
         Err(stopped) => return Body::failed(stopped.0, stopped.1),
     };
     let (checked, spent) = checks.run_measured(&invocation);
-    let checked = match checked {
-        Ok(checked) => checked,
-        Err(diagnostic) => return Body::failed(diagnostic, spent),
+    let (items, stopped) = match checked {
+        Ok(checked) => (checked.items, None),
+        Err(stopped) => (stopped.finished.clone(), Some(stopped)),
     };
-    let failures = checked.failures();
-    let ran = checked
-        .items
+    let failures = match &stopped {
+        Some(stopped) => vec![stopped.diagnostic.clone()],
+        None => items.iter().filter_map(|item| item.failure.clone()).collect(),
+    };
+    let ran = items
         .into_iter()
         .map(|item| CheckRun {
             text: source
@@ -138,13 +140,13 @@ pub fn test_leaf(
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    let watchdog = Arc::new(Watchdog::start(options));
-    let interrupt = Some(watchdog.interrupt());
-    let checks = GoalChecks::new(program, goal, source)
-        .map_err(|d| vec![d])?
-        .watched(interrupt.clone());
+    let mut checks = GoalChecks::new(program, goal, source).map_err(|d| vec![d])?;
+    let examples = checks.examples().to_vec();
     let mut failures = Vec::new();
-    for example in checks.examples() {
+    for example in &examples {
+        // Each example is its own run, with its own wall-clock allowance (D-51).
+        let interrupt = Some(Arc::new(Watchdog::start(options)).interrupt());
+        checks.watch(interrupt.clone());
         let invocation = match invoke(
             program,
             goal,
@@ -169,7 +171,7 @@ pub fn test_leaf(
         }
     }
     if failures.is_empty() {
-        Ok(checks.examples().len())
+        Ok(examples.len())
     } else {
         Err(failures)
     }

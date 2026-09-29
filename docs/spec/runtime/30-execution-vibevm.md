@@ -141,7 +141,7 @@ so diagnostic text is itself deterministic.
 | `max_call_depth` | 32 | whole run tree | statically | `VL0605` |
 | `max_list_size` | 10 000 items | any list value | runtime | `VL0606` |
 | `max_output_bytes` | 1 MiB | canonical JSON of a goal's result | runtime | `VL0606` |
-| `max_wall_clock` | 60 s | whole top-level run | watchdog, safety net only (D-51) | `VL0603` |
+| `max_wall_clock` | 60 s | whole top-level run; each `velme test` example is its own run | watchdog, safety net only (D-51) | `VL0603` |
 
 **R-RUN-16** A goal's `budget` line (language/12) can only tighten these caps for that goal's own invocation:
 `cpu=Nms` → `max_fuel = N × 100 000` (fixed conversion constant `FUEL_PER_MS`, not measured, so deterministic);
