@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use velme_builtins::{Builtin, Shape};
-use velme_diagnostics::{Code, Diagnostic, Span, closest};
+use velme_diagnostics::{Code, Diagnostic, Span, closest, did_you_mean};
 use velme_syntax::Keyword;
 use velme_syntax::ast::{self, BinaryOp, CallArg, ExprKind as Ast, LiteralKind, UnaryOp};
 
@@ -279,10 +279,9 @@ impl<'f, 'a> Body<'f, 'a> {
                     callee.span,
                     format!("I don't know a goal called `{name}`."),
                 );
-                match closest(name, goals) {
-                    Some(suggestion) => diag.with_help(format!("did you mean `{suggestion}`?")),
-                    None => diag.with_help("declare it with `goal` in this file"),
-                }
+                let help =
+                    did_you_mean(name, goals).unwrap_or_else(|| "declare it with `goal` in this file".to_owned());
+                diag.with_help(help)
             }
         };
         self.diags.push(diag);
@@ -348,10 +347,8 @@ impl<'f, 'a> Body<'f, 'a> {
                 .iter()
                 .map(|p| p.name.as_str())
                 .chain(self.bindings.iter().map(|(n, _)| *n));
-            let help = match closest(name, visible) {
-                Some(suggestion) => format!("did you mean `{suggestion}`?"),
-                None => "a call can use the goal's inputs and the names of the calls above it".to_owned(),
-            };
+            let help = did_you_mean(name, visible)
+                .unwrap_or_else(|| "a call can use the goal's inputs and the names of the calls above it".to_owned());
             self.diags.push(
                 Diagnostic::new(
                     Code::UnknownName,
@@ -736,8 +733,8 @@ impl<'f, 'a> Body<'f, 'a> {
                             .filter(|b| b.in_checks)
                             .map(|b| b.name)
                             .chain(self.type_names());
-                        if let Some(suggestion) = closest(name, candidates) {
-                            diag = diag.with_help(format!("did you mean `{suggestion}`?"));
+                        if let Some(help) = did_you_mean(name, candidates) {
+                            diag = diag.with_help(help);
                         }
                     }
                     self.diags.push(diag);
@@ -1252,10 +1249,8 @@ impl<'f, 'a> Body<'f, 'a> {
             .chain(self.goal.params.iter().map(|p| p.name.as_str()))
             .chain(self.bindings.iter().map(|(n, _)| *n))
             .chain(["result"]);
-        let help = match closest(name, visible) {
-            Some(suggestion) => format!("did you mean `{suggestion}`?"),
-            None => "a check can use the goal's inputs, its `call:` names and `result`".to_owned(),
-        };
+        let help = did_you_mean(name, visible)
+            .unwrap_or_else(|| "a check can use the goal's inputs, its `call:` names and `result`".to_owned());
         self.diags.push(
             Diagnostic::new(Code::UnknownName, span, format!("I don't know what `{name}` is here.")).with_help(help),
         );
@@ -1272,8 +1267,8 @@ impl<'f, 'a> Body<'f, 'a> {
             field.span,
             format!("A `{owner}` doesn't have a field called `{}`.", field.name),
         );
-        match closest(&field.name, fields) {
-            Some(suggestion) => diag.with_help(format!("did you mean `{suggestion}`?")),
+        match did_you_mean(&field.name, fields) {
+            Some(help) => diag.with_help(help),
             None => diag,
         }
     }
@@ -1284,10 +1279,8 @@ impl<'f, 'a> Body<'f, 'a> {
             name.span,
             format!("I don't know a type called `{}`.", name.name),
         );
-        match closest(&name.name, self.type_names()) {
-            Some(suggestion) => diag.with_help(format!("did you mean `{suggestion}`?")),
-            None => diag.with_help("declare it with `type`"),
-        }
+        let help = did_you_mean(&name.name, self.type_names()).unwrap_or_else(|| "declare it with `type`".to_owned());
+        diag.with_help(help)
     }
 
     fn field_names_help(&self, id: TypeId) -> String {

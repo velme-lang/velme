@@ -144,6 +144,7 @@ fn check_limits(goals: &[Goal], decls: &[&ast::GoalDecl], diags: &mut Vec<Diagno
 
 /// Whether `n` for `key` is over the system cap, reporting `VL0605` if it is over the goal's effective limit.
 fn exceeds(n: u64, key: BudgetKey, goal: &Goal, decl: &ast::GoalDecl, diags: &mut Vec<Diagnostic>) -> bool {
+    let name = &goal.name;
     let (limit, cap) = match key {
         BudgetKey::Calls => (goal.budget.max_goal_calls, limits::MAX_GOAL_CALLS),
         BudgetKey::Depth => (goal.budget.max_call_depth, limits::MAX_CALL_DEPTH),
@@ -152,18 +153,17 @@ fn exceeds(n: u64, key: BudgetKey, goal: &Goal, decl: &ast::GoalDecl, diags: &mu
     if n <= limit {
         return false;
     }
-    let name = &goal.name;
-    let count = match key {
-        BudgetKey::Depth => format!("its calls would nest {n} deep, but its limit is {limit}"),
-        _ => format!("it would run {n} goals, counting itself, but its limit is {limit}"),
-    };
-    let fewer = match key {
-        BudgetKey::Depth => "make its chains of calls shorter",
-        _ => "call fewer goals below it — every call counts, even of the same goal",
-    };
-    let headline = match key {
-        BudgetKey::Depth => format!("Goals call each other too deeply while running `{name}`."),
-        _ => format!("Too many goals were called while running `{name}`."),
+    let (headline, count, fewer) = match key {
+        BudgetKey::Depth => (
+            format!("Goals call each other too deeply while running `{name}`."),
+            format!("its calls would nest {n} deep, but its limit is {limit}"),
+            "make its chains of calls shorter",
+        ),
+        _ => (
+            format!("Too many goals were called while running `{name}`."),
+            format!("it would run {n} goals, counting itself, but its limit is {limit}"),
+            "call fewer goals below it — every call counts, even of the same goal",
+        ),
     };
     let mut diag = Diagnostic::new(Code::CallLimitExceeded, decl.name.span, headline).with_note(count);
     let declared = decl
