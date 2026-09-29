@@ -736,13 +736,34 @@ impl Block {
 }
 
 fn goal_decl<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, GoalDecl, Extra<'t>> + Clone {
+    // A parameter with no type is still read, so the help can name it (AC-TYP-16); the next token is peeked for the
+    // message and left in place.
+    let next = any().map_with(|tok: Tok, e| (tok, e.span())).rewind().or_not();
     let param = name()
-        .then_ignore(punct(Punct::Colon))
-        .then(type_expr())
-        .map_with(|(name, ty), e| Param {
-            name,
-            ty,
-            span: sp(e.span()),
+        .then(punct(Punct::Colon).ignore_then(type_expr()).map(Ok).or(next.map(Err)))
+        .validate(|(name, ty), e, emitter| {
+            let ty = ty.unwrap_or_else(|next| {
+                let (found, at) = next.map_or_else(
+                    || ("the end of the file".to_owned(), e.span()),
+                    |(tok, at): (Tok, SimpleSpan)| (tok.to_string(), at),
+                );
+                emitter.emit(custom(
+                    at,
+                    format!("I didn't expect {found} here — I was looking for `:`."),
+                    &format!("give `{0}` a type, like `{0}: Number`", name.name),
+                ));
+                // Never type-checked: a file with a syntax error stops before sema.
+                TypeExpr {
+                    base: BaseType::Named { name: name.clone() },
+                    optional: false,
+                    span: name.span,
+                }
+            });
+            Param {
+                name,
+                ty,
+                span: sp(e.span()),
+            }
         });
     let block = choice((
         budget_line().map(Block::Budget),

@@ -541,6 +541,23 @@ fn ac_syn_18_calls_and_record_literals() {
     );
 }
 
+/// The parser half of AC-TYP-16; the JSON half is in `velme-ir`'s mapping tests.
+#[test]
+fn ac_typ_16_untyped_parameter_help_names_it() {
+    for (params, found) in [("(count)", "`)`"), ("(count, b: Number)", "`,`")] {
+        let (_, diags) = parse_str(&format!("goal A{params} -> Number:\n    plan: \"p\"\n"));
+        let [diag] = diags.as_slice() else {
+            panic!("one diagnostic for {params}: {diags:?}")
+        };
+        assert_eq!(diag.code, Code::UnexpectedToken);
+        assert_eq!(
+            diag.message,
+            format!("I didn't expect {found} here — I was looking for `:`.")
+        );
+        assert_eq!(diag.help.as_deref(), Some("give `count` a type, like `count: Number`"));
+    }
+}
+
 #[test]
 fn ac_err_02_every_reserved_word_as_a_name() {
     for kw in Keyword::ALL.iter().filter(|k| k.is_reserved()) {

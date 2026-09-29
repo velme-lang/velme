@@ -8,6 +8,7 @@ input_file: tests/golden/parser/reject/param_missing_type.velme
     {
       "code": "VL0101",
       "file": "param_missing_type.velme",
+      "help": "give `x` a type, like `x: Number`",
       "labels": [],
       "message": "I didn't expect `)` here — I was looking for `:`.",
       "notes": [],
