@@ -13,12 +13,14 @@ use tokio::runtime::Builder;
 use tokio::task::JoinSet;
 use velme_builtins::Value;
 use velme_builtins::limits::MAX_WALL_CLOCK_MS;
+use velme_check::Part;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_interp::{Budget, Error, Failure, Interrupt, Limits, Spent};
-use velme_sema::hir::{GoalId, Program};
+use velme_ir::Fingerprint;
+use velme_sema::hir::{GoalId, GoalKind, Program};
 
 use crate::clock::{Clock, SystemClock, Watchdog};
-use crate::leaf::{Progress, run_body};
+use crate::leaf::{Body, Progress, run_body};
 use crate::plan::waves;
 use crate::registry::Registry;
 
@@ -133,6 +135,11 @@ impl Failed {
         wrapped
     }
 
+    /// The goals from the one that ran down to the root cause: `BuildPlayerSummary › FindBadge` (`runtime/30` §8).
+    pub fn path(&self) -> &[String] {
+        &self.path
+    }
+
     /// The code of the root cause, which decides the exit status (R-RUN-10).
     pub fn code(&self) -> Option<velme_diagnostics::Code> {
         self.diagnostics.first().map(|d| d.code)
@@ -172,6 +179,8 @@ pub struct CallRun {
     pub callee: String,
     /// The wave it belongs to, from 1 (R-RUN-06).
     pub wave: usize,
+    /// The arguments it was called with, one per parameter; empty if it never started.
+    pub args: Vec<Value>,
     /// The callee's run; `None` if no later wave than a failed one starts, so this one never did (`skipped`, R-RUN-09).
     pub run: Option<GoalRun>,
 }
@@ -198,14 +207,40 @@ impl CallRun {
     }
 }
 
+/// One check item of a goal's invocation (`runtime/30` §8 `check`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckRun {
+    /// The item as written.
+    pub text: String,
+    /// Where it is in the source.
+    pub span: Span,
+    /// Whether it held.
+    pub passed: bool,
+    /// For a failed item, the value of every path and helper call in it, and the operands never evaluated
+    /// (`language/13` R-CHK-10); empty for an item that held.
+    pub values: Vec<Part>,
+}
+
 /// One invocation of a goal: what its calls did in source order, and how it ended. Nothing in it depends on how the run
 /// was scheduled except the timings, which comparisons ignore.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GoalRun {
     /// The goal.
     pub goal: String,
+    /// The hash of the locked artifact it ran; `None` if it never got that far.
+    pub artifact: Option<Fingerprint>,
+    /// What is synthesized for it.
+    pub kind: GoalKind,
+    /// Its inputs, by parameter name, in order.
+    pub inputs: Vec<(String, Value)>,
     /// One record per `call` binding, in block order, whether or not it ran.
     pub calls: Vec<CallRun>,
+    /// One record per check item in source order, if its checks ran.
+    pub checks: Vec<CheckRun>,
+    /// Fuel its body used; 0 if it never ran.
+    pub fuel: u64,
+    /// Memory its body used, in cumulative bytes allocated (`runtime/30` §7.1); 0 if it never ran.
+    pub memory: u64,
     /// Its value, once its calls, body and checks have all succeeded; otherwise why not.
     pub outcome: Result<Value, Failed>,
     /// When it ran.
@@ -213,6 +248,22 @@ pub struct GoalRun {
 }
 
 impl GoalRun {
+    /// A run of `goal` that has not got anywhere: an internal error until something else is known.
+    fn unstarted(goal: &str, kind: GoalKind) -> GoalRun {
+        GoalRun {
+            goal: goal.to_owned(),
+            artifact: None,
+            kind,
+            inputs: Vec::new(),
+            calls: Vec::new(),
+            checks: Vec::new(),
+            fuel: 0,
+            memory: 0,
+            outcome: Err(Failed::internal(goal)),
+            timing: Timing::default(),
+        }
+    }
+
     /// Whether the run would end the same way every time (`runtime/30` R-RUN-14, D-10): `false` if this invocation or any
     /// call under it was stopped by the wall-clock watchdog, `VL0603`, whatever else the run reports. Such an outcome
     /// is never cached and never a verification verdict.
@@ -281,13 +332,8 @@ pub fn run_goal_peak(
         .thread_stack_size(EVAL_STACK)
         .build();
     let Ok(runtime) = runtime else {
-        let failed = GoalRun {
-            goal: name.to_owned(),
-            calls: Vec::new(),
-            outcome: Err(Failed::internal(name)),
-            timing: Timing::default(),
-        };
-        return (failed, 0);
+        let kind = program.goals.get(goal.0).map_or(GoalKind::Leaf, |g| g.kind);
+        return (GoalRun::unstarted(name, kind), 0);
     };
     let shared = Arc::new(Shared {
         program: program.clone(),
@@ -333,16 +379,17 @@ fn invocation(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> Pin<Box<
 async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRun {
     let started = shared.origin.elapsed();
     let Some(target) = shared.program.goals.get(goal.0) else {
-        return GoalRun {
-            goal: String::new(),
-            calls: Vec::new(),
-            outcome: Err(Failed::internal("")),
-            timing: Timing::default(),
-        };
+        return GoalRun::unstarted("", GoalKind::Leaf);
     };
     let name = target.name.as_str();
     let mut run = GoalRun {
-        goal: name.to_owned(),
+        inputs: target
+            .params
+            .iter()
+            .map(|param| param.name.clone())
+            .zip(inputs.iter().cloned())
+            .collect(),
+        artifact: shared.registry.get(goal).map(|locked| locked.artifact),
         calls: target
             .bindings
             .iter()
@@ -354,11 +401,11 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                     .get(binding.callee.0)
                     .map_or_else(String::new, |g| g.name.clone()),
                 wave: binding.wave,
+                args: Vec::new(),
                 run: None,
             })
             .collect(),
-        outcome: Err(Failed::internal(name)),
-        timing: Timing::default(),
+        ..GoalRun::unstarted(name, target.kind)
     };
     if shared.registry.get(goal).is_none() {
         return run;
@@ -411,6 +458,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             Err(_) => return run,
         };
         spent = evaluated.1;
+        (run.fuel, run.memory) = (spent.fuel, spent.memory);
         let mut starts = Vec::new();
         for (i, args) in evaluated.0 {
             let Some(binding) = target.bindings.get(i) else {
@@ -420,6 +468,9 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         }
         let mut children = JoinSet::new();
         for (i, callee, args) in starts {
+            if let Some(call) = run.calls.get_mut(i) {
+                call.args.clone_from(&args);
+            }
             let shared = Arc::clone(&shared);
             children.spawn(async move { (i, invocation(shared, callee, args).await) });
         }
@@ -484,21 +535,18 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             let now = shared.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
             shared.peak.fetch_max(now, Ordering::SeqCst);
             let start = shared.origin.elapsed();
-            let result = shared
-                .registry
-                .get(goal)
-                .ok_or_else(|| vec![Diagnostic::internal_error()])
-                .and_then(|locked| {
-                    run_body(
-                        &shared.program,
-                        goal,
-                        &shared.source,
-                        locked,
-                        inputs,
-                        bindings,
-                        progress,
-                    )
-                });
+            let result = match shared.registry.get(goal) {
+                Some(locked) => run_body(
+                    &shared.program,
+                    goal,
+                    &shared.source,
+                    locked,
+                    inputs,
+                    bindings,
+                    progress,
+                ),
+                None => Body::internal(),
+            };
             let end = shared.origin.elapsed();
             shared.in_flight.fetch_sub(1, Ordering::SeqCst);
             (result, start, end)
@@ -506,8 +554,11 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         .await
     };
     match body {
-        Ok((result, start, end)) => {
-            run.outcome = result.map_err(|diagnostics| Failed::new(name, diagnostics));
+        Ok((body, start, end)) => {
+            run.fuel = body.fuel;
+            run.memory = body.memory;
+            run.checks = body.checks;
+            run.outcome = body.result.map_err(|diagnostics| Failed::new(name, diagnostics));
             run.timing = Timing {
                 start: if has_calls { started } else { start },
                 end,

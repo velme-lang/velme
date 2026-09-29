@@ -1,0 +1,13 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+CreateLevelSummary
+At the same time:
+  - Count enemies — Return the level's enemy_count.
+  - Count treasures — Return the level's treasure_count.
+  - Calculate level score — Return the level's base_score.
+At the same time:
+  - Rate difficulty — Rate the level Hard for at least 10 enemies, Medium for at least 5, Easy otherwise.
+  - Calculate reward — The reward is the score plus 50 for every treasure.
+Finally: Combine the score, difficulty, and reward into one level summary.

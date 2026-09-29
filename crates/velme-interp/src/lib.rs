@@ -122,9 +122,26 @@ pub fn run(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, limits: Limit
 /// [`run`] for an invocation that has already spent `budget.spent` of its limits, evaluating the arguments of its
 /// calls (`runtime/30` R-RUN-17): the body spends from what is left, and [`Output`] counts all of it.
 pub fn run_after(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, budget: Budget) -> Result<Output, Failure> {
+    let (value, spent) = run_measured(ir, inputs, bindings, budget);
+    Ok(Output {
+        value: value?,
+        fuel: spent.fuel,
+        memory: spent.memory,
+    })
+}
+
+/// [`run_after`], returning what the invocation had spent in all whether the body finished or failed, so a trace can
+/// show the work of a failed goal (`runtime/30` §8).
+pub fn run_measured(
+    ir: &ValidIr,
+    inputs: Vec<Value>,
+    bindings: Vec<Value>,
+    budget: Budget,
+) -> (Result<Value, Failure>, Spent) {
+    let spent = budget.spent;
     let goal = ir.goal();
     if inputs.len() != goal.inputs.len() || bindings.len() != goal.calls.len() {
-        return Err(Error::Builtin(velme_builtins::Error::Internal).into());
+        return (Err(Error::Builtin(velme_builtins::Error::Internal).into()), spent);
     }
     let mut evaluator = Evaluator::from_budget(budget);
     for ((name, _), value) in goal.inputs.iter().zip(inputs) {
@@ -133,13 +150,8 @@ pub fn run_after(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, budget:
     for (velme_ir::CallNode::Call(call), value) in goal.calls.iter().zip(bindings) {
         evaluator.bind_local(&call.binding, value);
     }
-    let value = evaluator.eval(ir.body())?;
-    let spent = evaluator.spent();
-    Ok(Output {
-        value,
-        fuel: spent.fuel,
-        memory: spent.memory,
-    })
+    let value = evaluator.eval(ir.body());
+    (value, evaluator.spent())
 }
 
 /// The arguments of the `index`th call of `ir`, evaluated on `inputs` and on the `bindings` known so far: one slot per

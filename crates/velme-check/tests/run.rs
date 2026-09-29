@@ -85,6 +85,11 @@ goal Ranges(n: Number) -> Number:
     plan: "Anything."
     check:
         - sum(range(n)) >= 0
+
+goal Gate(ok: Boolean) -> Number:
+    plan: "Anything."
+    check:
+        - result > 0 and ok
 "#;
 
 /// The JSON `text` decoded as a value of `ty`.
@@ -167,7 +172,6 @@ fn ac_chk_04_failed_equality_shows_expected_received_and_bindings() {
             "`rank` = 4",
             r#"input `player` = {"name":"Lina","score":820}"#,
             "call `score` = 820",
-            "call `rank` = 4",
         ]
     );
 }
@@ -285,7 +289,6 @@ fn values_are_those_of_the_deciding_element() {
             "`xs` = [5,-1]",
             "`x` = -1",
             "`x < 10` was not evaluated",
-            "input `xs` = [5,-1]",
         ]
     );
     // The inner quantifier ran for `[1]`, but not for `[5,6,7]`, which decided the outer one.
@@ -298,7 +301,6 @@ fn values_are_those_of_the_deciding_element() {
             "`g.length` = 3",
             "`g` = [5,6,7]",
             "`(every x in g has x > 0)` was not evaluated",
-            "input `gs` = [[1],[5,6,7]]",
         ]
     );
 }
@@ -308,7 +310,7 @@ fn values_are_those_of_the_deciding_element() {
 fn inner_quantifiers_report_only_under_a_deciding_one() {
     let checked = check("Groups", &["[[1, -1], [-2]]"], &[], "0");
     let notes = &checked.items[1].failure.as_ref().expect("fails").notes;
-    assert_eq!(notes, &["`gs` = [[1,-1],[-2]]", "input `gs` = [[1,-1],[-2]]"]);
+    assert_eq!(notes, &["`gs` = [[1,-1],[-2]]"]);
 }
 
 #[test]
@@ -413,4 +415,20 @@ fn right_ir_passes_its_examples() {
         }
     });
     assert!(diags.is_empty(), "{diags:#?}");
+}
+
+/// An input the check never evaluated is still listed with its value: only a value note dedupes it (R-CHK-06, R-CHK-10).
+#[test]
+fn an_input_named_only_as_not_evaluated_keeps_its_value_note() {
+    let diags = failures(&check("Gate", &["true"], &[], "0"));
+    assert_eq!(
+        diags[0].notes,
+        [
+            "Expected: > 0",
+            "Received: 0",
+            "`result` = 0",
+            "`ok` was not evaluated",
+            "input `ok` = true",
+        ]
+    );
 }

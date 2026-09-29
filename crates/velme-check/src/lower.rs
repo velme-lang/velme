@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 use velme_diagnostics::{Diagnostic, Span};
-use velme_ir::{BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator};
+use velme_ir::{
+    BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator, ir_type,
+};
 use velme_sema::hir::{BinaryOp, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp};
 
 /// The local a lowered check reads the goal's output from (`language/13` R-CHK-02).
@@ -352,26 +354,6 @@ fn number(text: &str) -> Option<Json> {
         trimmed.to_owned()
     };
     serde_json::from_str(&format!("{sign}{digits}")).ok()
-}
-
-/// `ty` as IR (`compiler/21` §2.1).
-fn ir_type(program: &Program, ty: &Type) -> Option<IrType> {
-    Some(match ty {
-        Type::Number => IrType::Number {},
-        Type::Text => IrType::Text {},
-        Type::Boolean => IrType::Boolean {},
-        Type::Nothing => IrType::Nothing {},
-        Type::Optional(inner) => IrType::Optional {
-            of: Box::new(ir_type(program, inner)?),
-        },
-        Type::List(element) => IrType::List {
-            of: Box::new(ir_type(program, element)?),
-        },
-        Type::Record(id) => IrType::Record {
-            name: program.record(*id)?.name.clone(),
-        },
-        Type::Error => return None,
-    })
 }
 
 /// Some value of `ty`, as the JSON of a literal: the never-evaluated default of a narrowing `unwrap_or`. Records are

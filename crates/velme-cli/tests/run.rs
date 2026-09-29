@@ -22,7 +22,8 @@ const FIXTURES: [&str; 2] = ["add", "add_broken"];
 
 /// The fixture projects made from an example of the launch demos, with the IR of each of its goals in
 /// `tests/fixtures/run/<name>.ir/<Goal>.json`: the example's path by fixture name.
-const EXAMPLES: [(&str, &str); 5] = [
+const EXAMPLES: [(&str, &str); 6] = [
+    ("hello", "examples/beginner/hello.velme"),
     ("find_badge", "examples/beginner/find_badge.velme"),
     ("double_then_add_one", "examples/beginner/double_then_add_one.velme"),
     ("player_summary", "examples/intermediate/player_summary.velme"),
@@ -388,7 +389,7 @@ fn ac_run_02_run_of_a_wired_goal_shows_its_result() {
     let run = velme(&["run", &file, "--goal", "Main", "--arg", "x=4"]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("Main  ✓\n\nResult:\n9\n", "", 0)
+        ("Double  ✓\nAddOne  ✓\nMain    ✓\n\nResult:\n9\n", "", 0)
     );
     let run = velme(&["run", &file, "--goal", "Main", "--arg", "x=0.5", "--json"]);
     assert_eq!(run.code, 0, "{}", run.stdout);
@@ -425,11 +426,14 @@ fn the_launch_demos_run_end_to_end() {
     let file = example_file("order_total", "order_total.velme");
     let big = r#"items=[{"price":100,"quantity":3}]"#;
     let run = velme(&["run", &file, "--goal", "OrderTotal", "--arg", big]);
-    assert_eq!(run.stdout, "OrderTotal  ✓\n\nResult:\n270\n");
+    assert_eq!(
+        run.stdout,
+        "Subtotal    ✓\nDiscount    ✓\nShipping    ✓\nOrderTotal  ✓\n\nResult:\n270\n"
+    );
 }
 
 /// The result is byte-identical for `--jobs 1` and `--jobs 8` on the golden programs (AC-RUN-04, result half; the trace
-/// half follows the trace model in M4c).
+/// half is `ac_run_04_the_trace_is_the_same_for_every_jobs_value`).
 #[test]
 fn ac_run_04_the_output_is_the_same_for_every_jobs_value() {
     let level = r#"level={"enemy_count":12,"treasure_count":0,"base_score":9}"#;
@@ -485,7 +489,8 @@ goal Slow(n: Number) -> Number:\n    plan: \"Count, then divide by zero.\"\n\n\
 goal Fast(n: Number) -> Number:\n    plan: \"Divide by zero.\"\n\n\
 goal Later(n: Number) -> Number:\n    plan: \"Return n.\"\n\n\
 goal Both(n: Number) -> Number:\n    call:\n        first = Slow(n)\n        second = Fast(n)\n        \
-third = Later(first)\n    plan: \"Add them.\"\n";
+third = Later(first)\n    plan: \"Add them.\"\n\n\
+goal Top(n: Number) -> Number:\n    call:\n        a = Later(n)\n    plan: \"Return a.\"\n    check:\n        - result < 0\n";
     fs::write(dir.join("both.velme"), source).expect("source");
     let program = program(source);
     let number = serde_json::json!({"t": "Number"});
@@ -501,6 +506,7 @@ third = Later(first)\n    plan: \"Add them.\"\n";
         ("Fast", divide(&n)),
         ("Later", n.clone()),
         ("Both", serde_json::json!({"kind": "local", "name": "third"})),
+        ("Top", serde_json::json!({"kind": "local", "name": "a"})),
     ];
     for (goal, body) in bodies {
         let calls = velme_ir::calls(&program, goal_id(&program, goal)).expect("calls");
@@ -531,8 +537,48 @@ third = Later(first)\n    plan: \"Add them.\"\n";
         "{message}"
     );
     insta::assert_snapshot!(one.stdout);
+    // The trace is the same too, and lists what really happened to every call, in source order (AC-RUN-03, AC-RUN-04).
+    let traced = |jobs: &str| {
+        velme(&[
+            "trace", file, "--goal", "Both", "--arg", "n=3000", "--jobs", jobs, "--json",
+        ])
+    };
+    let (one, eight) = (traced("1"), traced("8"));
+    assert_eq!(one.code, 3, "{}", one.stderr);
+    assert_eq!(without_durations(&json(&one)), without_durations(&json(&eight)));
+    let trace = &json(&one)["results"][0]["trace"];
+    let calls = trace["goal"]["calls"].as_array().expect("calls");
+    let seen: Vec<(&str, &str)> = calls
+        .iter()
+        .map(|c| {
+            (
+                c["binding"].as_str().expect("binding"),
+                c["outcome"].as_str().expect("outcome"),
+            )
+        })
+        .collect();
+    assert_eq!(seen, [("first", "failed"), ("second", "failed"), ("third", "skipped")]);
+    assert_eq!(trace["goal"]["failure"]["path"], serde_json::json!(["Both", "Slow"]));
+    assert_eq!(trace["goal"]["failure"]["code"], "VL0602");
+    // The human trace says what happened first and the code after it (`tooling/40` §3.5).
+    let text = velme(&["trace", file, "--goal", "Both", "--arg", "n=3"]);
+    assert!(
+        text.stdout.contains("no answer.  [VL0602]  (Both › Slow)"),
+        "{}",
+        text.stdout
+    );
     let human = velme(&["run", file, "--goal", "Both", "--arg", "n=3"]);
     assert_eq!(human.code, 3);
+    assert_eq!(human.stdout, "Slow   ✗\nFast   ✗\nLater  skipped\nBoth   ✗\n");
+    // A failed check after successful calls: each call's value, then the check with what it expected and got.
+    let top = velme(&["run", file, "--goal", "Top", "--arg", "n=3"]);
+    assert_eq!(top.code, 3, "{}", top.stderr);
+    assert_eq!(top.stdout, "Later  ✓ 3\nTop    ✗\n");
+    assert!(
+        top.stderr.contains("`Top` didn't pass its check: `result < 0`."),
+        "{}",
+        top.stderr
+    );
     assert!(
         human.stderr.contains("`Both` also failed because `Fast` failed"),
         "{}",
@@ -707,4 +753,279 @@ fn ac_run_08_division_by_zero_prints_no_value() {
     assert_eq!(result["status"], "failed");
     assert_eq!(result["diagnostics"][0]["code"], "VL0602");
     assert!(result.get("result").is_none_or(Value::is_null), "{result}");
+}
+
+// ---- velme explain, velme trace ----
+
+/// Every example of `examples/` with the goal and input the determinism tests run it on (AC-QA-05): its fixture project
+/// (a copy of the example with hand-written IR, D-16), the goal and the `--arg`s.
+const RUNS: [(&str, &str, &str, &[&str]); 7] = [
+    ("add", "add.velme", "Add", &["a=2", "b=3"]),
+    ("hello", "hello.velme", "SayHello", &[r#"name="Lina""#]),
+    (
+        "find_badge",
+        "find_badge.velme",
+        "FindBadge",
+        &[r#"player={"name":"Lina","score":820}"#],
+    ),
+    ("double_then_add_one", "double_then_add_one.velme", "Main", &["x=4"]),
+    (
+        "player_summary",
+        "player_summary.velme",
+        "BuildPlayerSummary",
+        &[r#"player={"name":"Lina","jump_height":3,"score":820}"#],
+    ),
+    (
+        "level_summary",
+        "level_summary.velme",
+        "CreateLevelSummary",
+        &[r#"level={"enemy_count":7,"treasure_count":3,"base_score":120}"#],
+    ),
+    (
+        "order_total",
+        "order_total.velme",
+        "OrderTotal",
+        &[r#"items=[{"price":10,"quantity":3},{"price":5,"quantity":1}]"#],
+    ),
+];
+
+/// The JSON with every timing field, which differs from run to run, removed (`runtime/30` §8): they end in `_us`.
+fn without_durations(json: &Value) -> Value {
+    match json {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(key, _)| !key.ends_with("_us"))
+                .map(|(key, value)| (key.clone(), without_durations(value)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(without_durations).collect()),
+        other => other.clone(),
+    }
+}
+
+/// `velme trace --json` of a fixture project's goal with `jobs` workers.
+fn trace(name: &str, file: &str, goal: &str, args: &[&str], jobs: &str) -> Run {
+    let file = example_file(name, file);
+    let mut command = vec!["trace", file.as_str(), "--goal", goal, "--jobs", jobs, "--json"];
+    for arg in args {
+        command.extend(["--arg", arg]);
+    }
+    velme(&command)
+}
+
+/// The explanation of the three launch demos is the golden text: waves as "First / Then / At the same time / Finally",
+/// each call by its goal in words and its plan's first sentence (AC-RUN-10, R-GOAL-16, R-RUN-22, R-RUN-23). A project
+/// with no lock is enough: it reads no artifact.
+#[test]
+fn ac_run_10_explain_matches_the_golden_text() {
+    let cases = [
+        ("examples/intermediate/player_summary.velme", "BuildPlayerSummary"),
+        ("examples/games/level_summary.velme", "CreateLevelSummary"),
+        ("examples/professional/order_total.velme", "OrderTotal"),
+    ];
+    for (file, goal) in cases {
+        let run = velme(&["explain", file, "--goal", goal]);
+        assert_eq!((run.stderr.as_str(), run.code), ("", 0), "{goal}");
+        insta::assert_snapshot!(format!("explain_{goal}"), run.stdout);
+    }
+    // All three parallel calls of a goal are one group (R-RUN-23), and a leaf has none.
+    let run = velme(&["explain", "examples/beginner/find_badge.velme", "--goal", "FindBadge"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.contains("This goal calls no others: Give the player Gold"),
+        "{}",
+        run.stdout
+    );
+}
+
+/// `velme explain` is byte-identical across runs, needs no lock and no artifact, and changes nothing. No provider
+/// exists to be called before M5a, so the panicking-provider half of the criterion arrives with that trait
+/// (AC-CLI-07, AC-CMP-02).
+#[test]
+fn ac_cli_07_explain_is_byte_identical_and_writes_nothing() {
+    let project = copy("player_summary", "ac_cli_07");
+    let before = tree(&project);
+    let file = project.join("player_summary.velme");
+    let file = file.to_str().expect("UTF-8 path");
+    let first = velme(&["explain", file, "--goal", "BuildPlayerSummary"]);
+    assert_eq!(first.code, 0, "{}", first.stderr);
+    for _ in 0..20 {
+        let again = velme(&["explain", file, "--goal", "BuildPlayerSummary"]);
+        assert_eq!(
+            (&again.stdout, &again.stderr, again.code),
+            (&first.stdout, &first.stderr, 0)
+        );
+    }
+    // Without the store and the lock, the same words.
+    let bare = velme(&[
+        "explain",
+        "examples/intermediate/player_summary.velme",
+        "--goal",
+        "BuildPlayerSummary",
+    ]);
+    assert_eq!(bare.stdout, first.stdout);
+    assert_eq!(tree(&project), before);
+    let json = velme(&["explain", file, "--goal", "BuildPlayerSummary", "--json"]);
+    assert_eq!(json.code, 0, "{}", json.stderr);
+    assert_eq!(self::json(&json)["results"][0]["result"], first.stdout);
+    let wrong = velme(&["explain", file, "--goal", "Nope"]);
+    assert_eq!(wrong.code, 64, "{}", wrong.stderr);
+}
+
+/// The trace, without durations, is byte-identical for `--jobs 1` and `--jobs 8` on the golden programs, and lists the
+/// calls in source order (AC-RUN-04 trace half, AC-CLI-06). The two failing siblings are in
+/// `failed_siblings_report_the_lowest_source_order_failure`.
+#[test]
+fn ac_run_04_the_trace_is_the_same_for_every_jobs_value() {
+    for (name, file, goal, args) in RUNS {
+        let one = trace(name, file, goal, args, "1");
+        let eight = trace(name, file, goal, args, "8");
+        assert_eq!((one.code, eight.code), (0, 0), "{name}: {}", one.stderr);
+        assert_eq!(
+            without_durations(&json(&one)).to_string(),
+            without_durations(&json(&eight)).to_string(),
+            "{name}"
+        );
+    }
+    // Source order, not completion order: the five calls of the games example, whatever finished first.
+    let level = &RUNS[5];
+    let run = trace(level.0, level.1, level.2, level.3, "8");
+    let envelope = json(&run);
+    let calls = envelope["results"][0]["trace"]["goal"]["calls"]
+        .as_array()
+        .expect("calls");
+    let bindings: Vec<&str> = calls.iter().map(|c| c["binding"].as_str().expect("binding")).collect();
+    assert_eq!(bindings, ["enemies", "treasures", "score", "difficulty", "reward"]);
+    let waves: Vec<u64> = calls.iter().map(|c| c["wave"].as_u64().expect("wave")).collect();
+    assert_eq!(waves, [1, 1, 1, 2, 2]);
+    // The output as printed, so the snapshot shows the order of the fields; only the timing lines are left out.
+    let timing = ["\"start_us\"", "\"end_us\"", "\"duration_us\""];
+    let printed: String = run
+        .stdout
+        .lines()
+        .filter(|line| !timing.iter().any(|key| line.trim_start().starts_with(key)))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    insta::assert_snapshot!("trace_level_summary_json", printed);
+}
+
+/// The human trace of the parallel demo, calls in source order with each goal's nested event (`runtime/30` §8).
+#[test]
+fn trace_prints_every_call_in_source_order() {
+    let file = example_file("player_summary", "player_summary.velme");
+    let player = r#"player={"name":"Lina","jump_height":3,"score":820}"#;
+    let first = velme(&[
+        "trace",
+        &file,
+        "--goal",
+        "BuildPlayerSummary",
+        "--arg",
+        player,
+        "--jobs",
+        "1",
+    ]);
+    let second = velme(&[
+        "trace",
+        &file,
+        "--goal",
+        "BuildPlayerSummary",
+        "--arg",
+        player,
+        "--jobs",
+        "8",
+    ]);
+    assert_eq!((first.code, first.stderr.as_str()), (0, ""));
+    assert_eq!(first.stdout, second.stdout);
+    let score = first.stdout.find("score = CalculateScore").expect("the first call");
+    let badge = first.stdout.find("badge = FindBadge").expect("the second call");
+    assert!(score < badge, "{}", first.stdout);
+    insta::assert_snapshot!(first.stdout);
+}
+
+/// Each example of `examples/`, 50 times over with the workers varying, gives the same result and the same trace
+/// without durations (AC-QA-05, AC-RDM-09 interpreter half, INV-3).
+#[test]
+fn ac_qa_05_every_example_is_deterministic_across_fifty_runs() {
+    let mut examples: Vec<String> = Vec::new();
+    for group in fs::read_dir(repo("examples")).expect("examples") {
+        let group = group.expect("entry").path();
+        if group.is_dir() {
+            for file in fs::read_dir(&group).expect("group") {
+                let file = file.expect("entry").path();
+                if file.extension().is_some_and(|e| e == "velme") {
+                    examples.push(file.file_name().expect("name").to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+    examples.sort();
+    let mut covered: Vec<String> = RUNS.iter().map(|r| r.1.to_owned()).collect();
+    covered.sort();
+    assert_eq!(examples, covered, "every example has a run in RUNS");
+    let jobs = ["1", "2", "3", "8"];
+    for (name, file, goal, args) in RUNS {
+        let mut reference: Option<String> = None;
+        for i in 0..50 {
+            let run = trace(name, file, goal, args, jobs[i % jobs.len()]);
+            assert_eq!(run.code, 0, "{name} run {i}: {}", run.stderr);
+            let seen = without_durations(&json(&run)).to_string();
+            assert_eq!(reference.get_or_insert_with(|| seen.clone()), &seen, "{name} run {i}");
+        }
+    }
+}
+
+/// Records come out with their fields in declaration order, as the sample of `tooling/40` §3.3 shows: in the result of
+/// `velme run`, in its `--json` envelope and in every value of a trace (R-TYP-23).
+#[test]
+fn records_keep_their_declaration_order() {
+    let player = r#"player={"name":"Lina","jump_height":3,"score":820}"#;
+    let file = example_file("player_summary", "player_summary.velme");
+    let run = velme(&["run", &file, "--goal", "BuildPlayerSummary", "--arg", player]);
+    assert!(
+        run.stdout
+            .ends_with("Result:\n{\n  \"name\": \"Lina\",\n  \"score\": 820,\n  \"badge\": \"Silver\"\n}\n"),
+        "{}",
+        run.stdout
+    );
+    let json = velme(&[
+        "trace",
+        &file,
+        "--goal",
+        "BuildPlayerSummary",
+        "--arg",
+        player,
+        "--json",
+    ]);
+    let compact: String = json.stdout.split_whitespace().collect();
+    assert!(
+        compact.contains(r#"{"name":"Lina","jump_height":3,"score":820}"#),
+        "{}",
+        json.stdout
+    );
+    assert!(
+        compact.contains(r#"{"name":"Lina","score":820,"badge":"Silver"}"#),
+        "{}",
+        json.stdout
+    );
+}
+
+/// A value past `max_output_bytes` is left out of the trace with `truncated: true`, never written as `null`, which is
+/// `nothing` (R-RUN-20).
+#[test]
+fn a_value_past_the_output_limit_is_truncated_in_the_trace() {
+    let file = example_file("hello", "hello.velme");
+    let name = "a".repeat(1_100_000);
+    let input = format!(r#"{{"name": "{name}"}}"#);
+    let run = velme_in(
+        &repo(""),
+        &["trace", &file, "--goal", "SayHello", "--input", "-", "--json"],
+        input.as_bytes(),
+    );
+    assert_eq!(run.code, 3, "{}", &run.stderr[..run.stderr.len().min(500)]);
+    let trace = &json(&run)["results"][0]["trace"]["goal"];
+    assert_eq!(trace["inputs"][0]["name"], "name");
+    assert_eq!(trace["inputs"][0]["truncated"], true);
+    assert!(trace["inputs"][0].get("value").is_none());
+    assert_eq!(trace["outcome"], "failed");
+    assert_eq!(trace["failure"]["code"], "VL0606");
 }

@@ -108,11 +108,12 @@ impl<'ir> Evaluator<'ir> {
         self.fuel
     }
 
-    /// The fuel and bytes spent so far.
+    /// The fuel and bytes spent so far, never more than the limits: the charge that ran over a limit stopped the
+    /// evaluation, so what was spent is the limit itself.
     pub fn spent(&self) -> Spent {
         Spent {
-            fuel: self.fuel,
-            memory: self.memory,
+            fuel: self.fuel.min(self.max_fuel),
+            memory: self.memory.min(self.max_memory),
         }
     }
 

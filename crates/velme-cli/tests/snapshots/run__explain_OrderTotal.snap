@@ -1,0 +1,9 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: run.stdout
+---
+OrderTotal
+First: Subtotal — Add up price times quantity for every item.
+Then: Discount — Take 10% off totals over 100.
+Then: Shipping — Add 5 for shipping unless the total is over 50.
+The answer is `result`.

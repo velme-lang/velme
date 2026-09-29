@@ -18,8 +18,4 @@ Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
    │ Note 4: `a` = 2
    │ 
    │ Note 5: `b` = 3
-   │ 
-   │ Note 6: input `a` = 2
-   │ 
-   │ Note 7: input `b` = 3
 ───╯

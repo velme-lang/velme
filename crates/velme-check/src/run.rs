@@ -33,6 +33,8 @@ pub struct Checked {
     pub items: Vec<ItemReport>,
     /// The fuel the checks spent.
     pub fuel: u64,
+    /// The bytes the checks allocated (`runtime/30` §7.1).
+    pub memory: u64,
 }
 
 impl Checked {
@@ -160,7 +162,37 @@ impl<'p> GoalChecks<'p> {
     /// `VL0606` for a list past its limit — stops the checks with that failure instead (R-CHK-08); `VL0607` reports a
     /// bug.
     pub fn run(&self, invocation: &Invocation) -> Result<Checked, Diagnostic> {
-        let mut evaluator = self.scope(invocation)?;
+        self.run_measured(invocation).0
+    }
+
+    /// [`GoalChecks::run`], and what the checks spent whether they finished or not: the invocation's budget covers
+    /// them too (R-CHK-08), so a trace's figures include it.
+    pub fn run_measured(&self, invocation: &Invocation) -> (Result<Checked, Diagnostic>, Spent) {
+        let mut evaluator = match self.scope(invocation) {
+            Ok(evaluator) => evaluator,
+            Err(diagnostic) => {
+                let spent = Spent {
+                    fuel: invocation.fuel,
+                    memory: invocation.memory,
+                };
+                return (Err(diagnostic), spent);
+            }
+        };
+        let checked = self.run_in(&mut evaluator, invocation);
+        let spent = evaluator.spent();
+        let checked = checked.map(|items| Checked {
+            items,
+            fuel: spent.fuel.saturating_sub(invocation.fuel),
+            memory: spent.memory.saturating_sub(invocation.memory),
+        });
+        (checked, spent)
+    }
+
+    fn run_in<'s>(
+        &'s self,
+        evaluator: &mut Evaluator<'s>,
+        invocation: &Invocation,
+    ) -> Result<Vec<ItemReport>, Diagnostic> {
         let mut items = Vec::with_capacity(self.checks.len());
         for (check, lowered) in self.goal.checks.iter().zip(&self.checks) {
             let start = evaluator.fuel();
@@ -200,10 +232,7 @@ impl<'p> GoalChecks<'p> {
                 failure: Some(report.failure(self.goal, check, cause.as_ref(), invocation)),
             });
         }
-        Ok(Checked {
-            items,
-            fuel: evaluator.fuel().saturating_sub(invocation.fuel),
-        })
+        Ok(items)
     }
 
     /// The parts of check item `index` evaluated on `invocation` (R-CHK-10), whether it holds or not: which values it
@@ -504,9 +533,10 @@ impl<'r> Report<'r> {
                 text(self.source, body.span)
             ));
         }
-        for part in self.parts(check) {
-            diag = diag.with_note(match part.value {
-                Some(value) => format!("`{}` = {}", part.text, display_value(&value)),
+        let parts = self.parts(check);
+        for part in &parts {
+            diag = diag.with_note(match &part.value {
+                Some(value) => format!("`{}` = {}", part.text, display_value(value)),
                 None => format!("`{}` was not evaluated", part.text),
             });
         }
@@ -536,11 +566,17 @@ impl<'r> Report<'r> {
                 }
             }
         }
+        // What the item names is listed above with its value; only the rest of the invocation is added.
+        let named = |name: &str| parts.iter().any(|part| part.text == name && part.value.is_some());
         for (param, value) in goal.params.iter().zip(&invocation.inputs) {
-            diag = diag.with_note(format!("input `{}` = {}", param.name, display_value(value)));
+            if !named(&param.name) {
+                diag = diag.with_note(format!("input `{}` = {}", param.name, display_value(value)));
+            }
         }
         for (binding, value) in goal.bindings.iter().zip(&invocation.bindings) {
-            diag = diag.with_note(format!("call `{}` = {}", binding.name, display_value(value)));
+            if !named(&binding.name) {
+                diag = diag.with_note(format!("call `{}` = {}", binding.name, display_value(value)));
+            }
         }
         diag
     }

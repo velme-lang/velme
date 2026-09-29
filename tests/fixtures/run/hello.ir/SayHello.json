@@ -1,0 +1,11 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "SayHello",
+  "types": {},
+  "inputs": [["name", {"t": "Text"}]],
+  "output": {"t": "Text"},
+  "body": {"kind": "builtin", "name": "concat", "args": [
+    {"kind": "builtin", "name": "concat", "args": [{"kind": "literal", "type": {"t": "Text"}, "value": "Hello, "}, {"kind": "input", "name": "name"}]},
+    {"kind": "literal", "type": {"t": "Text"}, "value": "!"}]}
+}

@@ -11,9 +11,9 @@ expression: run.stdout
       "status": "ok",
       "diagnostics": [],
       "result": {
-        "badge": "Silver",
         "name": "Lina",
-        "score": 820
+        "score": 820,
+        "badge": "Silver"
       }
     }
   ],

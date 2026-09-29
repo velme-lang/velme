@@ -157,8 +157,9 @@ BuildPlayerSummary didn't pass its check  [VL0501]
 ### 3.4 `explain`
 
 Built from the deterministic DAG only — no LLM. Waves render as "First:", "At the same time:", "Then:",
-"Finally:" with each call's goal name turned into words, and the plan text quoted for the tail. Wired goals (D-4) end
-with "The answer is <binding>."
+"Finally:" with each call's goal name turned into words, followed by the child's plan's first sentence; the tail is
+"Finally: " and the goal's own plan's first sentence, unquoted (`runtime/30` R-RUN-22 has the rules). Wired goals (D-4)
+end with "The answer is <binding>."
 
 ### 3.5 Friendly-output style guide (P-6)
 
