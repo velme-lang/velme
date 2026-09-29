@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/budgets.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`cpu` is written as a whole number, without a `.`",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "help": "keep one of them",
       "labels": [],
       "message": "`cpu` is already set on this line.",
@@ -36,7 +36,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`budget` can only make limits smaller — `calls` can be at most `128`.",
       "notes": [],
@@ -50,7 +50,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`budget` can only make limits smaller — `memory` can be at most `64mb`.",
       "notes": [],
@@ -64,7 +64,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`depth` must be more than 0.",
       "notes": [],
@@ -78,7 +78,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "help": "a budget can set `cpu`, `memory`, `calls` and `depth`",
       "labels": [],
       "message": "A budget has no limit called `time`.",
@@ -93,7 +93,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`cpu` is a time in whole milliseconds, like `cpu=10ms`.",
       "notes": [],
@@ -107,7 +107,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`memory` is a size in `kb` or `mb`, like `memory=4mb`.",
       "notes": [],
@@ -121,7 +121,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`calls` is a count, so it has no unit, like `calls=16`.",
       "notes": [],
@@ -135,7 +135,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`depth` is written as a whole number, without a `.`",
       "notes": [],
@@ -149,7 +149,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "labels": [],
       "message": "`cpu` is written as a whole number, without a `.`",
       "notes": [],
@@ -163,7 +163,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0308",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "help": "write `memory=1536kb`",
       "labels": [],
       "message": "`memory` is written as a whole number, without a `.`",
@@ -178,7 +178,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0605",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "help": "raise `calls=` in its budget, or call fewer goals below it — every call counts, even of the same goal",
       "labels": [
         {
@@ -205,7 +205,7 @@ input_file: tests/golden/sema/reject/budgets.velme
     },
     {
       "code": "VL0605",
-      "file": "tests/golden/sema/reject/budgets.velme",
+      "file": "budgets.velme",
       "help": "raise `depth=` in its budget, or make its chains of calls shorter",
       "labels": [
         {

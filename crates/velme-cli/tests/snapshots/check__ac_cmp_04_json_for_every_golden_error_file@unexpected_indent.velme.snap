@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/unexpected_indent.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0102",
-      "file": "tests/golden/parser/reject/unexpected_indent.velme",
+      "file": "unexpected_indent.velme",
       "help": "line it up with the line above, or end the line above with `:` to start a block",
       "labels": [],
       "message": "This line is indented more than I expected.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/unexpected_indent.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/unexpected_indent.velme",
+      "file": "unexpected_indent.velme",
       "labels": [],
       "message": "I didn't expect `goal` here — I was looking for a name.",
       "notes": [],

@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 velme-diagnostics.workspace = true
 velme-ir.workspace = true
+velme-runtime.workspace = true
 velme-sema.workspace = true
 
 [lints]

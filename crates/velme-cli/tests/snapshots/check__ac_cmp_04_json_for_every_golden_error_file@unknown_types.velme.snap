@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/unknown_types.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "file": "unknown_types.velme",
       "help": "did you mean `Number`?",
       "labels": [],
       "message": "I don't know a type called `Nubmer`.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/unknown_types.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "file": "unknown_types.velme",
       "help": "did you mean `Player`?",
       "labels": [],
       "message": "I don't know a type called `Plyer`.",
@@ -37,7 +37,7 @@ input_file: tests/golden/sema/reject/unknown_types.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "file": "unknown_types.velme",
       "help": "declare it with `type`, or use `Number`, `Text` or `Boolean`",
       "labels": [],
       "message": "I don't know a type called `Unknown`.",
@@ -52,7 +52,7 @@ input_file: tests/golden/sema/reject/unknown_types.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "file": "unknown_types.velme",
       "help": "use a type here, like `Number` or a `type` declared in this file",
       "labels": [],
       "message": "`Grade` is a goal, not a type.",
@@ -67,7 +67,7 @@ input_file: tests/golden/sema/reject/unknown_types.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/unknown_types.velme",
+      "file": "unknown_types.velme",
       "help": "write the type of its items in `< >`, like `List<Number>`",
       "labels": [],
       "message": "`List` needs to say what it holds.",

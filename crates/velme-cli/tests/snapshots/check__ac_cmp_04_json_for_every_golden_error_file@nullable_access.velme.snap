@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/nullable_access.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `best is not empty and …` before using it",
       "labels": [],
       "message": "`best` might be empty — check `is not empty` first.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `result is not empty and …` before using it",
       "labels": [],
       "message": "`result` might be empty — check `is not empty` first.",
@@ -37,7 +37,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `result is not empty and …` before using it",
       "labels": [],
       "message": "`result` might be empty — check `is not empty` first.",
@@ -52,7 +52,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "go through it with `every … in … has …` and check each item `is not empty`",
       "labels": [],
       "message": "`players` may hold `nothing`, so it has no `score` to list.",
@@ -67,7 +67,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `scores is not empty and …` before using it",
       "labels": [],
       "message": "`scores` might be empty — check `is not empty` first.",
@@ -82,7 +82,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `best is not empty and …` before using it",
       "labels": [],
       "message": "`best` might be empty — check `is not empty` first.",
@@ -97,7 +97,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "it might be empty — check `scores is not empty` first",
       "labels": [],
       "message": "Expected List<Number>, but got List<Number>?.",
@@ -112,7 +112,7 @@ input_file: tests/golden/sema/reject/nullable_access.velme
     },
     {
       "code": "VL0207",
-      "file": "tests/golden/sema/reject/nullable_access.velme",
+      "file": "nullable_access.velme",
       "help": "write `best is not empty and …` before using it",
       "labels": [],
       "message": "`best` might be empty — check `is not empty` first.",

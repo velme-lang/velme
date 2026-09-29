@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/nesting_too_deep.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/nesting_too_deep.velme",
+      "file": "nesting_too_deep.velme",
       "help": "split it into smaller pieces",
       "labels": [],
       "message": "This line nests too deeply for me to read.",

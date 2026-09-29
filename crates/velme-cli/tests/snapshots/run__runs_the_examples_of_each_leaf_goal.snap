@@ -1,0 +1,89 @@
+---
+source: crates/velme-cli/tests/run.rs
+expression: "format!(\"{}{}\", run.stdout, run.stderr)"
+---
+Add  ✗
+Error: For Add(2, 3), `Add` gave 6 but the example expects 5.  [VL0502]
+   ╭─[ add.velme:9:11 ]
+   │
+ 9 │         - Add(2, 3) == 5
+   │           ───────┬──────  
+   │                  ╰──────── here
+───╯
+Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
+   ╭─[ add.velme:7:11 ]
+   │
+ 7 │         - result == a + b
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: 5
+   │ 
+   │ Note 2: Received: 6
+   │ 
+   │ Note 3: `result` = 6
+   │ 
+   │ Note 4: `a` = 2
+   │ 
+   │ Note 5: `b` = 3
+   │ 
+   │ Note 6: input `a` = 2
+   │ 
+   │ Note 7: input `b` = 3
+───╯
+Error: For Add(-1, 1), `Add` gave -1 but the example expects 0.  [VL0502]
+    ╭─[ add.velme:10:11 ]
+    │
+ 10 │         - Add(-1, 1) == 0
+    │           ───────┬───────  
+    │                  ╰───────── here
+────╯
+Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
+   ╭─[ add.velme:7:11 ]
+   │
+ 7 │         - result == a + b
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: 0
+   │ 
+   │ Note 2: Received: -1
+   │ 
+   │ Note 3: `result` = -1
+   │ 
+   │ Note 4: `a` = -1
+   │ 
+   │ Note 5: `b` = 1
+   │ 
+   │ Note 6: input `a` = -1
+   │ 
+   │ Note 7: input `b` = 1
+───╯
+Error: For Add(0.1, 0.2), `Add` gave 0.02 but the example expects 0.3.  [VL0502]
+    ╭─[ add.velme:11:11 ]
+    │
+ 11 │         - Add(0.1, 0.2) == 0.3
+    │           ──────────┬─────────  
+    │                     ╰─────────── here
+────╯
+Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
+   ╭─[ add.velme:7:11 ]
+   │
+ 7 │         - result == a + b
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: 0.3
+   │ 
+   │ Note 2: Received: 0.02
+   │ 
+   │ Note 3: `result` = 0.02
+   │ 
+   │ Note 4: `a` = 0.1
+   │ 
+   │ Note 5: `b` = 0.2
+   │ 
+   │ Note 6: input `a` = 0.1
+   │ 
+   │ Note 7: input `b` = 0.2
+───╯

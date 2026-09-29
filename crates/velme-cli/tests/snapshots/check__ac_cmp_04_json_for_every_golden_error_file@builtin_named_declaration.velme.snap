@@ -1,14 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-assertion_line: 158
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/builtin_named_declaration.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0107",
-      "file": "tests/golden/sema/reject/builtin_named_declaration.velme",
+      "file": "builtin_named_declaration.velme",
       "help": "type names use PascalCase",
       "labels": [],
       "message": "`range` works, but Velme style writes it `Range`.",
@@ -23,7 +22,7 @@ input_file: tests/golden/sema/reject/builtin_named_declaration.velme
     },
     {
       "code": "VL0107",
-      "file": "tests/golden/sema/reject/builtin_named_declaration.velme",
+      "file": "builtin_named_declaration.velme",
       "help": "goal names use PascalCase",
       "labels": [],
       "message": "`sum` works, but Velme style writes it `Sum`.",

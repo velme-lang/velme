@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/number_out_of_range.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/number_out_of_range.velme",
+      "file": "number_out_of_range.velme",
       "help": "Velme numbers keep up to 28 digits after the `.`",
       "labels": [],
       "message": "This number has too many decimal places.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/number_out_of_range.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/number_out_of_range.velme",
+      "file": "number_out_of_range.velme",
       "help": "Velme numbers have at most 28 significant digits (up to 79228162514264337593543950335)",
       "labels": [],
       "message": "This number is too big.",

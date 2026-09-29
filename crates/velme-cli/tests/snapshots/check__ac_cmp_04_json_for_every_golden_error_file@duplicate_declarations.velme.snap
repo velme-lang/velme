@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/duplicate_declarations.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "file": "duplicate_declarations.velme",
       "help": "rename one of them",
       "labels": [],
       "message": "`value` is already defined on line 3.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/duplicate_declarations.velme
     },
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "file": "duplicate_declarations.velme",
       "help": "rename one of them",
       "labels": [],
       "message": "`Score` is already defined on line 2.",
@@ -37,7 +37,7 @@ input_file: tests/golden/sema/reject/duplicate_declarations.velme
     },
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "file": "duplicate_declarations.velme",
       "help": "rename one of them",
       "labels": [],
       "message": "`x` is already defined on line 9.",
@@ -52,7 +52,7 @@ input_file: tests/golden/sema/reject/duplicate_declarations.velme
     },
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/duplicate_declarations.velme",
+      "file": "duplicate_declarations.velme",
       "help": "choose a different name",
       "labels": [],
       "message": "`Number` is already the name of a built-in type.",

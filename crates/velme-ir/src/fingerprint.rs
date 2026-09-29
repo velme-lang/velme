@@ -9,11 +9,12 @@ use std::str::FromStr;
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Value as Json, json};
-use velme_builtins::{BUILTINS_VERSION, Number};
+use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType, TypeId};
 
-use crate::node::{RecordType, Type};
+use crate::lower::{ir_type, number};
+use crate::node::RecordType;
 use crate::{CanonicalError, IR_VERSION, to_canonical_string};
 
 /// How a fingerprint is written: `b3:` then 64 lowercase hex digits (`runtime/32` §2).
@@ -199,26 +200,6 @@ fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
     }
 }
 
-/// `ty` as IR (`compiler/21` §2.1); `None` for a type with an error, which a checked program never has.
-fn ir_type(program: &Program, ty: &HirType) -> Option<Type> {
-    Some(match ty {
-        HirType::Number => Type::Number {},
-        HirType::Text => Type::Text {},
-        HirType::Boolean => Type::Boolean {},
-        HirType::Nothing => Type::Nothing {},
-        HirType::Optional(inner) => Type::Optional {
-            of: Box::new(ir_type(program, inner)?),
-        },
-        HirType::List(element) => Type::List {
-            of: Box::new(ir_type(program, element)?),
-        },
-        HirType::Record(id) => Type::Record {
-            name: program.record(*id)?.name.clone(),
-        },
-        HirType::Error => return None,
-    })
-}
-
 /// The normalized source of one goal. `None` anywhere below means HIR that [`velme_sema::analyze`] doesn't return.
 struct Contract<'p> {
     program: &'p Program,
@@ -337,19 +318,6 @@ impl<'p> Contract<'p> {
         };
         Some(self.program.record(*id)?.fields.get(index)?.name.as_str())
     }
-}
-
-/// A `NUMBER` literal's value in its R-TYP-08 rendering, so `0820.0` and `820` are the same source.
-fn number(text: &str) -> Option<String> {
-    let (sign, digits) = text.strip_prefix('-').map_or(("", text), |rest| ("-", rest));
-    // JSON, which `Number::parse` reads, has no leading zeros.
-    let digits = digits.trim_start_matches('0');
-    let zero = if digits.is_empty() || digits.starts_with('.') {
-        "0"
-    } else {
-        ""
-    };
-    Number::parse(&format!("{sign}{zero}{digits}")).map(|n| n.to_string())
 }
 
 /// `T` of `T?`, or `ty` itself.

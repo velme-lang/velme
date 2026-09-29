@@ -10,7 +10,12 @@ authors.workspace = true
 
 [dependencies]
 serde.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+toml.workspace = true
+velme-builtins.workspace = true
+velme-check.workspace = true
 velme-diagnostics.workspace = true
+velme-interp.workspace = true
 velme-ir.workspace = true
 velme-sema.workspace = true
 

@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/independent_errors.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/sema/reject/independent_errors.velme",
+      "file": "independent_errors.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for an expression.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/sema/reject/independent_errors.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/independent_errors.velme",
+      "file": "independent_errors.velme",
       "help": "did you mean `Number`?",
       "labels": [],
       "message": "I don't know a type called `Numbr`.",
@@ -36,7 +36,7 @@ input_file: tests/golden/sema/reject/independent_errors.velme
     },
     {
       "code": "VL0304",
-      "file": "tests/golden/sema/reject/independent_errors.velme",
+      "file": "independent_errors.velme",
       "help": "a goal can't use itself, even through other goals; move the shared work into a new goal",
       "labels": [],
       "message": "These goals call each other in a circle: Ping → Pong → Ping.",

@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/call_block_result_not_last.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/call_block_result_not_last.velme",
+      "file": "call_block_result_not_last.velme",
       "help": "rename this binding, or move it to the end of `call:`",
       "labels": [],
       "message": "`result` can only name the last binding.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/call_block_result_not_last.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/call_block_result_not_last.velme",
+      "file": "call_block_result_not_last.velme",
       "labels": [],
       "message": "I didn't expect `Score` here — I was looking for `=`.",
       "notes": [],

@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/header_unsupported_version.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0106",
-      "file": "tests/golden/parser/reject/header_unsupported_version.velme",
+      "file": "header_unsupported_version.velme",
       "help": "change the first line to `language: velme/0.1`",
       "labels": [],
       "message": "This file is written for `velme/0.10`, but this Velme understands `velme/0.1`.",

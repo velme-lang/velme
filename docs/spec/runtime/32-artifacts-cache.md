@@ -80,6 +80,9 @@ goal resolves through the lock the same way.
     tmp/                      in-progress artifact writes (R-ART-09) — ignore
 ```
 
+`<project>` is the project root: the directory of the nearest `velme.toml` upward from the source file, else the file's
+own directory (`tooling/40` R-CLI-20, D-82).
+
 **R-ART-09** The store is append-only and write-once: a file is written to a temp name under `.velme/tmp/` and
 atomically placed; an existing file with the same name is never rewritten.
 **R-ART-10** Every load re-hashes the file, re-runs IR validation (21 §6, cached per hash for the process), and

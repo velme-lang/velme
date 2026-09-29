@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/one_error_per_cause.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "file": "one_error_per_cause.velme",
       "help": "names use the letters a–z and A–Z, digits and `_` in this version of Velme",
       "labels": [],
       "message": "I can't use `Résumé` as a name.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/one_error_per_cause.velme
     },
     {
       "code": "VL0104",
-      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "file": "one_error_per_cause.velme",
       "labels": [],
       "message": "`when` is coming in a later Velme version — try another name.",
       "notes": [],
@@ -36,7 +36,7 @@ input_file: tests/golden/parser/reject/one_error_per_cause.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "file": "one_error_per_cause.velme",
       "labels": [],
       "message": "I didn't expect `@` here.",
       "notes": [],
@@ -50,7 +50,7 @@ input_file: tests/golden/parser/reject/one_error_per_cause.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "file": "one_error_per_cause.velme",
       "labels": [],
       "message": "I didn't expect `@@@` here.",
       "notes": [],
@@ -64,7 +64,7 @@ input_file: tests/golden/parser/reject/one_error_per_cause.velme
     },
     {
       "code": "VL0102",
-      "file": "tests/golden/parser/reject/one_error_per_cause.velme",
+      "file": "one_error_per_cause.velme",
       "help": "indent it exactly as far as the line it belongs with",
       "labels": [],
       "message": "This line's indentation doesn't line up with the lines above it.",

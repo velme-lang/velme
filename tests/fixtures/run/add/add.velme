@@ -1,0 +1,11 @@
+language: velme/0.1
+
+# Add two numbers. The check holds for every input; the examples pin down a few exact answers.
+goal Add(a: Number, b: Number) -> Number:
+    plan: "Add a and b."
+    check:
+        - result == a + b
+    examples:
+        - Add(2, 3) == 5
+        - Add(-1, 1) == 0
+        - Add(0.1, 0.2) == 0.3

@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/check_item_no_dash.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/check_item_no_dash.velme",
+      "file": "check_item_no_dash.velme",
       "labels": [],
       "message": "I didn't expect `result` here — I was looking for `-`.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/parser/reject/check_item_no_dash.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/check_item_no_dash.velme",
+      "file": "check_item_no_dash.velme",
       "labels": [],
       "message": "I didn't expect the end of the indented block here — I was looking for an indented line.",
       "notes": [],

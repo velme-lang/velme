@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/boolean_operators_dangling.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/boolean_operators_dangling.velme",
+      "file": "boolean_operators_dangling.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for an expression.",
       "notes": [],
@@ -21,7 +21,7 @@ input_file: tests/golden/parser/reject/boolean_operators_dangling.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/boolean_operators_dangling.velme",
+      "file": "boolean_operators_dangling.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for an expression.",
       "notes": [],
@@ -35,7 +35,7 @@ input_file: tests/golden/parser/reject/boolean_operators_dangling.velme
     },
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/boolean_operators_dangling.velme",
+      "file": "boolean_operators_dangling.velme",
       "labels": [],
       "message": "I didn't expect the end of the line here — I was looking for an expression.",
       "notes": [],

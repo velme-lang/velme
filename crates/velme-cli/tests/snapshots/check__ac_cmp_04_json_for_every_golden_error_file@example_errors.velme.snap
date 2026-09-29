@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/example_errors.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0303",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "help": "write `Greet(…) == …`",
       "labels": [],
       "message": "An example can only call `Greet`, the goal it belongs to.",
@@ -22,7 +22,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0302",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "labels": [],
       "message": "`Greet` needs 1 input, but got 0.",
       "notes": [],
@@ -36,7 +36,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "labels": [],
       "message": "Expected Player, but got Text.",
       "notes": [],
@@ -50,7 +50,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "labels": [],
       "message": "Expected Text, but got Number.",
       "notes": [],
@@ -64,7 +64,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0204",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "help": "give every field a value; a field whose type ends in `?` can be `nothing`",
       "labels": [],
       "message": "This `Player` is missing `nickname`.",
@@ -79,7 +79,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0205",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "labels": [],
       "message": "A `Player` doesn't have a field called `nick`.",
       "notes": [],
@@ -93,7 +93,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0201",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "help": "did you mean `Player`?",
       "labels": [],
       "message": "I don't know a type called `Plyer`.",
@@ -108,7 +108,7 @@ input_file: tests/golden/sema/reject/example_errors.velme
     },
     {
       "code": "VL0203",
-      "file": "tests/golden/sema/reject/example_errors.velme",
+      "file": "example_errors.velme",
       "help": "remove one of them",
       "labels": [],
       "message": "`name` is given a value twice.",

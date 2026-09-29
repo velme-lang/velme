@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/tab_nested.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0103",
-      "file": "tests/golden/parser/reject/tab_nested.velme",
+      "file": "tab_nested.velme",
       "help": "replace the tab with spaces",
       "labels": [],
       "message": "Please indent with spaces, not tabs.",
@@ -22,7 +22,7 @@ input_file: tests/golden/parser/reject/tab_nested.velme
     },
     {
       "code": "VL0103",
-      "file": "tests/golden/parser/reject/tab_nested.velme",
+      "file": "tab_nested.velme",
       "help": "replace the tab with spaces",
       "labels": [],
       "message": "Please indent with spaces, not tabs.",

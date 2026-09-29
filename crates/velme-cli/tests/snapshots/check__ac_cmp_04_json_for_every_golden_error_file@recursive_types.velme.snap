@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/recursive_types.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0208",
-      "file": "tests/golden/sema/reject/recursive_types.velme",
+      "file": "recursive_types.velme",
       "help": "store the related values in a separate list instead of inside each other",
       "labels": [
         {
@@ -34,7 +34,7 @@ input_file: tests/golden/sema/reject/recursive_types.velme
     },
     {
       "code": "VL0208",
-      "file": "tests/golden/sema/reject/recursive_types.velme",
+      "file": "recursive_types.velme",
       "help": "store the related values in a separate list instead of inside each other",
       "labels": [
         {

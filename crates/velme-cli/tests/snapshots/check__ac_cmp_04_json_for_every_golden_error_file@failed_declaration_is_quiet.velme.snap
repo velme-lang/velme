@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/sema/reject/failed_declaration_is_quiet.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/sema/reject/failed_declaration_is_quiet.velme",
+      "file": "failed_declaration_is_quiet.velme",
       "labels": [],
       "message": "I didn't expect `Text` here — I was looking for `:`.",
       "notes": [],

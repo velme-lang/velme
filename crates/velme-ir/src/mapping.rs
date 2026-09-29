@@ -140,7 +140,7 @@ pub fn decode_value(json: &Json, ty: &Type, program: &Program) -> Result<Value, 
 fn decode_at(json: &Json, ty: &Type, program: &Program, path: &mut Vec<String>) -> Result<Value, DecodeProblem> {
     let mismatch = || DecodeProblem::Mismatch {
         expected: program.type_name(ty),
-        found: found(json),
+        found: json_kind(json),
     };
     match (ty, json) {
         (Type::Error, _) => Ok(Value::Nothing),
@@ -176,7 +176,7 @@ fn decode_at(json: &Json, ty: &Type, program: &Program, path: &mut Vec<String>) 
 }
 
 /// What a JSON value holds, in the words of `reference/90`'s VL0902 message.
-fn found(json: &Json) -> &'static str {
+pub fn json_kind(json: &Json) -> &'static str {
     match json {
         Json::Null => "nothing",
         Json::Bool(true) => "true",

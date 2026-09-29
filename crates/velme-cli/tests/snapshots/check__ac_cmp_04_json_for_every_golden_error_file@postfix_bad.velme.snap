@@ -1,13 +1,13 @@
 ---
 source: crates/velme-cli/tests/check.rs
-expression: json
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/postfix_bad.velme
 ---
 {
   "diagnostics": [
     {
       "code": "VL0101",
-      "file": "tests/golden/parser/reject/postfix_bad.velme",
+      "file": "postfix_bad.velme",
       "labels": [],
       "message": "I didn't expect `==` here — I was looking for a name.",
       "notes": [],
