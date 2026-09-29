@@ -66,9 +66,9 @@ diagnostic's data.
 | VL0607 | InternalError | any | invariant violated inside Velme (a bug) | Something went wrong inside Velme. Please report it: {report_url}. | — |
 | VL0701 | ArtifactUnavailable | artifacts | referenced artifact missing from store | The built version of `{goal}` is missing — run `velme build`. | A013 |
 | VL0702 | LockStale | artifacts | lock entry missing or fingerprint mismatch under `--locked` | `{goal}` changed since it was last built — run `velme build`. | — |
-| VL0703 | ArtifactCorrupt | artifacts | artifact bytes don't match their hash | The built version of `{goal}` was changed or damaged. | — |
+| VL0703 | ArtifactCorrupt | artifacts | artifact bytes don't match their hash, are longer than any artifact, or aren't the canonical JSON the store writes (`runtime/32` R-ART-10) | The built version of `{goal}` was changed or damaged. | — |
 | VL0801 | CapabilityDenied | capabilities | IR or module requests an ungranted capability/host function | `{goal}` tried to use `{capability}`, which goals aren't allowed to use. | A014 |
-| VL0901 | FileError | CLI/IO | source/config/input file unreadable; `velme.lock` unreadable, malformed or of another format | I couldn't open `{path}`. | — |
+| VL0901 | FileError | CLI/IO | source/config/input file unreadable, or on a path that isn't UTF-8; `velme.lock` unreadable, malformed, of another format or not a regular file; a stored artifact that isn't a regular file, or a `.velme` directory that is a symbolic link (`runtime/32` R-ART-09) | I couldn't open `{path}`. | — |
 | VL0902 | InvalidInput | CLI/IO | input JSON or config doesn't match expected shape (D-23) | Input `{name}` should be {expected}, but got {found}. | — |
 | VL0903 | GoalNotFound | CLI/IO | `--goal` names no goal in the file | There's no goal called `{name}`. Did you mean `{suggestion}`? | — |
 

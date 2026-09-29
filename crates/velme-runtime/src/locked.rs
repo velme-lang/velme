@@ -6,8 +6,8 @@ use std::fmt;
 use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::{
-    CallNode, Fingerprint, IR_VERSION, Origin, Request, Type, ValidIr, calls, contract_key, ir_type, signature,
-    to_canonical_string, validate,
+    CallNode, Fingerprint, IR_VERSION, Origin, Request, Type, ValidIr, calls, compatibility, contract_key, ir_type,
+    signature, to_canonical_string, validate,
 };
 use velme_sema::hir::{self, GoalId, Program};
 
@@ -104,11 +104,15 @@ fn changes(program: &Program, id: GoalId, goal: &hir::Goal, artifact: &Artifact)
             manifest.language_version.as_str(),
             program.language_version.as_str(),
         ),
-        (Versioned::Ir, major(&manifest.ir_version), major(IR_VERSION)),
+        (
+            Versioned::Ir,
+            compatibility(&manifest.ir_version),
+            compatibility(IR_VERSION),
+        ),
         (
             Versioned::Builtins,
-            major(&manifest.builtins_version),
-            major(BUILTINS_VERSION),
+            compatibility(&manifest.builtins_version),
+            compatibility(BUILTINS_VERSION),
         ),
     ];
     for (of, built, current) in versions {
@@ -206,11 +210,6 @@ fn record_changes(built: &[(String, Type)], now: &[(String, Type)]) -> Vec<Recor
     changes
 }
 
-/// `MAJOR` of a `MAJOR.MINOR` version.
-fn major(version: &str) -> &str {
-    version.split_once('.').map_or(version, |(major, _)| major)
-}
-
 /// Why a goal's lock entry can't be used (`runtime/32` R-ART-14).
 #[derive(Debug)]
 pub enum EntryError {
@@ -269,7 +268,8 @@ impl std::error::Error for EntryError {}
 pub enum Cause {
     /// The goal has no entry.
     NotLocked,
-    /// The artifact was built for another language, IR major or builtins major version.
+    /// The artifact was built for another language version, or another compatibility unit of the IR or built-ins
+    /// version (D-85).
     Version {
         /// Which version.
         of: Versioned,
@@ -329,9 +329,9 @@ impl Cause {
 pub enum Versioned {
     /// The language version.
     Language,
-    /// The IR major version.
+    /// The IR version's compatibility unit.
     Ir,
-    /// The builtins major version.
+    /// The builtins version's compatibility unit.
     Builtins,
 }
 

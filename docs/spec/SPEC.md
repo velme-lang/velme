@@ -84,7 +84,7 @@ These hold for the life of the language. A change that breaks one is an architec
 | **INV-6** | The call graph is fixed by source before synthesis and is acyclic. A goal calls only goals named in its own `call` block; synthesized IR cannot add, remove or reorder calls (D-5). |
 | **INV-7** | The language core works without a network or an account when artifacts are locked. Synthesis providers sit behind one provider-neutral trait; no vendor type or SDK leaks into core crates. |
 | **INV-8** | Artifacts are content-addressed and immutable; nothing is cached or looked up by goal name alone. Every artifact records the language, compiler, IR, builtins, prompt and model versions that produced it. |
-| **INV-9** | Crate dependencies flow one way: `syntax → sema → ir → (interp, wasm) → runtime → cli` (`diagnostics` and `builtins` are leaf crates any layer may use); core crates never depend on the CLI or on a concrete LLM provider (`compiler/20`). |
+| **INV-9** | Crate dependencies flow one way: `syntax → sema → ir → (interp, wasm) → runtime → cli`, with checks between the interpreter and their users: `sema → ir → interp → check → (synth, runtime)` (D-80) (`diagnostics` and `builtins` are leaf crates any layer may use); core crates never depend on the CLI or on a concrete LLM provider (`compiler/20`). |
 | **INV-10** | Diagnostic codes are stable: once released, an `VLnnnn` code is never reused for a different meaning. |
 
 ## 3. Design principles

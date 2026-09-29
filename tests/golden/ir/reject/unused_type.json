@@ -1,0 +1,24 @@
+{
+  "ir_version": "0.1",
+  "builtins_version": "0.1",
+  "goal": "FindBadge",
+  "types": {
+    "Player": { "fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]] },
+    "Summary": { "fields": [["score", {"t": "Number"}], ["rank", {"t": "Number"}], ["badge", {"t": "Text"}]] }
+  },
+  "inputs": [["player", {"t": "Record", "name": "Player"}]],
+  "output": {"t": "Text"},
+  "body": {
+    "kind": "field",
+    "field": "badge",
+    "of": {
+      "kind": "record",
+      "type": "Summary",
+      "fields": {
+        "score": {"kind": "literal", "type": {"t": "Number"}, "value": 1},
+        "rank": {"kind": "literal", "type": {"t": "Number"}, "value": 2},
+        "badge": {"kind": "literal", "type": {"t": "Text"}, "value": "Rookie"}
+      }
+    }
+  }
+}

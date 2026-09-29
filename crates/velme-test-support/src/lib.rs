@@ -10,7 +10,7 @@ use velme_ir::{
     CallNode, Fingerprint, Goal, Origin, Request, Synthesis, ValidIr, calls, contract_key, from_json_str, signature,
     synthesis_key, validate,
 };
-use velme_runtime::{Child, Entry, Lock, Manifest, Store, Verification};
+use velme_runtime::{ArtifactFormat, Child, Entry, Lock, Manifest, Store, Verification};
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
 
@@ -88,8 +88,9 @@ pub fn fixture_manifest(program: &Program, ir: &ValidIr) -> Manifest {
         model: FIXTURE_VERSION,
     };
     Manifest {
+        format: ArtifactFormat,
         goal: goal.goal.clone(),
-        kind: program.goals.get(id.0).expect("a goal of the program").kind,
+        kind: program.goals.get(id.0).expect("a goal of the program").kind.into(),
         signature: signature(program, id).expect("signature"),
         contract_key: contract,
         synthesis_key: synthesis_key(contract, &synthesis).expect("synthesis key"),

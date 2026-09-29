@@ -1,15 +1,15 @@
 //! The CheckRunner (`runtime/30` §2, D-80): check items and examples evaluated on the reference interpreter, whichever
 //! executor ran the goal, and the `VL0501`/`VL0502` reports of `language/13` §5.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use velme_builtins::Value;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_interp::{Error, Evaluator, Failure, Probe};
-use velme_ir::{Node, RecordType, display_value};
+use velme_ir::{CheckScope, Node, TrustedExpr, display_value};
 use velme_sema::hir::{BinaryOp, Expr, ExprKind, Goal, GoalId, Program, Quantifier};
 
-use crate::lower::{Lowered, lower_check, lower_example, record_types, result_local};
+use crate::lower::{Lowered, lower_check, lower_example, result_local};
 
 /// One goal invocation, as its checks observe it (R-CHK-02, R-CHK-05).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +81,6 @@ pub struct ExampleCase {
 pub struct GoalChecks<'p> {
     source: &'p str,
     goal: &'p Goal,
-    types: BTreeMap<String, RecordType>,
     checks: Vec<Lowered>,
     examples: Vec<ExampleCase>,
 }
@@ -90,15 +89,15 @@ impl<'p> GoalChecks<'p> {
     /// The checks and examples of `goal`, from the checked `program` whose source is `source`.
     pub fn new(program: &'p Program, goal: GoalId, source: &'p str) -> Result<Self, Diagnostic> {
         let goal = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
-        let types = record_types(program)?;
+        let scope = CheckScope::new(program, goal)?;
         let checks = goal
             .checks
             .iter()
-            .map(|check| lower_check(program, goal, check))
+            .map(|check| lower_check(program, goal, &scope, check))
             .collect::<Result<Vec<_>, _>>()?;
         let mut examples = Vec::with_capacity(goal.examples.len());
         for example in &goal.examples {
-            let (args, expected) = lower_example(program, goal, example)?;
+            let (args, expected) = lower_example(program, goal, &scope, example)?;
             let text = text(source, example.span);
             // The call is what comes before the `==`.
             let given = text
@@ -108,8 +107,8 @@ impl<'p> GoalChecks<'p> {
                 .trim_end_matches("==")
                 .trim_end();
             examples.push(ExampleCase {
-                args: args.iter().map(|arg| literal(&types, arg)).collect::<Result<_, _>>()?,
-                expected: literal(&types, &expected)?,
+                args: args.iter().map(|arg| literal(&arg.node)).collect::<Result<_, _>>()?,
+                expected: literal(&expected.node)?,
                 span: example.span,
                 given: given.to_owned(),
             });
@@ -117,7 +116,6 @@ impl<'p> GoalChecks<'p> {
         Ok(GoalChecks {
             source,
             goal,
-            types,
             checks,
             examples,
         })
@@ -155,7 +153,7 @@ impl<'p> GoalChecks<'p> {
         let mut items = Vec::with_capacity(self.checks.len());
         for (check, lowered) in self.goal.checks.iter().zip(&self.checks) {
             let start = evaluator.fuel();
-            let cause = match evaluator.eval(&lowered.node) {
+            let cause = match evaluator.eval(lowered.node.trusted()) {
                 Ok(Value::Boolean(true)) => {
                     items.push(ItemReport {
                         span: check.span,
@@ -170,7 +168,9 @@ impl<'p> GoalChecks<'p> {
                     Error::OutOfFuel { .. } | Error::Builtin(velme_builtins::Error::ListTooLong { .. }) => {
                         return Err(failure.diagnostic(&self.goal.name, check.span));
                     }
-                    Error::Builtin(velme_builtins::Error::Internal) => return Err(Diagnostic::internal_error()),
+                    Error::Builtin(velme_builtins::Error::Internal | velme_builtins::Error::OutOfFuel) => {
+                        return Err(Diagnostic::internal_error());
+                    }
                 },
                 Ok(_) => return Err(Diagnostic::internal_error()),
             };
@@ -205,7 +205,7 @@ impl<'p> GoalChecks<'p> {
         let mut recorder = Recorder::default();
         let mut evaluator = self.scope(invocation)?.with_fuel_spent(fuel);
         // The outcome is already known; the recorder holds what the report needs.
-        let _ = evaluator.eval_probed(&lowered.node, &mut recorder);
+        let _ = evaluator.eval_probed(lowered.node.trusted(), &mut recorder);
         Ok(Report::new(self.source, lowered, recorder))
     }
 
@@ -216,7 +216,7 @@ impl<'p> GoalChecks<'p> {
         if invocation.inputs.len() != goal.params.len() || invocation.bindings.len() != goal.bindings.len() {
             return Err(Diagnostic::internal_error());
         }
-        let mut evaluator = Evaluator::new(&self.types, goal.budget.max_fuel).with_fuel_spent(invocation.fuel);
+        let mut evaluator = Evaluator::new(goal.budget.max_fuel).with_fuel_spent(invocation.fuel);
         for (param, value) in goal.params.iter().zip(&invocation.inputs) {
             evaluator.bind_input(&param.name, value.clone());
         }
@@ -232,9 +232,9 @@ impl<'p> GoalChecks<'p> {
 }
 
 /// The value of an example's literal (R-GOAL-21), which costs next to no fuel.
-fn literal(types: &BTreeMap<String, RecordType>, lowered: &Lowered) -> Result<Value, Diagnostic> {
-    Evaluator::new(types, velme_builtins::limits::MAX_FUEL)
-        .eval(&lowered.node)
+fn literal(expr: &TrustedExpr) -> Result<Value, Diagnostic> {
+    Evaluator::new(velme_builtins::limits::MAX_FUEL)
+        .eval(expr.trusted())
         .map_err(|_| Diagnostic::internal_error())
 }
 
@@ -292,7 +292,7 @@ impl<'r> Report<'r> {
     fn new(source: &'r str, lowered: &Lowered, recorder: Recorder) -> Self {
         let mut nodes = HashMap::new();
         let mut spans = HashMap::new();
-        for (node, span) in lowered.node.preorder().into_iter().zip(&lowered.spans) {
+        for (node, span) in lowered.node.node().preorder().into_iter().zip(&lowered.spans) {
             let node = std::ptr::from_ref(node);
             nodes.entry(*span).or_insert(node);
             spans.insert(node, *span);

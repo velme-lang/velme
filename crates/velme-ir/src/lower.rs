@@ -92,19 +92,19 @@ impl Args<'_> {
         Some(match &e.kind {
             ExprKind::Number { text } => Node::Literal {
                 ty: Type::Number {},
-                value: serde_json::from_str(&number(text)?).ok()?,
+                value: serde_json::from_str::<serde_json::Value>(&number(text)?).ok()?.into(),
             },
             ExprKind::Text { value } => Node::Literal {
                 ty: Type::Text {},
-                value: value.clone().into(),
+                value: serde_json::Value::from(value.clone()).into(),
             },
             ExprKind::Bool { value } => Node::Literal {
                 ty: Type::Boolean {},
-                value: (*value).into(),
+                value: serde_json::Value::from(*value).into(),
             },
             ExprKind::Nothing => Node::Literal {
                 ty: Type::Nothing {},
-                value: serde_json::Value::Null,
+                value: serde_json::Value::Null.into(),
             },
             ExprKind::Input { index } => Node::Input {
                 name: self.goal.params.get(*index)?.name.clone(),

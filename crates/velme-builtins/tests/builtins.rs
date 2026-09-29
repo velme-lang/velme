@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 
 use proptest::prelude::*;
 use velme_builtins::limits::MAX_LIST_SIZE;
-use velme_builtins::{Builtin, CATALOG, Error, Number, Output, Value, sort_by_fuel, sort_order};
+use velme_builtins::{Builtin, CATALOG, Error, Function, Number, Output, Value, equals, sort_by_fuel, sort_order};
 use velme_diagnostics::Code;
 
 fn num(text: &str) -> Number {
@@ -27,7 +27,7 @@ fn nums(texts: &[&str]) -> Value {
 /// Calls the built-in `name` through the catalog, as a backend does.
 fn call(name: &str, args: &[Value]) -> Result<Output, Error> {
     let builtin = Builtin::find(name).unwrap_or_else(|| panic!("no built-in {name}"));
-    builtin.function.expect("a value built-in").call(args)
+    builtin.function.expect("a value built-in").call(args, u64::MAX)
 }
 
 fn value(name: &str, args: &[Value]) -> Value {
@@ -200,9 +200,68 @@ fn ac_blt_12_fuel_is_size_proportional() {
     let one = Value::text("a");
     assert_eq!(call("concat", &[one.clone(), one]).expect("ok").fuel, 2);
     assert_eq!(call("to_text", &[n("1")]).expect("ok").fuel, 1 + 1);
-    for name in ["length", "is_empty"] {
-        assert_eq!(call(name, &[Value::text("héllo")]).expect("ok").fuel, 1);
+    assert_eq!(call("is_empty", &[Value::text("héllo")]).expect("ok").fuel, 1);
+    // `length` of a text and `==` of texts: ⌈bytes/64⌉ more, nothing more for empty text (D-83).
+    assert_eq!(call("length", &[Value::text("héllo")]).expect("ok").fuel, 1 + 1);
+    assert_eq!(call("length", &[Value::text("")]).expect("ok").fuel, 1);
+    assert_eq!(call("length", &[Value::text(&"a".repeat(65))]).expect("ok").fuel, 1 + 2);
+    let long = Value::text(&"a".repeat(65));
+    assert_eq!(equals(&long, &long, u64::MAX).expect("ok").fuel, 2);
+    assert_eq!(equals(&long, &Value::text("a"), u64::MAX).expect("ok").fuel, 0);
+    assert_eq!(
+        equals(&Value::text(""), &Value::text(""), u64::MAX).expect("ok").fuel,
+        0
+    );
+    // `contains` costs, per item scanned, what `item == x` costs (D-83): 1, plus the pairs a record visits.
+    let players = Value::list(vec![player("Ada", "3"), player("Bo", "2")]);
+    let fuel = |wanted: Value| call("contains", &[players.clone(), wanted]).expect("ok").fuel;
+    // Ada: 1 + the records + "Ada" vs "Bo" = 3; Bo: 1 + the records + name (1 + 1 block) + score = 5.
+    assert_eq!(fuel(player("Bo", "2")), 1 + 3 + 5);
+    assert_eq!(fuel(player("Cy", "2")), 1 + 3 + 4);
+    // `==` of lists: 1 per pair visited, the lists' own included (D-83).
+    let pair = nums(&["1", "2"]);
+    assert_eq!(equals(&pair, &pair, u64::MAX).expect("ok").fuel, 3);
+    assert_eq!(equals(&pair, &nums(&["1", "2", "3"]), u64::MAX).expect("ok").fuel, 1);
+    assert_eq!(equals(&nums(&[]), &nums(&[]), u64::MAX).expect("ok").fuel, 1);
+    assert_eq!(equals(&n("1"), &n("1"), u64::MAX).expect("ok").fuel, 0);
+}
+
+#[test]
+fn ac_blt_12_a_call_stops_at_its_budget() {
+    // Past its budget, a call whose cost follows from its arguments stops before the work (D-83).
+    let range = |budget: u64| Function::Range.call(&[n("1000")], budget);
+    assert_eq!(range(1000), Err(Error::OutOfFuel));
+    assert_eq!(range(1001).expect("ok").fuel, 1001);
+    // A size error still wins over fuel (R-RUN-04).
+    assert!(matches!(
+        Function::Range.call(&[n("20000")], 10),
+        Err(Error::ListTooLong { .. })
+    ));
+    let text = Value::text(&"a".repeat(640));
+    assert_eq!(
+        Function::Concat.call(&[text.clone(), text.clone()], 20),
+        Err(Error::OutOfFuel)
+    );
+    assert_eq!(Function::Length.call(&[text], 10), Err(Error::OutOfFuel));
+    // Equality over values that share their parts has far more leaves than bytes: 2^60 here.
+    let mut deep = Value::list(vec![n("1")]);
+    for _ in 0..60 {
+        deep = Value::list(vec![deep.clone(), deep]);
     }
+    assert_eq!(equals(&deep, &deep, 1000), Err(Error::OutOfFuel));
+    // Empty lists all the way down have no leaves, but each pair visited is still paid for.
+    let mut empty = nums(&[]);
+    for _ in 0..60 {
+        empty = Value::list(vec![empty.clone(), empty]);
+    }
+    assert_eq!(equals(&empty, &empty, 1000), Err(Error::OutOfFuel));
+    assert_eq!(
+        Function::Contains.call(&[Value::list(vec![empty.clone()]), empty], 1000),
+        Err(Error::OutOfFuel)
+    );
+    let list = Value::list(vec![deep.clone()]);
+    assert_eq!(Function::Contains.call(&[list, deep], 1000), Err(Error::OutOfFuel));
+    assert_eq!(Error::OutOfFuel.code(), Code::BudgetExceeded);
 }
 
 #[test]

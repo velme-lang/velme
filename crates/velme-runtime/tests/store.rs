@@ -12,8 +12,11 @@ use velme_ir::{
     CallNode, Fingerprint, IR_VERSION, Synthesis, ValidIr, contract_key, from_json_str, signature, synthesis_key,
     to_canonical_string,
 };
-use velme_runtime::{ARTIFACTS_DIR, Artifact, Child, LoadError, Manifest, Store, TMP_DIR, VELME_DIR, Verification};
-use velme_sema::hir::{GoalKind, Program};
+use velme_runtime::{
+    ARTIFACTS_DIR, Artifact, ArtifactFormat, Child, Kind, LoadError, MAX_ARTIFACT_BYTES, Manifest, Store, StoreError,
+    TMP_DIR, VELME_DIR, Verification,
+};
+use velme_sema::hir::Program;
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 
 /// An empty project directory for one test.
@@ -47,8 +50,9 @@ fn manifest(program: &Program, ir: &ValidIr) -> Manifest {
         model: "model-a",
     };
     Manifest {
+        format: ArtifactFormat,
         goal: goal.goal.clone(),
-        kind: program.goals[id.0].kind,
+        kind: program.goals[id.0].kind.into(),
         signature: signature(program, id).expect("signature"),
         contract_key: contract,
         synthesis_key: synthesis_key(contract, &synthesis).expect("synthesis key"),
@@ -153,6 +157,7 @@ fn ac_art_08_artifact_documents_hold_no_timestamps_users_or_hosts() {
     let manifest = document["manifest"].as_object().expect("manifest object");
     let keys: BTreeSet<&str> = manifest.keys().map(String::as_str).collect();
     let expected = BTreeSet::from([
+        "format",
         "goal",
         "kind",
         "signature",
@@ -255,11 +260,154 @@ fn stores_write_once_and_leave_no_temporary_files() {
     ];
     names.sort();
     assert_eq!(files(store.dir()), names);
-    // R-ART-09: a file already under the name is never rewritten, even a damaged one.
+    // R-ART-09: an artifact already stored is left as it is.
+    let stored = fs::metadata(store.path(leaf_id))
+        .expect("stored")
+        .modified()
+        .expect("mtime");
+    assert_eq!(store.put(&manifest(&program, &leaf), &leaf).expect("stored"), leaf_id);
+    let again = fs::metadata(store.path(leaf_id))
+        .expect("stored")
+        .modified()
+        .expect("mtime");
+    assert_eq!(stored, again);
+    // A file under the name with other bytes isn't that artifact: it is replaced whole.
     fs::write(store.path(leaf_id), "damaged").expect("damaged");
     assert_eq!(store.put(&manifest(&program, &leaf), &leaf).expect("stored"), leaf_id);
-    assert_eq!(read(&store.path(leaf_id)), "damaged");
+    let bytes = fs::read(store.path(leaf_id)).expect("replaced");
+    assert_eq!(Fingerprint::of_bytes(&bytes), leaf_id);
     assert_eq!(files(store.dir()), names);
+    assert_eq!(files(&tmp), Vec::<String>::new());
+}
+
+/// R-ART-10: the store writes only canonical JSON of at most `MAX_ARTIFACT_BYTES`, so a file that hashes to its name
+/// but is laid out otherwise, or is longer, was not written by it: `VL0703`.
+#[test]
+fn ac_art_06_an_artifact_must_be_canonical_and_of_bounded_size() {
+    let (store, id, artifact) = stored("canonical");
+    let pretty =
+        serde_json::to_string_pretty(&from_json_str::<Value>(&read(&store.path(id))).expect("JSON")).expect("pretty");
+    let other = Fingerprint::of_bytes(pretty.as_bytes());
+    fs::write(store.path(other), &pretty).expect("written");
+    assert_eq!(
+        from_json_str::<Artifact>(&pretty).expect("an artifact document"),
+        artifact
+    );
+    let error = store.get(other).expect_err("not canonical");
+    assert!(matches!(error, LoadError::Damaged { .. }), "{error:?}");
+    let diag = error.diagnostic("BuildPlayerSummary", Span::default());
+    assert_eq!(diag.code, Code::ArtifactCorrupt);
+    assert!(diag.notes.iter().any(|n| n.contains("canonical")), "{diag:?}");
+
+    let long = vec![b' '; usize::try_from(MAX_ARTIFACT_BYTES).expect("fits") + 1];
+    let long_id = Fingerprint::of_bytes(&long);
+    fs::write(store.path(long_id), &long).expect("written");
+    let error = store.get(long_id).expect_err("too long");
+    assert!(matches!(error, LoadError::Damaged { .. }), "{error:?}");
+    assert_eq!(error.code(), Code::ArtifactCorrupt);
+}
+
+/// An artifact whose canonical JSON is longer than any `get` reads is not stored.
+#[test]
+fn an_oversized_artifact_is_not_stored() {
+    let program = goals();
+    let ir = golden(&program, "find_badge");
+    let manifest = Manifest {
+        model_version: Some("m".repeat(usize::try_from(MAX_ARTIFACT_BYTES).expect("fits"))),
+        ..manifest(&program, &ir)
+    };
+    let store = Store::new(&project("oversized"));
+    let error = store.put(&manifest, &ir).expect_err("too large");
+    assert!(matches!(error, StoreError::TooLarge { .. }), "{error:?}");
+    assert!(!store.dir().exists());
+}
+
+/// D-86: an artifact of another format, or of none, is not read, as a document that is no artifact isn't.
+#[test]
+fn an_artifact_of_another_format_is_not_read() {
+    let (store, id, _) = stored("format");
+    let document: Value = from_json_str(&read(&store.path(id))).expect("JSON");
+    for format in [Some("velme-artifact/2"), None] {
+        let mut edited = document.clone();
+        let manifest = edited["manifest"].as_object_mut().expect("manifest");
+        match format {
+            Some(format) => manifest.insert("format".to_owned(), Value::from(format)),
+            None => manifest.remove("format"),
+        };
+        let text = to_canonical_string(&edited).expect("canonical");
+        let other = Fingerprint::of_bytes(text.as_bytes());
+        fs::write(store.path(other), &text).expect("written");
+        let error = store.get(other).expect_err("another format");
+        assert!(matches!(error, LoadError::Malformed { .. }), "{error:?}");
+        assert_eq!(error.code(), Code::LockStale);
+        assert!(error.to_string().contains("format"), "{error}");
+    }
+}
+
+/// Velme reads and writes only regular files in its own `.velme` directories, never through a link (R-ART-09).
+#[cfg(unix)]
+#[test]
+fn links_in_the_store_are_refused() {
+    use std::os::unix::fs::symlink;
+
+    let (store, id, _) = stored("links_file");
+    let path = store.path(id);
+    let elsewhere = path.with_extension("elsewhere");
+    fs::rename(&path, &elsewhere).expect("moved");
+    symlink(&elsewhere, &path).expect("linked");
+    let error = store.get(id).expect_err("a link");
+    assert!(matches!(error, LoadError::Unreadable { .. }), "{error:?}");
+    assert_eq!(error.code(), Code::FileError);
+    // Storing the artifact doesn't replace what isn't a regular file (R-ART-09).
+    let program = goals();
+    let ir = golden(&program, "player_summary");
+    let error = store
+        .put(&manifest(&program, &ir), &ir)
+        .expect_err("a link in its place");
+    assert!(matches!(error, StoreError::Io(_)), "{error:?}");
+    assert!(
+        fs::symlink_metadata(&path)
+            .expect("still there")
+            .file_type()
+            .is_symlink()
+    );
+    // A FIFO is refused without blocking the read.
+    fs::remove_file(&path).expect("unlinked");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&path)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success());
+    let error = store.get(id).expect_err("a FIFO");
+    assert!(matches!(error, LoadError::Unreadable { .. }), "{error:?}");
+    assert!(matches!(
+        store.put(&manifest(&program, &ir), &ir),
+        Err(StoreError::Io(_))
+    ));
+
+    // A `.velme` or `.velme/tmp` that is a link is refused for reading and writing.
+    let ir = golden(&program, "find_badge");
+    for linked in [VELME_DIR, "tmp"] {
+        let root = project(&format!("links_{linked}"));
+        let target = root.join("target");
+        fs::create_dir_all(&target).expect("target");
+        let velme = root.join(VELME_DIR);
+        let link = if linked == VELME_DIR {
+            velme.clone()
+        } else {
+            fs::create_dir_all(&velme).expect(".velme");
+            velme.join(TMP_DIR)
+        };
+        symlink(&target, &link).expect("linked");
+        let store = Store::new(&root);
+        let error = store.put(&manifest(&program, &ir), &ir).expect_err("refused");
+        assert!(error.to_string().contains("symbolic link"), "{error}");
+        assert_eq!(files(&target), Vec::<String>::new());
+        if linked == VELME_DIR {
+            let error = store.get(id).expect_err("refused");
+            assert!(matches!(error, LoadError::Unreadable { .. }), "{error:?}");
+        }
+    }
 }
 
 #[test]
@@ -286,7 +434,7 @@ fn optional_manifest_fields_are_left_out() {
     let program = goals();
     let ir = golden(&program, "find_badge");
     let manifest = Manifest {
-        kind: GoalKind::Wired,
+        kind: Kind::Wired,
         prompt_version: None,
         provider: "compiler".to_owned(),
         model_version: None,
@@ -323,8 +471,7 @@ fn external_artifacts_name_their_backend() {
     assert_eq!(store.get(id).expect("loads").manifest, manifest);
 }
 
-/// A file that exists but can't be read is a file error with its cause, not a missing artifact: rebuilding would not
-/// replace it (R-ART-09).
+/// A file that exists but can't be read, such as a directory, is a file error with its cause, not a missing artifact.
 #[test]
 fn an_unreadable_artifact_is_a_file_error() {
     let store = Store::new(&project("unreadable"));

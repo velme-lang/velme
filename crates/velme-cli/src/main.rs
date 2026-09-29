@@ -7,7 +7,7 @@ use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
@@ -40,9 +40,10 @@ const EXIT_PRECEDENCE: [u8; 6] = [
 /// The `--json` envelope version (D-49, R-CLI-15).
 const JSON_FORMAT: &str = "velme-cli/1";
 
-/// Stack for the analysis thread. The D-71 limits keep parsing and checking within a few MiB even in a debug build; the
-/// main thread's default stack differs by platform (1 MiB on Windows), so the size is set here (R-SYN-19).
-const ANALYZE_STACK: usize = 64 * 1024 * 1024;
+/// Stack for the threads commands and analysis run on. The D-71 and `compiler/21` §7 limits bound how deep parsing,
+/// checking, validation, evaluation and value rendering recurse (`runtime/30` §3); the main thread's default stack
+/// differs by platform (1 MiB on Windows), so the size is set here (R-SYN-19).
+const STACK: usize = 64 * 1024 * 1024;
 
 /// The `velme check` progress lines (`tooling/40` §3.3) this build can reach, each with the code prefixes of the phase
 /// it reports on (`reference/90` groups codes by phase). The static call limits are checked with the call graph
@@ -131,7 +132,17 @@ fn parse_args(args: &[String]) -> Option<Command> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = match parse_args(&args) {
+    let code = on_big_stack(|| command(&args)).unwrap_or_else(|| {
+        // Shown without source lines: it belongs to no place in any file.
+        print_err(&format!("{}\n", Diagnostic::internal_error().message));
+        EXIT_INTERNAL
+    });
+    ExitCode::from(code)
+}
+
+/// Runs the command `args` name, and gives its exit code.
+fn command(args: &[String]) -> u8 {
+    match parse_args(args) {
         Some(Command::Version) => {
             print_out(&format!("{}\n", version_line()));
             EXIT_OK
@@ -149,8 +160,7 @@ fn main() -> ExitCode {
             print_err(&format!("{USAGE}\n"));
             EXIT_USAGE
         }
-    };
-    ExitCode::from(code)
+    }
 }
 
 /// Output errors (a closed pipe) are ignored: there is nowhere left to report them.
@@ -177,12 +187,14 @@ struct Analyzed {
 }
 
 fn analyze(arg: &str) -> Analyzed {
-    let project = Project::of(Path::new(arg)).ok();
-    let path = project.as_ref().map_or_else(|| display_path(arg), |p| p.file.clone());
-    let (text, program, diagnostics) = match std::fs::read(arg) {
+    let project = Project::of(Path::new(arg));
+    let path = project.as_ref().map_or_else(|_| display_path(arg), |p| p.file.clone());
+    let read = std::fs::read(arg).and_then(|bytes| project.as_ref().map(|_| bytes).map_err(clone_error));
+    let (text, program, diagnostics) = match read {
         Err(err) => (None, None, vec![SourceFile::unreadable(&path, &err)]),
         Ok(bytes) => match SourceFile::from_bytes(path.clone(), bytes.clone()) {
-            Ok(file) => match analyze_on_big_stack(&file) {
+            // A thread of its own, so a bug in analysis is reported like any other (R-SYN-19).
+            Ok(file) => match on_big_stack(|| velme_sema::analyze(&file)) {
                 Some((program, diagnostics)) => (Some(file.text), program, diagnostics),
                 // Shown without source lines: it belongs to no place in the file.
                 None => (None, None, vec![Diagnostic::internal_error()]),
@@ -194,7 +206,7 @@ fn analyze(arg: &str) -> Analyzed {
     let program = program.filter(|_| !diagnostics.iter().any(Diagnostic::is_error));
     Analyzed {
         path,
-        project,
+        project: project.ok(),
         text,
         program,
         diagnostics,
@@ -399,10 +411,18 @@ fn read_input(input: &str) -> Result<String, Diagnostic> {
 
 /// A value as pretty JSON, by the one mapping (`tooling/40` §3.2, D-23).
 fn pretty(value: &Value) -> String {
-    let text = encode_value(value);
-    serde_json::from_str::<serde_json::Value>(&text)
-        .and_then(|json| serde_json::to_string_pretty(&json))
-        .unwrap_or(text)
+    to_json(value)
+        .and_then(|json| serde_json::to_string_pretty(&json).ok())
+        .unwrap_or_default()
+}
+
+/// A value as JSON, by the one mapping (D-23); `None` only past `max_output_bytes`, which a run has already refused
+/// with `VL0606` (`runtime/30` §7). Values nest as deep as their types, so the parse has no depth limit of its own.
+fn to_json(value: &Value) -> Option<serde_json::Value> {
+    let text = encode_value(value).ok()?;
+    let mut parser = serde_json::Deserializer::from_str(&text);
+    parser.disable_recursion_limit();
+    serde_json::Value::deserialize(&mut parser).ok()
 }
 
 /// A usage error: `message` and the usage lines on stderr, exit 64.
@@ -455,10 +475,7 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, json: bool) -> u8 {
                     .iter()
                     .map(|d| JsonDiagnostic::new(d, path, &lines))
                     .collect(),
-                result: r
-                    .result
-                    .as_ref()
-                    .and_then(|v| serde_json::from_str(&encode_value(v)).ok()),
+                result: r.result.as_ref().and_then(to_json),
             })
             .collect();
         let failed = exit != EXIT_OK || results.iter().any(|r| r.status == "failed");
@@ -515,15 +532,20 @@ fn progress_lines(diagnostics: &[Diagnostic]) -> String {
     out
 }
 
-/// Analyzes on a thread with [`ANALYZE_STACK`]; `None` only if the thread couldn't start or analysis panicked, which is
-/// a bug (R-SYN-19).
-fn analyze_on_big_stack(file: &SourceFile) -> Option<(Option<Program>, Vec<Diagnostic>)> {
+/// The same failure again, for a second report of it.
+fn clone_error(error: &std::io::Error) -> std::io::Error {
+    std::io::Error::new(error.kind(), error.to_string())
+}
+
+/// Runs `work` on a thread with [`STACK`]; `None` only if the thread couldn't start or `work` panicked, which is a bug
+/// (R-SYN-19).
+fn on_big_stack<T: Send>(work: impl FnOnce() -> T + Send) -> Option<T> {
     std::thread::scope(|scope| {
-        let analyzer = std::thread::Builder::new()
-            .stack_size(ANALYZE_STACK)
-            .spawn_scoped(scope, || velme_sema::analyze(file))
+        let worker = std::thread::Builder::new()
+            .stack_size(STACK)
+            .spawn_scoped(scope, work)
             .ok()?;
-        analyzer.join().ok()
+        worker.join().ok()
     })
 }
 

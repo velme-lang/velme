@@ -27,14 +27,14 @@ pub fn run(ir: &ValidIr, inputs: Vec<Value>, bindings: Vec<Value>, max_fuel: u64
     if inputs.len() != goal.inputs.len() || bindings.len() != goal.calls.len() {
         return Err(Error::Builtin(velme_builtins::Error::Internal).into());
     }
-    let mut evaluator = Evaluator::new(&goal.types, max_fuel);
+    let mut evaluator = Evaluator::new(max_fuel);
     for ((name, _), value) in goal.inputs.iter().zip(inputs) {
         evaluator.bind_input(name, value);
     }
     for (velme_ir::CallNode::Call(call), value) in goal.calls.iter().zip(bindings) {
         evaluator.bind_local(&call.binding, value);
     }
-    let value = evaluator.eval(&goal.body)?;
+    let value = evaluator.eval(ir.body())?;
     Ok(Output {
         value,
         fuel: evaluator.fuel(),
@@ -103,7 +103,10 @@ impl Failure {
                 "it asked for a list of {length} items; at most {} are allowed",
                 velme_builtins::limits::MAX_LIST_SIZE
             )),
-            Error::Builtin(velme_builtins::Error::Internal) => return Diagnostic::internal_error(),
+            // The evaluator reports a built-in that ran out of fuel as `OutOfFuel`, so it never arrives wrapped.
+            Error::Builtin(velme_builtins::Error::Internal | velme_builtins::Error::OutOfFuel) => {
+                return Diagnostic::internal_error();
+            }
             Error::OutOfFuel { max_fuel } => Diagnostic::new(
                 Code::BudgetExceeded,
                 span,

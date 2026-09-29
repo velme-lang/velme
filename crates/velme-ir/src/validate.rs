@@ -6,18 +6,22 @@
 //! function or capability, and unknown fields already fail the schema (D-63).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
 use velme_builtins::{BUILTINS_VERSION, Builtin, CATALOG, Shape};
 use velme_diagnostics::{Code, Diagnostic, Span, did_you_mean};
-use velme_sema::hir::{self, GoalId, Program, Type as HirType, TypeId, assignable, join, signature_output};
+use velme_sema::hir::{self, GoalId, Keyword, Program, Type as HirType, TypeId, assignable, join, signature_output};
 
 use crate::json::pointer;
 use crate::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
+use crate::lower::ir_type;
 use crate::mapping::{DecodeProblem, decode_value};
-use crate::node::{BinaryOperator, Call, CallNode, Goal, Lambda, Node, RecordType, ReduceLambda, Type, UnaryOperator};
-use crate::{IR_VERSION, MAX_JSON_DEPTH, ParseError, from_json_str};
+use crate::node::{
+    BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
+};
+use crate::{IR_VERSION, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
 
 /// Where the IR being validated comes from, which decides what its `calls` may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,9 +55,143 @@ impl ValidIr {
         &self.0
     }
 
+    /// The goal's body, for a back end to evaluate.
+    pub fn body(&self) -> Trusted<'_> {
+        Trusted {
+            node: &self.0.body,
+            types: &self.0.types,
+        }
+    }
+
     /// The validated goal, by value.
     pub fn into_goal(self) -> Goal {
         self.0
+    }
+}
+
+/// IR a back end may evaluate (INV-1): the body of a [`ValidIr`], or a [`TrustedExpr`], with the record types it is
+/// typed over. Only this crate makes one, so a back end can't be handed an expression the validator hasn't seen.
+#[derive(Debug, Clone, Copy)]
+pub struct Trusted<'ir> {
+    node: &'ir Node,
+    types: &'ir BTreeMap<String, RecordType>,
+}
+
+impl<'ir> Trusted<'ir> {
+    /// The expression.
+    pub fn node(self) -> &'ir Node {
+        self.node
+    }
+
+    /// The record types in scope, by name.
+    pub fn types(self) -> &'ir BTreeMap<String, RecordType> {
+        self.types
+    }
+}
+
+/// A check item or example lowered to IR (`language/13` R-CHK-11) that passed stages 2–4 in its goal's check scope
+/// ([`CheckScope`]): the one other form a back end evaluates (INV-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedExpr {
+    node: Node,
+    types: Arc<BTreeMap<String, RecordType>>,
+}
+
+impl TrustedExpr {
+    /// The expression.
+    pub fn node(&self) -> &Node {
+        &self.node
+    }
+
+    /// The expression, for a back end to evaluate.
+    pub fn trusted(&self) -> Trusted<'_> {
+        Trusted {
+            node: &self.node,
+            types: &self.types,
+        }
+    }
+}
+
+/// What a goal's checks and examples may name (`language/13` R-CHK-02): its inputs, its call bindings and `result`,
+/// and every record type of the program, since an example may build a record of any type. It exists only for the
+/// check lowering of R-CHK-11, whose input is checked source: stage 7's limits bound what an LLM writes, and a valid
+/// check can pass them — a 200-operator chain nests past 128, five nested quantifiers pass the collection nesting of
+/// 4, a list literal can hold more than 1 000 items and a text more than 64 KiB — so they aren't applied. Its depth is
+/// bounded by the source line instead (`language/10` D-71, `runtime/30` R-RUN-25). Never pass it IR from elsewhere.
+#[derive(Debug, Clone)]
+pub struct CheckScope<'p> {
+    program: &'p Program,
+    goal: &'p hir::Goal,
+    types: Arc<BTreeMap<String, RecordType>>,
+}
+
+impl<'p> CheckScope<'p> {
+    /// The check scope of `goal`, a goal of the checked `program`.
+    pub fn new(program: &'p Program, goal: &'p hir::Goal) -> Result<Self, Diagnostic> {
+        let types = program
+            .types
+            .iter()
+            .map(|record| {
+                let fields = record
+                    .fields
+                    .iter()
+                    .map(|f| Some((f.name.clone(), ir_type(program, &f.ty)?)))
+                    .collect::<Option<Vec<_>>>()?;
+                Some((record.name.clone(), RecordType { fields }))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()
+            .ok_or_else(Diagnostic::internal_error)?;
+        Ok(CheckScope {
+            program,
+            goal,
+            types: Arc::new(types),
+        })
+    }
+
+    /// `node`, an expression lowered from the goal's checks or examples, validated at stages 2–4 (`compiler/21` §6)
+    /// in this scope, with a type assignable to `expected`: no `call` node or reused name either. A finding is a
+    /// lowering bug: the source was checked.
+    pub fn validate(&self, node: Node, expected: &HirType) -> Result<TrustedExpr, Vec<Diagnostic>> {
+        let target = self.goal;
+        let holder = Goal {
+            ir_version: IR_VERSION.to_owned(),
+            builtins_version: BUILTINS_VERSION.to_owned(),
+            goal: target.name.clone(),
+            types: BTreeMap::new(),
+            inputs: Vec::new(),
+            output: Type::Nothing {},
+            calls: Vec::new(),
+            body: node,
+        };
+        let findings = {
+            let mut v = Validator::new(self.program, target, &holder, &[], Origin::Complete, Vec::new());
+            v.compiler_names = true;
+            let result = Keyword::Result.as_str();
+            // A wired goal's `result` binding is its output.
+            for binding in target.bindings.iter().filter(|b| b.name != result) {
+                v.scope.push((&binding.name, binding.ty.clone()));
+            }
+            v.scope.push((result, target.output.clone()));
+            let ty = v.expr(&holder.body, 1, 0);
+            if !assignable(&ty, expected) {
+                let rule = format!("it is {}, where {} is needed", v.name(&ty), v.name(expected));
+                v.find(Stage::Types, rule);
+            }
+            v.findings
+        };
+        let mut diags: Vec<Diagnostic> = findings
+            .into_iter()
+            .filter(|f| f.stage != Stage::Resources)
+            .map(|f| f.diagnostic(target.span))
+            .collect();
+        if !diags.is_empty() {
+            velme_diagnostics::sort(&mut diags);
+            return Err(diags);
+        }
+        Ok(TrustedExpr {
+            node: holder.body,
+            types: Arc::clone(&self.types),
+        })
     }
 }
 
@@ -85,7 +223,7 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
         goal.calls = request.calls.to_vec();
     }
     let findings = {
-        let mut v = Validator::new(request.program, target, &goal, request.origin, findings);
+        let mut v = Validator::new(request.program, target, &goal, request.calls, request.origin, findings);
         v.envelope();
         v.walk();
         if request.origin == Origin::Complete {
@@ -94,7 +232,7 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
         v.findings
     };
     let Some(first) = findings.iter().map(|f| f.stage).min() else {
-        return Ok(ValidIr(goal));
+        return canonical_size(&goal, target.span).map(|()| ValidIr(goal));
     };
     let mut diags: Vec<Diagnostic> = findings
         .into_iter()
@@ -103,6 +241,21 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
         .collect();
     velme_diagnostics::sort(&mut diags);
     Err(diags)
+}
+
+/// The §7 size limit on the canonical form of a goal that passed every other stage, which is what a store keeps: plain
+/// decimals can be far longer than the numbers written (`1e27` is 28 digits), and a candidate's joined-in `calls` add
+/// to it (R-IR-18, `runtime/32` R-ART-10). Checked last, so the walk over a document that fails a stage, however deep,
+/// is the parser's alone.
+fn canonical_size(goal: &Goal, span: Span) -> Result<(), Vec<Diagnostic>> {
+    let length = to_canonical_string(goal).map_or(0, |text| text.len());
+    if length <= MAX_IR_BYTES {
+        return Ok(());
+    }
+    let rule = format!("its canonical form is {length} bytes long; at most {MAX_IR_BYTES} are allowed");
+    Err(vec![
+        Finding::new(Stage::Structure, String::new(), rule).diagnostic(span),
+    ])
 }
 
 /// Stage 1 (R-IR-11): the document is not JSON of the schema's shape.
@@ -181,10 +334,12 @@ struct Validator<'a> {
     program: &'a Program,
     target: &'a hir::Goal,
     goal: &'a Goal,
+    /// The compiler's call section for the goal: what its `types` may reach, whatever the IR's own `calls` say.
+    calls: &'a [CallNode],
     origin: Origin,
-    /// Set while walking a candidate's joined-in `calls`: they come from the compiler, so their names resolve against
-    /// the program and the goal's signature, not against declarations the candidate wrote.
-    compiler_calls: bool,
+    /// Set while walking what the compiler wrote — a candidate's joined-in `calls`, or a lowered check — whose names
+    /// resolve against the program and the goal's signature, not against declarations in the IR.
+    compiler_names: bool,
     /// The goal's inputs, with their types resolved.
     inputs: Vec<(&'a str, HirType)>,
     /// Call bindings, `let` names and lambda parameters in scope, innermost last.
@@ -202,6 +357,7 @@ impl<'a> Validator<'a> {
         program: &'a Program,
         target: &'a hir::Goal,
         goal: &'a Goal,
+        calls: &'a [CallNode],
         origin: Origin,
         findings: Vec<Finding>,
     ) -> Self {
@@ -209,8 +365,9 @@ impl<'a> Validator<'a> {
             program,
             target,
             goal,
+            calls,
             origin,
-            compiler_calls: false,
+            compiler_names: false,
             inputs: Vec::new(),
             scope: Vec::new(),
             path: Vec::new(),
@@ -259,8 +416,9 @@ impl<'a> Validator<'a> {
     }
 
     /// A candidate's version must equal the request's, which in v0.1 is always this build's own (D-63). A complete goal,
-    /// such as a stored artifact, may be of an older minor of the same major: minor bumps are additive (R-IR-22 for
-    /// `ir_version`, `language/14` R-BLT-09 for `builtins_version`). A newer minor is named as such.
+    /// such as a stored artifact, may be of an older minor of the same compatibility unit, which from 1.0 is the major:
+    /// minor bumps are then additive (D-85; R-IR-22 for `ir_version`, `language/14` R-BLT-09 for `builtins_version`).
+    /// A newer minor is named as such.
     fn version(&mut self, segment: &str, what: &str, found: &str, own: &str) {
         if found == own || (self.origin == Origin::Complete && readable(found, own)) {
             return;
@@ -316,13 +474,15 @@ impl<'a> Validator<'a> {
         }
     }
 
-    /// `types` equal the program's record types of the same names (R-IR-01, R-IR-14).
+    /// `types` equal the program's record types of the same names (R-IR-01, R-IR-14), and are only those the goal's
+    /// inputs, output and calls reach (D-84).
     fn record_types(&mut self) {
         let goal = self.goal;
+        let reached = self.reached();
         self.path.push("types".to_owned());
         for (name, record) in &goal.types {
             self.path.push(name.clone());
-            match self.program.types.iter().find(|r| &r.name == name) {
+            match self.program.types.iter().enumerate().find(|(_, r)| &r.name == name) {
                 None => {
                     let help = did_you_mean(name, self.program.types.iter().map(|r| r.name.as_str()));
                     self.help(
@@ -331,7 +491,11 @@ impl<'a> Validator<'a> {
                         help,
                     );
                 }
-                Some(declared) => {
+                Some((id, _)) if !reached.contains(&TypeId(id)) => self.find(
+                    Stage::Names,
+                    format!("it describes a record type `{name}` that the goal's inputs, output and calls don't use"),
+                ),
+                Some((_, declared)) => {
                     let fields = self.fields(record);
                     let same = fields.len() == declared.fields.len()
                         && fields
@@ -355,6 +519,33 @@ impl<'a> Validator<'a> {
             self.path.pop();
         }
         self.path.pop();
+    }
+
+    /// The record types the goal's inputs and output and its calls' goals reach, through fields too (D-84). The calls
+    /// are the compiler's, so IR that drops or changes one is reported at stage 6, not as a type it doesn't use.
+    fn reached(&self) -> Vec<TypeId> {
+        let target = self.target;
+        let callees = self
+            .calls
+            .iter()
+            .filter_map(|CallNode::Call(call)| self.program.goals.iter().find(|g| g.name == call.goal));
+        let mut pending = Vec::new();
+        for goal in [target].into_iter().chain(callees) {
+            for ty in goal.params.iter().map(|p| &p.ty).chain([&goal.output]) {
+                records_in(ty, &mut pending);
+            }
+        }
+        let mut reached = Vec::new();
+        while let Some(id) = pending.pop() {
+            if reached.contains(&id) {
+                continue;
+            }
+            reached.push(id);
+            for field in self.program.record(id).into_iter().flat_map(|r| &r.fields) {
+                records_in(&field.ty, &mut pending);
+            }
+        }
+        reached
     }
 
     /// A `types` entry's fields, with their types resolved.
@@ -435,7 +626,7 @@ impl<'a> Validator<'a> {
     /// The call section: each call's goal, arguments and binding (R-IR-09).
     fn calls(&mut self) {
         let goal = self.goal;
-        self.compiler_calls = self.origin == Origin::Candidate;
+        self.compiler_names = self.origin == Origin::Candidate;
         self.path.push("calls".to_owned());
         for (i, CallNode::Call(call)) in goal.calls.iter().enumerate() {
             self.path.push(i.to_string());
@@ -488,7 +679,7 @@ impl<'a> Validator<'a> {
             self.path.pop();
         }
         self.path.pop();
-        self.compiler_calls = false;
+        self.compiler_names = false;
     }
 
     /// R-IR-01: `types` lists every record type in the signature of a called goal, as it does for the goal's own.
@@ -582,7 +773,7 @@ impl<'a> Validator<'a> {
     /// The record type `name`: listed in `types` (R-IR-01) and declared by the program.
     fn record_named(&mut self, name: &str) -> HirType {
         let goal = self.goal;
-        if !self.compiler_calls && !goal.types.contains_key(name) {
+        if !self.compiler_names && !goal.types.contains_key(name) {
             let help = did_you_mean(name, goal.types.keys().map(String::as_str));
             self.help(Stage::Names, format!("there's no record type called `{name}`"), help);
             return HirType::Error;
@@ -678,22 +869,25 @@ impl<'a> Validator<'a> {
         }
     }
 
-    /// `value` decodes as `ty` under the D-23 mapping, and its arrays and texts fit §7.
-    fn literal(&mut self, ty: &Type, value: &Value) -> HirType {
+    /// `value` decodes as `ty` under the D-23 mapping, and its arrays and texts fit §7. The decoded value is kept in
+    /// the node, so a back end never decodes it again (D-83).
+    fn literal(&mut self, ty: &Type, value: &LiteralValue) -> HirType {
         let ty = self.resolve_at("type", ty);
         self.path.push("value".to_owned());
-        // `literal_sizes` reports long arrays against the tighter §7 limit.
-        if let Err(error) = decode_value(value, &ty, self.program)
-            && !matches!(error.problem, DecodeProblem::TooManyItems { .. })
-        {
-            let help = match &error.problem {
-                DecodeProblem::UnknownField { help, .. } => help.clone(),
-                _ => None,
-            };
-            let segments: Vec<&str> = error.path.iter().map(String::as_str).collect();
-            self.find_at(&segments, Stage::Types, error.problem.to_string(), help);
+        match decode_value(value.json(), &ty, self.program) {
+            Ok(decoded) => value.set_decoded(decoded),
+            // `literal_sizes` reports long arrays against the tighter §7 limit.
+            Err(error) if matches!(error.problem, DecodeProblem::TooManyItems { .. }) => {}
+            Err(error) => {
+                let help = match &error.problem {
+                    DecodeProblem::UnknownField { help, .. } => help.clone(),
+                    _ => None,
+                };
+                let segments: Vec<&str> = error.path.iter().map(String::as_str).collect();
+                self.find_at(&segments, Stage::Types, error.problem.to_string(), help);
+            }
         }
-        self.literal_sizes(value);
+        self.literal_sizes(value.json());
         self.path.pop();
         ty
     }
@@ -736,14 +930,20 @@ impl<'a> Validator<'a> {
     }
 
     fn input(&mut self, name: &str) -> HirType {
-        if self.compiler_calls {
-            let param = self.target.params.iter().find(|p| p.name == name);
-            return param.map_or(HirType::Error, |p| p.ty.clone());
-        }
-        if let Some((_, ty)) = self.inputs.iter().find(|(n, _)| *n == name) {
+        let target = self.target;
+        let found = if self.compiler_names {
+            target.params.iter().find(|p| p.name == name).map(|p| &p.ty)
+        } else {
+            self.inputs.iter().find(|(n, _)| *n == name).map(|(_, ty)| ty)
+        };
+        if let Some(ty) = found {
             return ty.clone();
         }
-        let help = did_you_mean(name, self.inputs.iter().map(|(n, _)| *n));
+        let help = if self.compiler_names {
+            did_you_mean(name, target.params.iter().map(|p| p.name.as_str()))
+        } else {
+            did_you_mean(name, self.inputs.iter().map(|(n, _)| *n))
+        };
         self.find_at(
             &["name"],
             Stage::Names,
@@ -1179,11 +1379,13 @@ fn wire<T: Serialize>(value: &T) -> String {
     }
 }
 
-/// Whether a validator of version `own` reads version `found`: the same major and a minor no newer (R-IR-22).
+/// Whether a validator of version `own` reads version `found`: the same compatibility unit — `MAJOR`, or
+/// `MAJOR.MINOR` while `MAJOR` is 0 (D-85) — and a minor no newer (R-IR-22).
 fn readable(found: &str, own: &str) -> bool {
     matches!(
         (major_minor(found), major_minor(own)),
-        (Some((major, minor)), Some((own_major, own_minor))) if major == own_major && minor <= own_minor
+        (Some((major, minor)), Some((own_major, own_minor)))
+            if major == own_major && (minor == own_minor || (major > 0 && minor < own_minor))
     )
 }
 
@@ -1196,4 +1398,28 @@ fn major_minor(version: &str) -> Option<(u64, u64)> {
             .flatten()
     };
     Some((number(major)?, number(minor)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::readable;
+
+    /// R-IR-22, D-85: a validator reads its own compatibility unit — `MAJOR`, or `MAJOR.MINOR` while `MAJOR` is 0 — at
+    /// a minor no newer than its own.
+    #[test]
+    fn versions_are_read_within_their_compatibility_unit() {
+        for (found, own, read) in [
+            ("0.1", "0.1", true),
+            ("0.0", "0.1", false),
+            ("0.2", "0.1", false),
+            ("1.0", "1.2", true),
+            ("1.2", "1.2", true),
+            ("1.3", "1.2", false),
+            ("2.0", "1.2", false),
+            ("1.0", "0.1", false),
+            ("1", "1.0", false),
+        ] {
+            assert_eq!(readable(found, own), read, "{found} by {own}");
+        }
+    }
 }

@@ -7,8 +7,8 @@ use velme_builtins::{Number, Value};
 use velme_diagnostics::Code;
 use velme_diagnostics::Span;
 use velme_ir::{
-    DecodeError, DecodeProblem, SHOWN_CHARS, SHOWN_ITEMS, decode_str, decode_value, display_value, encode_value,
-    from_json_str,
+    DecodeError, DecodeProblem, OutputTooBig, SHOWN_CHARS, SHOWN_ITEMS, SHOWN_TOTAL, decode_str, decode_value,
+    display_value, encode_value, from_json_str,
 };
 use velme_sema::hir::{FieldDef, Program, RecordType, Type, TypeId};
 use velme_sema::{SourceFile, analyze};
@@ -16,6 +16,11 @@ use velme_sema::{SourceFile, analyze};
 const TYPES: &str = "\
 type Player:\n    name: Text\n    score: Number\n    best: Number?\n\n\
 type Team:\n    players: List<Player>\n    captain: Player?\n";
+
+/// `value` as JSON, which fits the output limit.
+fn encode(value: &Value) -> String {
+    encode_value(value).expect("fits the output limit")
+}
 
 fn program() -> Program {
     let (program, diags) = analyze(&SourceFile::new("types.velme", TYPES));
@@ -39,7 +44,7 @@ fn reject(text: &str, ty: &Type, program: &Program) -> DecodeError {
 
 /// `text` decoded as `ty` and encoded again.
 fn round_trip(text: &str, ty: &Type, program: &Program) -> String {
-    encode_value(&decode(text, ty, program).unwrap_or_else(|e| panic!("{text}: {e:?}")))
+    encode(&decode(text, ty, program).unwrap_or_else(|e| panic!("{text}: {e:?}")))
 }
 
 #[test]
@@ -98,7 +103,7 @@ fn ac_typ_15_number_input_round_trips_exactly() {
     let sum = Number::parse("0.1")
         .and_then(|a| a.checked_add(Number::parse("0.2")?).ok())
         .expect("fits");
-    assert_eq!(encode_value(&Value::Number(sum)), "0.3");
+    assert_eq!(encode(&Value::Number(sum)), "0.3");
 }
 
 #[test]
@@ -185,7 +190,7 @@ fn json_text_input_rejects_a_repeated_key() {
     let error = decode_str("{", &player, &program).expect_err("malformed");
     assert_eq!(error.code(), Code::InvalidInput);
     let value = decode_str(r#"{"name":"a","score":1,"best":null}"#, &player, &program).expect("decodes");
-    assert_eq!(encode_value(&value), r#"{"name":"a","score":1,"best":null}"#);
+    assert_eq!(encode(&value), r#"{"name":"a","score":1,"best":null}"#);
 }
 
 #[test]
@@ -214,12 +219,27 @@ fn a_type_that_already_has_an_error_accepts_any_json() {
 #[test]
 fn display_cuts_long_lists_and_texts() {
     let numbers = |n: i64| Value::list((0..n).map(|i| Value::Number(Number::from(i))).collect());
-    assert_eq!(display_value(&numbers(10)), encode_value(&numbers(10)));
+    assert_eq!(display_value(&numbers(10)), encode(&numbers(10)));
     assert_eq!(display_value(&numbers(12)), "[0,1,2,3,4,5,6,7,8,9,…(+2 items)]");
     assert_eq!(SHOWN_ITEMS, 10);
 
     let text = |n: usize| Value::text(&"é".repeat(n));
-    assert_eq!(display_value(&text(SHOWN_CHARS)), encode_value(&text(SHOWN_CHARS)));
+    assert_eq!(display_value(&text(SHOWN_CHARS)), encode(&text(SHOWN_CHARS)));
     let long = display_value(&Value::list(vec![text(SHOWN_CHARS + 3)]));
     assert_eq!(long, format!("[\"{}\"…(+3 characters)]", "é".repeat(SHOWN_CHARS)));
+}
+
+/// Values share their parts, so one can stand for far more JSON than it takes memory: 2^60 numbers here. Encoding
+/// stops past `max_output_bytes` and the human view past [`SHOWN_TOTAL`] bytes, each in bounded time.
+#[test]
+fn rendering_stops_at_its_limit() {
+    let mut deep = Value::list(vec![Value::text("é")]);
+    for _ in 0..60 {
+        deep = Value::list(vec![deep.clone(), deep]);
+    }
+    assert_eq!(encode_value(&deep), Err(OutputTooBig));
+    let shown = display_value(&deep);
+    assert!(shown.ends_with('…'), "{shown}");
+    assert!(shown.len() <= SHOWN_TOTAL + '…'.len_utf8(), "{}", shown.len());
+    assert!(shown.starts_with("[[[["), "{shown}");
 }

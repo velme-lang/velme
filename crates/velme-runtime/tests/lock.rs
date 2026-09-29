@@ -11,7 +11,8 @@ use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::{Code, Span};
 use velme_ir::{Fingerprint, IR_VERSION, calls, to_canonical_string};
 use velme_runtime::{
-    Artifact, Cause, Entry, EntryError, LOCK_FILE, LoadError, Lock, LockedGoal, RecordChange, Store, Versioned, load,
+    Artifact, Cause, Entry, EntryError, LOCK_FILE, LoadError, Lock, LockError, LockedGoal, MAX_LOCK_BYTES,
+    RecordChange, Store, Versioned, load,
 };
 use velme_sema::hir::Program;
 use velme_test_support::{fixture_manifest, goal_id, install, install_artifact, program, read, valid_ir};
@@ -413,6 +414,39 @@ fn a_lock_velme_cannot_read_is_a_file_error() {
     let error = Lock::parse(&format!("version = 1\nlanguage = \"0.1\"\n{one}{one}")).expect_err("twice");
     assert_eq!(error.diagnostic().notes, ["it pins the goal `A` twice"]);
     assert_eq!(Lock::read(&project("no_lock")).expect("no error"), None);
+}
+
+/// A lock is a regular file of at most `MAX_LOCK_BYTES`, and is written only through Velme's own `.velme/tmp`.
+#[test]
+fn a_lock_must_be_a_regular_file_of_bounded_size() {
+    let root = project("long_lock");
+    fs::write(
+        Lock::path(&root),
+        vec![b'#'; usize::try_from(MAX_LOCK_BYTES).expect("fits") + 1],
+    )
+    .expect("written");
+    let error = Lock::read(&root).expect_err("too long");
+    assert!(error.to_string().contains("longer than"), "{error}");
+    assert_eq!(error.code(), Code::FileError);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let root = project("linked_lock");
+        let target = root.join("elsewhere.lock");
+        Lock::new("0.1").write(&root).expect("written");
+        fs::rename(Lock::path(&root), &target).expect("moved");
+        symlink(&target, Lock::path(&root)).expect("linked");
+        let error = Lock::read(&root).expect_err("a link");
+        assert!(matches!(error, LockError::Unreadable { .. }), "{error:?}");
+
+        let root = project("linked_tmp");
+        fs::create_dir_all(root.join(".velme")).expect(".velme");
+        fs::create_dir_all(root.join("target")).expect("target");
+        symlink(root.join("target"), root.join(".velme/tmp")).expect("linked");
+        let error = Lock::new("0.1").write(&root).expect_err("refused");
+        assert!(error.to_string().contains("symbolic link"), "{error}");
+    }
 }
 
 /// The lock text of one entry.

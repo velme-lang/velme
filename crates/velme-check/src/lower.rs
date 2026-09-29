@@ -1,11 +1,12 @@
 //! Lowering of `check` items and `examples` to the IR expression subset (`language/13` R-CHK-11): the one
-//! representation every back end runs, so a check means what the goal's own IR would (INV-3).
+//! representation every back end runs, so a check means what the goal's own IR would (INV-3). What is lowered passes
+//! the validator's name and type stages before anything evaluates it (INV-1).
 
 use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 use velme_diagnostics::{Diagnostic, Span};
-use velme_ir::{BinaryOperator, Lambda, Node, RecordType as IrRecord, Type as IrType, UnaryOperator};
+use velme_ir::{BinaryOperator, CheckScope, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator};
 use velme_sema::hir::{BinaryOp, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp};
 
 /// The local a lowered check reads the goal's output from (`language/13` R-CHK-02).
@@ -13,55 +14,59 @@ pub fn result_local() -> &'static str {
     Keyword::Result.as_str()
 }
 
-/// A check item or example value lowered to IR, with the source span of each of its nodes (R-CHK-11).
+/// A check item or example value lowered to IR and validated, with the source span of each of its nodes (R-CHK-11).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lowered {
     /// The expression.
-    pub node: Node,
+    pub node: TrustedExpr,
     /// The span of each node of `node`, in [`Node::preorder`]. A node the lowering adds — the `unwrap_or` of a narrowed
     /// path, a projection's `map`, the `not` of `is not empty` or of `if` — has the span of the expression it lowers,
     /// and comes before that expression's other nodes.
     pub spans: Vec<Span>,
 }
 
-/// The check item `check` of `goal`, lowered (R-CHK-11). Inputs are `input` nodes, call bindings and `result` are
-/// locals, and a quantifier's variable is its lambda's parameter. A narrowed path reads through `unwrap_or`, as IR
-/// narrows explicitly (`compiler/21` R-IR-05); its default is never evaluated, since the path is present there.
-pub fn lower_check(program: &Program, goal: &Goal, check: &Expr) -> Result<Lowered, Diagnostic> {
-    Lowering::new(program, goal)
+/// The check item `check` of `goal`, lowered (R-CHK-11) and validated in `scope`, the goal's check scope. Inputs are
+/// `input` nodes, call bindings and `result` are locals, and a quantifier's variable is its lambda's parameter. A
+/// narrowed path reads through `unwrap_or`, as IR narrows explicitly (`compiler/21` R-IR-05); its default is never
+/// evaluated, since the path is present there.
+pub fn lower_check(
+    program: &Program,
+    goal: &Goal,
+    scope: &CheckScope<'_>,
+    check: &Expr,
+) -> Result<Lowered, Diagnostic> {
+    let tree = Lowering::new(program, goal)
         .expr(check)
-        .map(Tree::lowered)
-        .ok_or_else(Diagnostic::internal_error)
+        .ok_or_else(Diagnostic::internal_error)?;
+    tree.lowered(scope, &Type::Boolean)
 }
 
-/// An example of `goal`, lowered: its arguments, one per parameter, and its expected value (`language/12` R-GOAL-21).
-pub fn lower_example(program: &Program, goal: &Goal, example: &Example) -> Result<(Vec<Lowered>, Lowered), Diagnostic> {
+/// An example of `goal`, lowered and validated in `scope`: its arguments, one per parameter, and its expected value
+/// (`language/12` R-GOAL-21).
+pub fn lower_example(
+    program: &Program,
+    goal: &Goal,
+    scope: &CheckScope<'_>,
+    example: &Example,
+) -> Result<(Vec<Lowered>, Lowered), Diagnostic> {
     let mut lowering = Lowering::new(program, goal);
+    if example.args.len() != goal.params.len() {
+        return Err(Diagnostic::internal_error());
+    }
     let args = example
         .args
         .iter()
-        .map(|arg| lowering.expr(arg).map(Tree::lowered))
-        .collect::<Option<Vec<_>>>();
-    let expected = lowering.expr(&example.expected).map(Tree::lowered);
-    args.zip(expected).ok_or_else(Diagnostic::internal_error)
-}
-
-/// Every record type of `program` as IR (`compiler/21` R-IR-01): what a lowered check or example is evaluated over,
-/// since it may build a record of any type.
-pub fn record_types(program: &Program) -> Result<BTreeMap<String, IrRecord>, Diagnostic> {
-    program
-        .types
-        .iter()
-        .map(|record| {
-            let fields = record
-                .fields
-                .iter()
-                .map(|f| Some((f.name.clone(), ir_type(program, &f.ty)?)))
-                .collect::<Option<Vec<_>>>()?;
-            Some((record.name.clone(), IrRecord { fields }))
+        .zip(&goal.params)
+        .map(|(arg, param)| {
+            let tree = lowering.expr(arg).ok_or_else(Diagnostic::internal_error)?;
+            tree.lowered(scope, &param.ty)
         })
-        .collect::<Option<BTreeMap<_, _>>>()
-        .ok_or_else(Diagnostic::internal_error)
+        .collect::<Result<Vec<_>, _>>()?;
+    let expected = lowering
+        .expr(&example.expected)
+        .ok_or_else(Diagnostic::internal_error)?
+        .lowered(scope, &goal.output)?;
+    Ok((args, expected))
 }
 
 /// A node being built, with its spans in [`Node::preorder`].
@@ -82,11 +87,16 @@ impl Tree {
         Tree::new(span, node, Vec::new())
     }
 
-    fn lowered(self) -> Lowered {
-        Lowered {
-            node: self.node,
+    /// The tree validated in `scope` as an expression of a type assignable to `expected`. The source was checked, so
+    /// a finding is a lowering bug (R-CHK-11).
+    fn lowered(self, scope: &CheckScope<'_>, expected: &Type) -> Result<Lowered, Diagnostic> {
+        let node = scope
+            .validate(self.node, expected)
+            .map_err(|_| Diagnostic::internal_error())?;
+        Ok(Lowered {
+            node,
             spans: self.spans,
-        }
+        })
     }
 }
 
@@ -295,7 +305,10 @@ impl<'p> Lowering<'p> {
 }
 
 fn literal(ty: IrType, value: Json) -> Node {
-    Node::Literal { ty, value }
+    Node::Literal {
+        ty,
+        value: value.into(),
+    }
 }
 
 fn local(name: &str) -> Node {
