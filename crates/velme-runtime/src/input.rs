@@ -124,11 +124,7 @@ pub fn decode_inputs(
         match decode_value(&json, &param.ty, program) {
             Ok(value) => inputs.push(value),
             Err(error) => {
-                let at = if error.path.is_empty() {
-                    String::new()
-                } else {
-                    format!(" at `{}`", error.pointer())
-                };
+                let at = (!error.path.is_empty()).then(|| format!("at `{}`", error.pointer()));
                 let mut diag = match &error.problem {
                     // A list over `max_list_size` is too big, not mistyped (R-TYP-24).
                     DecodeProblem::TooManyItems { items } => Diagnostic::new(
@@ -137,21 +133,18 @@ pub fn decode_inputs(
                         format!("`{}` made a list or answer that's too big.", target.name),
                     )
                     .with_note(format!(
-                        "input `{}` has a list of {items} items{at}; at most {MAX_LIST_SIZE} are allowed",
-                        param.name
+                        "input `{}` has a list of {items} items{}; at most {MAX_LIST_SIZE} are allowed",
+                        param.name,
+                        at.as_ref().map_or(String::new(), |at| format!(" {at}"))
                     )),
                     problem => {
-                        let (expected, found) = match problem {
-                            DecodeProblem::Mismatch { expected, found } => (expected.as_str(), (*found).to_owned()),
-                            other => (ty.as_str(), got(other)),
+                        let expected = match problem {
+                            DecodeProblem::Mismatch { expected, .. } => expected,
+                            _ => &ty,
                         };
-                        let message = format!("Input `{}` should be {expected}, but got {found}.", param.name);
+                        let message = format!("Input `{}` should be {expected}, but got {}.", param.name, got(problem));
                         let diag = Diagnostic::new(error.code(), param.span, message);
-                        if at.is_empty() {
-                            diag
-                        } else {
-                            diag.with_note(at.trim_start().to_owned())
-                        }
+                        at.map_or(diag.clone(), |at| diag.with_note(at))
                     }
                 };
                 if let DecodeProblem::UnknownField { help: Some(help), .. } = &error.problem {
