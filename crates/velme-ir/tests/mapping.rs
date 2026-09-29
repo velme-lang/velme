@@ -107,7 +107,7 @@ fn ac_typ_15_number_input_round_trips_exactly() {
 }
 
 #[test]
-fn json_number_outside_the_range_is_invalid_input() {
+fn ac_typ_16_json_number_outside_the_range_is_invalid_input() {
     let program = program();
     for input in [
         "1e-29",

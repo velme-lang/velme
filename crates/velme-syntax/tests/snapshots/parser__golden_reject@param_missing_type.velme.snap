@@ -1,12 +1,12 @@
 ---
 source: crates/velme-syntax/tests/parser.rs
-expression: diagnostics_json(&diags)
+expression: "serde_json::to_string_pretty(&diagnostics_json(&diags)).expect(\"JSON value serializes\")"
 input_file: tests/golden/parser/reject/param_missing_type.velme
 ---
 [
   {
     "code": "VL0101",
-    "help": null,
+    "help": "give `x` a type, like `x: Number`",
     "message": "I didn't expect `)` here — I was looking for `:`.",
     "severity": "error",
     "span": [
