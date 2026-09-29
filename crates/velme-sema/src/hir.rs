@@ -1,6 +1,6 @@
 //! The typed semantic model (HIR, `compiler/20` §4): resolved ids instead of names, with spans kept (R-CMP-11).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use velme_builtins::{Shape, Signature, limits};
 use velme_diagnostics::Span;
 /// The operators and keywords HIR expressions use, so HIR's consumers need not depend on `velme-syntax`.
@@ -131,8 +131,9 @@ pub struct Goal {
     pub span: Span,
 }
 
-/// What is synthesized for a goal (`language/12` §2, `compiler/20` §3 phase 6).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// What is synthesized for a goal (`language/12` §2, `compiler/20` §3 phase 6). Also an artifact manifest's `kind`
+/// (`runtime/32` §3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GoalKind {
     /// No `call` block: the whole body is synthesized.

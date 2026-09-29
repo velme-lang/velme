@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use velme_ir::{Goal, Origin, Request, ValidIr, from_json_str, validate};
+use velme_ir::{CallNode, Goal, Origin, Request, ValidIr, from_json_str, signature, validate};
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
 
@@ -38,10 +38,19 @@ pub fn goal_id(program: &Program, name: &str) -> GoalId {
     )
 }
 
-/// Hand-written IR for a goal of `program`, validated as a whole goal: its own `calls` stand in for the compiler's,
-/// whose signatures are placeholders until fingerprints exist.
+/// Hand-written IR for a goal of `program`, validated as a whole goal: its own `calls` stand in for the compiler's, so
+/// each must carry its child's real signature (`compiler/21` R-IR-09).
 pub fn valid_ir(program: &Program, ir: &str) -> ValidIr {
     let goal: Goal = from_json_str(ir).unwrap_or_else(|e| panic!("IR doesn't parse: {e}"));
+    for CallNode::Call(call) in &goal.calls {
+        let child = signature(program, goal_id(program, &call.goal)).expect("a checked goal has a signature");
+        assert_eq!(
+            call.goal_signature,
+            child.to_string(),
+            "the call `{}` has a stale signature",
+            call.binding
+        );
+    }
     let request = Request {
         program,
         goal: goal_id(program, &goal.goal),

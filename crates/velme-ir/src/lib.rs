@@ -1,12 +1,14 @@
 //! Velme `ir` crate: see `compiler/20` §2 for its responsibility.
 #![forbid(unsafe_code)]
 
+mod fingerprint;
 mod json;
 pub mod limits;
 mod mapping;
 mod node;
 mod validate;
 
+pub use fingerprint::{Fingerprint, FingerprintError, Synthesis, contract_key, execution_id, signature, synthesis_key};
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
 pub use mapping::{
     DecodeError, DecodeProblem, SHOWN_CHARS, SHOWN_ITEMS, decode_literal, decode_str, decode_value, display_value,

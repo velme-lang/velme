@@ -44,8 +44,8 @@ fn goal_id(program: &Program, name: &str) -> GoalId {
     )
 }
 
-/// The compiler's call section of a golden goal: the calls of its accept file (their signatures are placeholders
-/// until fingerprints exist).
+/// The compiler's call section of a golden goal: the calls of its accept file, whose signatures are the children's
+/// (`tests/fingerprint.rs`).
 fn compiler_calls(goal: &str) -> Vec<CallNode> {
     if goal != "BuildPlayerSummary" {
         return Vec::new();
