@@ -21,7 +21,7 @@ use crate::mapping::{DecodeProblem, decode_value};
 use crate::node::{
     BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
 };
-use crate::{IR_VERSION, MAX_JSON_DEPTH, ParseError, from_json_str, to_canonical_string};
+use crate::{IR_VERSION, ParseError, from_json_str, to_canonical_string};
 
 /// Where the IR being validated comes from, which decides what its `calls` may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,8 +268,8 @@ fn schema_error(error: ParseError, span: Span) -> Diagnostic {
     match error {
         ParseError::DuplicateKey { pointer } => diag.with_note(format!("at `{pointer}`: this key appears twice")),
         ParseError::ReservedKey { pointer } => diag.with_note(format!("at `{pointer}`: this key is reserved")),
-        ParseError::TooDeep { pointer } => {
-            diag.with_note(format!("at `{pointer}`: it nests deeper than {MAX_JSON_DEPTH} levels"))
+        ParseError::TooDeep { pointer, limit } => {
+            diag.with_note(format!("at `{pointer}`: it nests deeper than {limit} levels"))
         }
         // serde_json reports a line and column rather than a path.
         ParseError::Json(error) => diag.with_note(error.to_string()),
@@ -1392,8 +1392,9 @@ fn readable(found: &str, own: &str) -> bool {
 /// `MAJOR.MINOR` as numbers (R-IR-22).
 fn major_minor(version: &str) -> Option<(u64, u64)> {
     let (major, minor) = version.split_once('.')?;
+    // One spelling per number, since the compatibility unit is compared as text (D-85): no leading zero.
     let number = |s: &str| {
-        (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+        (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0')))
             .then(|| s.parse().ok())
             .flatten()
     };
@@ -1418,6 +1419,11 @@ mod tests {
             ("2.0", "1.2", false),
             ("1.0", "0.1", false),
             ("1", "1.0", false),
+            ("0.01", "0.1", false),
+            ("00.1", "0.1", false),
+            ("01.0", "1.0", false),
+            ("1.00", "1.0", false),
+            ("1.0", "01.0", false),
         ] {
             assert_eq!(readable(found, own), read, "{found} by {own}");
         }

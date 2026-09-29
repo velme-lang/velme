@@ -11,7 +11,9 @@ use serde::Serialize;
 use velme_builtins::limits::MIB;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::limits::MAX_IR_BYTES;
-use velme_ir::{CanonicalError, Fingerprint, Goal, ParseError, ValidIr, from_json_str, to_canonical_string};
+use velme_ir::{
+    CanonicalError, Fingerprint, Goal, MAX_JSON_DEPTH, ParseError, ValidIr, from_json_str_within, to_canonical_string,
+};
 
 use crate::artifact::{Artifact, Manifest};
 
@@ -90,6 +92,10 @@ impl Store {
             return Err(StoreError::TooLarge { bytes: bytes.len() });
         }
         let id = Fingerprint::of_bytes(bytes.as_bytes());
+        // Nothing is stored that `get` would refuse, such as IR nested past what an artifact may hold.
+        if let Err(error) = decode(id, &bytes) {
+            return Err(StoreError::Unreadable(error.to_string()));
+        }
         let path = self.path(id);
         refuse_links(&[&self.velme, &self.dir, &self.tmp]).map_err(StoreError::Io)?;
         let replace = match read_file(&path, MAX_ARTIFACT_BYTES) {
@@ -147,19 +153,28 @@ impl Store {
             id,
             reason: e.to_string(),
         })?;
-        let artifact: Artifact = from_json_str(&text).map_err(|e: ParseError| LoadError::Malformed {
+        decode(id, &text)
+    }
+}
+
+/// How deep an artifact document nests: its IR's [`MAX_JSON_DEPTH`] levels under the `ir` member (R-ART-10).
+const MAX_ARTIFACT_DEPTH: usize = MAX_JSON_DEPTH + 1;
+
+/// The artifact `id` whose bytes are `text`, which must be the canonical JSON the store writes.
+fn decode(id: Fingerprint, text: &str) -> Result<Artifact, LoadError> {
+    let artifact: Artifact =
+        from_json_str_within(text, MAX_ARTIFACT_DEPTH).map_err(|e: ParseError| LoadError::Malformed {
             id,
             reason: e.to_string(),
         })?;
-        // The store writes only canonical JSON, so other bytes that hash to their name were put there by hand.
-        if to_canonical_string(&artifact).ok().as_deref() != Some(text.as_str()) {
-            return Err(LoadError::Damaged {
-                id,
-                reason: "isn't in the canonical form the store writes".to_owned(),
-            });
-        }
-        Ok(artifact)
+    // The store writes only canonical JSON, so other bytes that hash to their name were put there by hand.
+    if to_canonical_string(&artifact).ok().as_deref() != Some(text) {
+        return Err(LoadError::Damaged {
+            id,
+            reason: "isn't in the canonical form the store writes".to_owned(),
+        });
     }
+    Ok(artifact)
 }
 
 /// The bytes of the regular file `path`, or `None` if it holds more than `max` bytes, which are not read (R-ART-10). A
@@ -262,6 +277,9 @@ pub enum StoreError {
         /// Its length.
         bytes: usize,
     },
+    /// Its canonical JSON is something `get` would refuse to read back, such as IR nested deeper than an artifact may
+    /// hold; why.
+    Unreadable(String),
     /// Writing it failed, or its name holds something that isn't a readable regular file, or a store directory is a
     /// link: `VL0901` (R-ART-09).
     Io(io::Error),
@@ -275,6 +293,7 @@ impl fmt::Display for StoreError {
                 f,
                 "the artifact is {bytes} bytes long; at most {MAX_ARTIFACT_BYTES} are stored"
             ),
+            Self::Unreadable(reason) => write!(f, "the artifact could not be read back: {reason}"),
             Self::Io(error) => write!(f, "the artifact could not be written: {error}"),
         }
     }

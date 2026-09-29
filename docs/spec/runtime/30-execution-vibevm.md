@@ -59,9 +59,10 @@ Evaluation nests at most one level per expression level — `compiler/21` §7's 
 or example, the one source line it comes from, within `language/10` D-71's 32 levels of nesting and 256 chained
 operators, times the few nodes a surface form lowers to (`language/13` R-CHK-11). Validating, comparing, rendering,
 encoding and dropping a value, and the validator's walk over its type, nest one level per level of the value. An
-invocation's inputs, call bindings and literals nest at most max(T, 512) levels, T being the deepest type the program
-declares (finite: no type is recursive, `language/11` R-TYP-18) and 512 `MAX_JSON_DEPTH`, which bounds input JSON and
-the IR document, so a literal and every type a `list` node spells. A goal body adds at most `MAX_NODES` / 2 = 5 000
+invocation's inputs nest at most 128 levels (`MAX_DEPTH`, `tooling/40` R-CLI-07); its call bindings and literals nest
+at most max(T, 512) levels, T being the deepest type the program declares (finite: no type is recursive, `language/11`
+R-TYP-18) and 512 `MAX_JSON_DEPTH`, which bounds the stored IR document, so a literal and every type a `list` node
+spells (the artifact holding it adds one level, `runtime/32` R-ART-10). A goal body adds at most `MAX_NODES` / 2 = 5 000
 levels to that, since each level takes a node and one under it; the most it can reach is 3 331 levels by `map`
 (`(MAX_NODES − 5) / 3`: a `let`, the first binding, three nodes per level and a use) on top of a literal nearly 512
 deep. A goal's output nests no deeper than its declared type. The CLI runs every command on a thread with a 64 MiB

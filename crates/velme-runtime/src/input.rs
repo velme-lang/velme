@@ -7,7 +7,7 @@ use std::io::Read;
 
 use serde_json::Value as Json;
 use velme_builtins::Value;
-use velme_builtins::limits::MIB;
+use velme_builtins::limits::{MAX_LIST_SIZE, MIB};
 use velme_diagnostics::{Code, Diagnostic, Span, closest, did_you_mean};
 use velme_ir::limits::MAX_DEPTH;
 use velme_ir::{DecodeProblem, decode_value, from_json_str, json_kind};
@@ -124,16 +124,36 @@ pub fn decode_inputs(
         match decode_value(&json, &param.ty, program) {
             Ok(value) => inputs.push(value),
             Err(error) => {
-                let message = match &error.problem {
-                    DecodeProblem::Mismatch { expected, found } => {
-                        format!("Input `{}` should be {expected}, but got {found}.", param.name)
-                    }
-                    problem => format!("Input `{}` should be {ty}, but {problem}.", param.name),
+                let at = if error.path.is_empty() {
+                    String::new()
+                } else {
+                    format!(" at `{}`", error.pointer())
                 };
-                let mut diag = Diagnostic::new(error.code(), param.span, message);
-                if !error.path.is_empty() {
-                    diag = diag.with_note(format!("at `{}`", error.pointer()));
-                }
+                let mut diag = match &error.problem {
+                    // A list over `max_list_size` is too big, not mistyped (R-TYP-24).
+                    DecodeProblem::TooManyItems { items } => Diagnostic::new(
+                        error.code(),
+                        param.span,
+                        format!("`{}` made a list or answer that's too big.", target.name),
+                    )
+                    .with_note(format!(
+                        "input `{}` has a list of {items} items{at}; at most {MAX_LIST_SIZE} are allowed",
+                        param.name
+                    )),
+                    problem => {
+                        let (expected, found) = match problem {
+                            DecodeProblem::Mismatch { expected, found } => (expected.as_str(), (*found).to_owned()),
+                            other => (ty.as_str(), got(other)),
+                        };
+                        let message = format!("Input `{}` should be {expected}, but got {found}.", param.name);
+                        let diag = Diagnostic::new(error.code(), param.span, message);
+                        if at.is_empty() {
+                            diag
+                        } else {
+                            diag.with_note(at.trim_start().to_owned())
+                        }
+                    }
+                };
                 if let DecodeProblem::UnknownField { help: Some(help), .. } = &error.problem {
                     diag = diag.with_help(help.clone());
                 }
@@ -150,6 +170,18 @@ pub fn decode_inputs(
         });
     }
     if diags.is_empty() { Ok(inputs) } else { Err(diags) }
+}
+
+/// What JSON failing the mapping with `problem` holds, as the `found` of `reference/90`'s VL0902 message.
+fn got(problem: &DecodeProblem) -> String {
+    match problem {
+        DecodeProblem::InvalidJson { .. } => "something that isn't valid JSON".to_owned(),
+        DecodeProblem::Mismatch { found, .. } => (*found).to_owned(),
+        DecodeProblem::NumberOutOfRange { number } => format!("{number}, which no Number holds exactly"),
+        DecodeProblem::UnknownField { record, field, .. } => format!("a field `{field}` that `{record}` doesn't have"),
+        DecodeProblem::MissingField { record, field } => format!("a `{record}` without the field `{field}`"),
+        DecodeProblem::TooManyItems { items } => format!("a list of {items} items"),
+    }
 }
 
 fn invalid(span: Span, message: String) -> Diagnostic {

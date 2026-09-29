@@ -96,7 +96,7 @@ own directory (`tooling/40` R-CLI-20, D-82).
 atomically placed; an existing file with the same name and the same bytes is never rewritten. Write-once protects
 content, not names: a regular file whose bytes don't match its name isn't that artifact, so storing the artifact
 replaces it whole, atomically; anything else under the name — a link, a directory, an unreadable file — is left alone
-and is `VL0901`. An artifact whose canonical JSON passes the read limit of R-ART-10 is not stored. Velme reads and
+and is `VL0901`. An artifact whose canonical JSON R-ART-10 would refuse to read back is not stored. Velme reads and
 writes only regular files, never through a symbolic link: a stored file or `velme.lock` is opened without following a
 link and without blocking (on Unix), then checked to be a regular file, else `VL0901`; a `.velme`, `.velme/artifacts`
 or `.velme/tmp` that is a link is `VL0901` too, checked before use — best effort, since a directory swapped for a link
@@ -104,7 +104,8 @@ after that check is not caught.
 **R-ART-10** Every load re-hashes the file, re-runs IR validation (21 §6, cached per hash for the process), and
 cross-checks the manifest's `goal`, `signature` and `contract_key` against the lock entry and against the key computed
 from current source (D-46): the manifest's claims are informational, never trusted on their own. A read stops past the
-largest artifact, 1 MiB of IR (21 §7) plus 64 KiB for the manifest, and past 16 MiB for `velme.lock`. A hash mismatch,
+largest artifact, 1 MiB of IR (21 §7) plus 64 KiB for the manifest, and past 16 MiB for `velme.lock`; the document
+nests at most 513 JSON levels, the 512 IR may nest (`MAX_JSON_DEPTH`) under the `ir` member. A hash mismatch,
 a file past that size, or bytes that hash to their name but aren't the canonical JSON the store writes are
 `VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a document of another `format` (R-ART-24), a
 manifest/lock/computed mismatch or a re-validation failure makes the entry stale (R-ART-14).

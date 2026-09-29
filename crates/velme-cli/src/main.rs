@@ -132,12 +132,46 @@ fn parse_args(args: &[String]) -> Option<Command> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = on_big_stack(|| command(&args)).unwrap_or_else(|| {
-        // Shown without source lines: it belongs to no place in any file.
-        print_err(&format!("{}\n", Diagnostic::internal_error().message));
-        EXIT_INTERNAL
-    });
+    let code = on_big_stack(|| command(&args)).unwrap_or_else(|| stopped(&args));
     ExitCode::from(code)
+}
+
+/// Reports the bug that stopped the command `args` name, and gives its exit code: under `--json` as the envelope, on
+/// standard output like any other outcome (R-CLI-15), otherwise without source lines, as it belongs to no place in any
+/// file.
+fn stopped(args: &[String]) -> u8 {
+    let file = match parse_args(args) {
+        Some(
+            Command::Check { file, json: true }
+            | Command::Run { file, json: true, .. }
+            | Command::Test { file, json: true, .. },
+        ) => file,
+        _ => {
+            print_err(&format!("{}\n", Diagnostic::internal_error().message));
+            return EXIT_INTERNAL;
+        }
+    };
+    if let Some(out) = internal_envelope(&shown_path(&file)) {
+        print_out(&out);
+    }
+    EXIT_INTERNAL
+}
+
+/// The `--json` envelope of a command on the file shown as `path` that a bug stopped: `VL0607` alone.
+fn internal_envelope(path: &str) -> Option<String> {
+    let envelope = Envelope {
+        format: JSON_FORMAT,
+        status: "failed",
+        results: Vec::new(),
+        diagnostics: vec![JsonDiagnostic::new(
+            &Diagnostic::internal_error(),
+            path,
+            &LineIndex::new(""),
+        )],
+        notices: Vec::new(),
+    };
+    let out = serde_json::to_string_pretty(&envelope).ok()?;
+    Some(format!("{}\n", render::escape_json(&out)))
 }
 
 /// Runs the command `args` name, and gives its exit code.
@@ -184,6 +218,11 @@ struct Analyzed {
     program: Option<Program>,
     /// Everything analysis found.
     diagnostics: Vec<Diagnostic>,
+}
+
+/// How the file `arg` is shown: from its project's root (R-CLI-19), or as given if it can't be found.
+fn shown_path(arg: &str) -> String {
+    Project::of(Path::new(arg)).map_or_else(|_| display_path(arg), |p| p.file)
 }
 
 fn analyze(arg: &str) -> Analyzed {
@@ -673,6 +712,18 @@ mod tests {
     #[test]
     fn internal_error_exits_70() {
         assert_eq!(exit_code(&[Diagnostic::internal_error()]), EXIT_INTERNAL);
+    }
+
+    /// A bug that stops a `--json` command still ends in the envelope, failed with `VL0607` (R-CLI-15).
+    #[test]
+    fn a_stopped_json_command_prints_the_envelope() {
+        let out = internal_envelope("game.velme").expect("an envelope");
+        let envelope: serde_json::Value = serde_json::from_str(&out).expect("JSON");
+        assert_eq!(envelope["format"], JSON_FORMAT);
+        assert_eq!(envelope["status"], "failed");
+        assert_eq!(envelope["results"], serde_json::json!([]));
+        assert_eq!(envelope["diagnostics"][0]["code"], "VL0607");
+        assert_eq!(envelope["diagnostics"][0]["file"], "game.velme");
     }
 
     #[test]

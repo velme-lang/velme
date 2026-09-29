@@ -48,10 +48,12 @@ pub enum ParseError {
         /// JSON Pointer to the member.
         pointer: String,
     },
-    /// Arrays and objects nest deeper than [`MAX_JSON_DEPTH`].
+    /// Arrays and objects nest deeper than the limit, [`MAX_JSON_DEPTH`] unless [`from_json_str_within`] set another.
     TooDeep {
         /// JSON Pointer to the first value past the limit.
         pointer: String,
+        /// How deep they may nest.
+        limit: usize,
     },
     /// Malformed JSON, or JSON that does not have the expected shape.
     Json(serde_json::Error),
@@ -62,8 +64,8 @@ impl fmt::Display for ParseError {
         match self {
             Self::DuplicateKey { pointer } => write!(f, "duplicate object key at `{pointer}`"),
             Self::ReservedKey { pointer } => write!(f, "reserved object key at `{pointer}`"),
-            Self::TooDeep { pointer } => {
-                write!(f, "JSON nests deeper than {MAX_JSON_DEPTH} levels at `{pointer}`")
+            Self::TooDeep { pointer, limit } => {
+                write!(f, "JSON nests deeper than {limit} levels at `{pointer}`")
             }
             Self::Json(error) => error.fmt(f),
         }
@@ -88,12 +90,19 @@ pub const MAX_JSON_DEPTH: usize = 512;
 /// Parses `text` as `T`, rejecting any object that repeats a key (R-IR-21), uses a key serde_json reserves, or nests
 /// deeper than [`MAX_JSON_DEPTH`]. JSON input is read through this function only.
 pub fn from_json_str<T: DeserializeOwned>(text: &str) -> Result<T, ParseError> {
+    from_json_str_within(text, MAX_JSON_DEPTH)
+}
+
+/// [`from_json_str`] with arrays and objects nesting at most `limit` levels: for a document that wraps IR, whose own
+/// levels count against [`MAX_JSON_DEPTH`] (`runtime/32` R-ART-10).
+pub fn from_json_str_within<T: DeserializeOwned>(text: &str, limit: usize) -> Result<T, ParseError> {
     let mut check = Walk {
         path: Vec::new(),
+        limit,
         failure: None,
     };
     let mut de = serde_json::Deserializer::from_str(text);
-    // serde_json's own limit (128) counts JSON levels, not IR nesting; `Walk` enforces `MAX_JSON_DEPTH` instead.
+    // serde_json's own limit (128) counts JSON levels, not IR nesting; `Walk` enforces `limit` instead.
     de.disable_recursion_limit();
     if let Err(error) = (&mut check).deserialize(&mut de).and_then(|()| de.end()) {
         return Err(check.failure.unwrap_or(ParseError::Json(error)));
@@ -192,6 +201,7 @@ const RESERVED_KEY_PREFIX: &str = "$serde_json::private::";
 /// Walks any JSON value and fails at the first rejected object key or depth; `failure` then says why.
 struct Walk {
     path: Vec<String>,
+    limit: usize,
     failure: Option<ParseError>,
 }
 
@@ -203,9 +213,10 @@ impl Walk {
     }
 
     fn enter<E: de::Error>(&mut self) -> Result<(), E> {
-        if self.path.len() >= MAX_JSON_DEPTH {
+        if self.path.len() >= self.limit {
             return Err(self.fail(ParseError::TooDeep {
                 pointer: pointer(&self.path),
+                limit: self.limit,
             }));
         }
         Ok(())

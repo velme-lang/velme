@@ -7,10 +7,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::{Code, Span};
 use velme_ir::{
-    CallNode, Fingerprint, IR_VERSION, Synthesis, ValidIr, contract_key, from_json_str, signature, synthesis_key,
-    to_canonical_string,
+    CallNode, Fingerprint, IR_VERSION, MAX_JSON_DEPTH, Synthesis, ValidIr, contract_key, from_json_str,
+    from_json_str_within, signature, synthesis_key, to_canonical_string,
 };
 use velme_runtime::{
     ARTIFACTS_DIR, Artifact, ArtifactFormat, Child, Kind, LoadError, MAX_ARTIFACT_BYTES, Manifest, Store, StoreError,
@@ -486,4 +487,54 @@ fn an_unreadable_artifact_is_a_file_error() {
         "{diag:?}"
     );
     assert!(diag.notes.iter().any(|n| n.contains("`FindBadge`")), "{diag:?}");
+}
+
+/// R-ART-10: IR nested as deep as `MAX_JSON_DEPTH` allows stores and loads, its artifact one level deeper; an artifact
+/// nested past that is not read.
+#[test]
+fn ir_at_the_depth_limit_stores_and_loads() {
+    let program = program("language: velme/0.1\n\ngoal Words(xs: List<Number>) -> Text:\n    plan: \"Test.\"\n");
+    // The literal's type starts 4 levels into the IR, under `body`, `cond` and `left`, and ends at the limit.
+    let depth = MAX_JSON_DEPTH - 5;
+    let ty = (0..depth).fold(r#"{"t": "Number"}"#.to_owned(), |of, _| {
+        format!(r#"{{"t": "List", "of": {of}}}"#)
+    });
+    let value = format!("{}1{}", "[".repeat(depth), "]".repeat(depth));
+    let literal = format!(r#"{{"kind": "literal", "type": {ty}, "value": {value}}}"#);
+    let text = |t: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Text"}}, "value": "{t}"}}"#);
+    let ir = format!(
+        r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Words", "types": {{}},
+            "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {{"t": "Text"}},
+            "body": {{"kind": "if", "cond": {{"kind": "binary", "op": "eq", "left": {literal}, "right": {literal}}},
+                "then": {}, "else": {}}}}}"#,
+        text("same"),
+        text("different")
+    );
+    assert!(from_json_str::<Value>(&ir).is_ok());
+    assert!(
+        from_json_str_within::<Value>(&ir, MAX_JSON_DEPTH - 1).is_err(),
+        "not at the limit"
+    );
+    let ir = valid_ir(&program, &ir);
+    let store = Store::new(&project("depth"));
+    let id = store.put(&manifest(&program, &ir), &ir).expect("stored");
+    assert_eq!(store.get(id).expect("loads").ir, *ir.goal());
+
+    // One level more, under the literal's type.
+    let mut document: Value = from_json_str_within(&read(&store.path(id)), MAX_JSON_DEPTH + 1).expect("JSON");
+    let ty = document
+        .pointer_mut("/ir/body/cond/left/type")
+        .expect("the literal's type");
+    *ty = serde_json::json!({"t": "List", "of": ty.take()});
+    let deeper = to_canonical_string(&document).expect("canonical");
+    let deeper_id = Fingerprint::of_bytes(deeper.as_bytes());
+    fs::write(store.path(deeper_id), &deeper).expect("written");
+    let error = store.get(deeper_id).expect_err("too deep");
+    assert!(matches!(error, LoadError::Malformed { .. }), "{error:?}");
+    assert!(
+        error
+            .to_string()
+            .contains(&format!("deeper than {}", MAX_JSON_DEPTH + 1)),
+        "{error}"
+    );
 }
