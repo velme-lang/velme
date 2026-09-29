@@ -100,7 +100,7 @@ Original `Failure(error)` and `ValidationFailed` map to the specific kinds above
 | Word | Status |
 |---|---|
 | `language type goal call plan check examples budget result nothing true false and or not is empty every some in has if then` | v0.1 keywords |
-| `pure effects when choose otherwise import module fallback retry optional assume` | reserved (D-24) → `VL0104` |
+| `pure effects when choose otherwise import module fallback retry optional assume sample for` | reserved (D-24, D-87) → `VL0104` |
 
 Exact lexical rules (which words are contextual) are owned by `language/10`.
 
