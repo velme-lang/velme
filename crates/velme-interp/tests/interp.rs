@@ -7,7 +7,7 @@ use serde_json::Value as Json;
 use velme_builtins::limits::MAX_FUEL;
 use velme_builtins::{BUILTINS_VERSION, Value};
 use velme_diagnostics::{Code, Span};
-use velme_interp::{Error, Evaluator, Failure, Output, Probe, run};
+use velme_interp::{Error, Evaluator, Failure, Limits, Output, Probe, run};
 use velme_ir::limits::MAX_NODES;
 use velme_ir::{IR_VERSION, Node, ValidIr, decode_str, encode_value, from_json_str};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
@@ -40,10 +40,26 @@ goal Compute(x: Number?) -> Number:
 
 goal Present(p: Player?) -> Boolean:
     plan: "Whether there is a player."
+
+type Tag:
+    name: Text?
+
+goal MakeTag(t: Text?) -> Tag:
+    plan: "A tag named t."
+
+goal Maybes(xs: List<Number>) -> List<Number?>:
+    plan: "Each number that is 0 or 1, or nothing."
 "#;
 
 const ITEM: &str = r#""Item": {"fields": [["k", {"t": "Number"}], ["name", {"t": "Text"}]]}"#;
 const PLAYER: &str = r#""Player": {"fields": [["score", {"t": "Number"}], ["name", {"t": "Text"}]]}"#;
+
+/// The system fuel cap and no memory cap, for tests of fuel that build values whose logical size is far past
+/// `max_memory` (a value that shares its parts, `runtime/30` §7.1); memory has tests of its own.
+const FUEL_ONLY: Limits = Limits {
+    fuel: MAX_FUEL,
+    memory: u64::MAX,
+};
 
 /// The IR document of a [`GOALS`] goal with `body`.
 fn document(goal: &str, body: &str) -> String {
@@ -79,6 +95,16 @@ fn document(goal: &str, body: &str) -> String {
             r#"[["p", {"t": "Optional", "of": {"t": "Record", "name": "Player"}}]]"#,
             r#"{"t": "Boolean"}"#,
         ),
+        "MakeTag" => (
+            r#""Tag": {"fields": [["name", {"t": "Optional", "of": {"t": "Text"}}]]}"#.to_owned(),
+            r#"[["t", {"t": "Optional", "of": {"t": "Text"}}]]"#,
+            r#"{"t": "Record", "name": "Tag"}"#,
+        ),
+        "Maybes" => (
+            String::new(),
+            r#"[["xs", {"t": "List", "of": {"t": "Number"}}]]"#,
+            r#"{"t": "List", "of": {"t": "Optional", "of": {"t": "Number"}}}"#,
+        ),
         _ => panic!("no goal {goal}"),
     };
     format!(
@@ -94,10 +120,22 @@ fn encode(value: &Value) -> String {
 
 /// Runs `body` as the goal `goal` of [`GOALS`] on the JSON `inputs`, one per parameter.
 fn eval(goal: &str, body: &str, inputs: &[&str]) -> Result<Output, Failure> {
-    eval_with(goal, body, inputs, MAX_FUEL)
+    eval_limits(goal, body, inputs, FUEL_ONLY)
 }
 
 fn eval_with(goal: &str, body: &str, inputs: &[&str], max_fuel: u64) -> Result<Output, Failure> {
+    eval_limits(
+        goal,
+        body,
+        inputs,
+        Limits {
+            fuel: max_fuel,
+            ..FUEL_ONLY
+        },
+    )
+}
+
+fn eval_limits(goal: &str, body: &str, inputs: &[&str], limits: Limits) -> Result<Output, Failure> {
     let program = program(GOALS);
     let ir = valid_ir(&program, &document(goal, body));
     let params = &program.goals[goal_id(&program, goal).0].params;
@@ -107,7 +145,7 @@ fn eval_with(goal: &str, body: &str, inputs: &[&str], max_fuel: u64) -> Result<O
         .zip(inputs)
         .map(|(p, text)| decode_str(text, &p.ty, &program).expect("input decodes"))
         .collect();
-    run(&ir, inputs, Vec::new(), max_fuel)
+    run(&ir, inputs, Vec::new(), limits)
 }
 
 /// The output of a run that must succeed, as JSON.
@@ -168,7 +206,7 @@ fn golden_ir_runs() {
                 .iter()
                 .map(|b| decode(&case["bindings"][&b.name], &b.ty))
                 .collect();
-            let Output { value, fuel } = run(&ir, inputs, bindings, MAX_FUEL).expect("runs");
+            let Output { value, fuel, .. } = run(&ir, inputs, bindings, FUEL_ONLY).expect("runs");
             out.push_str(&format!("{} -> {} (fuel {fuel})\n", case["inputs"], encode(&value)));
         }
         insta::assert_snapshot!(out);
@@ -193,7 +231,7 @@ fn ac_ir_08_player_summary_runs_with_stub_children() {
         Value::Number(2i64.into()),
         Value::text("Jumper"),
     ];
-    let output = run(&ir, vec![player], bindings, MAX_FUEL).expect("runs");
+    let output = run(&ir, vec![player], bindings, FUEL_ONLY).expect("runs");
     assert_eq!(encode(&output.value), r#"{"score":820,"rank":2,"badge":"Jumper"}"#);
     // The record node and its three locals.
     assert_eq!(output.fuel, 4);
@@ -250,7 +288,7 @@ fn ac_blt_15_failing_lambda_names_its_element_and_stops() {
     let ir = valid_ir(&program, &document("Inverses", &body));
     let params = &program.goals[goal_id(&program, "Inverses").0].params;
     let xs = decode_str("[2, 0, 3]", &params[0].ty, &program).expect("decodes");
-    let mut evaluator = Evaluator::new(MAX_FUEL);
+    let mut evaluator = Evaluator::new(FUEL_ONLY);
     evaluator.bind_input("xs", xs);
     let mut visits = Visits::default();
     assert!(evaluator.eval_probed(ir.body(), &mut visits).is_err());
@@ -474,7 +512,7 @@ fn record_fields_evaluate_in_declaration_order() {
     );
     let program = program(GOALS);
     let ir: ValidIr = valid_ir(&program, &document("PairScore", &body));
-    let f = run(&ir, vec![Value::Nothing, Value::Nothing], Vec::new(), MAX_FUEL).expect_err("fails");
+    let f = run(&ir, vec![Value::Nothing, Value::Nothing], Vec::new(), FUEL_ONLY).expect_err("fails");
     let diag = f.diagnostic("PairScore", Span::new(0, 4));
     assert_eq!(diag.message, "`PairScore` tried to divide 1 by 0, which has no answer.");
 }
@@ -503,11 +541,11 @@ fn a_builtin_failure_wins_over_running_out_of_fuel() {
     assert_eq!(f.code(), Code::SizeLimitExceeded);
 }
 
-/// `Present`'s body `let a0 = <first>, a1 = map(range(2), p1 -> a0), …, a60 = … in <test>`: `a60` holds 2^60 copies
+/// `Present`'s body `let a0 = <first>, a1 = map(range(2), p1 -> a0), …, a56 = … in <test>`: `a56` holds 2^56 copies
 /// of `a0`, which share their parts, so building it is cheap and only walking it isn't.
 fn shared_from(first: &str, test: &str) -> String {
     let mut bind = vec![format!(r#"["a0", {first}]"#)];
-    for i in 1..=60 {
+    for i in 1..=56 {
         let map = format!(
             r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
             builtin("range", &[&number("2")]),
@@ -528,16 +566,16 @@ fn shared(test: &str) -> String {
 }
 
 /// Equality is charged as it compares (D-83): comparing values that share their parts stops where the fuel runs out,
-/// with `VL0601`, rather than first walking 2^60 leaves.
+/// with `VL0601`, rather than first walking 2^56 leaves.
 #[test]
 fn ac_run_05_equality_over_shared_values_stops_at_the_fuel_limit() {
-    let eq = shared(&binary("eq", &local("a60"), &local("a60")));
+    let eq = shared(&binary("eq", &local("a56"), &local("a56")));
     let f = failure("Present", &eq, &["null"]);
     assert_eq!(f.error, Error::OutOfFuel { max_fuel: MAX_FUEL });
     // With `a0 = []` there is no leaf at all, but every pair of lists visited is paid for.
     let empty = shared_from(
         r#"{"kind": "list", "of": {"t": "Number"}, "items": []}"#,
-        &binary("eq", &local("a60"), &local("a60")),
+        &binary("eq", &local("a56"), &local("a56")),
     );
     assert_eq!(
         failure("Present", &empty, &["null"]).error,
@@ -554,7 +592,7 @@ fn ac_run_05_equality_over_shared_values_stops_at_the_fuel_limit() {
     };
     assert_eq!(value("Present", &contains(1), &["null"]), "true");
     assert_eq!(
-        failure("Present", &contains(60), &["null"]).code(),
+        failure("Present", &contains(56), &["null"]).code(),
         Code::BudgetExceeded
     );
 }
@@ -608,7 +646,7 @@ fn the_deepest_value_ir_can_build_fits_the_stack() {
             let rejected = velme_ir::validate(&one_more, &request)
                 .is_err_and(|diags| diags.iter().any(|d| d.message.contains("expressions")));
             let ir = valid_ir(&program, &doc);
-            let output = run(&ir, vec![Value::Nothing], Vec::new(), MAX_FUEL).expect("runs");
+            let output = run(&ir, vec![Value::Nothing], Vec::new(), FUEL_ONLY).expect("runs");
             (rejected, output.value)
         })
         .expect("thread")
@@ -645,4 +683,310 @@ fn reduce_evaluates_its_list_before_init() {
     );
     let diag = failure("Compute", &body, &["null"]).diagnostic("Compute", Span::new(0, 4));
     assert!(diag.message.contains("range"), "{}", diag.message);
+}
+
+// ---- budgets (M4b) ----
+
+fn text(t: &str) -> String {
+    format!(r#"{{"kind": "literal", "type": {{"t": "Text"}}, "value": "{t}"}}"#)
+}
+
+/// `AC-RUN-05`'s program, spelled as the criterion does: a `reduce` over `range(count)` whose lambda reduces over
+/// `range(count)`, with `count` 10 000.
+fn nested_reduce(count: &str) -> String {
+    let range = builtin("range", &[&number(count)]);
+    let inner = format!(
+        r#"{{"kind": "reduce", "list": {range}, "init": {}, "fn": {{"acc": "sum", "param": "j", "body": {}}}}}"#,
+        local("outer"),
+        binary("add", &local("sum"), &number("1"))
+    );
+    format!(
+        r#"{{"kind": "reduce", "list": {range}, "init": {}, "fn": {{"acc": "outer", "param": "i", "body": {inner}}}}}"#,
+        number("0")
+    )
+}
+
+/// An over-budget nested `reduce` fails with `VL0601`, and does it the same way every time (AC-RUN-05, AC-RDM-07): the
+/// same limit in the failure, the same diagnostic text. Memory doesn't get there first: only the `range(10000)` lists
+/// the outer lambda builds are charged (D-89), some 200 of them by the time the fuel is gone, about 32 of the 67 million
+/// bytes, so even 40 million are enough.
+#[test]
+fn ac_run_05_an_over_budget_nested_reduce_fails_with_vl0601_every_time() {
+    let body = nested_reduce("10000");
+    let run_once = || {
+        let f = eval_limits("Compute", &body, &["null"], Limits::SYSTEM).expect_err("out of fuel");
+        (f.error.clone(), f.diagnostic("Compute", Span::new(0, 4)))
+    };
+    let first = run_once();
+    assert_eq!(first.0, Error::OutOfFuel { max_fuel: MAX_FUEL });
+    assert_eq!(first.1.code, Code::BudgetExceeded);
+    assert_eq!(run_once(), first);
+    let roomy = eval_limits(
+        "Compute",
+        &body,
+        &["null"],
+        Limits {
+            fuel: MAX_FUEL,
+            memory: 40_000_000,
+        },
+    );
+    assert_eq!(
+        roomy.expect_err("out of fuel").error,
+        Error::OutOfFuel { max_fuel: MAX_FUEL }
+    );
+    // A tighter fuel limit stops it sooner, still with `VL0601`.
+    let f = eval_with("Compute", &body, &["null"], 1_000_000).expect_err("out of fuel");
+    assert_eq!(f.error, Error::OutOfFuel { max_fuel: 1_000_000 });
+}
+
+/// `x / 0` is `VL0602` and no value comes out of the run (AC-RUN-08): not a partial one, nor a special one.
+#[test]
+fn ac_run_08_a_division_by_zero_inside_a_larger_program_leaves_no_value() {
+    // `[1, 2, 1 / 0]`, and `map(range(3), x -> 1 / x)`: the third element is where it fails.
+    let list = format!(
+        r#"{{"kind": "list", "of": {{"t": "Number"}}, "items": [{}, {}, {}]}}"#,
+        number("1"),
+        number("2"),
+        binary("div", &number("1"), &number("0"))
+    );
+    let f = eval("Inverses", &list, &["[]"]).expect_err("no list");
+    assert_eq!(f.code(), Code::ArithmeticError);
+    let map = format!(
+        r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
+        builtin("range", &[&number("3")]),
+        lambda("x", &binary("div", &number("1"), &local("x")))
+    );
+    let f = eval("Inverses", &map, &["[]"]).expect_err("no list");
+    assert_eq!(f.code(), Code::ArithmeticError);
+    // The failed element is the only thing said about the elements that did run.
+    assert_eq!(f.elements, [0]);
+    assert_eq!(
+        f.diagnostic("Inverses", Span::new(0, 4)).message,
+        "`Inverses` tried to divide 1 by 0, which has no answer."
+    );
+}
+
+/// The interpreter charges each Text, List and Record it creates by the size function of `runtime/30` §7.1: cumulative
+/// bytes allocated (D-53), a list of references charged in full (D-83), a literal not at all, a scalar result on its
+/// own nothing (D-89).
+#[test]
+fn memory_is_the_cumulative_bytes_allocated() {
+    // `range(3)` 16 + 3 × 16, the three sums nothing, the mapped list 16 + 3 × 16.
+    let map = format!(
+        r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
+        builtin("range", &[&number("3")]),
+        lambda("x", &binary("add", &local("x"), &number("1")))
+    );
+    let output = eval("Inverses", &map, &["[]"]).expect("runs");
+    assert_eq!(output.memory, 64 + 64);
+    // `[1, 2]` is a new list of two numbers, though its items are literals.
+    let list = format!(
+        r#"{{"kind": "list", "of": {{"t": "Number"}}, "items": [{}, {}]}}"#,
+        number("1"),
+        number("2")
+    );
+    assert_eq!(eval("Inverses", &list, &["[]"]).expect("runs").memory, 16 + 2 * 16);
+    // A `concat` of two 640-byte texts allocates 16 + 1 280 bytes, and `length` of it, a number, nothing.
+    let long = text(&"a".repeat(640));
+    let body = builtin("length", &[&builtin("concat", &[&long, &long])]);
+    assert_eq!(eval("Compute", &body, &["null"]).expect("runs").memory, 16 + 1280);
+    // A limit is on what has been allocated in all, not on what is live: the same two `concat`s in a row.
+    let twice = binary("add", &body, &body);
+    assert_eq!(
+        eval("Compute", &twice, &["null"]).expect("runs").memory,
+        2 * (16 + 1280)
+    );
+    let limits = |memory| Limits { fuel: MAX_FUEL, memory };
+    assert!(eval_limits("Compute", &twice, &["null"], limits(2 * 1296)).is_ok());
+    let f = eval_limits("Compute", &twice, &["null"], limits(2 * 1296 - 1)).expect_err("out of memory");
+    assert_eq!(
+        f.error,
+        Error::OutOfMemory {
+            max_memory: 2 * 1296 - 1
+        }
+    );
+    assert_eq!(f.code(), Code::MemoryLimitExceeded);
+    let diag = f.diagnostic("Compute", Span::new(0, 4));
+    assert_eq!(diag.message, "`Compute` needed more memory than it's allowed.");
+}
+
+/// When one step would pass both limits, the first crossed in the order of `runtime/30` R-RUN-04 is reported (D-88):
+/// the entry charge, `VL0601`; then computing the result, allocating it included, `VL0604`; then the rest of the
+/// fuel, `VL0601`.
+#[test]
+fn d_88_the_first_limit_crossed_in_step_order_is_reported() {
+    // `length(concat(t, t))` with `t` 640 bytes: `concat` computes a 1 296-byte result and costs 21 in all.
+    let long = text(&"a".repeat(640));
+    let body = builtin("length", &[&builtin("concat", &[&long, &long])]);
+    let outcome = |fuel, memory| {
+        eval_limits("Compute", &body, &["null"], Limits { fuel, memory })
+            .expect_err("a limit")
+            .code()
+    };
+    // The entry charge of `length` comes first: no fuel at all is `VL0601`, though nothing could be allocated either.
+    assert_eq!(outcome(0, 0), Code::BudgetExceeded);
+    // `length`, `concat` and the two literals are paid for (4), then the result of `concat` (1 296 bytes) and the
+    // remaining 20 fuel are both too much: allocating it is part of computing it, so memory is reported.
+    assert_eq!(outcome(10, 100), Code::MemoryLimitExceeded);
+    assert_eq!(outcome(u64::MAX, 100), Code::MemoryLimitExceeded);
+    // With the memory there, it is the last charge that fails.
+    assert_eq!(outcome(10, u64::MAX), Code::BudgetExceeded);
+    // A size error is computing too, and comes before both (R-RUN-04).
+    let range = builtin("length", &[&builtin("range", &[&number("20000")])]);
+    let f = eval_limits("Compute", &range, &["null"], Limits { fuel: 10, memory: 100 }).expect_err("size");
+    assert_eq!(f.code(), Code::SizeLimitExceeded);
+    // The same order holds for `range` and for a `sort_by`, whose result is allocated before the rest of its fuel.
+    let range = builtin("length", &[&builtin("range", &[&number("1000")])]);
+    let outcome = |body: &str, fuel, memory| {
+        eval_limits("Compute", body, &["null"], Limits { fuel, memory })
+            .expect_err("a limit")
+            .code()
+    };
+    assert_eq!(outcome(&range, 10, 100), Code::MemoryLimitExceeded);
+    assert_eq!(outcome(&range, 10, u64::MAX), Code::BudgetExceeded);
+    // `sort_by(range(3), x -> x)`: 12 fuel and the 64 bytes of `range(3)` are paid by the time the sorted list, 64 more
+    // bytes, and the remaining 6 fuel are due. Both would pass the limits, and memory is the one reported.
+    let sort = format!(
+        r#"{{"kind": "sort_by", "list": {}, "key": {}, "descending": false}}"#,
+        builtin("range", &[&number("3")]),
+        lambda("x", &local("x"))
+    );
+    let sorted = |fuel, memory| {
+        eval_limits("Inverses", &sort, &["[]"], Limits { fuel, memory })
+            .expect_err("a limit")
+            .code()
+    };
+    assert_eq!(sorted(15, 100), Code::MemoryLimitExceeded);
+    assert_eq!(sorted(15, u64::MAX), Code::BudgetExceeded);
+    assert_eq!(sorted(u64::MAX, 100), Code::MemoryLimitExceeded);
+    let whole = eval("Inverses", &sort, &["[]"]).expect("runs");
+    assert_eq!((whole.fuel, whole.memory), (18, 128));
+}
+
+/// The interrupt is looked at every `POLL_FUEL` of fuel, by the fuel meter and no clock; one that never fires changes
+/// nothing, and one that does stops the run with `VL0603` (D-10), for the run only.
+#[test]
+fn ac_rdm_07_the_interrupt_is_polled_by_fuel_and_stops_the_run() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use velme_interp::{Budget, Interrupt, POLL_FUEL, run_after};
+    let program = program(GOALS);
+    let body = nested_reduce("300");
+    let ir = valid_ir(&program, &document("Compute", &body));
+    let inputs = || vec![Value::Nothing];
+    let plain = run(&ir, inputs(), Vec::new(), Limits::SYSTEM).expect("runs");
+    assert!(plain.fuel > 2 * POLL_FUEL);
+    let polls = Arc::new(AtomicU64::new(0));
+    let counted = Arc::clone(&polls);
+    let watched = Budget::new(Limits::SYSTEM).watched(Some(Interrupt::new(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+        false
+    })));
+    let output = run_after(&ir, inputs(), Vec::new(), watched).expect("never interrupted");
+    assert_eq!(output, plain);
+    assert_eq!(polls.load(Ordering::SeqCst), plain.fuel / POLL_FUEL);
+    // Fired at its second look, it stops the run there.
+    let looks = Arc::new(AtomicU64::new(0));
+    let counted = Arc::clone(&looks);
+    let interrupt = Interrupt::new(move || counted.fetch_add(1, Ordering::SeqCst) == 1);
+    let f = run_after(
+        &ir,
+        inputs(),
+        Vec::new(),
+        Budget::new(Limits::SYSTEM).watched(Some(interrupt)),
+    )
+    .expect_err("interrupted");
+    assert_eq!(f.error, Error::Interrupted);
+    assert_eq!(f.code(), Code::Timeout);
+    assert_eq!(looks.load(Ordering::SeqCst), 2);
+    let diag = f.diagnostic("Compute", Span::new(0, 4));
+    assert_eq!(diag.message, "`Compute` ran too long and was stopped.");
+}
+
+/// A scalar result on its own allocates nothing (D-89): a nested `reduce` of only numbers spends its whole fuel and
+/// reports `VL0601`, though its memory limit could not hold a number per step. The one list it reads is built once.
+#[test]
+fn d_89_a_scalar_only_reduce_runs_out_of_fuel_not_memory() {
+    let range = builtin("range", &[&number("10000")]);
+    let inner = format!(
+        r#"{{"kind": "reduce", "list": {}, "init": {}, "fn": {{"acc": "sum", "param": "j", "body": {}}}}}"#,
+        local("r"),
+        local("outer"),
+        binary("add", &local("sum"), &number("1"))
+    );
+    let outer = format!(
+        r#"{{"kind": "reduce", "list": {}, "init": {}, "fn": {{"acc": "outer", "param": "i", "body": {inner}}}}}"#,
+        local("r"),
+        number("0")
+    );
+    let body = format!(r#"{{"kind": "let", "bind": [["r", {range}]], "body": {outer}}}"#);
+    // `range(10000)` is 160 016 bytes; nothing else is charged.
+    let limits = Limits {
+        fuel: MAX_FUEL,
+        memory: 160_016,
+    };
+    let f = eval_limits("Compute", &body, &["null"], limits).expect_err("out of fuel");
+    assert_eq!(f.error, Error::OutOfFuel { max_fuel: MAX_FUEL });
+    let f = eval_limits(
+        "Compute",
+        &body,
+        &["null"],
+        Limits {
+            memory: 160_015,
+            ..limits
+        },
+    )
+    .expect_err("out of memory");
+    assert_eq!(f.code(), Code::MemoryLimitExceeded);
+}
+
+/// An item or field of an optional type is 8 more, present or not (`runtime/30` §7.1), by the type the IR gives it: a
+/// record's declared field, a `list` node's `of`, the type the validator infers for a `map` body, which `filter` and
+/// `sort_by` keep. A standalone optional result costs nothing (D-89).
+#[test]
+fn optional_items_and_fields_cost_eight_more() {
+    let tag = |name: &str| {
+        let body = format!(
+            r#"{{"kind": "record", "type": "Tag", "fields": {{"name": {}}}}}"#,
+            input("t")
+        );
+        eval("MakeTag", &body, &[name]).expect("runs").memory
+    };
+    // 16 + (8 + "ab" as 16 + 8), and 16 + 8 for `nothing`.
+    assert_eq!(tag(r#""ab""#), 48);
+    assert_eq!(tag("null"), 24);
+    // The same for a `list` node of `Number?`, where a list of `Number` is 16 + 2 × 16.
+    let list = |of: &str| {
+        let body = format!(
+            r#"{{"kind": "list", "of": {of}, "items": [{}, {}]}}"#,
+            number("1"),
+            number("2")
+        );
+        eval("Maybes", &body, &["[]"]).expect("runs").memory
+    };
+    assert_eq!(list(r#"{"t": "Optional", "of": {"t": "Number"}}"#), 16 + 2 * 24);
+    // `map(range(3), x -> find(range(2), y -> y == x))` is `[0, 1, nothing]` of `Number?`: `range(3)` 64, three
+    // `range(2)` of 48, the standalone `find` results nothing, and the list 16 + 24 + 24 + 8.
+    let find = format!(
+        r#"{{"kind": "find", "list": {}, "fn": {}}}"#,
+        builtin("range", &[&number("2")]),
+        lambda("y", &binary("eq", &local("y"), &local("x")))
+    );
+    let map = format!(
+        r#"{{"kind": "map", "list": {}, "fn": {}}}"#,
+        builtin("range", &[&number("3")]),
+        lambda("x", &find)
+    );
+    let output = eval("Maybes", &map, &["[]"]).expect("runs");
+    assert_eq!(encode(&output.value), "[0,1,null]");
+    assert_eq!(output.memory, 64 + 3 * 48 + 72);
+    // `filter` and `sort_by` make lists of the same items, of the same type.
+    let filter = format!(
+        r#"{{"kind": "filter", "list": {map}, "fn": {}}}"#,
+        lambda("v", r#"{"kind": "literal", "type": {"t": "Boolean"}, "value": true}"#)
+    );
+    assert_eq!(
+        eval("Maybes", &filter, &["[]"]).expect("runs").memory,
+        64 + 3 * 48 + 72 + 72
+    );
 }

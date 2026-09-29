@@ -194,6 +194,10 @@ pub enum Node {
         /// The function.
         #[serde(rename = "fn")]
         func: Lambda,
+        /// Whether the result's element type is optional, as the validator typed it; not part of the document.
+        #[serde(skip)]
+        #[schemars(skip)]
+        items: ItemShape,
     },
     /// Keeps the elements for which `fn` is true.
     Filter {
@@ -276,7 +280,7 @@ impl Node {
                 Node::Let { bind, body } => bind.iter().map(|(_, v)| v).chain([&**body]).collect(),
                 Node::Condition { cond, then, otherwise } => vec![cond, then, otherwise],
                 Node::Narrow { of, default } => vec![of, default],
-                Node::Map { list, func }
+                Node::Map { list, func, .. }
                 | Node::Filter { list, func }
                 | Node::Find { list, func }
                 | Node::All { list, func }
@@ -385,6 +389,42 @@ impl<'de> Deserialize<'de> for LiteralValue {
         serde_json::Value::deserialize(deserializer).map(LiteralValue::from)
     }
 }
+
+/// Whether the item type of the list a node makes is optional, as the validator typed it (`compiler/21` §6): what a
+/// back end needs to size the list (`runtime/30` §7.1) and the one thing about a `map` result it can't see in the
+/// document. It is set once, when the node is validated, is no part of the document, and doesn't count in comparisons.
+#[derive(Debug, Default)]
+pub struct ItemShape(OnceLock<bool>);
+
+impl ItemShape {
+    /// Whether the items are optional; `false` for a node the validator hasn't typed.
+    pub fn optional(&self) -> bool {
+        self.0.get().copied().unwrap_or(false)
+    }
+
+    /// Records the validator's typing; a node is typed once, so a second value is ignored.
+    pub(crate) fn set(&self, optional: bool) {
+        let _ = self.0.set(optional);
+    }
+}
+
+impl Clone for ItemShape {
+    fn clone(&self) -> Self {
+        let shape = ItemShape::default();
+        if let Some(optional) = self.0.get() {
+            shape.set(*optional);
+        }
+        shape
+    }
+}
+
+impl PartialEq for ItemShape {
+    fn eq(&self, _: &ItemShape) -> bool {
+        true
+    }
+}
+
+impl Eq for ItemShape {}
 
 /// The `fn` or `key` of a collection node; lambdas are not values (R-IR-04).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -27,7 +27,10 @@ fn nums(texts: &[&str]) -> Value {
 /// Calls the built-in `name` through the catalog, as a backend does.
 fn call(name: &str, args: &[Value]) -> Result<Output, Error> {
     let builtin = Builtin::find(name).unwrap_or_else(|| panic!("no built-in {name}"));
-    builtin.function.expect("a value built-in").call(args, u64::MAX)
+    builtin
+        .function
+        .expect("a value built-in")
+        .call(args, u64::MAX, u64::MAX)
 }
 
 fn value(name: &str, args: &[Value]) -> Value {
@@ -229,20 +232,20 @@ fn ac_blt_12_fuel_is_size_proportional() {
 #[test]
 fn ac_blt_12_a_call_stops_at_its_budget() {
     // Past its budget, a call whose cost follows from its arguments stops before the work (D-83).
-    let range = |budget: u64| Function::Range.call(&[n("1000")], budget);
+    let range = |budget: u64| Function::Range.call(&[n("1000")], budget, u64::MAX);
     assert_eq!(range(1000), Err(Error::OutOfFuel));
     assert_eq!(range(1001).expect("ok").fuel, 1001);
     // A size error still wins over fuel (R-RUN-04).
     assert!(matches!(
-        Function::Range.call(&[n("20000")], 10),
+        Function::Range.call(&[n("20000")], 10, 10),
         Err(Error::ListTooLong { .. })
     ));
     let text = Value::text(&"a".repeat(640));
     assert_eq!(
-        Function::Concat.call(&[text.clone(), text.clone()], 20),
+        Function::Concat.call(&[text.clone(), text.clone()], 20, u64::MAX),
         Err(Error::OutOfFuel)
     );
-    assert_eq!(Function::Length.call(&[text], 10), Err(Error::OutOfFuel));
+    assert_eq!(Function::Length.call(&[text], 10, u64::MAX), Err(Error::OutOfFuel));
     // Equality over values that share their parts has far more leaves than bytes: 2^60 here.
     let mut deep = Value::list(vec![n("1")]);
     for _ in 0..60 {
@@ -256,11 +259,14 @@ fn ac_blt_12_a_call_stops_at_its_budget() {
     }
     assert_eq!(equals(&empty, &empty, 1000), Err(Error::OutOfFuel));
     assert_eq!(
-        Function::Contains.call(&[Value::list(vec![empty.clone()]), empty], 1000),
+        Function::Contains.call(&[Value::list(vec![empty.clone()]), empty], 1000, u64::MAX),
         Err(Error::OutOfFuel)
     );
     let list = Value::list(vec![deep.clone()]);
-    assert_eq!(Function::Contains.call(&[list, deep], 1000), Err(Error::OutOfFuel));
+    assert_eq!(
+        Function::Contains.call(&[list, deep], 1000, u64::MAX),
+        Err(Error::OutOfFuel)
+    );
     assert_eq!(Error::OutOfFuel.code(), Code::BudgetExceeded);
 }
 
@@ -650,4 +656,60 @@ proptest! {
         prop_assert_eq!(a.cmp(&b), want);
         prop_assert_eq!(a == b, want == Ordering::Equal);
     }
+}
+
+/// Memory accounting (`runtime/30` §7.1): the size function, the bytes a call's result takes, and D-88's order: a call
+/// that can't pay for both its result and its fuel reports memory, since allocating the result comes first.
+#[test]
+fn call_results_carry_their_bytes_and_memory_is_checked_before_fuel() {
+    use velme_builtins::memory::size_of;
+    let text = Value::text("abc");
+    let record = Value::record("P", vec![("a".to_owned(), n("1")), ("b".to_owned(), text.clone())]);
+    assert_eq!(size_of(&n("1")), 16);
+    assert_eq!(size_of(&Value::Boolean(true)), 8);
+    assert_eq!(size_of(&Value::Nothing), 0);
+    // A text is rounded up to the 8-byte slots of the WASM ABI (D-89).
+    assert_eq!(size_of(&text), 24);
+    assert_eq!(size_of(&Value::text("")), 16);
+    assert_eq!(size_of(&Value::text("abcdefgh")), 24);
+    assert_eq!(size_of(&Value::text("abcdefghi")), 32);
+    assert_eq!(size_of(&nums(&["1", "2"])), 16 + 2 * 16);
+    assert_eq!(size_of(&record), 16 + 16 + 24);
+    // Shared parts are charged in full, and sized without walking them 2^60 times.
+    let mut deep = nums(&[]);
+    for level in 1..=60u32 {
+        deep = Value::list(vec![deep.clone(), deep]);
+        // 16 (2^(level + 1) - 1): each level holds two copies of the one below, and saturates past u64::MAX.
+        let want = 16u128 * ((1u128 << (level + 1)) - 1);
+        assert_eq!(
+            u128::from(size_of(&deep)),
+            want.min(u128::from(u64::MAX)),
+            "level {level}"
+        );
+    }
+    let range = call("range", &[n("100")]).expect("ok");
+    assert_eq!((range.fuel, range.bytes), (101, 16 + 100 * 16));
+    assert_eq!(call("concat", &[text.clone(), text.clone()]).expect("ok").bytes, 16 + 8);
+    // A scalar result allocates nothing, though it has a size inside a list or record (D-89).
+    assert_eq!(call("length", std::slice::from_ref(&text)).expect("ok").bytes, 0);
+    assert_eq!(call("sum", &[nums(&["1", "2"])]).expect("ok").bytes, 0);
+    assert_eq!(call("contains", &[nums(&["1"]), n("1")]).expect("ok").bytes, 0);
+    assert_eq!(equals(&n("1"), &n("1"), u64::MAX).expect("ok").bytes, 0);
+    // Both limits pass: memory wins, on the calls that check before working.
+    let big = Value::text(&"a".repeat(640));
+    assert_eq!(
+        Function::Concat.call(&[big.clone(), big.clone()], 5, 100),
+        Err(Error::OutOfMemory)
+    );
+    assert_eq!(
+        Function::Concat.call(&[big.clone(), big], 5, u64::MAX),
+        Err(Error::OutOfFuel)
+    );
+    assert_eq!(Function::Range.call(&[n("1000")], 5, 100), Err(Error::OutOfMemory));
+    // A size error still comes first.
+    assert!(matches!(
+        Function::Range.call(&[n("20000")], 5, 100),
+        Err(Error::ListTooLong { .. })
+    ));
+    assert_eq!(Error::OutOfMemory.code(), Code::MemoryLimitExceeded);
 }

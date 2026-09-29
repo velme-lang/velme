@@ -370,21 +370,29 @@ fn ac_ir_06_fuzz_corpus_replays_without_panic() {
     assert!(count > 20, "{count}");
 }
 
-/// The deepest IR the JSON guard lets through validates without exhausting a test thread's stack (R-IR-18).
+/// The deepest IR the JSON guard lets through validates without exhausting the stack (R-IR-18): on 8 MiB, since a
+/// debug build takes about 1.6 MiB for it, too near a default test thread's 2 MiB to hold on every platform.
 #[test]
 fn deepest_parsable_ir_is_rejected_without_overflow() {
-    let program = program(LIMITS);
-    let depth = MAX_JSON_DEPTH - 3;
-    let chain = r#"{"kind": "unary", "op": "not", "arg": "#.repeat(depth)
-        + r#"{"kind": "input", "name": "xs"}"#
-        + &"}".repeat(depth);
-    let diags = run(
-        &program,
-        "Words",
-        Origin::Complete,
-        &limit_doc("Words", json!({"t": "Text"}), &chain),
-    )
-    .expect_err("too deep");
+    let diags = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let program = program(LIMITS);
+            let depth = MAX_JSON_DEPTH - 3;
+            let chain = r#"{"kind": "unary", "op": "not", "arg": "#.repeat(depth)
+                + r#"{"kind": "input", "name": "xs"}"#
+                + &"}".repeat(depth);
+            run(
+                &program,
+                "Words",
+                Origin::Complete,
+                &limit_doc("Words", json!({"t": "Text"}), &chain),
+            )
+        })
+        .expect("thread")
+        .join()
+        .expect("fits the stack")
+        .expect_err("too deep");
     // Stage 4 (a `not` of a list) comes before stage 7 (depth).
     assert!(
         diags

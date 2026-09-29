@@ -8,7 +8,7 @@ use velme_builtins::{Number, Value};
 use velme_check::{Checked, GoalChecks, Invocation, Part};
 use velme_diagnostics::render::render_human;
 use velme_diagnostics::{Code, Diagnostic};
-use velme_interp::run;
+use velme_interp::{Limits, run};
 use velme_ir::{SHOWN_ITEMS, decode_str};
 use velme_sema::hir::Program;
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
@@ -110,6 +110,7 @@ fn invocation(program: &Program, goal: &str, inputs: &[&str], bindings: &[&str],
             .collect(),
         result: value(program, result, &decl.output),
         fuel: 0,
+        memory: 0,
     }
 }
 
@@ -369,12 +370,13 @@ fn ac_rdm_06_wrong_ir_fails_its_examples_and_checks_with_values() {
     let program = program(&source);
     let ir = valid_ir(&program, &read(&repo("tests/golden/checks/double.json")));
     let diags = examples(&program, &source, |inputs| {
-        let output = run(&ir, inputs.clone(), Vec::new(), MAX_FUEL).expect("runs");
+        let output = run(&ir, inputs.clone(), Vec::new(), Limits::SYSTEM).expect("runs");
         Invocation {
             inputs,
             bindings: Vec::new(),
             result: output.value,
             fuel: output.fuel,
+            memory: output.memory,
         }
     });
     assert_eq!(
@@ -407,6 +409,7 @@ fn right_ir_passes_its_examples() {
             bindings: Vec::new(),
             result,
             fuel: 0,
+            memory: 0,
         }
     });
     assert!(diags.is_empty(), "{diags:#?}");

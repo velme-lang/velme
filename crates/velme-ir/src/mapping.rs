@@ -163,7 +163,7 @@ fn decode_at(json: &Json, ty: &Type, program: &Program, path: &mut Vec<String>) 
             if u64::try_from(items.len()).map_or(true, |n| n > MAX_LIST_SIZE) {
                 return Err(DecodeProblem::TooManyItems { items: items.len() });
             }
-            Ok(Value::list(values))
+            Ok(Value::list_of(values, matches!(**element, Type::Optional(_))))
         }
         (Type::Record(id), Json::Object(members)) => match program.record(*id) {
             Some(record) => decode_record(record, members, program, path),
@@ -213,7 +213,12 @@ fn decode_record(
         fields.push((field.name.clone(), decode_at(member, &field.ty, program, path)?));
         path.pop();
     }
-    Ok(Value::record(&record.name, fields))
+    let optional: Vec<bool> = record
+        .fields
+        .iter()
+        .map(|f| matches!(f.ty, Type::Optional(_)))
+        .collect();
+    Ok(Value::record_of(&record.name, fields, &optional))
 }
 
 /// A value whose JSON is longer than `max_output_bytes` (`runtime/30` §7): `VL0606`.

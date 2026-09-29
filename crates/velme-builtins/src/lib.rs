@@ -4,12 +4,13 @@
 
 mod function;
 pub mod limits;
+pub mod memory;
 mod number;
 mod value;
 
 pub use function::{Error, Function, Output, equals, sort_by_fuel, sort_order};
 pub use number::Number;
-pub use value::{Record, Value};
+pub use value::{List, Record, Value};
 
 /// The catalog's version, recorded in every artifact manifest and synthesis cache key (R-BLT-09).
 pub const BUILTINS_VERSION: &str = "0.1";

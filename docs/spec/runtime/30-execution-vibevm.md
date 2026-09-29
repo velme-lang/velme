@@ -48,9 +48,12 @@ share their parts, so a comparison can visit far more pairs than its values take
 paid for, the work never outgrows the fuel: `==`, `!=` and `contains` charge as they compare and stop with `VL0601`
 once the fuel runs out, never after the whole walk (D-83). A `builtin` node charges its unit on entry like any node,
 evaluates its arguments, computes, then charges the rest of its catalog cost; a failure while computing wins over fuel
-on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`. A builtin
-whose cost follows from its arguments' sizes (`length` of a text, `concat`, `range`) checks it before the work, so it
-never computes what it can't pay for; the outcome is the same.
+on that last charge — size errors included: `range(20000)` with `max_fuel = 10` is `VL0606`, not `VL0601`. Allocating the
+result is part of computing it, so memory is checked there too: when one step would pass both limits, the first crossed in
+this order is reported — the entry charge (`VL0601`), then computing and allocating the result (`VL0604`, or `VL0606` for
+a size limit), then the remaining fuel (`VL0601`) (D-88). A builtin whose cost follows from its arguments' sizes (`length`
+of a text, `concat`, `range`) checks its result's bytes and then its fuel before the work, so it never computes or
+allocates what it can't pay for; the outcome is the same.
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
 builtin of its arguments (D-22).
 **R-RUN-25** Validated IR never fails for lack of stack, on any backend: its recursion is statically bounded.
@@ -153,9 +156,11 @@ a fake clock instead of real time (R-QA-02).
 
 ### 7.1 Memory accounting
 
-The interpreter charges each value it creates by a fixed size function (Number 16, Boolean 8, Nothing 0, `T?` 8 +
-`T`, Text 16 + bytes, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes in the WASM ABI's
-8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first). The size is logical, whatever the value's
+The interpreter charges each Text, List and Record it creates by a fixed size function (Number 16, Boolean 8, Nothing
+0, `T?` 8 + `T`, Text 16 + ⌈bytes/8⌉ · 8, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes
+in the WASM ABI's 8-byte-aligned slots, 31 §3, so the WASM memory backstop can't fire first). A Number, Boolean or
+optional scalar result on its own is charged nothing, since only Text, List and Record values live in linear memory;
+scalars count at the sizes above inside a List or Record (D-89). The size is logical, whatever the value's
 parts share: a list built from references to existing values — by a `list` node, `map`, `filter` or `sort_by` — is
 charged 16 + the full size of each item, as copying them into WASM memory costs (D-83). A `literal`'s value is decoded
 once, when its IR is validated, so evaluating a `literal` allocates nothing; a value built from it charges its full

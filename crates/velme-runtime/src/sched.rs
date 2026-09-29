@@ -12,10 +12,13 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Builder;
 use tokio::task::JoinSet;
 use velme_builtins::Value;
-use velme_diagnostics::Diagnostic;
+use velme_builtins::limits::MAX_WALL_CLOCK_MS;
+use velme_diagnostics::{Code, Diagnostic, Span};
+use velme_interp::{Budget, Error, Failure, Interrupt, Limits, Spent};
 use velme_sema::hir::{GoalId, Program};
 
-use crate::leaf::run_body;
+use crate::clock::{Clock, SystemClock, Watchdog};
+use crate::leaf::{Progress, run_body};
 use crate::plan::waves;
 use crate::registry::Registry;
 
@@ -23,20 +26,35 @@ use crate::registry::Registry;
 /// rendering recurse, and a blocking-pool thread's default stack is smaller than that needs on some platforms.
 const EVAL_STACK: usize = 64 * 1024 * 1024;
 
-/// How a run is scheduled.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// How a run is scheduled and watched.
+#[derive(Debug, Clone)]
 pub struct Options {
     /// The most goal bodies evaluated at once (`--jobs`, R-RUN-07); at least 1. It changes when things run, never what
     /// they produce.
     pub jobs: usize,
+    /// The watchdog's clock, injectable so tests need no real time (`runtime/30` R-RUN-24, R-QA-02).
+    pub clock: Arc<dyn Clock>,
+    /// How long the whole run may take by that clock before the watchdog stops it with `VL0603`: `max_wall_clock`, 60 s
+    /// (D-51). Only a safety net: the deterministic limits stop a run long before.
+    pub max_wall_clock: Duration,
 }
 
 impl Default for Options {
-    /// One job per available CPU.
+    /// One job per available CPU, the host's clock and the system `max_wall_clock`.
     fn default() -> Self {
         Options {
             jobs: std::thread::available_parallelism().map_or(1, usize::from),
+            clock: Arc::new(SystemClock::new()),
+            max_wall_clock: Duration::from_millis(MAX_WALL_CLOCK_MS),
         }
+    }
+}
+
+impl Options {
+    /// The same options with `jobs` workers.
+    pub fn with_jobs(mut self, jobs: usize) -> Options {
+        self.jobs = jobs;
+        self
     }
 }
 
@@ -195,6 +213,22 @@ pub struct GoalRun {
 }
 
 impl GoalRun {
+    /// Whether the run would end the same way every time (`runtime/30` R-RUN-14, D-10): `false` if this invocation or any
+    /// call under it was stopped by the wall-clock watchdog, `VL0603`, whatever else the run reports. Such an outcome
+    /// is never cached and never a verification verdict.
+    pub fn reproducible(&self) -> bool {
+        let timed_out = self
+            .outcome
+            .as_ref()
+            .err()
+            .is_some_and(|failed| failed.diagnostics.iter().any(|d| d.code == Code::Timeout));
+        !timed_out
+            && self
+                .calls
+                .iter()
+                .all(|call| call.run.as_ref().is_none_or(GoalRun::reproducible))
+    }
+
     /// The value, or the diagnostics of the failure.
     pub fn result(&self) -> Result<Value, Vec<Diagnostic>> {
         match &self.outcome {
@@ -210,6 +244,8 @@ struct Shared {
     source: String,
     registry: Registry,
     origin: Instant,
+    /// The run's watchdog (once out of time, always out, so every invocation stops).
+    watchdog: Arc<Watchdog>,
     /// How many goal bodies are being evaluated now, and the most there have been at once.
     in_flight: AtomicUsize,
     peak: AtomicUsize,
@@ -258,11 +294,35 @@ pub fn run_goal_peak(
         source: source.to_owned(),
         registry: registry.clone(),
         origin: Instant::now(),
+        watchdog: Arc::new(Watchdog::start(&options)),
         in_flight: AtomicUsize::new(0),
         peak: AtomicUsize::new(0),
     });
     let run = runtime.block_on(invocation(Arc::clone(&shared), goal, inputs));
     (run, shared.peak.load(Ordering::SeqCst))
+}
+
+impl Shared {
+    /// Whether the run has been going longer than `max_wall_clock` by its clock (`runtime/30` R-RUN-24, D-10).
+    fn timed_out(&self) -> bool {
+        self.watchdog.timed_out()
+    }
+}
+
+/// The watchdog as the interpreter sees it: asked every so often, it says whether the run is out of time.
+fn watchdog(shared: &Shared) -> Interrupt {
+    shared.watchdog.interrupt()
+}
+
+/// `run`, its goal declared at `span` and started at `started`, stopped by the watchdog before it finished.
+fn stop_timed_out(shared: &Shared, mut run: GoalRun, span: Span, started: Duration) -> GoalRun {
+    let diagnostic = Failure::from(Error::Interrupted).diagnostic(&run.goal, span);
+    run.outcome = Err(Failed::new(&run.goal, vec![diagnostic]));
+    run.timing = Timing {
+        start: started,
+        end: shared.origin.elapsed(),
+    };
+    run
 }
 
 /// One invocation, boxed because a goal's calls are invocations too.
@@ -304,14 +364,22 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         return run;
     }
     let mut values: Vec<Option<Value>> = vec![None; target.bindings.len()];
-    // The fuel this invocation has spent on its calls' arguments, which its body spends after (R-RUN-17).
-    let mut spent = 0;
+    let limits = Limits {
+        fuel: target.budget.max_fuel,
+        memory: target.budget.max_memory,
+    };
+    // What this invocation has spent on its calls' arguments, which its body spends after (R-RUN-17).
+    let mut spent = Spent::default();
     for wave in waves(target) {
+        if shared.timed_out() {
+            return stop_timed_out(&shared, run, target.span, started);
+        }
         // Arguments are evaluated first, so a wave starts only if all of it can; they are the parent's expressions, so
         // they run on the pool with its bodies and spend the parent's fuel.
         let evaluated = {
             let shared = Arc::clone(&shared);
             let (inputs, values, wave) = (inputs.clone(), values.clone(), wave.clone());
+            let interrupt = watchdog(&shared);
             tokio::task::spawn_blocking(move || {
                 let program = &shared.program;
                 let (Some(target), Some(locked)) = (program.goals.get(goal.0), shared.registry.get(goal)) else {
@@ -320,9 +388,9 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                 let mut spent = spent;
                 let mut all = Vec::new();
                 for i in wave {
-                    let (args, total) =
-                        velme_interp::call_args(&locked.ir, i, &inputs, &values, spent, target.budget.max_fuel)
-                            .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
+                    let budget = Budget::new(limits).after(spent).watched(Some(interrupt.clone()));
+                    let (args, total) = velme_interp::call_args(&locked.ir, i, &inputs, &values, budget)
+                        .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
                     spent = total;
                     all.push((i, args));
                 }
@@ -403,7 +471,14 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
     }
     let bindings: Vec<Value> = values.into_iter().flatten().collect();
     let has_calls = !bindings.is_empty();
+    if shared.timed_out() {
+        return stop_timed_out(&shared, run, target.span, started);
+    }
     let body = {
+        let progress = Progress {
+            spent,
+            interrupt: Some(watchdog(&shared)),
+        };
         let shared = Arc::clone(&shared);
         tokio::task::spawn_blocking(move || {
             let now = shared.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
@@ -413,7 +488,17 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                 .registry
                 .get(goal)
                 .ok_or_else(|| vec![Diagnostic::internal_error()])
-                .and_then(|locked| run_body(&shared.program, goal, &shared.source, locked, inputs, bindings, spent));
+                .and_then(|locked| {
+                    run_body(
+                        &shared.program,
+                        goal,
+                        &shared.source,
+                        locked,
+                        inputs,
+                        bindings,
+                        progress,
+                    )
+                });
             let end = shared.origin.elapsed();
             shared.in_flight.fetch_sub(1, Ordering::SeqCst);
             (result, start, end)

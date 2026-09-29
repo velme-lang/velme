@@ -355,7 +355,7 @@ fn run(arg: &str, json: bool, goal: &str, input: Option<&str>, args: &[(String, 
     // Input and lock problems are both reported, so the exit code follows R-CLI-16's precedence.
     let inputs = decode_inputs(program, id, input.as_deref(), args);
     let registry = registry(project, program, id);
-    let options = jobs.map_or_else(Options::default, |jobs| Options { jobs });
+    let options = jobs.map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
     let result = match (inputs, registry) {
         (Ok(inputs), Ok(registry)) => run_goal(program, id, text, &registry, inputs, options)
             .result()
@@ -408,7 +408,8 @@ fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
             });
             continue;
         }
-        let tested = locked_goal(project, program, id).and_then(|locked| test_leaf(program, id, text, &locked));
+        let tested = locked_goal(project, program, id)
+            .and_then(|locked| test_leaf(program, id, text, &locked, &Options::default()));
         let line = match &tested {
             Ok(1) => "✓ 1 example".to_owned(),
             Ok(n) => format!("✓ {n} examples"),

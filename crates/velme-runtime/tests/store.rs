@@ -490,9 +490,19 @@ fn an_unreadable_artifact_is_a_file_error() {
 }
 
 /// R-ART-10: IR nested as deep as `MAX_JSON_DEPTH` allows stores and loads, its artifact one level deeper; an artifact
-/// nested past that is not read.
+/// nested past that is not read. It runs on 8 MiB: a debug build takes about 1.4 MiB to build, compare and drop values
+/// this deep, too near a default test thread's 2 MiB to hold on every platform.
 #[test]
 fn ir_at_the_depth_limit_stores_and_loads() {
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(stores_and_loads_ir_at_the_depth_limit)
+        .expect("thread")
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+}
+
+fn stores_and_loads_ir_at_the_depth_limit() {
     let program = program("language: velme/0.1\n\ngoal Words(xs: List<Number>) -> Text:\n    plan: \"Test.\"\n");
     // The literal's type starts 4 levels into the IR, under `body`, `cond` and `left`, and ends at the limit.
     let depth = MAX_JSON_DEPTH - 5;

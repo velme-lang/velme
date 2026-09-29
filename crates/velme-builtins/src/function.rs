@@ -4,6 +4,7 @@
 use velme_diagnostics::Code;
 
 use crate::limits::MAX_LIST_SIZE;
+use crate::memory::{charged_bytes, number_list_bytes, text_bytes};
 use crate::{Number, Value};
 
 /// Why an operation has no value.
@@ -20,6 +21,9 @@ pub enum Error {
         /// The length asked for.
         length: Number,
     },
+    /// `VL0604 MemoryLimitExceeded`: the call's result would take more memory than the invocation has left, so it
+    /// stopped before allocating it (`runtime/30` R-RUN-04, §7.1, D-88).
+    OutOfMemory,
     /// `VL0607 InternalError`: arguments that don't match the built-in's signature, which the validator rules out.
     Internal,
     /// `VL0601 BudgetExceeded`: the call would cost more than the fuel it was given, so it stopped before finishing
@@ -40,18 +44,22 @@ impl Error {
             Error::ListTooLong { .. } => Code::SizeLimitExceeded,
             Error::Internal => Code::InternalError,
             Error::OutOfFuel => Code::BudgetExceeded,
+            Error::OutOfMemory => Code::MemoryLimitExceeded,
         }
     }
 }
 
 /// A value built-in's result and what the call costs in Velme fuel: the catalog cost, which already counts the call
-/// node's own unit but not its argument nodes (`runtime/30` R-RUN-04, D-52).
+/// node's own unit but not its argument nodes (`runtime/30` R-RUN-04, D-52), and the bytes its result allocates
+/// (§7.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Output {
     /// The result.
     pub value: Value,
     /// The fuel the call costs.
     pub fuel: u64,
+    /// The bytes the result takes.
+    pub bytes: u64,
 }
 
 /// A value built-in (`language/14` §2); collection primitives (§4) take lambdas, so the backend drives them.
@@ -90,19 +98,30 @@ pub enum Function {
 }
 
 impl Function {
-    /// Calls the built-in on `args`, which the validator has checked against its signature, with at most `budget` fuel
-    /// to spend, its own unit included. A call whose cost follows from its arguments' sizes alone (`length` of a text,
-    /// `contains`, `concat`, `range`) stops with [`Error::OutOfFuel`] before doing work it can't pay for; any other
-    /// returns its cost, which may pass `budget`, for the caller to charge.
-    pub fn call(self, args: &[Value], budget: u64) -> Result<Output, Error> {
+    /// Calls the built-in on `args`, which the validator has checked against its signature, with at most `fuel` fuel
+    /// to spend, its own unit included, and `memory` bytes to allocate. A call whose cost follows from its arguments'
+    /// sizes alone (`length` of a text, `contains`, `concat`, `range`) stops before doing work it can't pay for: with
+    /// [`Error::OutOfMemory`] if its result would take more than `memory`, else with [`Error::OutOfFuel`] if its
+    /// fuel would pass `fuel` (D-88); a failure it can raise still wins over both. Any other returns its cost and
+    /// the bytes of its result, which may pass either budget, for the caller to charge.
+    pub fn call(self, args: &[Value], fuel: u64, memory: u64) -> Result<Output, Error> {
         use Value::{Boolean, List, Nothing, Text};
         let n = |len: usize| u64::try_from(len).unwrap_or(u64::MAX);
-        let afford = |fuel: u64| if fuel > budget { Err(Error::OutOfFuel) } else { Ok(fuel) };
-        let (value, fuel) = match (self, args) {
+        // Allocating the result is part of computing it, so memory is checked before the rest of the fuel.
+        let afford = |bytes: u64, cost: u64| {
+            if bytes > memory {
+                Err(Error::OutOfMemory)
+            } else if cost > fuel {
+                Err(Error::OutOfFuel)
+            } else {
+                Ok(cost)
+            }
+        };
+        let (value, cost) = match (self, args) {
             (Function::Length, [List(items)]) => (Number::from(n(items.len())).into(), 1),
             (Function::Length, [Text(text)]) => {
-                let fuel = afford(1 + blocks(text.len()))?;
-                (Number::from(n(text.chars().count())).into(), fuel)
+                let cost = afford(0, 1 + blocks(text.len()))?;
+                (Number::from(n(text.chars().count())).into(), cost)
             }
             (Function::IsEmpty, [value]) => {
                 let empty = match value {
@@ -124,7 +143,7 @@ impl Function {
             }
             // Each item scanned costs what `item == wanted` would: its unit, and the pairs it visits (D-83).
             (Function::Contains, [List(items), wanted]) => {
-                let mut meter = Meter { spent: 0, budget };
+                let mut meter = Meter { spent: 0, budget: fuel };
                 meter.charge(1)?;
                 let mut found = false;
                 for item in items.iter() {
@@ -147,24 +166,30 @@ impl Function {
                 ((*x).clamp(*low, *high).into(), 1)
             }
             (Function::Concat, [Text(a), Text(b)]) => {
-                let fuel = afford(1 + blocks(a.len().saturating_add(b.len())))?;
-                (Text(format!("{a}{b}").into()), fuel)
+                let length = a.len().saturating_add(b.len());
+                let cost = afford(text_bytes(length), 1 + blocks(length))?;
+                (Text(format!("{a}{b}").into()), cost)
             }
             (Function::ToText, [Value::Number(x)]) => {
                 let text = x.to_string();
-                let fuel = 1 + blocks(text.len());
-                (Text(text.into()), fuel)
+                let cost = 1 + blocks(text.len());
+                (Text(text.into()), cost)
             }
-            // The count is checked first, so a size error wins over fuel (R-RUN-04).
+            // The count is checked first, so a size error wins over memory and fuel (R-RUN-04).
             (Function::Range, [Value::Number(count)]) => {
                 let length = range_length(*count)?;
-                let fuel = afford(1u64.saturating_add(length))?;
-                (Value::list((0..length).map(|i| Number::from(i).into()).collect()), fuel)
+                let cost = afford(number_list_bytes(length), 1u64.saturating_add(length))?;
+                (Value::list((0..length).map(|i| Number::from(i).into()).collect()), cost)
             }
             (Function::Random, [Value::Number(seed), Value::Number(index)]) => (random(*seed, *index)?.into(), 1),
             _ => return Err(Error::Internal),
         };
-        Ok(Output { value, fuel })
+        let bytes = charged_bytes(&value);
+        Ok(Output {
+            value,
+            fuel: cost,
+            bytes,
+        })
     }
 }
 
@@ -213,6 +238,7 @@ pub fn equals(a: &Value, b: &Value, budget: u64) -> Result<Output, Error> {
     Ok(Output {
         value: Value::Boolean(equal),
         fuel: meter.spent,
+        bytes: 0,
     })
 }
 

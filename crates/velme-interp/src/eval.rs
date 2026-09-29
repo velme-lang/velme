@@ -2,10 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use velme_builtins::memory::charged_bytes;
 use velme_builtins::{Builtin, Function, Value, equals, sort_by_fuel, sort_order};
-use velme_ir::{BinaryOperator, Lambda, Node, RecordType, ReduceLambda, Trusted, UnaryOperator};
+use velme_ir::{BinaryOperator, Lambda, Node, RecordType, ReduceLambda, Trusted, Type, UnaryOperator};
 
-use crate::{Error, Failure};
+use crate::{Budget, Error, Failure, Interrupt, Limits, POLL_FUEL, Spent};
 
 /// Sees what an evaluation computes, for reports that show the values behind a result (`language/13` R-CHK-10).
 pub trait Probe {
@@ -34,8 +35,8 @@ impl Probe for NoProbe {
 /// The record types of an evaluator that has evaluated nothing yet.
 static NO_TYPES: BTreeMap<String, RecordType> = BTreeMap::new();
 
-/// Evaluates IR expressions over named inputs and locals, charging one fuel budget across every evaluation it runs
-/// (`runtime/30` R-RUN-04, R-RUN-17). It evaluates only [`Trusted`] IR: a validated goal's body, or a lowered check or
+/// Evaluates IR expressions over named inputs and locals, charging one fuel and one memory budget across every
+/// evaluation it runs (`runtime/30` R-RUN-04, §7.1, R-RUN-17). It evaluates only [`Trusted`] IR: a validated goal's body, or a lowered check or
 /// example that passed the validator (INV-1).
 #[derive(Debug)]
 pub struct Evaluator<'ir> {
@@ -46,26 +47,49 @@ pub struct Evaluator<'ir> {
     locals: Vec<(&'ir str, Value)>,
     fuel: u64,
     max_fuel: u64,
+    /// Cumulative bytes allocated (D-53).
+    memory: u64,
+    max_memory: u64,
+    interrupt: Option<Interrupt>,
+    /// The fuel at which the interrupt is looked at next.
+    next_poll: u64,
 }
 
 type Eval = Result<Value, Failure>;
 
 impl<'ir> Evaluator<'ir> {
-    /// An evaluator with no names in scope that may spend `max_fuel`.
-    pub fn new(max_fuel: u64) -> Self {
+    /// An evaluator with no names in scope that may spend `limits`.
+    pub fn new(limits: Limits) -> Self {
+        Evaluator::from_budget(Budget::new(limits))
+    }
+
+    /// An evaluator with no names in scope within `budget`.
+    pub fn from_budget(budget: Budget) -> Self {
         Evaluator {
             types: &NO_TYPES,
             inputs: Vec::new(),
             locals: Vec::new(),
-            fuel: 0,
-            max_fuel,
+            fuel: budget.spent.fuel,
+            max_fuel: budget.limits.fuel,
+            memory: budget.spent.memory,
+            max_memory: budget.limits.memory,
+            interrupt: budget.interrupt,
+            next_poll: next_poll(budget.spent.fuel),
         }
     }
 
-    /// The same evaluator having already spent `fuel` of its `max_fuel`: the rest of an invocation's budget, for its
+    /// The same evaluator having already spent `spent` of its limits: the rest of an invocation's budget, for its
     /// checks (`language/13` R-CHK-08).
-    pub fn with_fuel_spent(mut self, fuel: u64) -> Self {
-        self.fuel = fuel;
+    pub fn with_spent(mut self, spent: Spent) -> Self {
+        self.fuel = spent.fuel;
+        self.memory = spent.memory;
+        self.next_poll = next_poll(spent.fuel);
+        self
+    }
+
+    /// The same evaluator stopped from outside by `interrupt`.
+    pub fn with_interrupt(mut self, interrupt: Option<Interrupt>) -> Self {
+        self.interrupt = interrupt;
         self
     }
 
@@ -82,6 +106,14 @@ impl<'ir> Evaluator<'ir> {
     /// The fuel spent so far.
     pub fn fuel(&self) -> u64 {
         self.fuel
+    }
+
+    /// The fuel and bytes spent so far.
+    pub fn spent(&self) -> Spent {
+        Spent {
+            fuel: self.fuel,
+            memory: self.memory,
+        }
     }
 
     /// The value of `expr`.
@@ -121,7 +153,36 @@ impl<'ir> Evaluator<'ir> {
             }
             .into());
         }
+        // The watchdog is looked at every `POLL_FUEL` of fuel, by the meter, not by a clock (D-10).
+        if self.fuel >= self.next_poll {
+            self.next_poll = next_poll(self.fuel);
+            if self.interrupt.as_ref().is_some_and(Interrupt::stopped) {
+                return Err(Error::Interrupted.into());
+            }
+        }
         Ok(())
+    }
+
+    /// Charges the `bytes` of a value just created (§7.1).
+    fn allocate(&mut self, bytes: u64) -> Result<(), Failure> {
+        self.memory = self.memory.saturating_add(bytes);
+        if self.memory > self.max_memory {
+            return Err(self.out_of_memory());
+        }
+        Ok(())
+    }
+
+    /// Charges the size of `value`, just created (§7.1).
+    fn allocate_value(&mut self, value: &Value) -> Result<(), Failure> {
+        let bytes = charged_bytes(value);
+        self.allocate(bytes)
+    }
+
+    fn out_of_memory(&self) -> Failure {
+        Error::OutOfMemory {
+            max_memory: self.max_memory,
+        }
+        .into()
     }
 
     /// The fuel left to spend.
@@ -129,11 +190,18 @@ impl<'ir> Evaluator<'ir> {
         self.max_fuel.saturating_sub(self.fuel)
     }
 
-    /// Charges what a metered call cost beyond the `charged` fuel already charged for it; a call that stopped at the
-    /// budget it was given is out of fuel.
+    /// The bytes left to allocate.
+    fn memory_left(&self) -> u64 {
+        self.max_memory.saturating_sub(self.memory)
+    }
+
+    /// Charges what a metered call cost beyond the `charged` fuel already charged for it: first the bytes of its
+    /// result, since allocating it is part of computing it, then the rest of its fuel (`runtime/30` R-RUN-04, D-88). A
+    /// call that stopped at a budget it was given is out of it.
     fn settle(&mut self, output: Result<velme_builtins::Output, velme_builtins::Error>, charged: u64) -> Eval {
         match output {
             Ok(output) => {
+                self.allocate(output.bytes)?;
                 self.charge(output.fuel.saturating_sub(charged))?;
                 Ok(output.value)
             }
@@ -143,6 +211,10 @@ impl<'ir> Evaluator<'ir> {
                     max_fuel: self.max_fuel,
                 }
                 .into())
+            }
+            Err(velme_builtins::Error::OutOfMemory) => {
+                self.memory = self.max_memory.saturating_add(1);
+                Err(self.out_of_memory())
             }
             Err(error) => Err(error.into()),
         }
@@ -156,13 +228,19 @@ impl<'ir> Evaluator<'ir> {
             Node::Literal { value, .. } => value.decoded().cloned().ok_or_else(internal),
             Node::Input { name } => lookup(&self.inputs, name),
             Node::Local { name } => lookup(&self.locals, name),
-            Node::Record { ty, fields } => self.record(ty, fields, probe),
-            Node::List { items, .. } => {
+            Node::Record { ty, fields } => {
+                let record = self.record(ty, fields, probe)?;
+                self.allocate_value(&record)?;
+                Ok(record)
+            }
+            Node::List { items, of } => {
                 let items = items
                     .iter()
                     .map(|item| self.probed(item, probe))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(Value::list(items))
+                let list = Value::list_of(items, matches!(of, Type::Optional { .. }));
+                self.allocate_value(&list)?;
+                Ok(list)
             }
             Node::FieldGet { of, field } => match self.probed(of, probe)? {
                 Value::Record(record) => record.get(field).cloned().ok_or_else(internal),
@@ -176,7 +254,7 @@ impl<'ir> Evaluator<'ir> {
                     (UnaryOperator::Not, Value::Boolean(b)) => Ok(Value::Boolean(!b)),
                     // The built-in's own unit is this node's (D-60).
                     (UnaryOperator::IsEmpty, arg) => {
-                        let output = Function::IsEmpty.call(&[arg], self.left().saturating_add(1));
+                        let output = Function::IsEmpty.call(&[arg], self.left().saturating_add(1), self.memory_left());
                         self.settle(output, 1)
                     }
                     _ => Err(internal()),
@@ -201,23 +279,30 @@ impl<'ir> Evaluator<'ir> {
                 Value::Nothing => self.probed(default, probe),
                 present => Ok(present),
             },
-            Node::Map { list, func } => {
+            Node::Map { list, func, items } => {
                 let list = self.list(list, probe)?;
+                let optional = items.optional();
                 let mut out = Vec::with_capacity(list.len());
                 for (i, element) in list.iter().enumerate() {
                     out.push(self.visit(node, func, i, element, probe)?);
                 }
-                Ok(Value::list(out))
+                let list = Value::list_of(out, optional);
+                self.allocate_value(&list)?;
+                Ok(list)
             }
             Node::Filter { list, func } => {
                 let list = self.list(list, probe)?;
+                // Its items are the list's own, of the same type.
+                let optional = list.optional_items();
                 let mut out = Vec::new();
                 for (i, element) in list.iter().enumerate() {
                     if truth(self.visit(node, func, i, element, probe)?)? {
                         out.push(element.clone());
                     }
                 }
-                Ok(Value::list(out))
+                let list = Value::list_of(out, optional);
+                self.allocate_value(&list)?;
+                Ok(list)
             }
             Node::Find { list, func } => {
                 let list = self.list(list, probe)?;
@@ -248,7 +333,7 @@ impl<'ir> Evaluator<'ir> {
                     .map(|arg| self.probed(arg, probe))
                     .collect::<Result<Vec<_>, _>>()?;
                 // The catalog cost already counts this node's unit (D-52).
-                let output = function.call(&args, self.left().saturating_add(1));
+                let output = function.call(&args, self.left().saturating_add(1), self.memory_left());
                 self.settle(output, 1)
             }
             Node::Call(_) => Err(internal()),
@@ -260,11 +345,13 @@ impl<'ir> Evaluator<'ir> {
         let types = self.types;
         let declared = types.get(ty).ok_or_else(internal)?;
         let mut values = Vec::with_capacity(declared.fields.len());
-        for (name, _) in &declared.fields {
+        let mut optional = Vec::with_capacity(declared.fields.len());
+        for (name, field_type) in &declared.fields {
             let field = fields.get(name).ok_or_else(internal)?;
             values.push((name.clone(), self.probed(field, probe)?));
+            optional.push(matches!(field_type, Type::Optional { .. }));
         }
-        Ok(Value::record(ty, values))
+        Ok(Value::record_of(ty, values, &optional))
     }
 
     fn binary<P: Probe>(&mut self, op: BinaryOperator, left: &'ir Node, right: &'ir Node, probe: &mut P) -> Eval {
@@ -272,10 +359,12 @@ impl<'ir> Evaluator<'ir> {
         if let BinaryOperator::And | BinaryOperator::Or = op {
             let left = truth(left)?;
             // `and` stops at `false`, `or` at `true`.
-            if left == (op == BinaryOperator::Or) {
-                return Ok(Value::Boolean(left));
-            }
-            return Ok(Value::Boolean(truth(self.probed(right, probe)?)?));
+            let decided = if left == (op == BinaryOperator::Or) {
+                left
+            } else {
+                truth(self.probed(right, probe)?)?
+            };
+            return Ok(Value::Boolean(decided));
         }
         let right = self.probed(right, probe)?;
         if let BinaryOperator::Eq | BinaryOperator::Ne = op {
@@ -303,7 +392,7 @@ impl<'ir> Evaluator<'ir> {
     }
 
     /// The items of the list `node` evaluates to.
-    fn list<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Result<std::sync::Arc<[Value]>, Failure> {
+    fn list<P: Probe>(&mut self, node: &'ir Node, probe: &mut P) -> Result<velme_builtins::List, Failure> {
         match self.probed(node, probe)? {
             Value::List(items) => Ok(items),
             _ => Err(internal()),
@@ -378,14 +467,22 @@ impl<'ir> Evaluator<'ir> {
             }
         }
         let n = u64::try_from(list.len()).unwrap_or(u64::MAX);
+        // The sorted list is allocated before the rest of the fuel is charged (D-88), and both before the work.
+        let bytes = list.bytes();
+        self.allocate(bytes)?;
         // The formula's own unit and one per key are already charged (D-52).
         self.charge(sort_by_fuel(n).saturating_sub(1 + n))?;
         let sorted = sort_order(&keys, descending)
             .into_iter()
             .map(|i| list.get(i).cloned().ok_or_else(internal))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Value::list(sorted))
+        Ok(Value::list_of(sorted, list.optional_items()))
     }
+}
+
+/// The fuel at which the interrupt is looked at next after `fuel` has been spent.
+fn next_poll(fuel: u64) -> u64 {
+    (fuel / POLL_FUEL).saturating_add(1).saturating_mul(POLL_FUEL)
 }
 
 /// The `VL0607` failure of IR the validator should have rejected.
@@ -411,12 +508,11 @@ fn truth(value: Value) -> Result<bool, Failure> {
 
 #[cfg(test)]
 mod tests {
-    use velme_builtins::limits::MAX_FUEL;
     use velme_builtins::{BUILTINS_VERSION, Value};
     use velme_ir::IR_VERSION;
     use velme_test_support::{program, valid_ir};
 
-    use super::Evaluator;
+    use super::{Evaluator, Limits};
 
     /// Whatever a failed evaluation brought into scope leaves with it, and what was bound before stays: the `let`
     /// fails with `a` bound, the `map` inside its lambda with `x` bound.
@@ -453,7 +549,7 @@ mod tests {
                 valid_ir(&program, &doc)
             })
             .collect();
-        let mut evaluator = Evaluator::new(MAX_FUEL);
+        let mut evaluator = Evaluator::new(Limits::SYSTEM);
         evaluator.bind_local("before", Value::Boolean(true));
         for ir in &irs {
             assert!(evaluator.eval(ir.body()).is_err());

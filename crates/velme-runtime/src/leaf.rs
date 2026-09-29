@@ -6,10 +6,15 @@ use velme_builtins::Value;
 use velme_builtins::limits::MAX_OUTPUT_BYTES;
 use velme_check::{GoalChecks, Invocation};
 use velme_diagnostics::{Code, Diagnostic};
+use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::encode_value;
 use velme_sema::hir::{GoalId, GoalKind, Program};
 
+use std::sync::Arc;
+
+use crate::clock::Watchdog;
 use crate::locked::LockedGoal;
+use crate::sched::Options;
 
 /// Runs the leaf goal `goal` of `program`, whose source is `source`, on `inputs` with its locked IR, then evaluates its
 /// checks on the invocation. Its value if every check holds; otherwise the failure, or every failed check in source
@@ -28,12 +33,20 @@ pub fn run_leaf(
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    run_body(program, goal, source, locked, inputs, Vec::new(), 0)
+    run_body(program, goal, source, locked, inputs, Vec::new(), Progress::default())
+}
+
+/// What an invocation brings to its body: what it already spent evaluating its calls' arguments, and the run's
+/// watchdog, if it has one.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Progress {
+    pub(crate) spent: Spent,
+    pub(crate) interrupt: Option<Interrupt>,
 }
 
 /// Runs the body of `goal` on `inputs` and, for a goal with calls, on `bindings`, one value per call in block order,
-/// then its checks on the invocation (`runtime/30` §4 steps 6–7). `spent` is the fuel the invocation already used
-/// evaluating its calls' arguments. Its value if every check holds; otherwise the
+/// then its checks on the invocation (`runtime/30` §4 steps 6–7), `progress` being how far the invocation already is.
+/// Its value if every check holds; otherwise the
 /// failure, or every failed check in source order (R-CHK-09).
 pub(crate) fn run_body(
     program: &Program,
@@ -42,10 +55,12 @@ pub(crate) fn run_body(
     locked: &LockedGoal,
     inputs: Vec<Value>,
     bindings: Vec<Value>,
-    spent: u64,
+    progress: Progress,
 ) -> Result<Value, Vec<Diagnostic>> {
-    let checks = GoalChecks::new(program, goal, source).map_err(|d| vec![d])?;
-    let invocation = invoke(program, goal, locked, inputs, bindings, spent).map_err(|d| vec![d])?;
+    let checks = GoalChecks::new(program, goal, source)
+        .map_err(|d| vec![d])?
+        .watched(progress.interrupt.clone());
+    let invocation = invoke(program, goal, locked, inputs, bindings, progress).map_err(|d| vec![d])?;
     let failures = checks.run(&invocation).map_err(|d| vec![d])?.failures();
     if failures.is_empty() {
         Ok(invocation.result)
@@ -56,7 +71,13 @@ pub(crate) fn run_body(
 
 /// Runs every example of the leaf goal `goal` with its locked IR, and its checks on each example's invocation
 /// (R-GOAL-22). How many examples ran if all passed; otherwise every failure, example by example in source order.
-pub fn test_leaf(program: &Program, goal: GoalId, source: &str, locked: &LockedGoal) -> Result<usize, Vec<Diagnostic>> {
+pub fn test_leaf(
+    program: &Program,
+    goal: GoalId,
+    source: &str,
+    locked: &LockedGoal,
+    options: &Options,
+) -> Result<usize, Vec<Diagnostic>> {
     let target = program
         .goals
         .get(goal.0)
@@ -64,10 +85,24 @@ pub fn test_leaf(program: &Program, goal: GoalId, source: &str, locked: &LockedG
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    let checks = GoalChecks::new(program, goal, source).map_err(|d| vec![d])?;
+    let watchdog = Arc::new(Watchdog::start(options));
+    let interrupt = Some(watchdog.interrupt());
+    let checks = GoalChecks::new(program, goal, source)
+        .map_err(|d| vec![d])?
+        .watched(interrupt.clone());
     let mut failures = Vec::new();
     for example in checks.examples() {
-        let invocation = match invoke(program, goal, locked, example.args.clone(), Vec::new(), 0) {
+        let invocation = match invoke(
+            program,
+            goal,
+            locked,
+            example.args.clone(),
+            Vec::new(),
+            Progress {
+                spent: Spent::default(),
+                interrupt: interrupt.clone(),
+            },
+        ) {
             Ok(invocation) => invocation,
             Err(diag) => {
                 failures.push(diag);
@@ -87,7 +122,7 @@ pub fn test_leaf(program: &Program, goal: GoalId, source: &str, locked: &LockedG
     }
 }
 
-/// The goal's body evaluated on `inputs`, within its fuel budget (R-RUN-16) and with an answer of at most
+/// The goal's body evaluated on `inputs`, within its fuel and memory budget (R-RUN-16) and with an answer of at most
 /// `max_output_bytes` of JSON (`runtime/30` §7).
 fn invoke(
     program: &Program,
@@ -95,17 +130,16 @@ fn invoke(
     locked: &LockedGoal,
     inputs: Vec<Value>,
     bindings: Vec<Value>,
-    spent: u64,
+    progress: Progress,
 ) -> Result<Invocation, Diagnostic> {
     let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
-    let output = velme_interp::run_after(
-        &locked.ir,
-        inputs.clone(),
-        bindings.clone(),
-        spent,
-        target.budget.max_fuel,
-    )
-    .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
+    let limits = Limits {
+        fuel: target.budget.max_fuel,
+        memory: target.budget.max_memory,
+    };
+    let budget = Budget::new(limits).after(progress.spent).watched(progress.interrupt);
+    let output = velme_interp::run_after(&locked.ir, inputs.clone(), bindings.clone(), budget)
+        .map_err(|failure| failure.diagnostic(&target.name, target.span))?;
     if encode_value(&output.value).is_err() {
         return Err(Diagnostic::new(
             Code::SizeLimitExceeded,
@@ -119,5 +153,6 @@ fn invoke(
         bindings,
         result: output.value,
         fuel: output.fuel,
+        memory: output.memory,
     })
 }

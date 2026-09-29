@@ -271,3 +271,46 @@ fn usage_errors_exit_64() {
         assert!(run.stderr.starts_with("usage: velme check FILE"), "{args:?}");
     }
 }
+
+/// A call tree that needs 129 invocations is rejected by `velme check` with `VL0605` before anything runs; 128 is the
+/// limit (AC-RUN-06, `runtime/30` §7).
+#[test]
+fn ac_run_06_a_call_tree_of_129_invocations_is_rejected_before_execution() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("check_ac_run_06");
+    std::fs::create_dir_all(&dir).expect("directory");
+    let tree = |calls: usize| {
+        let lines: String = (0..calls).map(|i| format!("        c{i} = Leaf(x)\n")).collect();
+        format!(
+            "language: velme/0.1\n\ngoal Leaf(x: Number) -> Number:\n    plan: \"Return x.\"\n\n\
+             goal Wide(x: Number) -> Number:\n    call:\n{lines}    plan: \"Add them.\"\n"
+        )
+    };
+    let check = |name: &str, calls: usize| {
+        let file = dir.join(name);
+        std::fs::write(&file, tree(calls)).expect("source");
+        velme(&["check", file.to_str().expect("UTF-8 path")])
+    };
+    // `Wide` itself and 127 calls are 128 invocations.
+    let ok = check("ok.velme", 127);
+    assert_eq!(
+        (ok.stdout.as_str(), ok.code),
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", 0)
+    );
+    // 128 calls and `Wide` are 129.
+    let over = check("over.velme", 128);
+    assert_eq!(over.stdout, "✓ Parsed\n✓ Types valid\n");
+    // `VL06xx` is exit status 3 by `tooling/40` §4, though this one is found before anything runs.
+    assert_eq!(over.code, 3);
+    assert!(
+        over.stderr
+            .contains("Error: Too many goals were called while running `Wide`.  [VL0605]"),
+        "{}",
+        over.stderr
+    );
+    assert!(
+        over.stderr
+            .contains("it would run 129 goals, counting itself, but its limit is 128")
+    );
+    // Nothing ran, and nothing was built or stored.
+    assert!(!dir.join(".velme").exists());
+}
