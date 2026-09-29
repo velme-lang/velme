@@ -19,7 +19,8 @@ pub use mapping::{
     display_value, encode_value, json_kind,
 };
 pub use node::{
-    BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
+    BinaryOperator, Call, CallNode, Goal, ItemShape, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type,
+    UnaryOperator,
 };
 pub use validate::{CheckScope, Origin, Request, Trusted, TrustedExpr, ValidIr, validate};
 

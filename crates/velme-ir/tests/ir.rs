@@ -249,12 +249,19 @@ fn ir_at_the_expression_depth_limit_parses() {
     );
     let goal: Goal = from_json_str(&ir).expect("IR at the depth limit parses");
     to_canonical_string(&goal).expect("IR at the depth limit serializes");
-    // A chain of `unary` nodes up to the JSON guard parses too, on a default test thread's stack (R-IR-18).
+    // A chain of `unary` nodes up to the JSON guard parses too (R-IR-18), on 8 MiB: a debug build takes about 1.7 MiB
+    // for it, too near the 2 MiB of a default test thread for the test to hold on every platform.
     let depth = MAX_JSON_DEPTH - 1;
     let chain = r#"{"kind": "unary", "op": "neg", "arg": "#.repeat(depth)
         + r#"{"kind": "input", "name": "x"}"#
         + &"}".repeat(depth);
-    from_json_str::<Node>(&chain).expect("a chain inside the guard parses");
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || from_json_str::<Node>(&chain).map(|_| ()))
+        .expect("thread")
+        .join()
+        .expect("fits the stack")
+        .expect("a chain inside the guard parses");
 }
 
 #[test]

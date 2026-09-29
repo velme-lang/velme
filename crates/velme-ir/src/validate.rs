@@ -850,9 +850,11 @@ impl<'a> Validator<'a> {
             Node::Let { bind, body } => self.let_in(bind, body, inner, nesting),
             Node::Condition { cond, then, otherwise } => self.condition(cond, then, otherwise, inner, nesting),
             Node::Narrow { of, default } => self.narrow(of, default, inner, nesting),
-            Node::Map { list, func } => {
+            Node::Map { list, func, items } => {
                 let (element, nesting) = self.list_of(node, list, inner, nesting);
-                HirType::List(Box::new(self.lambda("fn", func, element, inner, nesting)))
+                let result = self.lambda("fn", func, element, inner, nesting);
+                items.set(matches!(result, HirType::Optional(_)));
+                HirType::List(Box::new(result))
             }
             Node::Filter { list, func } => {
                 let (element, nesting) = self.list_of(node, list, inner, nesting);

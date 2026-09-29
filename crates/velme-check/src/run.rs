@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use velme_builtins::Value;
 use velme_diagnostics::{Code, Diagnostic, Span};
-use velme_interp::{Error, Evaluator, Failure, Probe};
+use velme_interp::{Error, Evaluator, Failure, Interrupt, Limits, Probe, Spent};
 use velme_ir::{CheckScope, Node, TrustedExpr, display_value};
 use velme_sema::hir::{BinaryOp, Expr, ExprKind, Goal, GoalId, Program, Quantifier};
 
@@ -22,6 +22,8 @@ pub struct Invocation {
     pub result: Value,
     /// The fuel the invocation has spent; its checks spend from what is left of its budget (R-CHK-08).
     pub fuel: u64,
+    /// The bytes the invocation has allocated, which its checks spend from too (R-CHK-08).
+    pub memory: u64,
 }
 
 /// What evaluating a goal's checks on one invocation found.
@@ -83,9 +85,17 @@ pub struct GoalChecks<'p> {
     goal: &'p Goal,
     checks: Vec<Lowered>,
     examples: Vec<ExampleCase>,
+    interrupt: Option<Interrupt>,
 }
 
 impl<'p> GoalChecks<'p> {
+    /// The same checks, stopped from outside by `interrupt` — the run's wall-clock watchdog (`runtime/30` D-10) —
+    /// wherever they are evaluated.
+    pub fn watched(mut self, interrupt: Option<Interrupt>) -> Self {
+        self.interrupt = interrupt;
+        self
+    }
+
     /// The checks and examples of `goal`, from the checked `program` whose source is `source`.
     pub fn new(program: &'p Program, goal: GoalId, source: &'p str) -> Result<Self, Diagnostic> {
         let goal = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
@@ -118,6 +128,7 @@ impl<'p> GoalChecks<'p> {
             goal,
             checks,
             examples,
+            interrupt: None,
         })
     }
 
@@ -165,10 +176,17 @@ impl<'p> GoalChecks<'p> {
                 Ok(Value::Boolean(false)) => None,
                 Err(failure) => match failure.error {
                     Error::Builtin(velme_builtins::Error::Arithmetic { .. }) => Some(failure),
-                    Error::OutOfFuel { .. } | Error::Builtin(velme_builtins::Error::ListTooLong { .. }) => {
+                    Error::OutOfFuel { .. }
+                    | Error::OutOfMemory { .. }
+                    | Error::Interrupted
+                    | Error::Builtin(velme_builtins::Error::ListTooLong { .. }) => {
                         return Err(failure.diagnostic(&self.goal.name, check.span));
                     }
-                    Error::Builtin(velme_builtins::Error::Internal | velme_builtins::Error::OutOfFuel) => {
+                    Error::Builtin(
+                        velme_builtins::Error::Internal
+                        | velme_builtins::Error::OutOfFuel
+                        | velme_builtins::Error::OutOfMemory,
+                    ) => {
                         return Err(Diagnostic::internal_error());
                     }
                 },
@@ -203,7 +221,10 @@ impl<'p> GoalChecks<'p> {
     /// `lowered` evaluated again with a [`Recorder`], starting from `fuel` spent.
     fn probe(&self, lowered: &Lowered, invocation: &Invocation, fuel: u64) -> Result<Report<'p>, Diagnostic> {
         let mut recorder = Recorder::default();
-        let mut evaluator = self.scope(invocation)?.with_fuel_spent(fuel);
+        let mut evaluator = self.scope(invocation)?.with_spent(Spent {
+            fuel,
+            memory: invocation.memory,
+        });
         // The outcome is already known; the recorder holds what the report needs.
         let _ = evaluator.eval_probed(lowered.node.trusted(), &mut recorder);
         Ok(Report::new(self.source, lowered, recorder))
@@ -216,7 +237,15 @@ impl<'p> GoalChecks<'p> {
         if invocation.inputs.len() != goal.params.len() || invocation.bindings.len() != goal.bindings.len() {
             return Err(Diagnostic::internal_error());
         }
-        let mut evaluator = Evaluator::new(goal.budget.max_fuel).with_fuel_spent(invocation.fuel);
+        let mut evaluator = Evaluator::new(Limits {
+            fuel: goal.budget.max_fuel,
+            memory: goal.budget.max_memory,
+        })
+        .with_spent(Spent {
+            fuel: invocation.fuel,
+            memory: invocation.memory,
+        })
+        .with_interrupt(self.interrupt.clone());
         for (param, value) in goal.params.iter().zip(&invocation.inputs) {
             evaluator.bind_input(&param.name, value.clone());
         }
@@ -233,7 +262,7 @@ impl<'p> GoalChecks<'p> {
 
 /// The value of an example's literal (R-GOAL-21), which costs next to no fuel.
 fn literal(expr: &TrustedExpr) -> Result<Value, Diagnostic> {
-    Evaluator::new(velme_builtins::limits::MAX_FUEL)
+    Evaluator::new(Limits::SYSTEM)
         .eval(expr.trusted())
         .map_err(|_| Diagnostic::internal_error())
 }
@@ -593,6 +622,8 @@ fn text(source: &str, span: Span) -> &str {
 fn cause_text(cause: &Failure) -> String {
     match &cause.error {
         Error::Builtin(velme_builtins::Error::Arithmetic { op }) => format!("it tried to {op}, which has no answer"),
-        Error::Builtin(_) | Error::OutOfFuel { .. } => "something went wrong inside Velme".to_owned(),
+        Error::Builtin(_) | Error::OutOfFuel { .. } | Error::OutOfMemory { .. } | Error::Interrupted => {
+            "something went wrong inside Velme".to_owned()
+        }
     }
 }

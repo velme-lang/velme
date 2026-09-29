@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod artifact;
+mod clock;
 mod input;
 mod leaf;
 mod lock;
@@ -12,6 +13,7 @@ mod sched;
 mod store;
 
 pub use artifact::{ARTIFACT_FORMAT, Artifact, ArtifactFormat, Child, Kind, Manifest, Verification};
+pub use clock::{Clock, SystemClock};
 pub use input::{MAX_INPUT_BYTES, decode_inputs, find_goal, read_input};
 pub use leaf::{run_leaf, test_leaf};
 pub use lock::{Entry, LOCK_FILE, LOCK_VERSION, Lock, LockError, MAX_LOCK_BYTES};

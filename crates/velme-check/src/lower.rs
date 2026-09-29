@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 use velme_diagnostics::{Diagnostic, Span};
-use velme_ir::{BinaryOperator, CheckScope, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator};
+use velme_ir::{BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator};
 use velme_sema::hir::{BinaryOp, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp};
 
 /// The local a lowered check reads the goal's output from (`language/13` R-CHK-02).
@@ -196,6 +196,7 @@ impl<'p> Lowering<'p> {
                 self.projections += 1;
                 let list = self.expr(base)?;
                 let node = Node::Map {
+                    items: ItemShape::default(),
                     list: Box::new(list.node),
                     func: Lambda {
                         body: Box::new(Node::FieldGet {

@@ -7,7 +7,7 @@ use velme_builtins::Number;
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType};
 
-use crate::node::{Call, CallNode, Lambda, Node, Type};
+use crate::node::{Call, CallNode, ItemShape, Lambda, Node, Type};
 use crate::signature;
 
 /// The call section of `goal`: one `call` node per binding, in source order, each with its child's signature
@@ -142,6 +142,7 @@ impl Args<'_> {
                 let param = format!("#{}", self.projections);
                 self.projections += 1;
                 Node::Map {
+                    items: ItemShape::default(),
                     list: Box::new(self.arg(base)?),
                     func: Lambda {
                         body: Box::new(Node::FieldGet {

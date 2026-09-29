@@ -674,3 +674,37 @@ fn a_path_that_isnt_utf8_is_a_file_error() {
     );
     assert_ne!(run.code, 0);
 }
+
+/// `x / 0` in a leaf is `VL0602` with exit status 3, and nothing that looks like a result is printed, in either output
+/// form (AC-RUN-08).
+#[test]
+fn ac_run_08_division_by_zero_prints_no_value() {
+    let dir = scratch("division_by_zero");
+    let source = "language: velme/0.1\n\ngoal Boom(x: Number) -> Number:\n    plan: \"Divide x by zero.\"\n";
+    fs::write(dir.join("boom.velme"), source).expect("source");
+    let program = program(source);
+    let number = serde_json::json!({"t": "Number"});
+    let zero = serde_json::json!({"kind": "literal", "type": number, "value": 0});
+    let body =
+        serde_json::json!({"kind": "binary", "op": "div", "left": {"kind": "input", "name": "x"}, "right": zero});
+    let ir = serde_json::json!({"ir_version": "0.1", "builtins_version": "0.1", "goal": "Boom", "types": {},
+        "inputs": [["x", number]], "output": number, "calls": [], "body": body});
+    install(&dir, "boom.velme", &program, &ir.to_string());
+    let file = dir.join("boom.velme");
+    let file = file.to_str().expect("UTF-8 path");
+    let human = velme(&["run", file, "--goal", "Boom", "--arg", "x=7"]);
+    assert_eq!(human.code, 3, "{}", human.stderr);
+    assert!(!human.stdout.contains("Result"), "{}", human.stdout);
+    assert!(
+        human.stderr.contains("`Boom` tried to divide 7 by 0"),
+        "{}",
+        human.stderr
+    );
+    let machine = velme(&["run", file, "--goal", "Boom", "--arg", "x=7", "--json"]);
+    assert_eq!(machine.code, 3);
+    let envelope = json(&machine);
+    let result = &envelope["results"][0];
+    assert_eq!(result["status"], "failed");
+    assert_eq!(result["diagnostics"][0]["code"], "VL0602");
+    assert!(result.get("result").is_none_or(Value::is_null), "{result}");
+}
