@@ -184,9 +184,13 @@ fn ac_synth_42_the_prompt_teaches_with_valid_bodies_and_shows_checks_as_written(
 type Item:
     title: Text
     stock: Number
+    price: Number
 
 goal Describe(item: Item) -> Text:
     plan: \"Say the title, then whether there is any stock.\"
+
+goal Cost(item: Item) -> Number:
+    plan: \"Multiply the stock by the price.\"
 
 goal Total(items: List<Item>) -> Number:
     plan: \"Add up the stock of all items.\"
@@ -214,8 +218,8 @@ goal Total(items: List<Item>) -> Number:
             .lines()
             .filter(|l| l.starts_with(&format!("{{\"{key}\":")))
             .collect();
-        assert_eq!(bodies.len(), 2, "{format:?}: {text}");
-        for (goal, body) in ["Describe", "Total"].into_iter().zip(bodies) {
+        assert_eq!(bodies.len(), 3, "{format:?}: {text}");
+        for (goal, body) in ["Describe", "Cost", "Total"].into_iter().zip(bodies) {
             let id = goal_id(&program, goal);
             let request = build_request(&program, id, EXAMPLES).expect("a request");
             let body: serde_json::Value = serde_json::from_str(body).expect("JSON");

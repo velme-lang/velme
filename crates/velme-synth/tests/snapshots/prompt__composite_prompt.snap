@@ -17,7 +17,9 @@ Output contract
 - Read a record's field with a `field` node over the record: for `player.score` write
   {"field":"score","kind":"field","of":{"kind":"input","name":"player"}}. Never write a dotted name such as
   {"kind":"local","name":"player.score"}.
-- `add` is for Numbers only. Join Text with the `concat` builtin, and turn a Number into Text with `to_text`.
+- Arithmetic and comparison are ops of a `binary` node and never builtins: `op` is one of add, sub, mul, div, lt, le, gt, ge, eq, ne, and, or. A `unary`
+  node's `op` is one of neg, not, is_empty. A `builtin` node's `name` is only one of the names listed below; `add` is for
+  Numbers only, so join Text with the `concat` builtin and turn a Number into Text with `to_text`.
 - Checks and examples describe what the result must be. They are never the body, and `result` is the value you
   return, not a name the body can read.
 - Only if the plan leaves open a choice that changes the result, return {"question": "<text>"} instead.
@@ -47,9 +49,11 @@ The IR expression node kinds, and the question object:
 
 Worked example, for a made-up goal that is not yours (a goal's inputs are read with `input`, a record's fields with
 `field`, a lambda's parameter with `local`):
-  type Item = { title: Text, stock: Number }
+  type Item = { title: Text, stock: Number, price: Number }
   Describe(item: Item) -> Text, plan "Say the title, then whether there is any stock."
 {"body":{"cond":{"kind":"binary","left":{"field":"stock","kind":"field","of":{"kind":"input","name":"item"}},"op":"gt","right":{"kind":"literal","type":{"t":"Number"},"value":0}},"else":{"args":[{"field":"title","kind":"field","of":{"kind":"input","name":"item"}},{"kind":"literal","type":{"t":"Text"},"value":" is sold out"}],"kind":"builtin","name":"concat"},"kind":"if","then":{"args":[{"field":"title","kind":"field","of":{"kind":"input","name":"item"}},{"kind":"literal","type":{"t":"Text"},"value":" is in stock"}],"kind":"builtin","name":"concat"}}}
+  Cost(item: Item) -> Number, plan "Multiply the stock by the price."
+{"body":{"kind":"binary","left":{"field":"stock","kind":"field","of":{"kind":"input","name":"item"}},"op":"mul","right":{"field":"price","kind":"field","of":{"kind":"input","name":"item"}}}}
   Total(items: List<Item>) -> Number, plan "Add up the stock of all items."
 {"body":{"args":[{"fn":{"body":{"field":"stock","kind":"field","of":{"kind":"local","name":"i"}},"param":"i"},"kind":"map","list":{"kind":"input","name":"items"}}],"kind":"builtin","name":"sum"}}
 

@@ -294,6 +294,34 @@ fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<
                 .map(|f| format!("{}: {}", f.name, type_name(&f.ty)));
             Some(format!("the fields of `{name}` are: {}", list(fields.collect())))
         }
+        ("names-11", Subject::Builtin(name)) => {
+            let (binary, unary) = crate::schema::operators();
+            if binary.contains(name) {
+                Some(format!(
+                    "`{name}` is an operator, not a built-in: write a {} with `op` `{name}`",
+                    node("binary")
+                ))
+            } else if unary.contains(name) {
+                Some(format!(
+                    "`{name}` is an operator, not a built-in: write a {} with `op` `{name}`",
+                    node("unary")
+                ))
+            } else {
+                Some(format!(
+                    "a {} names only a built-in of the list: {}",
+                    node("builtin"),
+                    list(
+                        request
+                            .builtins
+                            .iter()
+                            // A collection primitive is a node of its own, which a `builtin` node can't call (types-25).
+                            .filter(|b| velme_builtins::Builtin::find(&b.name).is_some_and(|c| c.function.is_some()))
+                            .map(|b| b.name.clone())
+                            .collect()
+                    )
+                ))
+            }
+        }
         ("types-15", Subject::TextArithmetic) => {
             Some("`add`, `sub`, `mul` and `div` are for Numbers only; join Text with the `concat` builtin".to_owned())
         }

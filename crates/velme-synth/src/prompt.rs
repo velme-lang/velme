@@ -11,7 +11,7 @@ use velme_ir::{Fingerprint, Type, to_canonical_string};
 use crate::compact;
 use crate::options::{PromptOptions, ReplyFormat, SchemaInPrompt};
 use crate::request::{AttemptDiagnostic, RecordType, Signature, SynthRequest, TaskKind};
-use crate::schema::{reply_schema, schema_summary};
+use crate::schema::{operators, reply_schema, schema_summary};
 
 /// A template's id: the task kind and the template's own version. Editing a template's text keeps its id and changes
 /// its bytes, which `prompt_version` hashes.
@@ -23,7 +23,7 @@ const COMPOSITE: &str = include_str!("../prompts/composite.txt");
 
 /// The JSON the templates teach with, as canonical IR: shown as written, or through the compact aliases when the reply is
 /// to be compact, so an example is never in a spelling the expander refuses (D-104).
-const EXAMPLES: [(&str, &str); 5] = [
+const EXAMPLES: [(&str, &str); 6] = [
     ("example_input", r#"{"kind":"input","name":"player"}"#),
     (
         "example_field",
@@ -33,6 +33,10 @@ const EXAMPLES: [(&str, &str); 5] = [
     (
         "example_describe",
         r#"{"body":{"kind":"if","cond":{"kind":"binary","op":"gt","left":{"kind":"field","of":{"kind":"input","name":"item"},"field":"stock"},"right":{"kind":"literal","type":{"t":"Number"},"value":0}},"then":{"kind":"builtin","name":"concat","args":[{"kind":"field","of":{"kind":"input","name":"item"},"field":"title"},{"kind":"literal","type":{"t":"Text"},"value":" is in stock"}]},"else":{"kind":"builtin","name":"concat","args":[{"kind":"field","of":{"kind":"input","name":"item"},"field":"title"},{"kind":"literal","type":{"t":"Text"},"value":" is sold out"}]}}}"#,
+    ),
+    (
+        "example_cost",
+        r#"{"body":{"kind":"binary","op":"mul","left":{"kind":"field","of":{"kind":"input","name":"item"},"field":"stock"},"right":{"kind":"field","of":{"kind":"input","name":"item"},"field":"price"}}}"#,
     ),
     (
         "example_total",
@@ -106,6 +110,7 @@ fn compute_version() -> String {
         "schema_summary": schema_summary(),
         "alias_table": compact::table(),
         "examples": EXAMPLES,
+        "operators": operators(),
     });
     let hash = Fingerprint::of(&doc).map(|f| f.hex()).unwrap_or_default();
     format!("prompt-3:{hash}")
@@ -219,6 +224,9 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
         notes.push_str(&compact::describe());
     }
     fields.insert("format_notes", notes);
+    let (binary, unary) = operators();
+    fields.insert("binary_ops", binary.join(", "));
+    fields.insert("unary_ops", unary.join(", "));
     for (name, text) in EXAMPLES {
         let value: Value = velme_ir::from_json_str(text).map_err(|_| Diagnostic::internal_error())?;
         let shown = if options.reply_format == ReplyFormat::Compact {

@@ -212,7 +212,7 @@ sends the same fields as structured JSON.
 |---|---|---|
 | Header | `prompt_version`, `ir_version`, `builtins_version` | constants |
 | Output contract | "return `{"body": <expression>}`, the goal's body as one IR expression node, which is all Velme asks for (D-103); use only listed builtins; only if the plan leaves open a choice that changes the result, return `{"question": …}` instead" + the reply schema or its summary (R-SYNTH-35) | `velme-ir` / `velme-synth` |
-| Rules and worked example | in the reply's format (the `compact` aliases when asked, R-SYNTH-36): one line each: an input is read with an `input` node, a record's field with a `field` node and never a dotted name, `local` only for a lambda's parameter or a call result; checks and examples describe the result and are never the body, and `result` is not a name the body can read. Then two fixed worked examples, for a made-up goal that no example of the repository uses, each a valid body (D-104) | template |
+| Rules and worked example | in the reply's format (the `compact` aliases when asked, R-SYNTH-36): one line each: an input is read with an `input` node, a record's field with a `field` node and never a dotted name, `local` only for a lambda's parameter or a call result; checks and examples describe the result and are never the body, and `result` is not a name the body can read. Arithmetic and comparison are `binary` ops and never builtins, and the `unary` ops are listed too (both from the IR schema). Then three fixed worked examples, for a made-up goal that no example of the repository uses, each a valid body and together showing a `builtin` call, a top-level `binary` node and a lambda's `local` (D-104) | template |
 | Allowed builtins | name + signature of each catalog entry | `velme-builtins` |
 | Goal | task kind (`leaf` / `composite-tail`) and signature `Name(params) -> Output` | HIR |
 | Types | every reachable record type with fields | HIR |
@@ -323,16 +323,18 @@ become spaces and whitespace runs collapse to one; the result must then be 1..=2
 is a failed attempt with `VL0401`. It is shown only as a note, quoted and labelled as the AI helper's question, and as
 a plain string in `--json`.
 
-**R-SYNTH-49** The diagnostic a retry carries for a name or field the goal doesn't have says what is there and which node
-reads it, from the request alone, with the node named as the reply is asked to spell it (the alias too in the `compact`
-format, R-SYNTH-36). For `names-7` and `names-8` it lists the goal's inputs with their types (each read with an `input`
-node) and, for a composite, the call bindings (each read with a `local` node); for a dotted name it says that a field is
-read with a `field` node over the `input` node, or over the `local` node when the name starts at a call binding; for
-`names-9` and `names-10` it lists the fields of the record named; for `types-15` on `add`, `sub`, `mul` or `div` with a
-Text operand, that these are for Numbers and Text is joined with `concat`, and for no other operator or operand, nothing.
-The validator reports what a finding is about as data, not text, so the hint never depends on parsing its message. Each
-distinct hint is sent once per attempt, on the first finding that has it. Nothing of the reply's own text is repeated in a
-hint (R-SYNTH-22) (D-104).
+**R-SYNTH-49** The diagnostic a retry carries for a name or field the goal doesn't have says what is there and which
+node reads it, from the request alone, with the node named as the reply is asked to spell it (the alias too in the
+`compact` format, R-SYNTH-36). For `names-7` and `names-8` it lists the goal's inputs with their types (each read with
+an `input` node) and, for a composite, the call bindings (each read with a `local` node); for a dotted name it says that
+a field is read with a `field` node over the `input` node, or over the `local` node when the name starts at a call
+binding; for `names-9` and `names-10` it lists the fields of the record named; for `types-15` on `add`, `sub`, `mul` or
+`div` with a Text operand, that these are for Numbers and Text is joined with `concat`, and for no other operator or
+operand, nothing; for a `names-11` name that is an operator of the schema, that it is written as a `binary` (or `unary`)
+node with that `op`, and for any other name, the built-ins that the request's catalog lets a `builtin` node
+call (not the collection primitives). The validator reports what a finding is about as data, not text, so the hint never
+depends on parsing its message. Each distinct hint is sent once per attempt, on the first finding that has it. Nothing
+of the reply's own text is repeated in a hint (R-SYNTH-22) (D-104).
 
 ## 6. Verification pipeline
 
@@ -554,4 +556,4 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-40 | Only `body` is read from a reply: a scripted reply that also spells the goal name, versions, `inputs`, `output` or `types` wrongly builds the same IR as a bare `{"body"}` reply (D-103). |
 | AC-SYNTH-41 | A reply that is not JSON, or has no `body`, is a failed attempt with `VL0401` in Velme's words; the help of `VL0403` names the listed builtins only for a rule about a built-in, not for a schema, type or size rule (D-103). |
 | AC-SYNTH-42 | The rendered prompt shows a check as written and never as lowered IR, says checks are not the body and that a dotted name is never written, and each of its worked examples validates as a body for the goal it describes (D-104), in both reply formats: in `compact` the snippets and examples are spelled with the aliases and still expand. |
-| AC-SYNTH-43 | After a reply that reads an input as a `local`, uses a dotted name, names a field or an input that isn't there, the next request's diagnostic lists the goal's inputs (and fields of the record) with types and the node that reads them, and repeats none of the reply's text (R-SYNTH-49, D-104); a composite lists its call results too, `add` on Text points to `concat` and `gt` on Text does not, and in `compact` the nodes are named as that format spells them. |
+| AC-SYNTH-43 | After a reply that reads an input as a `local`, uses a dotted name, names a field or an input that isn't there, the next request's diagnostic lists the goal's inputs (and fields of the record) with types and the node that reads them, and repeats none of the reply's text (R-SYNTH-49, D-104); a composite lists its call results too, `add` on Text points to `concat` and `gt` on Text does not, a built-in named like an operator points to the `binary` or `unary` node and any other unknown built-in gets the callable built-ins, and in `compact` the nodes are named as that format spells them. |
