@@ -558,7 +558,7 @@ fn an_external_artifact_names_its_backend() {
     let manifest = Store::new(&project).get(entry.artifact).expect("artifact").manifest;
     assert_eq!(manifest.provider, "external");
     assert_eq!(manifest.backend.as_deref(), Some("queue"));
-    assert_eq!(manifest.model_version.as_deref(), Some("v7"));
+    assert_eq!(manifest.model_version.as_deref(), Some("queue@v7"));
     assert_eq!(manifest.prompt_version.as_deref(), Some(velme_synth::REQUEST_VERSION));
 }
 

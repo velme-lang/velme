@@ -5,16 +5,20 @@
 //! (`tooling/41` R-SEC-13).
 
 use std::fmt;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde_json::{Map, Value};
+use ureq::config::Config as UreqConfig;
+use ureq::http::Uri;
+use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
+use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::attempt::{clean_line, clean_name, clean_tail};
-use crate::http::{agent, transport_error};
+use crate::http::{agent_config, transport_error};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{REQUEST_VERSION, SynthRequest};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
@@ -30,6 +34,10 @@ const BODY_TAIL_BYTES: usize = 4096;
 
 /// The longest a backend's name or version may be after cleaning, in Unicode scalar values (R-SYNTH-26).
 const MAX_NAME_CHARS: usize = 128;
+
+/// The shortest token Velme accepts: a shorter one could not be told from the text of a reply, so redacting it would
+/// mean nothing (D-102).
+const MIN_TOKEN_CHARS: usize = 16;
 
 /// The environment variable that holds the bearer token (`tooling/40` §5.2).
 pub const TOKEN_VARIABLE: &str = "VELME_EXTERNAL_TOKEN";
@@ -94,7 +102,7 @@ impl ExternalUrl {
         if authority.contains('@') {
             return Err(UrlError::Userinfo);
         }
-        if path.contains(['?', '#']) {
+        if !path_is_valid(path) {
             return Err(UrlError::Unparsable);
         }
         let (host, port) = match authority.strip_prefix('[') {
@@ -169,12 +177,13 @@ impl ExternalToken {
         }
     }
 
-    /// `value` as a token: empty once trimmed is none; anything but visible ASCII is [`TokenMalformed`].
+    /// `value` as a token: empty once trimmed is none; anything but visible ASCII, or fewer than 16 characters, is
+    /// [`TokenMalformed`].
     pub fn parse(value: &str) -> Result<Option<Self>, TokenMalformed> {
         let value = value.trim();
         if value.is_empty() {
             Ok(None)
-        } else if value.bytes().all(|b| b.is_ascii_graphic()) {
+        } else if value.len() >= MIN_TOKEN_CHARS && value.bytes().all(|b| b.is_ascii_graphic()) {
             Ok(Some(ExternalToken(value.to_owned())))
         } else {
             Err(TokenMalformed)
@@ -216,6 +225,62 @@ impl ExternalConfig {
             token: None,
             timeout: Self::DEFAULT_TIMEOUT,
         }
+    }
+}
+
+/// Whether `path` is made only of RFC 3986 `pchar`s and `/`: unreserved characters, percent-escapes, sub-delimiters, `:` and
+/// `@`. A character such as `"`, `<`, `{` or `\` is refused here, before any contact, and not as a bad URI at send time.
+fn path_is_valid(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    let mut at = 0;
+    while let Some(&b) = bytes.get(at) {
+        let plain = b.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/".contains(&b);
+        if b == b'%' {
+            let escape = bytes.get(at + 1..at + 3);
+            if !escape.is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit)) {
+                return false;
+            }
+            at += 3;
+        } else if plain {
+            at += 1;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// The addresses `localhost` stands for, without asking DNS: 127.0.0.1 and `::1` (R-SYNTH-29). A resolver, an `/etc/hosts`
+/// entry or a search domain can't send a request meant for this machine somewhere else.
+fn localhost_addrs(port: u16) -> [SocketAddr; 2] {
+    [
+        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), port),
+        SocketAddr::new(Ipv6Addr::LOCALHOST.into(), port),
+    ]
+}
+
+/// Resolves `localhost` to [`localhost_addrs`] and every other host as usual.
+#[derive(Debug)]
+struct LocalResolver;
+
+impl Resolver for LocalResolver {
+    fn resolve(
+        &self,
+        uri: &Uri,
+        config: &UreqConfig,
+        timeout: NextTimeout,
+    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        if uri.host().is_some_and(|host| host.eq_ignore_ascii_case("localhost")) {
+            let port = uri
+                .port_u16()
+                .unwrap_or(if uri.scheme_str() == Some("https") { 443 } else { 80 });
+            let mut found = self.empty();
+            for addr in localhost_addrs(port) {
+                found.push(addr);
+            }
+            return Ok(found);
+        }
+        DefaultResolver::default().resolve(uri, config, timeout)
     }
 }
 
@@ -266,8 +331,8 @@ impl External {
         self
     }
 
-    /// `text` without the token, if the service echoed it, in either its plain or its JSON-escaped spelling. Everything
-    /// that comes from the service passes through here before it is kept or shown (`tooling/41` R-SEC-13).
+    /// `text` without the token, if the service echoed it, in either its plain or its JSON-escaped spelling. Every message
+    /// text that comes from the service passes through here before it is kept or shown (`tooling/41` R-SEC-13, D-102).
     fn redact(&self, text: &str) -> String {
         let Some(token) = &self.config.token else {
             return text.to_owned();
@@ -282,18 +347,9 @@ impl External {
         out
     }
 
-    /// `value` with the token removed from every string in it.
-    fn scrub(&self, value: &mut Value) {
-        match value {
-            Value::String(text) => {
-                if self.config.token.is_some() {
-                    *text = self.redact(text);
-                }
-            }
-            Value::Array(items) => items.iter_mut().for_each(|item| self.scrub(item)),
-            Value::Object(map) => map.values_mut().for_each(|item| self.scrub(item)),
-            _ => {}
-        }
+    /// Whether `text`, JSON, holds the token in either spelling.
+    fn holds_token(&self, text: &str) -> bool {
+        self.redact(text) != text
     }
 
     /// The tail of `bytes` as the notes carry it: the token is taken out of the whole text first, so one cut by the start
@@ -309,7 +365,11 @@ impl External {
         if let Ok(mut held) = server.lock() {
             *held = None;
         }
-        let agent = agent(self.config.timeout, self.config.url.loopback);
+        let agent = ureq::Agent::with_parts(
+            agent_config(self.config.timeout, self.config.url.loopback),
+            DefaultConnector::default(),
+            LocalResolver,
+        );
         let auth = self.config.token.as_ref().map(|token| format!("Bearer {}", token.0));
         let mut response = match call {
             Call::Describe => {
@@ -392,13 +452,7 @@ impl External {
         let tail = self.tail(&bytes);
         let text = String::from_utf8(bytes).map_err(|_| failed("its reply wasn't text", &tail))?;
         match from_json_str_within::<Value>(&text, MAX_JSON_DEPTH + ENVELOPE_DEPTH) {
-            Ok(mut value @ Value::Object(_)) => {
-                self.scrub(&mut value);
-                match value {
-                    Value::Object(doc) => Ok((doc, tail)),
-                    _ => Err(failed("its reply wasn't one JSON object", &tail)),
-                }
-            }
+            Ok(Value::Object(doc)) => Ok((doc, tail)),
             _ => Err(failed(
                 "its reply wasn't one JSON object, or nested too deeply or repeated a key",
                 &tail,
@@ -427,13 +481,15 @@ fn read_capped(response: &mut ureq::http::Response<ureq::Body>) -> Result<(Vec<u
 
 #[async_trait]
 impl SynthBackend for External {
-    /// Sends `describe` (R-SYNTH-26): the backend's name and version, each 1..=128 cleaned characters.
+    /// Sends `describe` (R-SYNTH-26): the backend's name and version, each 1..=128 cleaned characters; the model of the
+    /// identity is `<backend>@<backend_version>`, as Ollama's is `<model>@<digest>`.
     async fn identify(&self) -> Result<Identity, ProviderError> {
         let (doc, tail) = self.exchange(&Call::Describe).await?;
+        // The token is taken out before the text is cleaned and kept, so a name that is the token is `***` (D-102).
         let text = |key: &str| {
             doc.get(key)
                 .and_then(Value::as_str)
-                .and_then(|text| clean_name(text, MAX_NAME_CHARS))
+                .and_then(|text| clean_name(&self.redact(text), MAX_NAME_CHARS))
         };
         let (Some(backend), Some(version)) = (text("backend"), text("backend_version")) else {
             return Err(failed(
@@ -443,7 +499,7 @@ impl SynthBackend for External {
         };
         Ok(Identity {
             provider: PROVIDER.to_owned(),
-            model: version,
+            model: format!("{backend}@{version}"),
             input_version: REQUEST_VERSION.to_owned(),
             backend: Some(backend),
         })
@@ -488,7 +544,7 @@ impl SynthProvider for ExternalProvider {
         let body = to_canonical_string(request)
             .map_err(|_| ProviderError::Internal("the request could not be written".to_owned()))?;
         let (doc, tail) = self.backend.exchange(&Call::Synthesize(&body)).await?;
-        let reply = read_reply(doc, &tail)?;
+        let reply = self.backend.read_reply(doc, &tail)?;
         Ok(SynthReply {
             reply_json: reply,
             usage: Usage::default(),
@@ -497,43 +553,55 @@ impl SynthProvider for ExternalProvider {
     }
 }
 
-/// The reply document of a `synthesize` request: exactly one of `ir`, `question`, `pending` or `error` (R-SYNTH-28),
-/// as the reply text the retry loop reads (R-SYNTH-10).
-fn read_reply(doc: Map<String, Value>, tail: &str) -> Result<String, ProviderError> {
-    let unknown = || {
-        failed(
-            "its reply wasn't exactly one of `ir`, `question`, `pending` or `error`",
-            tail,
-        )
-    };
-    let mut entries = doc.into_iter();
-    let (Some((kind, value)), None) = (entries.next(), entries.next()) else {
-        return Err(unknown());
-    };
-    let text = |value: Value| {
-        value
-            .as_str()
-            .map(str::to_owned)
-            .ok_or_else(|| failed("a reply text wasn't a string", tail))
-    };
-    match (kind.as_str(), value) {
-        ("ir", ir @ Value::Object(_)) => to_canonical_string(&ir).map_err(|_| unknown()),
-        ("question", question) => {
-            let question = text(question)?;
-            to_canonical_string(&serde_json::json!({ "question": question })).map_err(|_| unknown())
+impl External {
+    /// The reply document of a `synthesize` request: exactly one of `ir`, `question`, `pending` or `error` (R-SYNTH-28),
+    /// as the reply text the retry loop reads (R-SYNTH-10). Any other key is ignored (R-SYNTH-26). The token is taken out
+    /// of message texts; an `ir` that holds it is refused, never rewritten (D-102).
+    fn read_reply(&self, mut doc: Map<String, Value>, tail: &str) -> Result<String, ProviderError> {
+        let unknown = || {
+            failed(
+                "its reply wasn't exactly one of `ir`, `question`, `pending` or `error`",
+                tail,
+            )
+        };
+        let kinds: Vec<&str> = ["ir", "question", "pending", "error"]
+            .into_iter()
+            .filter(|kind| doc.contains_key(*kind))
+            .collect();
+        let (&[kind], Some(value)) = (kinds.as_slice(), kinds.first().and_then(|kind| doc.remove(*kind))) else {
+            return Err(unknown());
+        };
+        let text = |value: Value| {
+            value
+                .as_str()
+                .map(|text| self.redact(text))
+                .ok_or_else(|| failed("a reply text wasn't a string", tail))
+        };
+        match (kind, value) {
+            ("ir", ir @ Value::Object(_)) => {
+                let canonical = to_canonical_string(&ir).map_err(|_| unknown())?;
+                if self.holds_token(&canonical) {
+                    return Err(failed("the reply contains your token", tail));
+                }
+                Ok(canonical)
+            }
+            ("question", question) => {
+                let question = text(question)?;
+                to_canonical_string(&serde_json::json!({ "question": question })).map_err(|_| unknown())
+            }
+            ("pending", pending) => Err(ProviderError::Pending(text(pending)?)),
+            ("error", reason) => Err(failed(
+                &format!("it reported an error: {}", clean_line(&text(reason)?)),
+                tail,
+            )),
+            _ => Err(unknown()),
         }
-        ("pending", pending) => Err(ProviderError::Pending(text(pending)?)),
-        ("error", reason) => Err(failed(
-            &format!("it reported an error: {}", clean_line(&text(reason)?)),
-            tail,
-        )),
-        _ => Err(unknown()),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ExternalToken, ExternalUrl, TokenMalformed, UrlError};
+    use super::{ExternalToken, ExternalUrl, TokenMalformed, UrlError, localhost_addrs};
 
     /// Plain `http` only for this machine; every other host needs `https`; userinfo, other schemes, queries and junk are
     /// refused before any contact (R-SYNTH-29, D-101).
@@ -547,6 +615,7 @@ mod tests {
             "http://[::1]:8080",
             "https://example.com",
             "HTTPS://svc.example.com:8443/base",
+            "https://svc.example.com/a-b_c.d~e/%41/x:y@z/(a);b=c,d",
         ] {
             assert!(ExternalUrl::parse(good).is_ok(), "{good}");
         }
@@ -569,6 +638,12 @@ mod tests {
             ("https://example.com:", UrlError::Unparsable),
             ("https://example.com/x?y=1", UrlError::Unparsable),
             ("https://example.com/#x", UrlError::Unparsable),
+            ("https://example.com/a\"b", UrlError::Unparsable),
+            ("https://example.com/<x>", UrlError::Unparsable),
+            ("https://example.com/{x}", UrlError::Unparsable),
+            ("https://example.com/a\\b", UrlError::Unparsable),
+            ("https://example.com/%zz", UrlError::Unparsable),
+            ("https://example.com/%4", UrlError::Unparsable),
             ("https://[::1", UrlError::Unparsable),
             ("https://ex\u{e9}mple.com", UrlError::Unparsable),
             ("", UrlError::Unparsable),
@@ -589,11 +664,30 @@ mod tests {
     fn a_token_is_visible_ascii_and_never_printed() {
         assert_eq!(ExternalToken::parse(""), Ok(None));
         assert_eq!(ExternalToken::parse("  "), Ok(None));
-        let token = ExternalToken::parse(" s3cret ").expect("a token").expect("one");
-        assert_eq!(token.0, "s3cret");
-        assert!(!format!("{token:?} {token}").contains("s3cret"));
-        for bad in ["a b", "a\nb", "a\u{1b}b", "t\u{e9}", "a\u{0}"] {
+        let token = ExternalToken::parse(" s3cret-token-0123456 ")
+            .expect("a token")
+            .expect("one");
+        assert_eq!(token.0, "s3cret-token-0123456");
+        assert!(!format!("{token:?} {token}").contains("s3cret-token-0123456"));
+        for bad in [
+            "a b-0123456789abcdef",
+            "a\nb-0123456789abcdef",
+            "a\u{1b}b-0123456789abcdef",
+            "t\u{e9}-0123456789abcdef",
+            "a\u{0}-0123456789abcdef",
+            // Shorter than 16 characters.
+            "s3cret",
+            "0123456789abcde",
+        ] {
             assert_eq!(ExternalToken::parse(bad), Err(TokenMalformed), "{bad:?}");
         }
+    }
+
+    /// `localhost` is 127.0.0.1 and `::1`, with the URL's port, and nothing DNS says (R-SYNTH-29, D-102).
+    #[test]
+    fn localhost_is_the_loopback_addresses() {
+        let addrs = localhost_addrs(8080);
+        assert_eq!(addrs.map(|a| a.to_string()), ["127.0.0.1:8080", "[::1]:8080"]);
+        assert!(addrs.iter().all(|a| a.ip().is_loopback()));
     }
 }

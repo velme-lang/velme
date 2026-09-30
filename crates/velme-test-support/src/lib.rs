@@ -71,6 +71,11 @@ pub const FIXTURE_BACKEND: &str = "velme-test-support";
 /// The fixture backend's `backend_version` and `request_version`.
 pub const FIXTURE_VERSION: &str = "hand-written";
 
+/// The fixture backend's model, `<backend>@<backend_version>` (`compiler/22` R-SYNTH-26).
+pub fn fixture_model() -> String {
+    format!("{FIXTURE_BACKEND}@{FIXTURE_VERSION}")
+}
+
 /// The `external` provider id (`runtime/32` R-ART-21).
 const EXTERNAL: &str = "external";
 
@@ -89,11 +94,12 @@ pub fn fixture_manifest(program: &Program, ir: &ValidIr) -> Manifest {
     let id = goal_id(program, &goal.goal);
     let contract = contract_key(program, id).expect("contract key");
     let compiler_version = env!("CARGO_PKG_VERSION");
+    let model = fixture_model();
     let synthesis = Synthesis {
         input_version: FIXTURE_VERSION,
         compiler_version,
         provider: EXTERNAL,
-        model: FIXTURE_VERSION,
+        model: &model,
     };
     Manifest {
         format: ArtifactFormat,
@@ -109,7 +115,7 @@ pub fn fixture_manifest(program: &Program, ir: &ValidIr) -> Manifest {
         prompt_version: Some(FIXTURE_VERSION.to_owned()),
         provider: EXTERNAL.to_owned(),
         backend: Some(FIXTURE_BACKEND.to_owned()),
-        model_version: Some(FIXTURE_VERSION.to_owned()),
+        model_version: Some(model),
         children: goal
             .calls
             .iter()

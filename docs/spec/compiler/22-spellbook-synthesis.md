@@ -46,7 +46,7 @@ fails with `VL0702 LockStale` (`--locked`) or `VL0404 ProviderUnavailable` (`--o
 #[async_trait]
 pub trait SynthProvider: Send + Sync {
     fn id(&self) -> &str;                    // "anthropic" | "ollama" | "external" | "replay" | "scripted"
-    fn model(&self) -> &str;                 // model id (or model+retry_model, R-SYNTH-39), Ollama digest or external backend_version → manifest model_version
+    fn model(&self) -> &str;                 // model id (or model+retry_model, R-SYNTH-39), Ollama digest or external <backend>@<backend_version> → manifest model_version
     fn input_version(&self) -> &str;         // prompt_version + request options (LLM providers, R-SYNTH-40) or request_version (external)
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits)
         -> Result<SynthReply, ProviderError>;
@@ -144,14 +144,15 @@ committed `velme-synth-request` JSON Schema, generated from the Rust types like 
 | `GET /v1/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}` |
 | `POST /v1/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"ir": <IR goal>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
 
-The endpoints are relative to the base URL, so a service may live under a path prefix. `SynthRequest` carries its own
+The endpoints are relative to the base URL, so a service may live under a path prefix. A service may add fields to its
+replies (unknown keys are ignored, as in `describe`); a change that isn't compatible with this protocol goes to `/v2`. `SynthRequest` carries its own
 `request_version` (`"0.1"`); the `/v1/` prefix versions the endpoints.
 
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
-cached build; its `backend_version` is `model()` and enters `synthesis_key`, so a new backend version is a cache miss
-but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version` must each be 1..=128 Unicode scalar
+cached build; its `model()` is `<backend>@<backend_version>` (as Ollama's is `<model>@<digest>`) and enters `synthesis_key`, so a new
+backend or version is a cache miss but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version` must each be 1..=128 Unicode scalar
 values after whitespace runs collapse to one space, and must hold no control character, Unicode format (`Cf`) character
-or bidi control (D-47): those are refused, not cleaned away. Any other key of the reply is ignored; a `describe` that
+or bidi control (D-47): those are refused, not cleaned away. Any other key of the reply is ignored, so services may add fields; a `describe` that
 fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
 verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
@@ -160,19 +161,24 @@ R-SYNTH-32..33, as an LLM's does.
 connection, a DNS failure or a timeout is `Unavailable` or `Timeout` → `VL0404` after those retries, and the build then
 contacts the provider no more (R-SYNTH-45); so does a body that stalls after its headers. A `429` is `RateLimited` → `VL0404` and a `408` is retried like a `5xx` (then `VL0406` if it persists). A `401` or `403` is `TokenRejected` → `VL0405` (R-SYNTH-07), not retried: "rejected the token" when a token was sent, "wants a token" (hint: set `VELME_EXTERNAL_TOKEN`) when none was.
 A `5xx` after the retries, any other non-2xx status (a redirect included: redirects are never followed), a body above
-2 MiB, a body that is not one JSON document, a reply that is not exactly one of the four kinds above, or an `{"error"}`
-reply is `BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of the response body in the notes,
-cleaned and escaped like any untrusted text (T-13). `external_timeout_secs` bounds each request, `describe` included; until the user-level config arrives with M6 it is fixed at its default of 30 s.
+2 MiB, a body that is not one JSON document, a reply that does not hold exactly one of the four kinds above (any other key is ignored), a reply whose `ir` holds the
+bearer token ("the reply contains your token"), or an `{"error"}` reply is `BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of the response body in the notes,
+cleaned and escaped like any untrusted text (T-13). Proxies and TLS: for a host that isn't loopback, the client honours
+`ALL_PROXY`, `HTTPS_PROXY` and `HTTP_PROXY` from the environment through a CONNECT tunnel; a loopback host is never
+proxied. TLS trusts only the bundled `webpki-roots`, so a TLS-inspecting proxy or a private CA fails with `VL0404`; a
+user-level `external_ca_file` setting is planned for the M6 config work (D-102). `external_timeout_secs` bounds each request, `describe` included; until the user-level config arrives with M6 it is fixed at its default of 30 s.
 Nothing is written to the store or the lock (D-98).
-**R-SYNTH-29** The base URL is a `https` URL, or a plain `http` URL whose host is literally `localhost`, in 127.0.0.0/8,
-or `[::1]`; every other host needs `https`. Any other scheme, user information (`user:pass@`) in the URL, or a URL that
+**R-SYNTH-29** The base URL is a `https` URL, or a plain `http` URL whose host is `localhost`, in 127.0.0.0/8, or `[::1]`; every other host needs `https`. `localhost`
+connects to 127.0.0.1 or `::1` without asking DNS, so a resolver can't send it elsewhere. The URL's path holds only RFC 3986
+`pchar`s and `/`. Any other scheme, user information (`user:pass@`) in the URL, or a URL that
 does not parse is `VL0902` before any contact. The URL comes only from the `--external-url` flag, `VELME_EXTERNAL_URL` or
 the user-level config, never from the project's `velme.toml` (`tooling/40` R-CLI-13, `tooling/41` T-10). An optional
 bearer token from `VELME_EXTERNAL_TOKEN` is sent as `Authorization: Bearer <token>` to that URL and nowhere else, and is
-never logged, echoed or recorded (`tooling/41` R-SEC-13); a token containing whitespace, a control character or a
-non-ASCII character is an error, not left out (leading and trailing whitespace is trimmed). Everything the service sends is
-scrubbed of the token, in the whole body before the 4 KiB tail is cut and in every string of a parsed reply, before it
-is kept or shown. The service runs outside Velme's sandbox and with whatever authority its owner gave it.
+never logged, echoed or recorded (`tooling/41` R-SEC-13); a token that is shorter than 16 characters or contains
+whitespace, a control character or a non-ASCII character is an error (`VL0405`, unusable token), not left out (leading
+and trailing whitespace is trimmed). The token is taken out of the message texts the service sends (the body before the
+4 KiB tail is cut, `error`, `question` and `pending` texts, the `describe` name and version) before they are kept or shown;
+an `ir` is never rewritten, and one that holds the token, plain or JSON-escaped, is refused (D-102). The service runs outside Velme's sandbox and with whatever authority its owner gave it.
 **R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
 again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
 retry turn does (R-SYNTH-11).

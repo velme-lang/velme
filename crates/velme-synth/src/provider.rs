@@ -14,8 +14,8 @@ use crate::request::SynthRequest;
 pub struct Identity {
     /// `anthropic`, `ollama`, `external`, `replay` or `scripted`.
     pub provider: String,
-    /// The model id, Ollama's `<model>@<digest>` or an external backend's `backend_version` (`model_version` in the
-    /// manifest).
+    /// The model id, Ollama's `<model>@<digest>` or an external backend's `<backend>@<backend_version>` (`model_version` in
+    /// the manifest).
     pub model: String,
     /// The `prompt_version` plus request options, or an external backend's `request_version` (D-97).
     pub input_version: String,
@@ -44,7 +44,7 @@ pub trait SynthProvider: Send + Sync {
     /// `anthropic`, `ollama`, `external`, `replay` or `scripted`.
     fn id(&self) -> &str;
 
-    /// The model id (or `<model>+<retry_model>`, R-SYNTH-39), Ollama's digest, or an external `backend_version`.
+    /// The model id (or `<model>+<retry_model>`, R-SYNTH-39), Ollama's digest, or an external `<backend>@<backend_version>`.
     fn model(&self) -> &str;
 
     /// The `prompt_version` plus request options (LLM providers, R-SYNTH-40), or the `request_version` (external).
@@ -161,7 +161,8 @@ impl ProviderError {
         match self {
             ProviderError::NotConfigured => "not_configured",
             ProviderError::KeyRejected => "key_rejected",
-            ProviderError::TokenRejected { .. } => "token_rejected",
+            ProviderError::TokenRejected { sent: true } => "token_rejected",
+            ProviderError::TokenRejected { sent: false } => "token_required",
             ProviderError::Unavailable(_) => "unavailable",
             ProviderError::RateLimited { .. } => "rate_limited",
             ProviderError::Refused(_) => "refused",
@@ -181,6 +182,7 @@ impl ProviderError {
             "not_configured" => ProviderError::NotConfigured,
             "key_rejected" => ProviderError::KeyRejected,
             "token_rejected" => ProviderError::TokenRejected { sent: true },
+            "token_required" => ProviderError::TokenRejected { sent: false },
             "unavailable" => ProviderError::Unavailable(String::new()),
             "rate_limited" => ProviderError::RateLimited { retry_after: None },
             "refused" => ProviderError::Refused(String::new()),

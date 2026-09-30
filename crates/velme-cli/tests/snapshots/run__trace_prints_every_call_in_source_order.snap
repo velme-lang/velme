@@ -3,16 +3,16 @@ source: crates/velme-cli/tests/run.rs
 expression: first.stdout
 ---
 BuildPlayerSummary  composite  ✓  fuel 22, memory 80 bytes
-  artifact b3:4b9b2fe2c23dba9b4a4c9e36ec385c257fa566fed4f91ca920c4a2d181064152
+  artifact b3:27ee493be6532b7c66966c32e8778ad420c47abdf0d76c3a2d481e8cf5b0ee8b
   input player = {"name":"Lina","jump_height":3,"score":820}
   wave 1: score = CalculateScore({"name":"Lina","jump_height":3,"score":820})  ✓  820
     CalculateScore  leaf  ✓  fuel 6, memory 0 bytes
-      artifact b3:9edce449e00cb83700d76786ac9561bbb514335df2dc7a86cda8d358f90b9ec7
+      artifact b3:d6d9c7d0bb944f1ad031e956bf47bfc172e1e1c58f878dccdf207f859f2aeb8a
       input player = {"name":"Lina","jump_height":3,"score":820}
       check `result == player.score`  ✓
   wave 1: badge = FindBadge({"name":"Lina","jump_height":3,"score":820})  ✓  "Silver"
     FindBadge  leaf  ✓  fuel 20, memory 0 bytes
-      artifact b3:67bb733a1b35e414437860a2bd1ab0e3b2c2f7d06ec20e0487fdea88ba1af85d
+      artifact b3:41ac3d491f7d10ca1e68baf2d12144e8dd3bf54fc342cb41e968ebd1e0936c4d
       input player = {"name":"Lina","jump_height":3,"score":820}
       check `result == "Gold" or result == "Silver" or result == "Bronze"`  ✓
   check `result.name == player.name`  ✓

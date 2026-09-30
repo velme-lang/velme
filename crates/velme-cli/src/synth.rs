@@ -273,7 +273,9 @@ pub fn external(flag: Option<&str>) -> Result<Chosen, Diagnostic> {
     let token = ExternalToken::lookup().map_err(|_| {
         not_configured(
             format!("The token in `{TOKEN_VARIABLE}` can't be used."),
-            &format!("a token is visible ASCII with no spaces: fix `{TOKEN_VARIABLE}`, or unset it"),
+            &format!(
+                "a token is 16 or more visible ASCII characters with no spaces: fix `{TOKEN_VARIABLE}`, or unset it"
+            ),
         )
     })?;
     let notice = format!(

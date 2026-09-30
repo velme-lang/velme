@@ -88,7 +88,7 @@ never part of `cargo xtask verify` (D-13).
 | AC-RDM-05 | **Cycle** — `A → B → A` fails compilation | → `VL0304` naming the cycle | M2 |
 | AC-RDM-06 | **Check failure** — shows the exact failed assertion and the values | → `VL0501` with expected/got | M3 |
 | AC-RDM-07 | **Timeout** — deliberately expensive program terminated | fuel → `VL0601`; watchdog → `VL0603` | M4 (interp), M7 (WASM) |
-| AC-RDM-08 | **Cache** — unchanged source performs zero synthesis | provider call count = 0 on second `build` | M5 |
+| AC-RDM-08 | **Cache** — unchanged source performs zero synthesis | provider call count = 0 on second `build`; the build still re-verifies every locked goal, so on a slow machine it can stop with `VL0603`, keeping the entry (`runtime/32` R-ART-22) | M5 |
 | AC-RDM-09 | **Reproducibility** — same source + inputs + lock + seed ⇒ byte-identical result and trace (excluding durations, `runtime/30` §8), interpreter and WASM | 100 runs, both backends | M4 (interpreter), M7 (WASM) |
 
 AC-RDM-02 program (legal per D-4 — every goal has a body):

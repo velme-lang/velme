@@ -104,7 +104,7 @@ fn ac_synth_18_the_service_gets_only_its_own_token_and_the_project_cannot_name_i
     let dump = outside.join("auth.txt");
     let log = outside.join("log.txt");
     let mut config = Config::replying(&replies)
-        .wanting_token("tok-SENTINEL-TOKEN")
+        .wanting_token("tok-SENTINEL-TOKEN-0123")
         .logging(&log);
     config.auth_dump = Some(dump.clone());
     let server = Server::start(config);
@@ -112,14 +112,14 @@ fn ac_synth_18_the_service_gets_only_its_own_token_and_the_project_cannot_name_i
         ("VELME_API_KEY", "sk-SENTINEL-ONE"),
         ("ANTHROPIC_API_KEY", "sk-SENTINEL-TWO"),
         ("openai_api_key", "sk-SENTINEL-THREE"),
-        ("VELME_EXTERNAL_TOKEN", "tok-SENTINEL-TOKEN"),
+        ("VELME_EXTERNAL_TOKEN", "tok-SENTINEL-TOKEN-0123"),
         ("VELME_SYNTH_RECORD", "1"),
     ];
     let out = build(&dir, server.url(), &envs);
     assert_eq!(out.code, 0, "{}", shown(&out));
     assert_eq!(
         fs::read_to_string(&dump).expect("the header"),
-        "Bearer tok-SENTINEL-TOKEN"
+        "Bearer tok-SENTINEL-TOKEN-0123"
     );
     let mut everything = shown(&out);
     all_text(&dir, &mut everything);
@@ -255,8 +255,16 @@ fn a_malformed_or_rejected_token_is_vl0405_and_never_echoed() {
     let (dir, replies) = project("bad-token");
     let log = dir.parent().expect("a parent").join("bad-token.log");
     let _ = fs::remove_file(&log);
-    let server = Server::start(Config::replying(&replies).logging(&log).wanting_token("right-token"));
-    let out = build(&dir, server.url(), &[("VELME_EXTERNAL_TOKEN", "has a space")]);
+    let server = Server::start(
+        Config::replying(&replies)
+            .logging(&log)
+            .wanting_token("right-token-0123456789"),
+    );
+    let out = build(
+        &dir,
+        server.url(),
+        &[("VELME_EXTERNAL_TOKEN", "has a space-0123456789")],
+    );
     let text = shown(&out);
     assert_eq!(out.code, 2, "{text}");
     assert!(
@@ -267,7 +275,10 @@ fn a_malformed_or_rejected_token_is_vl0405_and_never_echoed() {
     assert!(!log.exists(), "a request was sent without the token");
     for (envs, wording) in [
         (&[][..], "wants a token"),
-        (&[("VELME_EXTERNAL_TOKEN", "wrong-token")][..], "rejected the token"),
+        (
+            &[("VELME_EXTERNAL_TOKEN", "wrong-token-0123456789")][..],
+            "rejected the token",
+        ),
     ] {
         let out = build(&dir, server.url(), envs);
         let text = shown(&out);
@@ -277,9 +288,16 @@ fn a_malformed_or_rejected_token_is_vl0405_and_never_echoed() {
             "{text}"
         );
         assert!(text.contains(wording), "{envs:?}: {text}");
-        assert!(!text.contains("wrong-token") && !text.contains("right-token"), "{text}");
+        assert!(
+            !text.contains("wrong-token-0123456789") && !text.contains("right-token-0123456789"),
+            "{text}"
+        );
     }
-    let good = build(&dir, server.url(), &[("VELME_EXTERNAL_TOKEN", "right-token")]);
+    let good = build(
+        &dir,
+        server.url(),
+        &[("VELME_EXTERNAL_TOKEN", "right-token-0123456789")],
+    );
     assert_eq!(good.code, 0, "{}", shown(&good));
 }
 
@@ -374,7 +392,7 @@ fn a_service_that_is_not_there_is_vl0404_and_no_goal_is_contacted_again() {
 /// equal to it, reach no output, `--json`, `replay.json`, lock or artifact (R-SEC-13, D-101).
 #[test]
 fn the_token_never_comes_back_from_the_service() {
-    let token = "tok-ECHOED-1234";
+    let token = "tok-ECHOED-1234-0123456";
     let envs = [("VELME_EXTERNAL_TOKEN", token), ("VELME_SYNTH_RECORD", "1")];
     let (dir, replies) = project("echo-error");
     fs::write(
