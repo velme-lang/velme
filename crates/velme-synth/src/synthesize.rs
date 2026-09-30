@@ -203,7 +203,7 @@ async fn run(
                     origin: Origin::Candidate,
                 };
                 match validate_detailed(&text, &request) {
-                    Err(found) => Rejection::invalid(&reply.reply_json, &found),
+                    Err(found) => Rejection::invalid(&reply.reply_json, &found, &base, format),
                     Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
                         Verdict::Accepted(verified) => return Ok(Built { ir, verified }),
                         Verdict::Rejected(mut rejection) => {
