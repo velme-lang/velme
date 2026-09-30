@@ -114,7 +114,9 @@ Human mode prints the result as pretty JSON using the same mapping. `--json` pri
 and `help?`. The human message and the JSON `message` are the same text.
 **R-CLI-19** Every path shown to the user or written to a file — a diagnostic's `file`, a trace entry, and the lock's
 `file` field (`runtime/32` §5) — is project-relative with `/` separators on every platform, including Windows; the
-same project built on different OSes produces byte-identical `velme.lock`, diagnostics and traces.
+same project built on different OSes produces byte-identical `velme.lock`, diagnostics and traces. The one exception
+is a file outside the project: a diagnostic about the user-level config carries its absolute path, and one about a
+`--config` file the path as it was given, both still with `/` separators, so a tool can open the file (D-111).
 **R-CLI-15** The top-level `status` is the worst of the per-goal `status` values in `results[]`, each one of
 `ok | failed | pending | blocked | skipped` (`pending` = `VL0408`, `blocked` = `VL0409 SynthesisBlocked`), and is
 `failed` whenever the top-level `diagnostics[]` holds an error: that array carries the diagnostics that belong to the
