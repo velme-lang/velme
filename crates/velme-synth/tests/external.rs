@@ -211,6 +211,16 @@ fn an_exit_garbage_and_a_flood_are_backend_failures_with_the_tail_of_stderr() {
     assert_eq!(exited, "it exited with status 3\nbackend exploded : it is a test");
     let garbage = failure(complete(&external(&dir, &["--mode", "garbage"], PATIENT), &request()));
     assert!(garbage.starts_with("its output wasn't one JSON object"), "{garbage}");
+    // Every failure carries the tail of stderr, not only a non-zero exit (R-SYNTH-28).
+    assert!(
+        garbage.ends_with("garbage mode: printing what is not JSON"),
+        "{garbage}"
+    );
+    let described = block_on(external(&dir, &["--mode", "garbage", "--on", "describe"], PATIENT).identify());
+    assert!(
+        matches!(&described, Err(ProviderError::BackendFailed { stderr, .. }) if stderr.contains("garbage mode")),
+        "{described:?}"
+    );
     let flood = failure(complete(&external(&dir, &["--mode", "huge"], PATIENT), &request()));
     assert!(flood.starts_with("it wrote more than 2 MiB"), "{flood}");
 }

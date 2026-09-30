@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use velme_ir::{Fingerprint, from_json_str, to_canonical_string};
 use velme_synth::{
     AnthropicConfig, Exchange, IDENTITY_FILE, ProviderError, Recorder, Replay, ReplayIdentity, Scripted, Step,
-    SynthBackend, SynthLimits, SynthRequest, build_request, fixture_path,
+    SynthBackend, SynthLimits, SynthRequest, build_request, fixture_path, read_replay_identity,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
 use velme_test_support::{RecordingSleeper, goal_id, mock_anthropic, program};
@@ -275,9 +275,28 @@ fn r_synth_43_a_link_in_place_of_a_fixture_is_vl0901_and_is_never_followed() {
     fs::remove_file(dir.join(IDENTITY_FILE)).expect("replay.json removed");
     symlink(&outside, dir.join(IDENTITY_FILE)).expect("a link");
     file_error(block_on(replay.identify()).expect_err("replay.json is a link"));
+    file_error(read_replay_identity(&dir).expect_err("replay.json is a link"));
 
     // A fixture past the bound is not read.
     fs::remove_file(fixture_path(&dir, key())).expect("link removed");
     fs::write(fixture_path(&dir, key()), vec![b' '; 16 * 1024 * 1024 + 1]).expect("a big file");
     file_error(block_on(provider.complete(&request(), &SynthLimits::new(key()))).expect_err("too long"));
+}
+
+/// The recorder looks at its directory once, before it asks the provider anything: a link or a file in its place is
+/// `VL0901` at the start (R-ART-09), and the inner backend is never contacted.
+#[cfg(unix)]
+#[test]
+fn r_synth_43_a_link_or_a_file_in_place_of_the_fixture_directory_is_refused_before_any_call() {
+    use velme_test_support::PanicProvider;
+    let dir = dir("bad-directory");
+    fs::create_dir_all(&dir).expect("directory");
+    let (link, file) = (dir.join("link"), dir.join("file"));
+    std::os::unix::fs::symlink(&dir, &link).expect("a link");
+    fs::write(&file, "x").expect("a file");
+    for bad in [link, file] {
+        let recorder = Recorder::new(Box::new(PanicProvider), &bad);
+        let error = block_on(recorder.identify()).expect_err("refused");
+        assert!(matches!(error, ProviderError::File { .. }), "{error:?}");
+    }
 }

@@ -511,6 +511,46 @@ fn ac_synth_10_replay_reproduces_a_recorded_build() {
     assert_eq!(snapshot(&replayed), snapshot(&recorded));
 }
 
+/// A replay asks and reads as the recording did: the settings that shape requests and replies are in `replay.json`, and
+/// applied over the local defaults, a recording made with `compact` replies replays to the same artifacts and lock. Under
+/// the defaults it would read the compact replies as canonical IR and fail (R-SYNTH-43).
+#[test]
+fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
+    let text = source("Double it.");
+    let (fixtures, recorded, replayed, defaults) = (
+        project("options-fixtures"),
+        project("options-recorded"),
+        project("options-replayed"),
+        project("options-defaults"),
+    );
+    let compact = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::Compact,
+        retry_history: velme_synth::RetryHistory::All,
+        ..SynthOptions::default()
+    };
+    let short =
+        |reply: String| velme_synth::compress(&serde_json::from_str::<Value>(&reply).expect("JSON")).to_string();
+    let scripted = replies(&[short(double()), short(add_one()), short(sum())]);
+    let recorder = Recorder::new(Box::new(scripted), &fixtures).with_options(&compact);
+    let first = build_with(&recorded, &text, Some(&recorder), compact);
+    assert_eq!(first.report.summary.calls, 3, "{:?}", first.report.goals);
+
+    let identity = velme_synth::read_replay_identity(&fixtures)
+        .expect("readable")
+        .expect("a replay.json");
+    let mut options = SynthOptions::default();
+    identity.apply(&mut options);
+    assert_eq!(options.reply_format, velme_synth::ReplyFormat::Compact);
+    assert_eq!(options.retry_history, velme_synth::RetryHistory::All);
+    let replay = Replay::new(&fixtures);
+    let second = build_with(&replayed, &text, Some(&replay), options);
+    assert_eq!(second.report.summary.calls, 3, "{:?}", second.report.goals);
+    assert_eq!(snapshot(&replayed), snapshot(&recorded));
+
+    let third = build_with(&defaults, &text, Some(&replay), SynthOptions::default());
+    assert_ne!(status(&third, "Double"), Status::Built(Source::Synthesized));
+}
+
 /// Goals are built in a topological order that takes the ready goal with the lowest source index next: `P` calls `B`
 /// then `A`, and `A` and `B` follow it in the file, so the order is `A`, `B`, `P` (D-93, R-SYNTH-01).
 #[test]
@@ -574,7 +614,9 @@ fn ac_art_10_a_store_hit_is_checked_against_a_changed_child() {
     assert_eq!(requests[1].attempts[0].diagnostics[0].code, "VL0503");
     let sum = built.report.goals.iter().find(|g| g.goal == "Sum").expect("goal");
     assert!(
-        sum.notes.iter().any(|n| n.contains("`Double` changed")),
+        sum.notes
+            .iter()
+            .any(|n| n.starts_with("a stored version of `Sum` didn't pass after `Double` changed")),
         "{:?}",
         sum.notes
     );
@@ -662,4 +704,41 @@ fn ac_synth_39_the_second_goal_gets_vl0404_without_a_request() {
         );
     }
     assert_eq!(script.calls(), 1);
+}
+
+/// A stored version that fails is a note of its own wording, and the note goes when a later stored version is taken:
+/// the learner hears only about what still matters (R-SYNTH-46).
+#[test]
+fn ac_art_10_a_rejected_store_hit_leaves_no_note_when_another_is_taken() {
+    let dir = project("planted-then-good");
+    let text = source("Double it.");
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let store = velme_runtime::Store::new(&dir);
+    let good = Lock::read(&dir)
+        .expect("lock")
+        .expect("a lock")
+        .entry(FILE, "Double")
+        .expect("entry")
+        .artifact;
+    // A wrong artifact under the same key whose name sorts before the good one, so it is tried first.
+    let genuine = serde_json::to_value(store.get(good).expect("artifact")).expect("value");
+    let (id, bytes) = (3..64)
+        .find_map(|k| {
+            let mut planted = genuine.clone();
+            planted["ir"]["body"]["right"] = literal(k);
+            let bytes = velme_ir::to_canonical_string(&planted).expect("canonical");
+            let id = velme_ir::Fingerprint::of_bytes(bytes.as_bytes());
+            (id.hex() < good.hex()).then_some((id, bytes))
+        })
+        .expect("a wrong artifact that sorts first");
+    fs::write(store.path(id), &bytes).expect("planted");
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    let none = replies(&[]);
+    let built = build_with(&dir, &text, Some(&none), SynthOptions::default());
+    assert_eq!(none.calls(), 0);
+    assert_eq!(status(&built, "Double"), Status::Built(Source::Store));
+    let double = built.report.goals.iter().find(|g| g.goal == "Double").expect("goal");
+    assert!(double.notes.is_empty(), "{:?}", double.notes);
+    let lock = Lock::read(&dir).expect("lock").expect("a lock");
+    assert_eq!(lock.entry(FILE, "Double").expect("entry").artifact, good);
 }

@@ -1,11 +1,11 @@
-//! The `ollama` and `external` providers as `velme build` chooses them (`tooling/40` §2.1, R-CLI-12, R-CLI-13,
+//! The `anthropic`, `ollama` and `external` providers as `velme build` chooses them (`tooling/40` §2.1, R-CLI-12, R-CLI-13,
 //! `compiler/22` R-SYNTH-24..29): what they need, where each setting comes from, and the notice that says what is sent
 //! (`tooling/41` R-SEC-12).
 
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_synth::{
-    CommandError, External, ExternalCommand, ExternalConfig, OLLAMA_URL, Ollama, OllamaConfig, SynthBackend,
-    SynthOptions,
+    Anthropic, AnthropicConfig, ApiKey, CommandError, External, ExternalCommand, ExternalConfig, KeyError, OLLAMA_URL,
+    Ollama, OllamaConfig, SynthBackend, SynthOptions,
 };
 
 use crate::project::Project;
@@ -13,7 +13,7 @@ use crate::project::Project;
 /// A provider and the notice that says what it sends.
 pub type Chosen = (Box<dyn SynthBackend>, String);
 
-fn not_configured(message: impl Into<String>, help: &str) -> Diagnostic {
+pub fn not_configured(message: impl Into<String>, help: &str) -> Diagnostic {
     Diagnostic::new(Code::ProviderNotConfigured, Span::default(), message).with_help(help)
 }
 
@@ -23,6 +23,47 @@ pub fn model_name(flag: Option<&str>) -> String {
         .or_else(|| std::env::var("VELME_MODEL").ok())
         .map(|m| m.trim().to_owned())
         .unwrap_or_default()
+}
+
+/// Why the environment holds no API key to send (`tooling/40` §5.2, R-SEC-05): none is set, or the one that is set can't
+/// be a key. It never says what the key was.
+pub fn key_problem() -> Option<Diagnostic> {
+    match ApiKey::lookup() {
+        Ok(_) => None,
+        Err(KeyError::Malformed(variable)) => Some(not_configured(
+            format!("The API key in `{variable}` can't be used."),
+            &format!("a key is visible ASCII with no spaces: fix `{variable}`, or unset it"),
+        )),
+        Err(KeyError::Missing) => Some(not_configured(
+            "The Anthropic provider needs an API key, and there isn't one.",
+            "set `VELME_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment; Velme reads a key from nowhere else",
+        )),
+    }
+}
+
+/// The `anthropic` provider, for the model from `--model`, else `VELME_MODEL` (`tooling/40` §5.2, R-CLI-12). The key
+/// comes only from the environment (R-SEC-05) and is read again at each request, never held here. It is built without
+/// one: the identity step contacts nothing, so a build the store can answer needs no key, and a request that does need
+/// it ends with `VL0405` (see [`key_problem`], which the caller words that with). A missing model can't be built
+/// without, and is reported after a missing key.
+pub fn anthropic(flag: Option<&str>, options: &SynthOptions) -> Result<Chosen, Diagnostic> {
+    let model = model_name(flag);
+    if model.is_empty() {
+        return Err(key_problem().unwrap_or_else(|| {
+            not_configured(
+                "The Anthropic provider needs a model, and there isn't one.",
+                "pass `--model ID`, or set `VELME_MODEL`, to the model id to use",
+            )
+        }));
+    }
+    let config = AnthropicConfig {
+        options: options.clone(),
+        ..AnthropicConfig::new(model)
+    };
+    Ok((
+        Box::new(Anthropic::new(config)),
+        "Sending your plans, types, checks and examples to Anthropic to write the code.".to_owned(),
+    ))
 }
 
 /// The `ollama` provider for the model from `--model`, else `VELME_MODEL`. No key is needed; the server is the default

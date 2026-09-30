@@ -38,12 +38,7 @@ impl ApiKey {
         ApiKey(key.into())
     }
 
-    /// The key in the environment (`tooling/40` §5.2): see [`ApiKey::lookup`].
-    pub fn from_env() -> Option<Self> {
-        Self::lookup().ok()
-    }
-
-    /// The key in the environment: `VELME_API_KEY`, else `ANTHROPIC_API_KEY`, trimmed. A variable that is empty is not
+    /// The key in the environment (`tooling/40` §5.2): `VELME_API_KEY`, else `ANTHROPIC_API_KEY`, trimmed. A variable that is empty is not
     /// set. One that is set to something that can't be a key, anything but visible ASCII once trimmed, is an error
     /// naming it: it is not skipped for the next variable, so a typo in `VELME_API_KEY` never sends a request under
     /// another key.

@@ -33,11 +33,6 @@ impl Session {
         }
     }
 
-    /// The settings.
-    pub fn options(&self) -> &SynthOptions {
-        &self.options
-    }
-
     /// The provider calls made: one per `complete()` (R-SYNTH-21).
     pub fn calls(&self) -> usize {
         self.calls
@@ -321,14 +316,17 @@ pub fn reaches_no_further(error: &ProviderError) -> bool {
             | ProviderError::RateLimited { .. }
             | ProviderError::NotConfigured
             | ProviderError::KeyRejected
+            | ProviderError::File { .. }
     )
 }
 
-/// What a goal that reaches a stopped provider ends with, without a request: `VL0405` again if that is what stopped it,
-/// else `VL0404` (R-SYNTH-45).
+/// What a goal that reaches a stopped provider ends with, without a request: `VL0405` or `VL0901` again if that is what
+/// stopped it, else `VL0404` (R-SYNTH-45).
 pub fn stopped_diagnostic(error: &ProviderError, name: &str, span: Span) -> Diagnostic {
     match error {
-        ProviderError::NotConfigured | ProviderError::KeyRejected => provider_diagnostic(error, "", name, span),
+        ProviderError::NotConfigured | ProviderError::KeyRejected | ProviderError::File { .. } => {
+            provider_diagnostic(error, "", name, span)
+        }
         _ => unavailable(name, span, None),
     }
 }

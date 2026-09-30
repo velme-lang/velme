@@ -85,8 +85,15 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 
 **R-SYNTH-06** Live-provider tests run only with `VELME_LIVE_LLM=1` and are never part of the default gate (D-13).
 **R-SYNTH-43** Replay fixtures (D-94). `<replay_dir>/replay.json` holds `provider`, `model_version` and
-`input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21); `replay` reports them from the identity step (R-SYNTH-25), so the replayed
-build computes the same keys and writes byte-identical manifests. `b3-<hex>.json`, named from the synthesis key as store files are, holds one entry per exchange
+`input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21), and, when they
+aren't the defaults, its `retry_history` and `reply_format` (R-SYNTH-36, R-SYNTH-37), which change the bytes of the requests the fixtures are
+keyed on and how the recorded replies are read; `replay` reports them from the identity step (R-SYNTH-25), and a build
+replaying uses the recorded `retry_history` and `reply_format` over its own, so the replayed
+build computes the same keys and writes byte-identical manifests. A replay reproduces the artifacts, lock, manifests
+and diagnostic codes of the recorded build; the detail and notes of a provider failure may be less specific than the
+recorded run's, since fixtures keep only the error variant and no provider prose. `replay.json` and the fixtures are read
+bounded and never through a link (`runtime/32` R-ART-10), and written whole through a temporary file, refusing a link
+or a non-regular file in the way, with `VL0901` (R-ART-09). `b3-<hex>.json`, named from the synthesis key as store files are, holds one entry per exchange
 of that goal, in order: `request`, the BLAKE3 of the canonical JSON (21 R-IR-21) of the `SynthRequest` sent; then
 either `reply`, the reply JSON, or `error`, the `ProviderError` variant (`refused`, `malformed`, `backend_failed`,
 `pending`; `pending` with its R-SYNTH-41-cleaned text); and `usage`. No prompt body, header or key is stored, so plan
@@ -106,8 +113,10 @@ not a regular file, is too large or can't be read or written) → `VL0901`; `Una
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5) with `VL0401`, in Velme's own
 wording, never the provider's text (R-SYNTH-22, D-93); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
 not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
-**R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key), the build contacts the
-provider no more: every later goal that reaches R-SYNTH-02 step 3 ends with the same code without a request (D-93).
+**R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key or a model the API
+doesn't know) or `VL0901` from a replay file, the build contacts the provider no more: every later goal that reaches
+R-SYNTH-02 step 3 ends with the same code without a request (D-93). A build whose store answers a goal needs no key:
+the Anthropic provider is built without one, its identity step contacts nothing, and only a request ends with `VL0405`.
 **R-SYNTH-24** `ollama` resolves the configured model's digest from the server's `/api/tags` **on the first lock miss in
 a build**, not unconditionally, and reports `<model>@<digest>` as `model()`, with a model name that has no tag
 normalized to `<name>:latest` and the digest kept whole, `sha256:` prefix included (D-98); the result is reused for

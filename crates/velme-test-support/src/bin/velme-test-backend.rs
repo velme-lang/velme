@@ -10,7 +10,7 @@
 //! `synthesize` for goal `G` answers with `DIR/G.json` (`DIR/G.N.json` when the request carries `N` earlier attempts,
 //! else `G.json`): a file holding IR is wrapped as `{"ir": …}`, any other file is sent as it is. A goal with no file is
 //! an `{"error"}` reply. `--mode` makes the backend `exit` with status 3, `hang`, `hang-group` (a child that also
-//! hangs, its pid written to `--pidfile`), print `garbage` or a `huge` output. `--sleeper` leaves a `sleep 60` behind
+//! hangs, its pid written to `--pidfile`), print `garbage` (with a line on stderr) or a `huge` output. `--sleeper` leaves a `sleep 60` behind
 //! that holds the backend's stdout open (its pid in `--pidfile`), then replies and exits as usual.
 #![forbid(unsafe_code)]
 // A tool for tests: it fails loudly on a bad invocation.
@@ -148,6 +148,7 @@ fn misbehave(mode: &str, args: &Args) -> ExitCode {
             ExitCode::from(3)
         }
         "garbage" => {
+            eprintln!("garbage mode: printing what is not JSON");
             println!("this is not JSON");
             ExitCode::SUCCESS
         }

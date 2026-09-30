@@ -10,7 +10,8 @@ use async_trait::async_trait;
 use velme_ir::{Fingerprint, to_canonical_string};
 
 use crate::attempt::clean_line;
-use crate::fsio::write_file;
+use crate::fsio::{check_dir, write_file};
+use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
 use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, file_error, fixture_name};
 use crate::request::SynthRequest;
@@ -19,12 +20,24 @@ use crate::request::SynthRequest;
 pub struct Recorder {
     inner: Box<dyn SynthBackend>,
     dir: PathBuf,
+    options: SynthOptions,
 }
 
 impl Recorder {
     /// Records the exchanges of `inner` in the replay directory `dir`.
     pub fn new(inner: Box<dyn SynthBackend>, dir: impl Into<PathBuf>) -> Self {
-        Recorder { inner, dir: dir.into() }
+        Recorder {
+            inner,
+            dir: dir.into(),
+            options: SynthOptions::default(),
+        }
+    }
+
+    /// Records the settings of the build whose exchanges these are, so a replay asks and reads as it did (R-SYNTH-43).
+    #[must_use]
+    pub fn with_options(mut self, options: &SynthOptions) -> Self {
+        self.options = options.clone();
+        self
     }
 }
 
@@ -38,12 +51,17 @@ fn write(dir: &Path, name: &str, text: &str) -> Result<(), ProviderError> {
 impl SynthBackend for Recorder {
     /// The inner identity, which `replay.json` then holds (R-SYNTH-43).
     async fn identify(&self) -> Result<Identity, ProviderError> {
+        // The directory is looked at once, before anything is asked of the provider: a link or a file in its place is
+        // `VL0901` at the start, not after a paid call (R-ART-09).
+        check_dir(&self.dir).map_err(|e| file_error(&self.dir, &e))?;
         let identity = self.inner.identify().await?;
         let recorded = ReplayIdentity {
             provider: identity.provider.clone(),
             model_version: identity.model.clone(),
             input_version: identity.input_version.clone(),
             backend: identity.backend.clone(),
+            retry_history: Some(self.options.retry_history).filter(|h| *h != RetryHistory::default()),
+            reply_format: Some(self.options.reply_format).filter(|f| *f != ReplyFormat::default()),
         };
         let text = to_canonical_string(&recorded)
             .map_err(|_| ProviderError::Internal("the replay identity could not be written".to_owned()))?;

@@ -108,3 +108,14 @@ pub fn write_file(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<()> {
     }
     placed.and_then(|()| sync_dir(dir))
 }
+
+/// An error unless `dir` can be written into: not a symbolic link, and a directory if it exists at all. A missing one is
+/// fine, since [`write_file`] creates it.
+pub fn check_dir(dir: &Path) -> io::Result<()> {
+    refuse_links(&[dir])?;
+    match fs::symlink_metadata(dir) {
+        Ok(meta) if !meta.is_dir() => Err(io::Error::other("it is not a directory")),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}

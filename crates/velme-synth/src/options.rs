@@ -2,6 +2,7 @@
 //! them changes which IR is accepted (INV-1, INV-2); the ones that change what is sent enter `input_version`
 //! (R-SYNTH-40).
 
+use serde::{Deserialize, Serialize};
 use velme_ir::Fingerprint;
 
 /// How much of the reply schema the prompt carries (R-SYNTH-35).
@@ -16,7 +17,8 @@ pub enum SchemaInPrompt {
 }
 
 /// How a reply spells the IR (R-SYNTH-36).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ReplyFormat {
     /// Canonical IR JSON.
     #[default]
@@ -26,7 +28,8 @@ pub enum ReplyFormat {
 }
 
 /// Which earlier replies a retry turn carries (R-SYNTH-37).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum RetryHistory {
     /// Only the latest failed reply, and the primary diagnostic of each earlier attempt.
     #[default]

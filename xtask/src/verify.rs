@@ -58,6 +58,12 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
                 "warnings",
             ],
         ),
+        // What a user gets from `cargo clippy -p velme-cli`: the default features, where `test-provider` is off and code
+        // behind `cfg(feature = "test-provider")` is not seen (D-94).
+        cargo_step(
+            "clippy-cli",
+            &["clippy", "-p", "velme-cli", "--all-targets", "--", "-D", "warnings"],
+        ),
         cargo_step(
             "test",
             &["test", "--workspace", "--all-targets", "--features", TEST_PROVIDER],
@@ -111,13 +117,20 @@ pub fn scrub_provider_env(command: &mut Command, home: &Path) {
     }
 }
 
-/// Runs every step (a failure does not stop the rest) and returns the names of the steps that failed.
+/// Numbers the homes of [`run_steps`].
+static HOMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Runs every step (a failure does not stop the rest) and returns the names of the steps that failed. Each step gets a
+/// fresh, empty home of its own, removed afterwards, so no step sees what an earlier one left in it.
 pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<&'static str> {
     let mut failed = Vec::new();
-    let home = std::env::temp_dir().join(format!("velme-gate-home-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&home);
     for step in steps {
         println!("==> {}", step.name);
+        // Unique within the process too, so two runs at once (tests) never share one.
+        let n = HOMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let home = std::env::temp_dir().join(format!("velme-gate-home-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::create_dir_all(&home);
         let mut command = Command::new(&step.program);
         command
             .args(&step.args)
@@ -125,6 +138,7 @@ pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<&'static str> {
             .current_dir(root);
         scrub_provider_env(&mut command, &home);
         let status = command.status();
+        let _ = std::fs::remove_dir_all(&home);
         if !status.is_ok_and(|s| s.success()) {
             failed.push(step.name);
         }

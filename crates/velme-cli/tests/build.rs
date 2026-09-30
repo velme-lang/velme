@@ -359,3 +359,88 @@ fn a_malformed_velme_api_key_is_vl0405_and_does_not_fall_back() {
     );
     assert!(!dir.join("velme.lock").exists());
 }
+
+/// With no usable key the Anthropic provider is still built, and a build the store can answer (a warm store, no lock)
+/// takes its hits and never says `VL0405`: the identity step contacts nothing (R-SYNTH-02, R-SYNTH-25).
+#[test]
+fn a_warm_store_builds_with_no_api_key() {
+    use velme_synth::{AnthropicConfig, SynthOptions};
+    use velme_test_support::mock::{MockResponse, MockServer};
+    use velme_test_support::{RecordingSleeper, mock_anthropic, program};
+
+    let dir = project("warm-no-key");
+    let parsed = program(SOURCE);
+    let server = MockServer::start(
+        [double(), add_one()]
+            .map(|reply| MockResponse::tool_call("write_goal", &serde_json::from_str::<Value>(&reply).expect("JSON"))),
+    );
+    let anthropic = mock_anthropic(
+        AnthropicConfig::new("claude-test"),
+        &server,
+        "sk-ant-mock",
+        &RecordingSleeper::default(),
+    );
+    let mut contacts = 0;
+    let report = velme_runtime::build(
+        &velme_runtime::BuildInput {
+            program: &parsed,
+            source: SOURCE,
+            project: &dir,
+            file: "game.velme",
+            backend: Some(&anthropic),
+            options: SynthOptions::default(),
+            run: velme_runtime::Options::default(),
+        },
+        &mut || contacts += 1,
+    );
+    assert_eq!(report.summary.synthesized, 2, "{:?}", report.goals);
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+
+    for (name, envs) in [
+        ("no key", vec![]),
+        ("a malformed key", vec![("VELME_API_KEY", "sk bad")]),
+    ] {
+        let out = velme_with(
+            &dir,
+            &[
+                "build",
+                "game.velme",
+                "--provider",
+                "anthropic",
+                "--model",
+                "claude-test",
+            ],
+            None,
+            &envs,
+        );
+        assert_eq!(out.code, 0, "{name}: {}{}", out.stdout, out.stderr);
+        assert!(!out.stderr.contains("VL0405"), "{name}: {}", out.stderr);
+        assert!(
+            !out.stderr.contains("Sending your plans"),
+            "{name}: nothing is sent: {}",
+            out.stderr
+        );
+        assert!(out.stdout.contains("from the store"), "{name}: {}", out.stdout);
+        fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    }
+    // A goal that does need a request says why, in the words of the setup.
+    fs::remove_dir_all(dir.join(".velme")).expect("store removed");
+    let cold = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-test",
+        ],
+        None,
+    );
+    assert_eq!(cold.code, 2, "{}{}", cold.stdout, cold.stderr);
+    assert!(
+        cold.stderr.contains("[VL0405]") && cold.stderr.contains("needs an API key"),
+        "{}",
+        cold.stderr
+    );
+}

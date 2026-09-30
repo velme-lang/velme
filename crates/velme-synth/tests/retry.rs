@@ -538,6 +538,27 @@ fn r_synth_45_a_rejected_key_stops_further_contact_with_vl0405() {
     assert_eq!(provider.calls(), 1);
 }
 
+/// A replay file that can't be written or read ends the goal with `VL0901` and, like `VL0404`, all contact with the
+/// provider: the next goal gets the same diagnostic with no request (R-SYNTH-45).
+#[test]
+fn r_synth_45_a_file_error_stops_further_contact_with_vl0901() {
+    let program = program(SOURCE);
+    let file = || ProviderError::File {
+        path: "fixtures/b3-x.json".to_owned(),
+        reason: "it is not a regular file".to_owned(),
+    };
+    let provider = Scripted::new([Step::Error(file()), Step::Reply("{}".to_owned())]);
+    let mut session = Session::new(SynthOptions::default());
+    let runner = LeafRunner::new();
+    for _ in 0..2 {
+        let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task(&program), &runner)) else {
+            panic!("it fails")
+        };
+        assert_eq!(failure.diagnostic.code, Code::FileError);
+    }
+    assert_eq!(provider.calls(), 1);
+}
+
 /// A `RateLimited` waits its `retry_after`, at most 30 s (R-SYNTH-12).
 #[test]
 fn r_synth_12_retry_after_is_honoured_up_to_30_seconds() {

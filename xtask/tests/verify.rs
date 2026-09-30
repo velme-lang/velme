@@ -9,7 +9,15 @@ fn ac_qa_01_verify_runs_every_gate_step() {
     assert_eq!(
         names,
         [
-            "fmt", "clippy", "test", "doc", "deny", "layering", "features", "ac-audit"
+            "fmt",
+            "clippy",
+            "clippy-cli",
+            "test",
+            "doc",
+            "deny",
+            "layering",
+            "features",
+            "ac-audit"
         ]
     );
 }
@@ -17,7 +25,7 @@ fn ac_qa_01_verify_runs_every_gate_step() {
 #[test]
 fn ac_qa_01_quick_verify_skips_the_slow_steps() {
     let names: Vec<&str> = verify::steps(true).expect("steps").iter().map(|s| s.name).collect();
-    assert_eq!(names, ["fmt", "clippy", "test"]);
+    assert_eq!(names, ["fmt", "clippy", "clippy-cli", "test"]);
 }
 
 #[test]
@@ -92,4 +100,31 @@ fn ac_qa_01_the_features_check_flags_only_the_test_endpoint() {
         xtask::features::check(&workspace_root().expect("root")).expect("cargo tree"),
         Vec::<String>::new()
     );
+}
+
+/// Each step gets a fresh empty home, which is gone afterwards: the second step finds nothing the first left in it
+/// (AC-QA-02).
+#[cfg(unix)]
+#[test]
+fn ac_qa_02_each_step_gets_a_fresh_empty_home_removed_afterwards() {
+    let record = std::env::temp_dir().join(format!("velme-gate-home-record-{}", std::process::id()));
+    let _ = std::fs::remove_file(&record);
+    let script = format!(
+        "test -z \"$(ls -A \"$HOME\")\" && touch \"$HOME/left-behind\" && echo \"$HOME\" >> {}",
+        record.display()
+    );
+    let step = |name| Step {
+        name,
+        program: "sh".to_owned(),
+        args: vec!["-c".to_owned(), script.clone()],
+        envs: Vec::new(),
+    };
+    let failed = verify::run_steps(&workspace_root().expect("root"), &[step("one"), step("two")]);
+    assert!(failed.is_empty(), "{failed:?}");
+    let homes = std::fs::read_to_string(&record).expect("recorded");
+    let homes: Vec<&str> = homes.lines().collect();
+    assert_eq!(homes.len(), 2);
+    assert_ne!(homes[0], homes[1]);
+    assert!(homes.iter().all(|h| !std::path::Path::new(h).exists()), "{homes:?}");
+    let _ = std::fs::remove_file(&record);
 }
