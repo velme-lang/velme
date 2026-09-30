@@ -184,7 +184,7 @@ fn builtin(name: &str, args: &[&str]) -> String {
 
 /// Every golden IR file runs on the cases of `tests/golden/ir/run/`, so every node kind has an interpreter test
 /// (`compiler/21` R-IR-23): each case gives JSON `inputs` by parameter name and, for a composite goal, `bindings`
-/// standing in for its children. The snapshot is each case's output and fuel.
+/// standing in for its children. The snapshot is each case's output, fuel and memory.
 #[test]
 fn golden_ir_runs() {
     let program = program(&read(&repo("tests/golden/ir/goals.velme")));
@@ -206,8 +206,12 @@ fn golden_ir_runs() {
                 .iter()
                 .map(|b| decode(&case["bindings"][&b.name], &b.ty))
                 .collect();
-            let Output { value, fuel, .. } = run(&ir, inputs, bindings, FUEL_ONLY).expect("runs");
-            out.push_str(&format!("{} -> {} (fuel {fuel})\n", case["inputs"], encode(&value)));
+            let Output { value, fuel, memory } = run(&ir, inputs, bindings, FUEL_ONLY).expect("runs");
+            out.push_str(&format!(
+                "{} -> {} (fuel {fuel}, memory {memory})\n",
+                case["inputs"],
+                encode(&value)
+            ));
         }
         insta::assert_snapshot!(out);
     });

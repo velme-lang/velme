@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use velme_builtins::memory::{HEADER_BYTES, OPTIONAL_BYTES};
+use velme_builtins::memory::{HEADER_BYTES, OPTIONAL_BYTES, value_bytes};
 use velme_builtins::{Builtin, Function};
 use velme_ir::{BinaryOperator, Goal, Lambda, Node, ReduceLambda, UnaryOperator};
 use wasm_encoder::BlockType::{self, Empty};
@@ -18,7 +18,8 @@ use crate::abi::{
 use crate::code::{Assembly, Func, V, mem};
 use crate::data::{Const, Data};
 use crate::runtime::{self, COPY, Rt};
-use crate::ty::{Ty, Types, Typing, assignable, join};
+use crate::ty::{Signature, Ty, Types, Typing, assignable, join};
+use crate::{Literals, codec};
 
 /// The parameter of `velme_run`: the address of the inputs, each in its slot, in declared order.
 const INPUTS: u32 = 0;
@@ -40,8 +41,9 @@ fn size(n: u64) -> I<'static> {
     I::I64Const(n.cast_signed())
 }
 
-/// The module for the leaf goal `goal`, whose body is `body`, and the bytes its data segment takes.
-pub(crate) fn module(goal: &Goal, body: &Node) -> Result<(Vec<u8>, u32), EmitError> {
+/// The module for the leaf goal `goal`, whose body is `body`, the bytes its data segment takes, its signature and
+/// what its literals hold.
+pub(crate) fn module(goal: &Goal, body: &Node) -> Result<(Vec<u8>, u32, Signature, Literals), EmitError> {
     if !goal.calls.is_empty() {
         return Err(EmitError::NotLeaf);
     }
@@ -74,6 +76,7 @@ pub(crate) fn module(goal: &Goal, body: &Node) -> Result<(Vec<u8>, u32), EmitErr
         level: 0,
         list_equals: BTreeMap::new(),
         record_equals: BTreeMap::new(),
+        literals: Literals::default(),
     };
     emitter.expr(body)?;
     let found = emitter.ty(body)?;
@@ -81,14 +84,26 @@ pub(crate) fn module(goal: &Goal, body: &Node) -> Result<(Vec<u8>, u32), EmitErr
     let vals = emitter.pop(&output);
     emitter.result(&output, &vals)?;
     let Emitter {
-        mut assembly, data, f, ..
+        mut assembly,
+        data,
+        f,
+        types,
+        inputs,
+        literals,
+        ..
     } = emitter;
     assembly.define(run, f);
+    let signature = Signature {
+        types,
+        inputs: inputs.into_iter().map(|(_, ty, at)| (ty, at)).collect(),
+        input_bytes: offset,
+        output,
+    };
     let segment = u32::try_from(data.bytes.len().next_multiple_of(8)).map_err(|_| internal())?;
     let bytes = assembly
         .finish(&data.bytes, Rt::Alloc.index(), run)
         .ok_or_else(|| EmitError::Internal("a function was called and never emitted".to_owned()))?;
-    Ok((bytes, segment))
+    Ok((bytes, segment, signature, literals))
 }
 
 struct Emitter<'ir> {
@@ -109,6 +124,8 @@ struct Emitter<'ir> {
     list_equals: BTreeMap<Ty, u32>,
     /// The helper comparing two records, by record.
     record_equals: BTreeMap<usize, u32>,
+    /// What the literal nodes hold, each counted once however it is laid out (R-SBX-11).
+    literals: Literals,
 }
 
 /// A collection node's loop over its list, open at the point its lambda runs.
@@ -511,6 +528,9 @@ impl<'ir> Emitter<'ir> {
     fn literal(&mut self, ty: &velme_ir::Type, value: &velme_ir::LiteralValue) -> Result<(), EmitError> {
         let ty = self.types.resolve(ty)?;
         let value = value.decoded().ok_or_else(internal)?;
+        let literals = &mut self.literals;
+        literals.bytes = literals.bytes.saturating_add(value_bytes(value));
+        literals.sizeless = literals.sizeless.saturating_add(codec::nothings(value));
         for constant in self.data.flat(value, &ty, &self.types)? {
             self.f.op(match constant {
                 Const::I32(x) => I::I32Const(x),

@@ -118,6 +118,13 @@ impl Func {
     pub(crate) fn call(&mut self, index: u32) {
         self.code.push(Instruction::Call(index));
     }
+
+    /// The instructions of the body so far: the most it runs between two turns of a loop in it, since each costs
+    /// Wasmtime at most one unit of its fuel (`runtime/31` §6, D-115).
+    #[cfg(test)]
+    pub(crate) fn instructions(&self) -> u64 {
+        self.code.len() as u64
+    }
 }
 
 /// The module being assembled.

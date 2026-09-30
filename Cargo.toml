@@ -36,6 +36,9 @@ insta = { version = "1", features = ["glob", "json"] }
 # `O_NOFOLLOW` and `O_NONBLOCK` for reading the artifact store and lock (`runtime/32` R-ART-09); Unix only.
 libc = "0.2"
 proptest = { version = "1", default-features = false, features = ["std"] }
+# The WASM cache directory's owner and mode checked on an open handle, and every file in it reached through that
+# handle (`runtime/31` R-SBX-20, D-120); Unix only. Already in the tree through `wasmtime`.
+rustix = { version = "1.1.5", default-features = false, features = ["std", "fs", "process"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -49,6 +52,9 @@ ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 webpki-root-certs = "1.0.9"
 wasm-encoder = { version = "0.258", default-features = false, features = ["std"] }
 wasmparser = { version = "0.258", default-features = false, features = ["std", "validate", "features"] }
+# The sandbox (`runtime/31` §6, D-116): the runtime and Cranelift only, on the `wasmparser` line above. No WASI, cache,
+# async, component model or profiling.
+wasmtime = { version = "49", default-features = false, features = ["runtime", "cranelift", "std"] }
 toml = { version = "1", default-features = false, features = ["std", "serde", "parse", "display"] }
 
 # CC-ERR-01, CC-STY-03. `unsafe_code` is forbidden per crate (`#![forbid(unsafe_code)]`), not here, because

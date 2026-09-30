@@ -51,6 +51,34 @@ pub fn goal_id(program: &Program, name: &str) -> GoalId {
     )
 }
 
+/// The examples of the goal `goal` of `program`, whose text is `source`: each one's inputs and the output it expects
+/// (`language/12` R-GOAL-21).
+pub fn example_cases(
+    program: &Program,
+    source: &str,
+    goal: GoalId,
+) -> Vec<(Vec<velme_builtins::Value>, velme_builtins::Value)> {
+    let checks =
+        velme_check::GoalChecks::new(program, goal, source).unwrap_or_else(|d| panic!("examples don't lower: {d:#?}"));
+    let cases = checks.examples().iter();
+    cases.map(|case| (case.args.clone(), case.expected.clone())).collect()
+}
+
+/// What the interpreter gives for the leaf goal `ir` on `inputs` within `limits`: the value and the fuel and memory
+/// it spent, or the failure. For a backend held to it (INV-3, `runtime/31` R-SBX-15).
+pub fn interpret(
+    ir: &ValidIr,
+    inputs: Vec<velme_builtins::Value>,
+    limits: velme_builtins::execution::Limits,
+) -> Result<(velme_builtins::Value, velme_builtins::execution::Spent), velme_builtins::execution::Failure> {
+    let output = velme_interp::run(ir, inputs, Vec::new(), limits)?;
+    let spent = velme_builtins::execution::Spent {
+        fuel: output.fuel,
+        memory: output.memory,
+    };
+    Ok((output.value, spent))
+}
+
 /// Hand-written IR for a goal of `program`, validated as a whole goal: its `calls` must equal the compiler's
 /// (`compiler/21` R-IR-16).
 pub fn valid_ir(program: &Program, ir: &str) -> ValidIr {
