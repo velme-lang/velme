@@ -424,9 +424,10 @@ fn ac_cli_20_artifact_shows_hash_manifest_and_ir() {
     let run = velme(&dir, &["artifact", ADD, "--goal", "Add", "--json"]);
     assert_eq!(run.code, 0, "{}", run.stderr);
     let envelope = json_of(&run);
-    // An artifact result is one `result` shape and only that (the schema's `anyOf` would hide a second match).
+    // The artifact sits beside `result`, which a goal's value alone fills (D-111).
     velme_test_support::schema::assert_cli_envelope(&envelope);
-    let result = &envelope["results"][0]["result"];
+    assert!(envelope["results"][0].get("result").is_none(), "{envelope}");
+    let result = &envelope["results"][0]["artifact"];
     assert_eq!(result["artifact"], hash.as_str());
     assert_eq!(result["ir"], ir);
     // Every manifest field is on a line of its own in the text.

@@ -30,6 +30,6 @@ pub use registry::Registry;
 pub use sched::{
     CallRun, CallStatus, CheckRun, Failed, GoalRun, Options, Timing, run_goal, run_goal_peak, run_goal_unchecked,
 };
-pub use store::{ARTIFACTS_DIR, LoadError, MAX_ARTIFACT_BYTES, Store, StoreError, TMP_DIR, VELME_DIR};
+pub use store::{ARTIFACTS_DIR, GC_MIN_AGE, LoadError, MAX_ARTIFACT_BYTES, Store, StoreError, TMP_DIR, VELME_DIR};
 pub use synth_log::SYNTH_LOG_FILE;
 pub use trace::{OrderedValue, TRACE_VERSION, Trace};

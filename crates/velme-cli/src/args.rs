@@ -223,7 +223,12 @@ pub fn parse(args: &[String]) -> Result<Parsed, Box<Bad>> {
                     _ => &mut cli.ollama_url,
                 };
                 once(arg, slot.is_some(), &file)?;
-                *slot = Some(value(arg, &file)?);
+                let v = value(arg, &file)?;
+                // A blank service URL is a mistake, not "unset": it would fall through to the environment (D-111).
+                if v.trim().is_empty() && matches!(arg, "--external-url" | "--ollama-url") {
+                    return Err(fail(&file, expected(arg, "a URL", "nothing")));
+                }
+                *slot = Some(v);
                 provider_flag.get_or_insert(arg);
             }
             "--locked" => {
@@ -391,6 +396,21 @@ mod tests {
         assert!(parsed("test a.velme --build --ollama-url http://localhost:1").is_ok());
         assert!(parsed("run a.velme --goal G --provider replay").is_err());
         assert!(parsed("run a.velme --goal G --build --locked").is_err());
+    }
+
+    /// A blank `--external-url` or `--ollama-url` is `VL0902`, not "unset" (D-111).
+    #[test]
+    fn a_blank_service_url_flag_is_a_usage_error() {
+        for flag in ["--external-url", "--ollama-url"] {
+            for blank in ["", "  "] {
+                let args: Vec<String> = ["build", "a.velme", flag, blank].map(str::to_owned).into();
+                let bad = parse(&args).expect_err("a usage error");
+                assert_eq!(
+                    bad.diagnostic.message,
+                    format!("Input `{flag}` should be a URL, but got nothing.")
+                );
+            }
+        }
     }
 
     #[test]

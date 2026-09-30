@@ -168,7 +168,8 @@ fn usage_error(bad: &Bad) -> u8 {
         .map(|file| shown_path(&Project::of(Path::new(file)), file))
         .unwrap_or_default();
     if bad.json {
-        match diagnostic_envelope(bad.diagnostic.clone(), &path) {
+        // A bad command line is about no file (D-111).
+        match diagnostic_envelope(bad.diagnostic.clone(), "") {
             Some(out) => print_out(&out),
             None => return EXIT_INTERNAL,
         }
@@ -280,7 +281,7 @@ struct GoalResult {
     result: Option<Value>,
     /// The run and the file it is of, for `velme trace` to show its trace (`runtime/30` §8).
     trace: Option<(GoalRun, String)>,
-    /// The artifact `velme artifact` shows, as the `result` of `--json` (R-CLI-22).
+    /// The artifact `velme artifact` shows, as the `artifact` of `--json` (R-CLI-22, D-111).
     artifact: Option<LockedGoal>,
     /// The goals it called, in source order (R-CLI-27).
     calls: Vec<CallJson>,
@@ -807,7 +808,7 @@ fn gc(cli: &Cli) -> u8 {
     let removed = Lock::require(root).map_err(|e| e.diagnostic()).and_then(|lock| {
         let keep: Vec<_> = lock.entries().iter().map(|e| e.artifact).collect();
         Store::new(root)
-            .collect(&keep)
+            .collect(&keep, std::time::SystemTime::now(), velme_runtime::GC_MIN_AGE)
             .map_err(|e| SourceFile::unreadable(velme_runtime::VELME_DIR, &e))
     });
     let mut outcome = Outcome::default();
@@ -1004,17 +1005,12 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, cli: &Cli) -> u8 {
                     .iter()
                     .map(|d| JsonDiagnostic::new(d, path, &lines))
                     .collect(),
-                result: r
-                    .artifact
-                    .as_ref()
-                    .map(|a| {
-                        ResultJson::Artifact(ArtifactJson {
-                            artifact: a.artifact.to_string(),
-                            manifest: &a.manifest,
-                            ir: a.ir.goal(),
-                        })
-                    })
-                    .or_else(|| r.result.as_ref().map(|v| ResultJson::Value(OrderedValue(v)))),
+                result: r.result.as_ref().map(OrderedValue),
+                artifact: r.artifact.as_ref().map(|a| ArtifactJson {
+                    artifact: a.artifact.to_string(),
+                    manifest: &a.manifest,
+                    ir: a.ir.goal(),
+                }),
                 trace: r.trace.as_ref().map(|(run, file)| run.trace(file)),
                 calls: r.calls.clone(),
             })
@@ -1123,7 +1119,10 @@ struct JsonResult<'a> {
     status: &'static str,
     diagnostics: Vec<JsonDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<ResultJson<'a>>,
+    result: Option<OrderedValue<'a>>,
+    /// What `velme artifact` shows, beside `result`, which is only ever a goal's value (D-111).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifact: Option<ArtifactJson<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace: Option<Trace<'a>>,
     /// The goals it called, in source order (R-CLI-27).
@@ -1153,15 +1152,7 @@ impl CallJson {
     }
 }
 
-/// The `result` of a goal in the `--json` envelope: a value, or the artifact `velme artifact` shows.
-#[derive(Serialize)]
-#[serde(untagged)]
-enum ResultJson<'a> {
-    Value(OrderedValue<'a>),
-    Artifact(ArtifactJson<'a>),
-}
-
-/// The `result` of `velme artifact --json` (R-CLI-22): the artifact's hash, its manifest and its IR.
+/// The `artifact` of `velme artifact --json` (R-CLI-22, D-111): the artifact's hash, its manifest and its IR.
 #[derive(Serialize)]
 struct ArtifactJson<'a> {
     artifact: String,

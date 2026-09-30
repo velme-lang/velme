@@ -201,7 +201,7 @@ fn ac_synth_41_the_help_follows_the_kind_of_failure() {
         (
             d.message.clone(),
             failed.attempts[0].clone(),
-            d.help.clone().expect("a help line"),
+            d.help.as_deref().expect("a help line").to_owned(),
         )
     };
     for (reply, words) in [

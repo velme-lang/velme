@@ -179,7 +179,8 @@ pub struct JsonDiagnostic {
     pub severity: Severity,
     /// The same text as the human headline, without the code.
     pub message: String,
-    /// The project-relative path with `/` separators (R-CLI-19).
+    /// The project-relative path with `/` separators (R-CLI-19). For a diagnostic with no place in a source file, the file
+    /// it is about, or the empty string, with the span `0,0,1,1` meaning "no place" (D-111).
     pub file: String,
     /// The primary span.
     pub span: JsonSpan,
@@ -275,7 +276,7 @@ impl JsonDiagnostic {
             code: diag.code,
             severity: diag.severity,
             message: diag.message.clone(),
-            file: path.to_owned(),
+            file: diag.file.as_deref().map_or(path, String::as_str).to_owned(),
             span: lines.locate(diag.span),
             labels: diag
                 .labels
@@ -286,7 +287,7 @@ impl JsonDiagnostic {
                 })
                 .collect(),
             notes: diag.notes.clone(),
-            help: diag.help.clone(),
+            help: diag.help.as_deref().map(str::to_owned),
         }
     }
 }

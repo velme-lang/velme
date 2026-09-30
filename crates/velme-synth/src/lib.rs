@@ -29,6 +29,8 @@ mod schema;
 mod scripted;
 mod synthesize;
 mod transport;
+#[cfg(any(feature = "provider-ollama", feature = "provider-external"))]
+mod url;
 mod verify;
 
 #[cfg(feature = "provider-anthropic")]
@@ -36,9 +38,7 @@ pub use anthropic::{Anthropic, AnthropicConfig, ApiKey, KeyError};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 #[cfg(feature = "provider-external")]
-pub use external::{
-    External, ExternalConfig, ExternalToken, ExternalUrl, TOKEN_VARIABLE, TokenMalformed, UrlError, has_certificate,
-};
+pub use external::{External, ExternalConfig, ExternalToken, TOKEN_VARIABLE, TokenMalformed, has_certificate};
 pub use generate::{TestInput, TestInputs, test_inputs};
 #[cfg(feature = "provider-ollama")]
 pub use ollama::{
@@ -63,4 +63,6 @@ pub use synthesize::{
     reaches_no_further, stopped_diagnostic, synthesize, unavailable,
 };
 pub use transport::{Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
+#[cfg(any(feature = "provider-ollama", feature = "provider-external"))]
+pub use url::{ExternalUrl, UrlError};
 pub use verify::{ChildRunner, Verdict, Verified, verify};

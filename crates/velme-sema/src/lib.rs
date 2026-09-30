@@ -20,8 +20,16 @@ pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>) {
 }
 
 /// [`analyze`] where a goal's `budget` line lowers `defaults` rather than the system caps: a project's `[budget]`
-/// (`tooling/40` §5.1, D-8). A key the line sets is its own; `defaults` must not exceed the system caps.
+/// (`tooling/40` §5.1, D-8). A key the line sets is its own; `defaults` is clamped to the system caps here, so a caller can
+/// lower the caps and never raise them.
 pub fn analyze_with(file: &SourceFile, defaults: hir::Budget) -> (Option<hir::Program>, Vec<Diagnostic>) {
+    let system = hir::Budget::SYSTEM;
+    let defaults = hir::Budget {
+        max_fuel: defaults.max_fuel.min(system.max_fuel),
+        max_memory: defaults.max_memory.min(system.max_memory),
+        max_goal_calls: defaults.max_goal_calls.min(system.max_goal_calls),
+        max_call_depth: defaults.max_call_depth.min(system.max_call_depth),
+    };
     let (ast, mut diags) = velme_syntax::parse(file);
     let (types, mut goals, scope) = resolve::resolve(&ast, &file.text, &mut diags);
     check::check_bodies(&types, &mut goals, &scope, &file.text, defaults, &mut diags);

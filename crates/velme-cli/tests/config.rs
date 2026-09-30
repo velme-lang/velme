@@ -274,16 +274,15 @@ fn ac_cli_23_a_model_outside_allowed_models_is_vl0405_and_never_swapped() {
 #[test]
 fn a_project_names_its_provider_and_the_flag_wins() {
     let dir = project("provider_choice");
+    // `scripted` is flag-only: a project naming it is VL0902 (D-111).
     fs::write(dir.join("velme.toml"), "[synthesis]\nprovider = \"scripted\"\n").expect("velme.toml");
-    let script = script(&dir, &[reply("mul", 2), reply("add", 1)]);
-    let script = script.to_string_lossy().into_owned();
-    let out = velme(
-        &dir,
-        &["build", "game.velme"],
-        &[("VELME_SYNTH_SCRIPT", script.as_str())],
+    let out = velme(&dir, &["build", "game.velme"], &[]);
+    assert_eq!(out.code, 64, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr.contains("VL0902") && out.stderr.contains("anthropic or ollama or external or replay"),
+        "{}",
+        out.stderr
     );
-    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
-    assert!(out.stderr.contains("Nothing is sent"), "{}", out.stderr);
     fs::write(dir.join("velme.toml"), "[synthesis]\nprovider = \"nope\"\n").expect("velme.toml");
     let out = velme(&dir, &["build", "game.velme"], &[]);
     assert_eq!(out.code, 64, "{}{}", out.stdout, out.stderr);
@@ -295,6 +294,8 @@ fn a_project_names_its_provider_and_the_flag_wins() {
         "the project's anthropic has no key: {}{}",
         none.stdout, none.stderr
     );
+    let script = script(&fresh, &[reply("mul", 2), reply("add", 1)]);
+    let script = script.to_string_lossy().into_owned();
     let out = velme(
         &fresh,
         &["build", "game.velme", "--provider", "scripted"],
@@ -424,8 +425,16 @@ fn the_ollama_url_and_output_limit_come_from_flag_env_config_and_ceiling() {
     let out = velme(&dir, &with_flag, &[("VELME_OLLAMA_URL", dead.url())]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert!(
-        out.stderr.contains(&format!("the Ollama server at {}", server.url())),
-        "{}",
+        out.stderr.contains(&format!(
+            "the Ollama server at {}, model m,",
+            server
+                .url()
+                .trim_start_matches("http://")
+                .split(':')
+                .next()
+                .unwrap_or_default()
+        )) && !out.stderr.contains(server.url()),
+        "the notice names the host only: {}",
         out.stderr
     );
     assert_eq!(chat(&server).expect("the chat")["options"]["num_predict"], 2048);
@@ -648,6 +657,39 @@ fn an_empty_url_source_is_skipped_and_ollama_retries_with_its_retry_model() {
         everything.contains(&format!("m:latest@{DIGEST}+r:latest@{DIGEST}")),
         "{everything}"
     );
+}
+
+/// A missing `retry_model` is named in the `VL0405`, not the primary (D-111); `allowed_models` matches an Ollama model with or
+/// without `:latest` on either side.
+#[test]
+fn a_missing_ollama_retry_model_is_named_and_allowed_models_ignore_latest() {
+    let server = MockServer::start([MockResponse::ollama_tags(&[("m:latest", DIGEST)])]);
+    let dir = project("ollama_missing_retry");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nretry_model = \"r\"\n").expect("velme.toml");
+    user_config(
+        &dir,
+        &format!(
+            "[synthesis]\nollama_url = \"{}\"\nallowed_models = [\"m:latest\", \"r\"]\n",
+            server.url()
+        ),
+    );
+    let out = velme(
+        &dir,
+        &["build", "game.velme", "--provider", "ollama", "--model", "m", "--json"],
+        &[],
+    );
+    assert_eq!(out.code, 2, "{}{}", out.stdout, out.stderr);
+    let envelope: Value = serde_json::from_str(&out.stdout).expect("JSON");
+    assert_cli_envelope(&envelope);
+    let first = &envelope["results"][0]["diagnostics"][0];
+    assert_eq!(first["code"], "VL0405", "{envelope}");
+    assert_eq!(first["message"], "The Ollama server doesn't have the model `r`.");
+    assert!(
+        first["help"].as_str().expect("help").contains("ollama pull r"),
+        "{envelope}"
+    );
+    // `m` was allowed as `m:latest`, `r` as itself: neither was refused by the list.
+    assert!(!out.stdout.contains("isn't in your allowed models"), "{}", out.stdout);
 }
 
 /// `run --build` decodes its arguments first, so a typo costs no build and no provider call (R-CLI-03).

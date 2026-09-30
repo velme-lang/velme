@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://velme.dev/schemas/velme-cli-1.schema.json",
   "title": "velme-cli/1",
-  "description": "The envelope `velme --json` prints on standard output (tooling/40 R-CLI-15, R-CLI-27, D-108). Changes within velme-cli/1 only add optional properties, so no object here forbids extra ones; a breaking change ships as velme-cli/2.",
+  "description": "The envelope `velme --json` prints on standard output (tooling/40 R-CLI-15, R-CLI-27, D-108). Changes within velme-cli/1 only add optional properties, so no object here forbids extra ones, but the enum values (goalStatus, severity, kind, the trace version) are closed: a new value needs velme-cli/2 (D-111). A diagnostic with no place in a source file has span 0,0,1,1 (\"no place\") and in `file` the file it is about (velme.toml, the user config path, velme.lock, or the empty string); a breaking change ships as velme-cli/2.",
   "type": "object",
   "required": ["format", "status", "results", "diagnostics", "notices"],
   "properties": {
@@ -48,10 +48,8 @@
         "goal": { "type": "string" },
         "status": { "$ref": "#/$defs/goalStatus" },
         "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
-        "result": {
-          "description": "The goal's value, or for `velme artifact` an artifact.",
-          "anyOf": [{ "$ref": "#/$defs/artifactResult" }, { "$ref": "#/$defs/value" }]
-        },
+        "result": { "$ref": "#/$defs/value", "description": "The goal's value, and only ever that (D-111)." },
+        "artifact": { "$ref": "#/$defs/artifactResult", "description": "`velme artifact` only (R-CLI-22, D-111)." },
         "trace": { "$ref": "#/$defs/trace" },
         "calls": {
           "type": "array",
@@ -85,8 +83,8 @@
         "code": { "type": "string", "pattern": "^VL[0-9]{4}$" },
         "severity": { "enum": ["error", "warning"] },
         "message": { "type": "string" },
-        "file": { "type": "string" },
-        "span": { "$ref": "#/$defs/span" },
+        "file": { "type": "string", "description": "Project-relative; for a diagnostic with no place in a source file, the file it is about or the empty string (D-111)." },
+        "span": { "$ref": "#/$defs/span", "description": "`0,0,1,1` means \"no place\" (D-111)." },
         "labels": {
           "type": "array",
           "items": {

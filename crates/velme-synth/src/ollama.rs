@@ -10,12 +10,13 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
-use crate::http::{agent, is_loopback, read_body, transport_error};
+use crate::http::{agent_config_trusting, read_body, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
+use crate::url::{ExternalUrl, LocalResolver};
 
 /// Where Ollama listens unless `ollama_url` says otherwise (`tooling/40` §5.1).
 pub const DEFAULT_URL: &str = "http://127.0.0.1:11434";
@@ -33,8 +34,9 @@ pub struct OllamaConfig {
     pub model: String,
     /// The model for retries; attempt 0 uses `model` (R-SYNTH-39).
     pub retry_model: Option<String>,
-    /// The server's base URL.
-    pub url: String,
+    /// The server's base URL, checked; `None` is [`DEFAULT_URL`]. Whether it names this machine, in any spelling, decides
+    /// that the server is reached directly and never through a proxy (D-111).
+    pub url: Option<ExternalUrl>,
     /// The settings that shape the prompt and enter `input_version` (R-SYNTH-40).
     pub options: SynthOptions,
     /// The most time the digest lookup may take; a chat request has its own `timeout` (`SynthLimits`).
@@ -47,7 +49,7 @@ impl OllamaConfig {
         OllamaConfig {
             model: model.into(),
             retry_model: None,
-            url: DEFAULT_URL.to_owned(),
+            url: None,
             options: SynthOptions::default(),
             timeout: Duration::from_secs(60),
         }
@@ -72,6 +74,8 @@ pub struct Ollama {
     model: String,
     /// The normalized `retry_model`.
     retry_model: Option<String>,
+    /// The model and the retry model as the user wrote them, for what is said about a missing one.
+    shown: (String, Option<String>),
     input_version: String,
     sleeper: Arc<dyn Sleeper>,
 }
@@ -80,7 +84,7 @@ impl std::fmt::Debug for Ollama {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ollama")
             .field("model", &self.model)
-            .field("url", &self.config.url)
+            .field("host", &self.config.url.as_ref().map(ExternalUrl::host))
             .finish_non_exhaustive()
     }
 }
@@ -92,6 +96,10 @@ impl Ollama {
         Ollama {
             model: normalize_model(config.model.trim()),
             retry_model: config.retry_model.as_deref().map(|m| normalize_model(m.trim())),
+            shown: (
+                config.model.trim().to_owned(),
+                config.retry_model.as_deref().map(|m| m.trim().to_owned()),
+            ),
             config,
             input_version,
             sleeper: Arc::new(StdSleeper),
@@ -113,20 +121,41 @@ impl Ollama {
         }
     }
 
-    /// The server's base URL without a trailing slash.
-    pub fn url(&self) -> &str {
-        self.config.url.trim_end_matches('/')
+    /// The URL of the endpoint `path`, which starts with `/`.
+    fn endpoint(&self, path: &str) -> String {
+        match &self.config.url {
+            Some(url) => url.endpoint(path),
+            None => format!("{DEFAULT_URL}{path}"),
+        }
     }
 
+    /// The model for attempt `attempt` as the user wrote it.
+    fn shown_for(&self, attempt: u32) -> &str {
+        match (&self.shown.1, attempt) {
+            (Some(retry), 1..) => retry,
+            _ => &self.shown.0,
+        }
+    }
+
+    /// Whether the server is on this machine, in any spelling of its address, and so reached without a proxy (D-111).
+    fn reaches_directly(&self) -> bool {
+        self.config.url.as_ref().is_none_or(ExternalUrl::is_loopback)
+    }
+
+    /// An agent that resolves `localhost` without DNS and reaches a server on this machine without a proxy (D-102, D-111).
     fn agent(&self, timeout: Duration) -> ureq::Agent {
-        agent(timeout, is_loopback(&self.config.url))
+        ureq::Agent::with_parts(
+            agent_config_trusting(timeout, self.reaches_directly(), &[]),
+            ureq::unversioned::transport::DefaultConnector::default(),
+            LocalResolver,
+        )
     }
 
     /// One `/api/tags` exchange: the body of a success.
     fn get_tags(&self) -> Result<String, ProviderError> {
         let mut response = self
             .agent(self.config.timeout)
-            .get(&format!("{}/api/tags", self.url()))
+            .get(&self.endpoint("/api/tags"))
             .call()
             .map_err(transport_error)?;
         match response.status().as_u16() {
@@ -139,17 +168,17 @@ impl Ollama {
     }
 
     /// One `/api/chat` exchange: the body of a success.
-    fn post_chat(&self, body: &str, timeout: Duration) -> Result<String, ProviderError> {
+    fn post_chat(&self, body: &str, timeout: Duration, attempt: u32) -> Result<String, ProviderError> {
         let mut response = self
             .agent(timeout)
-            .post(&format!("{}/api/chat", self.url()))
+            .post(&self.endpoint("/api/chat"))
             .header("content-type", "application/json")
             .send(body)
             .map_err(transport_error)?;
         match response.status().as_u16() {
             200..=299 => read_body(&mut response),
             // Ollama answers a model it doesn't have with 404.
-            404 => Err(ProviderError::NotConfigured),
+            404 => Err(ProviderError::ModelMissing(self.shown_for(attempt).to_owned())),
             429 => Err(ProviderError::RateLimited { retry_after: None }),
             status @ (300..=399 | 408 | 500..=599) => Err(ProviderError::Unavailable(format!(
                 "the server answered with status {status}"
@@ -253,10 +282,16 @@ impl SynthBackend for Ollama {
     /// inside wait as the providers' do (R-SYNTH-12).
     async fn identify(&self) -> Result<Identity, ProviderError> {
         let text = with_transport_retries(self.sleeper.as_ref(), || std::future::ready(self.get_tags())).await?;
-        let digest = find_digest(&text, &self.model)?;
+        // The model that is missing is the one named, the retry model as much as the primary (R-SYNTH-24, R-SYNTH-39).
+        let missing = |error, shown: &str| match error {
+            ProviderError::NotConfigured => ProviderError::ModelMissing(shown.to_owned()),
+            other => other,
+        };
+        let digest = find_digest(&text, &self.model).map_err(|e| missing(e, self.shown_for(0)))?;
         let mut model = format!("{}@{digest}", self.model);
         if let Some(retry) = &self.retry_model {
-            model.push_str(&format!("+{retry}@{}", find_digest(&text, retry)?));
+            let digest = find_digest(&text, retry).map_err(|e| missing(e, self.shown_for(1)))?;
+            model.push_str(&format!("+{retry}@{digest}"));
         }
         Ok(Identity {
             provider: "ollama".to_owned(),
@@ -303,7 +338,7 @@ impl SynthProvider for OllamaProvider {
         let body = self.server.body(request, limits)?;
         let started = Instant::now();
         let text = with_generation_retries(self.server.sleeper.as_ref(), || {
-            std::future::ready(self.server.post_chat(&body, limits.timeout))
+            std::future::ready(self.server.post_chat(&body, limits.timeout, limits.attempt))
         })
         .await?;
         let (reply_json, usage) = read_response(&text)?;
@@ -317,7 +352,33 @@ impl SynthProvider for OllamaProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_model;
+    use super::{Ollama, OllamaConfig, normalize_model};
+    use crate::url::ExternalUrl;
+
+    /// A server on this machine is reached without a proxy whatever the spelling of its address, and no other is: the
+    /// decision is the checked URL's, not a comparison of strings (D-111).
+    #[test]
+    fn every_spelling_of_this_machine_is_reached_directly() {
+        let direct = |url: Option<&str>| {
+            let mut config = OllamaConfig::new("m");
+            config.url = url.map(|u| ExternalUrl::parse(u).expect("a URL"));
+            Ollama::new(config).reaches_directly()
+        };
+        assert!(direct(None));
+        for local in [
+            "http://127.0.0.1:11434",
+            "http://127.0.0.2:11434",
+            "http://Localhost:11434",
+            "http://LOCALHOST",
+            "http://[::1]:11434",
+            "http://[0:0:0:0:0:0:0:1]:11434",
+        ] {
+            assert!(direct(Some(local)), "{local}");
+        }
+        for remote in ["https://ollama.example.com", "https://127.0.0.1.evil.example"] {
+            assert!(!direct(Some(remote)), "{remote}");
+        }
+    }
 
     /// A name with no tag gets `:latest`; a registry port is not a tag (R-SYNTH-24).
     #[test]

@@ -575,6 +575,36 @@ fn ac_goal_10_budget_only_lowers_the_caps() {
     );
 }
 
+/// `analyze_with` lowers the defaults a goal without a `budget` line gets and clamps them to the system caps, so no caller
+/// can raise them (R-GOAL-20, D-8).
+#[test]
+fn ac_goal_10_defaults_given_to_analyze_with_never_exceed_the_system_caps() {
+    let text = "goal G(x: Number) -> Number:\n    plan: \"x\"\n";
+    let file = SourceFile::new("test.velme", text);
+    let system = Budget::SYSTEM;
+    let raised = Budget {
+        max_fuel: u64::MAX,
+        max_memory: u64::MAX,
+        max_goal_calls: u64::MAX,
+        max_call_depth: u64::MAX,
+    };
+    let (program, diagnostics) = velme_sema::analyze_with(&file, raised);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(program.expect("a program").goals[0].budget, system);
+    let lowered = Budget {
+        max_goal_calls: 2,
+        ..raised
+    };
+    let goals = velme_sema::analyze_with(&file, lowered).0.expect("a program").goals;
+    assert_eq!(
+        goals[0].budget,
+        Budget {
+            max_goal_calls: 2,
+            ..system
+        }
+    );
+}
+
 #[test]
 fn ac_goal_12_result_binding_must_fit_the_output() {
     let text = "goal Name(x: Number) -> Text:\n    plan: \"x\"\n\n\

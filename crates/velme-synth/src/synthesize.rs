@@ -421,6 +421,7 @@ pub fn reaches_no_further(error: &ProviderError) -> bool {
             | ProviderError::Timeout
             | ProviderError::RateLimited { .. }
             | ProviderError::NotConfigured
+            | ProviderError::ModelMissing(_)
             | ProviderError::KeyRejected
             | ProviderError::TokenRejected { .. }
             | ProviderError::File { .. }
@@ -432,6 +433,7 @@ pub fn reaches_no_further(error: &ProviderError) -> bool {
 pub fn stopped_diagnostic(error: &ProviderError, name: &str, span: Span) -> Diagnostic {
     match error {
         ProviderError::NotConfigured
+        | ProviderError::ModelMissing(_)
         | ProviderError::KeyRejected
         | ProviderError::TokenRejected { .. }
         | ProviderError::File { .. } => provider_diagnostic(error, "", name, span),
@@ -449,6 +451,14 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             format!("I can't write `{name}` because no AI provider is set up."),
         )
         .with_help("set the provider, model and key it needs"),
+        ProviderError::ModelMissing(model) => Diagnostic::new(
+            Code::ProviderNotConfigured,
+            span,
+            format!("The Ollama server doesn't have the model `{model}`."),
+        )
+        .with_help(format!(
+            "run `ollama pull {model}`, or choose another model with `--model`"
+        )),
         ProviderError::KeyRejected => Diagnostic::new(
             Code::ProviderNotConfigured,
             span,
