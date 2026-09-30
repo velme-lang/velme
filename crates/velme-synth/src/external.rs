@@ -18,7 +18,7 @@ use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::attempt::{clean_line, clean_name, clean_tail};
-use crate::http::{agent_config, transport_error};
+use crate::http::{agent_config_trusting, transport_error};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{REQUEST_VERSION, SynthRequest};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
@@ -212,6 +212,8 @@ pub struct ExternalConfig {
     pub token: Option<ExternalToken>,
     /// The most time any one request may take, `describe` included (`external_timeout_secs`, R-SYNTH-28).
     pub timeout: Duration,
+    /// The PEM certificates of `external_ca_file` (D-105), trusted for this backend's connections only.
+    pub ca_pem: Option<Vec<u8>>,
 }
 
 impl ExternalConfig {
@@ -224,8 +226,24 @@ impl ExternalConfig {
             url,
             token: None,
             timeout: Self::DEFAULT_TIMEOUT,
+            ca_pem: None,
         }
     }
+}
+
+/// The certificates of the PEM text `pem` (`external_ca_file`); empty when it holds none.
+fn certificates(pem: &[u8]) -> Vec<ureq::tls::Certificate<'static>> {
+    ureq::tls::parse_pem(pem)
+        .filter_map(|item| match item {
+            Ok(ureq::tls::PemItem::Certificate(certificate)) => Some(certificate),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether `pem` holds at least one certificate, as an `external_ca_file` must (`tooling/40` §5.1).
+pub fn has_certificate(pem: &[u8]) -> bool {
+    !certificates(pem).is_empty()
 }
 
 /// Whether `path` is made only of RFC 3986 `pchar`s and `/`: unreserved characters, percent-escapes, sub-delimiters, `:` and
@@ -365,8 +383,9 @@ impl External {
         if let Ok(mut held) = server.lock() {
             *held = None;
         }
+        let roots = self.config.ca_pem.as_deref().map(certificates).unwrap_or_default();
         let agent = ureq::Agent::with_parts(
-            agent_config(self.config.timeout, self.config.url.loopback),
+            agent_config_trusting(self.config.timeout, self.config.url.loopback, &roots),
             DefaultConnector::default(),
             LocalResolver,
         );

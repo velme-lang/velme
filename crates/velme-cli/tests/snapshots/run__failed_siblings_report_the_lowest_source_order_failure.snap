@@ -26,6 +26,23 @@ expression: one.stdout
             "`Both` also failed because `Fast` failed: `Fast` tried to divide 3000 by 0, which has no answer. [VL0602]"
           ]
         }
+      ],
+      "calls": [
+        {
+          "binding": "first",
+          "goal": "Slow",
+          "status": "failed"
+        },
+        {
+          "binding": "second",
+          "goal": "Fast",
+          "status": "failed"
+        },
+        {
+          "binding": "third",
+          "goal": "Later",
+          "status": "skipped"
+        }
       ]
     }
   ],

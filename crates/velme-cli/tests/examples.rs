@@ -16,6 +16,9 @@ use velme_test_support::repo;
 /// Set to rewrite the committed fixtures, then review the diff.
 const BLESS: &str = "VELME_BLESS_FIXTURES";
 
+/// Held while the committed fixtures are rewritten, so tests running in parallel can't race on the same files (R-QA-09).
+static FIXTURES_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or the one file
 /// `tests/fixtures/run/add.json` for `add`.
 const EXAMPLES: [(&str, &str); 7] = [
@@ -216,6 +219,8 @@ fn the_committed_replay_fixtures_are_what_the_test_backend_records() {
     let (recorded, _) = record();
     let committed_dir = repo(FIXTURES);
     if std::env::var_os(BLESS).is_some() {
+        // One bless at a time in this process (R-QA-09).
+        let _bless = FIXTURES_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         for path in tree(&committed_dir).keys() {
             fs::remove_file(committed_dir.join(path)).expect("stale fixture removed");
         }

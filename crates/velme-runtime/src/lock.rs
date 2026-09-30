@@ -98,6 +98,11 @@ impl Lock {
         }
     }
 
+    /// Reads the lock of `project`, which must be there: `velme gc` decides what is unused by it (`tooling/40` R-CLI-23).
+    pub fn require(project: &Path) -> Result<Lock, LockError> {
+        Lock::read(project)?.ok_or(LockError::Missing)
+    }
+
     /// Reads lock text. Entries may come in any order, but each goal at most once.
     pub fn parse(text: &str) -> Result<Lock, LockError> {
         let malformed = |e: toml::de::Error| LockError::Malformed {
@@ -222,6 +227,8 @@ fn restore_help() -> String {
 /// Why a project's lock could not be read.
 #[derive(Debug)]
 pub enum LockError {
+    /// The project has no lock, and one was needed.
+    Missing,
     /// The file is there but could not be read.
     Unreadable {
         /// Why.
@@ -249,6 +256,9 @@ impl LockError {
     pub fn diagnostic(&self) -> Diagnostic {
         let diag = Diagnostic::new(self.code(), Span::default(), format!("I couldn't open `{LOCK_FILE}`."));
         match self {
+            Self::Missing => diag
+                .with_note("there is no lock in the project, so nothing says which artifacts are in use")
+                .with_help(restore_help()),
             Self::Unreadable { error } => diag.with_note(error.to_string()),
             Self::Format { found } => {
                 let diag = diag.with_note(format!(
@@ -268,6 +278,7 @@ impl LockError {
 impl fmt::Display for LockError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Missing => write!(f, "there is no `{LOCK_FILE}`"),
             Self::Unreadable { error } => write!(f, "`{LOCK_FILE}` could not be read: {error}"),
             Self::Format { found } => write!(f, "`{LOCK_FILE}` is lock format {found}, not {LOCK_VERSION}"),
             Self::Malformed { reason } => write!(f, "`{LOCK_FILE}` is not a lock file: {reason}"),

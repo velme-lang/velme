@@ -230,19 +230,17 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
     );
 }
 
-/// A request that gets no answer within `timeout` is `Timeout`, after its transport retries (R-SYNTH-12).
+/// A request that gets no answer within `timeout` is `Timeout` at once: a generation that ran out of time is not retried
+/// (R-SYNTH-12, D-110).
 #[test]
-fn a_request_that_gets_no_answer_times_out() {
-    let (provider, server, sleeper) = mock(
-        AnthropicConfig::new("m"),
-        [MockResponse::hang(), MockResponse::hang(), MockResponse::hang()],
-    );
+fn a_request_that_gets_no_answer_times_out_without_a_retry() {
+    let (provider, server, sleeper) = mock(AnthropicConfig::new("m"), [MockResponse::hang(), MockResponse::hang()]);
     let mut limits = limits();
     limits.timeout = Duration::from_millis(150);
     let result = block_on(provider.complete(&requests().0, &limits));
     assert_eq!(result, Err(ProviderError::Timeout));
-    assert_eq!(server.requests().len(), 3);
-    assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
+    assert_eq!(server.requests().len(), 1);
+    assert!(sleeper.waits().is_empty());
 }
 
 /// A server that isn't there is `Unavailable` with wording of Velme's own.

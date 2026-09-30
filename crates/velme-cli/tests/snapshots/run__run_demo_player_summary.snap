@@ -14,7 +14,19 @@ expression: run.stdout
         "name": "Lina",
         "score": 820,
         "badge": "Silver"
-      }
+      },
+      "calls": [
+        {
+          "binding": "score",
+          "goal": "CalculateScore",
+          "status": "ok"
+        },
+        {
+          "binding": "badge",
+          "goal": "FindBadge",
+          "status": "ok"
+        }
+      ]
     }
   ],
   "diagnostics": [],

@@ -83,9 +83,10 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
 
 /// The provider settings the gate never lets into a step, so the default suite runs as it does with no key, no provider and
 /// no live tests (`delivery/51` AC-QA-02, D-13); every variable ending in `_API_KEY` goes too.
-const PROVIDER_ENV: [&str; 6] = [
+const PROVIDER_ENV: [&str; 7] = [
     "VELME_MODEL",
     "VELME_EXTERNAL_URL",
+    "VELME_OLLAMA_URL",
     "VELME_EXTERNAL_TOKEN",
     "VELME_SYNTH_RECORD",
     "VELME_SYNTH_SCRIPT",

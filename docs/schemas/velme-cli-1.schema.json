@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://velme.dev/schemas/velme-cli-1.schema.json",
+  "title": "velme-cli/1",
+  "description": "The envelope `velme --json` prints on standard output (tooling/40 R-CLI-15, R-CLI-27, D-108). Changes within velme-cli/1 only add optional properties, so no object here forbids extra ones; a breaking change ships as velme-cli/2.",
+  "type": "object",
+  "required": ["format", "status", "results", "diagnostics", "notices"],
+  "properties": {
+    "format": { "const": "velme-cli/1" },
+    "status": { "enum": ["ok", "failed"], "description": "`failed` when any goal failed or any diagnostic is an error." },
+    "results": { "type": "array", "items": { "$ref": "#/$defs/goalResult" } },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" },
+      "description": "The diagnostics of the file rather than of one goal: syntax errors, an unreadable file, a bad flag or config (D-72)."
+    },
+    "notices": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The R-SEC-12 notice lines, in place of stderr."
+    },
+    "summary": {
+      "type": "object",
+      "description": "Build only (R-SYNTH-21), or `removed` for `velme gc` and `velme cache clean`.",
+      "properties": {
+        "calls": { "type": "integer", "minimum": 0 },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cache_read_tokens": { "type": "integer", "minimum": 0 },
+        "cache_write_tokens": { "type": "integer", "minimum": 0 },
+        "lock_hits": { "type": "integer", "minimum": 0 },
+        "store_hits": { "type": "integer", "minimum": 0 },
+        "synthesized": { "type": "integer", "minimum": 0 },
+        "removed": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "goalStatus": { "enum": ["ok", "failed", "pending", "blocked", "skipped"] },
+    "fingerprint": { "type": "string", "pattern": "^b3:[0-9a-f]{64}$" },
+    "value": {
+      "description": "A Velme value by the one JSON mapping (D-23): number, text, boolean, nothing as null, list, or record."
+    },
+    "goalResult": {
+      "type": "object",
+      "required": ["goal", "status", "diagnostics"],
+      "properties": {
+        "goal": { "type": "string" },
+        "status": { "$ref": "#/$defs/goalStatus" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+        "result": {
+          "description": "The goal's value, or for `velme artifact` an artifact.",
+          "anyOf": [{ "$ref": "#/$defs/artifactResult" }, { "$ref": "#/$defs/value" }]
+        },
+        "trace": { "$ref": "#/$defs/trace" },
+        "calls": {
+          "type": "array",
+          "description": "The goals it called, in source order (R-CLI-27).",
+          "items": {
+            "type": "object",
+            "required": ["binding", "goal", "status"],
+            "properties": {
+              "binding": { "type": "string" },
+              "goal": { "type": "string" },
+              "status": { "$ref": "#/$defs/goalStatus" }
+            }
+          }
+        }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": ["start", "end", "line", "column"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message", "file", "span", "labels", "notes"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^VL[0-9]{4}$" },
+        "severity": { "enum": ["error", "warning"] },
+        "message": { "type": "string" },
+        "file": { "type": "string" },
+        "span": { "$ref": "#/$defs/span" },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["span", "text"],
+            "properties": { "span": { "$ref": "#/$defs/span" }, "text": { "type": "string" } }
+          }
+        },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "help": { "type": "string" }
+      }
+    },
+    "artifactResult": {
+      "type": "object",
+      "required": ["artifact", "manifest", "ir"],
+      "properties": {
+        "artifact": { "$ref": "#/$defs/fingerprint" },
+        "manifest": {
+          "type": "object",
+          "required": [
+            "format", "goal", "kind", "signature", "contract_key", "synthesis_key", "language_version",
+            "compiler_version", "ir_version", "builtins_version", "provider", "children", "verification"
+          ],
+          "properties": {
+            "format": { "const": "velme-artifact/1" },
+            "goal": { "type": "string" },
+            "kind": { "enum": ["leaf", "composite", "wired"] },
+            "signature": { "$ref": "#/$defs/fingerprint" },
+            "contract_key": { "$ref": "#/$defs/fingerprint" },
+            "synthesis_key": { "$ref": "#/$defs/fingerprint" },
+            "language_version": { "type": "string" },
+            "compiler_version": { "type": "string" },
+            "ir_version": { "type": "string" },
+            "builtins_version": { "type": "string" },
+            "prompt_version": { "type": "string" },
+            "provider": { "type": "string" },
+            "backend": { "type": "string" },
+            "model_version": { "type": "string" },
+            "children": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["binding", "goal", "signature"],
+                "properties": {
+                  "binding": { "type": "string" },
+                  "goal": { "type": "string" },
+                  "signature": { "$ref": "#/$defs/fingerprint" }
+                }
+              }
+            },
+            "verification": {
+              "type": "object",
+              "required": ["examples", "generated_inputs", "input_set", "max_fuel_observed"],
+              "properties": {
+                "examples": { "type": "integer", "minimum": 0 },
+                "generated_inputs": { "type": "integer", "minimum": 0 },
+                "input_set": { "$ref": "#/$defs/fingerprint" },
+                "max_fuel_observed": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        },
+        "ir": { "type": "object", "description": "The IR goal (compiler/21 §2)." }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "$ref": "#/$defs/value" },
+        "truncated": { "const": true }
+      }
+    },
+    "goalEvent": {
+      "type": "object",
+      "required": ["goal", "artifact", "kind", "inputs", "outcome", "fuel", "memory", "calls", "checks"],
+      "properties": {
+        "goal": { "type": "string" },
+        "artifact": { "oneOf": [{ "$ref": "#/$defs/fingerprint" }, { "type": "null" }] },
+        "kind": { "enum": ["leaf", "composite", "wired"] },
+        "inputs": { "type": "array", "items": { "$ref": "#/$defs/slot" } },
+        "outcome": { "enum": ["ok", "failed"] },
+        "value": { "$ref": "#/$defs/value" },
+        "truncated": { "const": true },
+        "failure": {
+          "type": "object",
+          "required": ["code", "message", "path"],
+          "properties": {
+            "code": { "type": "string", "pattern": "^VL[0-9]{4}$" },
+            "message": { "type": "string" },
+            "path": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "fuel": { "type": "integer", "minimum": 0 },
+        "memory": { "type": "integer", "minimum": 0 },
+        "start_us": { "type": "integer", "minimum": 0 },
+        "end_us": { "type": "integer", "minimum": 0 },
+        "duration_us": { "type": "integer", "minimum": 0 },
+        "calls": { "type": "array", "items": { "$ref": "#/$defs/callEvent" } },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/checkEvent" } }
+      }
+    },
+    "callEvent": {
+      "type": "object",
+      "required": ["binding", "goal", "wave", "args", "outcome"],
+      "properties": {
+        "binding": { "type": "string" },
+        "goal": { "type": "string" },
+        "wave": { "type": "integer", "minimum": 1 },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/slot" } },
+        "outcome": { "enum": ["ok", "failed", "skipped"] },
+        "value": { "$ref": "#/$defs/value" },
+        "truncated": { "const": true },
+        "run": { "$ref": "#/$defs/goalEvent" }
+      }
+    },
+    "checkEvent": {
+      "type": "object",
+      "required": ["text", "span", "passed", "values"],
+      "properties": {
+        "text": { "type": "string" },
+        "span": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+        },
+        "passed": { "type": "boolean" },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": { "text": { "type": "string" }, "value": { "$ref": "#/$defs/value" } }
+          }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "required": ["version", "file", "reproducible", "goal"],
+      "properties": {
+        "version": { "const": 1 },
+        "file": { "type": "string" },
+        "reproducible": { "type": "boolean" },
+        "goal": { "$ref": "#/$defs/goalEvent" }
+      }
+    }
+  }
+}

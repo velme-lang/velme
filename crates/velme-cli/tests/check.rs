@@ -42,7 +42,7 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     let run = velme(&["check", "examples/beginner/hello.velme"]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", "", 0)
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", "", 0)
     );
 }
 
@@ -92,7 +92,7 @@ fn every_example_parses_cleanly() {
             let run = velme(&["check", rel]);
             assert_eq!(
                 (run.stdout.as_str(), run.stderr.as_str(), run.code),
-                ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", "", 0),
+                ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", "", 0),
                 "{rel}"
             );
             checked += 1;
@@ -113,7 +113,7 @@ fn warnings_are_shown_but_do_not_fail() {
     let run = velme(&["check", "tests/golden/parser/reject/lint_naming.velme"]);
     assert_eq!(
         (run.stdout.as_str(), run.code),
-        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", 0)
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", 0)
     );
     assert!(run.stderr.starts_with("Warning: "), "{}", run.stderr);
     assert_eq!(
@@ -294,7 +294,7 @@ fn ac_run_06_a_call_tree_of_129_invocations_is_rejected_before_execution() {
     let ok = check("ok.velme", 127);
     assert_eq!(
         (ok.stdout.as_str(), ok.code),
-        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n", 0)
+        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", 0)
     );
     // 128 calls and `Wide` are 129.
     let over = check("over.velme", 128);

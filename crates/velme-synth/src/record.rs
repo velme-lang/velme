@@ -104,6 +104,10 @@ impl SynthProvider for Recording {
         self.inner.backend()
     }
 
+    fn default_max_output_tokens(&self) -> u32 {
+        self.inner.default_max_output_tokens()
+    }
+
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         let result = self.inner.complete(request, limits).await;
         // Only what reached the provider's reply is an exchange: a transport failure is not (R-SYNTH-43).

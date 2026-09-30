@@ -213,14 +213,13 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
     assert!(matches!(error, ProviderError::Internal(_)), "{error:?}");
 }
 
-/// A chat that gets no answer within `timeout` is `Timeout` after its retries.
+/// A chat that gets no answer within `timeout` is `Timeout` at once, not retried (R-SYNTH-12, D-110).
 #[test]
-fn a_chat_that_gets_no_answer_times_out() {
+fn a_chat_that_gets_no_answer_times_out_without_a_retry() {
     let (backend, _server, sleeper) = mock(
         "m",
         [
             MockResponse::ollama_tags(&[("m:latest", DIGEST)]),
-            MockResponse::hang(),
             MockResponse::hang(),
             MockResponse::hang(),
         ],
@@ -234,5 +233,5 @@ fn a_chat_that_gets_no_answer_times_out() {
         block_on(provider.complete(&request(), &limits)),
         Err(ProviderError::Timeout)
     );
-    assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
+    assert!(sleeper.waits().is_empty());
 }

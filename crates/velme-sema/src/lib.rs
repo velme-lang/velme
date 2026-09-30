@@ -16,9 +16,15 @@ pub use velme_syntax::SourceFile;
 /// (R-CMP-05). The program is returned only when there is no error; warnings don't count (D-69). Diagnostics are
 /// sorted by position, then code (R-CMP-16).
 pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>) {
+    analyze_with(file, hir::Budget::SYSTEM)
+}
+
+/// [`analyze`] where a goal's `budget` line lowers `defaults` rather than the system caps: a project's `[budget]`
+/// (`tooling/40` §5.1, D-8). A key the line sets is its own; `defaults` must not exceed the system caps.
+pub fn analyze_with(file: &SourceFile, defaults: hir::Budget) -> (Option<hir::Program>, Vec<Diagnostic>) {
     let (ast, mut diags) = velme_syntax::parse(file);
     let (types, mut goals, scope) = resolve::resolve(&ast, &file.text, &mut diags);
-    check::check_bodies(&types, &mut goals, &scope, &file.text, &mut diags);
+    check::check_bodies(&types, &mut goals, &scope, &file.text, defaults, &mut diags);
     graph::check_graph(&goals, &scope.goals, &mut diags);
     velme_diagnostics::sort(&mut diags);
     let program = hir::Program {

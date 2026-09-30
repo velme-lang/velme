@@ -142,6 +142,13 @@ fn made_example(name: &str, example: &str) -> PathBuf {
     dir
 }
 
+/// Held while the committed fixtures are rewritten (R-QA-09), and by whatever reads them meanwhile: tests run in parallel.
+static FIXTURES_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn fixtures_lock() -> std::sync::MutexGuard<'static, ()> {
+    FIXTURES_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// An empty directory for one test.
 fn scratch(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("run").join(name);
@@ -156,6 +163,7 @@ fn scratch(name: &str) -> PathBuf {
 /// A copy of the fixture project `name` to change.
 fn copy(name: &str, test: &str) -> PathBuf {
     let dir = scratch(test);
+    let _fixtures = fixtures_lock();
     for (file, bytes) in tree(&repo(&format!("tests/fixtures/run/{name}"))) {
         let path = dir.join(file);
         fs::create_dir_all(path.parent().expect("a parent")).expect("directory");
@@ -184,6 +192,7 @@ fn fixture_projects_are_the_installers_output() {
         let committed = repo(&format!("tests/fixtures/run/{name}"));
         let made = tree(&project);
         if std::env::var_os(BLESS).is_some() {
+            let _bless = fixtures_lock();
             let _ = fs::remove_dir_all(&committed);
             for (file, bytes) in &made {
                 let path = committed.join(file);
@@ -229,7 +238,7 @@ fn ac_cmp_02_check_reads_the_store_only_to_validate_locked_ir() {
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
         (
-            "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ IR valid        (1 goal locked)\n",
+            "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ IR valid        (1 goal locked)\n✓ Checks valid\n",
             "",
             0
         )
@@ -237,7 +246,10 @@ fn ac_cmp_02_check_reads_the_store_only_to_validate_locked_ir() {
     assert_eq!(tree(&project), before);
     // A file with no lock in its project reads no store: the output is phases 1–6 alone.
     let run = velme(&["check", EXAMPLE]);
-    assert_eq!(run.stdout, "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n");
+    assert_eq!(
+        run.stdout,
+        "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n"
+    );
 }
 
 /// The artifact is checked against its hash on every run (T-4).
@@ -594,7 +606,7 @@ fn test_runs_the_examples_of_each_leaf_goal() {
     let run = velme(&["test", GOOD]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("Add  ✓ 3 examples\n", "", 0)
+        ("Add  ✓ 3 examples, 61 generated inputs\n", "", 0)
     );
     let run = velme(&["test", BROKEN, "--json"]);
     assert_eq!(run.code, 3);
@@ -693,7 +705,8 @@ fn check_skips_entries_the_source_changed_even_without_a_store() {
     let run = velme(&["check", path]);
     assert_eq!((run.stderr.as_str(), run.code), ("", 0));
     assert!(
-        run.stdout.ends_with("✓ IR valid        (0 goals locked)\n"),
+        run.stdout
+            .ends_with("✓ IR valid        (0 goals locked)\n✓ Checks valid\n"),
         "{}",
         run.stdout
     );

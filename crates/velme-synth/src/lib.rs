@@ -36,13 +36,20 @@ pub use anthropic::{Anthropic, AnthropicConfig, ApiKey, KeyError};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 #[cfg(feature = "provider-external")]
-pub use external::{External, ExternalConfig, ExternalToken, ExternalUrl, TOKEN_VARIABLE, TokenMalformed, UrlError};
+pub use external::{
+    External, ExternalConfig, ExternalToken, ExternalUrl, TOKEN_VARIABLE, TokenMalformed, UrlError, has_certificate,
+};
 pub use generate::{TestInput, TestInputs, test_inputs};
 #[cfg(feature = "provider-ollama")]
-pub use ollama::{DEFAULT_URL as OLLAMA_URL, Ollama, OllamaConfig, normalize_model};
+pub use ollama::{
+    DEFAULT_MAX_OUTPUT_TOKENS as OLLAMA_DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_URL as OLLAMA_URL, Ollama, OllamaConfig,
+    normalize_model,
+};
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
-pub use provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+pub use provider::{
+    DEFAULT_MAX_OUTPUT_TOKENS, Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 pub use record::Recorder;
 pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path, read_replay_identity};
 pub use request::{
@@ -55,5 +62,5 @@ pub use synthesize::{
     Built, Failure, Outcome, Session, Task, offline, provider_diagnostic, reaches_no_further, stopped_diagnostic,
     synthesize, unavailable,
 };
-pub use transport::{Sleeper, StdSleeper, with_transport_retries};
+pub use transport::{Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 pub use verify::{ChildRunner, Verdict, Verified, verify};

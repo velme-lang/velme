@@ -15,10 +15,13 @@ use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
-use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
+use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 
 /// Where Ollama listens unless `ollama_url` says otherwise (`tooling/40` §5.1).
 pub const DEFAULT_URL: &str = "http://127.0.0.1:11434";
+
+/// The default `max_output_tokens` of an Ollama chat: its replies are a body only (D-103, D-110).
+pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 2048;
 
 /// The longest a digest text may be: a `sha256:` digest is 71 characters.
 const MAX_DIGEST_CHARS: usize = 128;
@@ -28,6 +31,8 @@ const MAX_DIGEST_CHARS: usize = 128;
 pub struct OllamaConfig {
     /// The model, as `name` or `name:tag`; there is no built-in default.
     pub model: String,
+    /// The model for retries; attempt 0 uses `model` (R-SYNTH-39).
+    pub retry_model: Option<String>,
     /// The server's base URL.
     pub url: String,
     /// The settings that shape the prompt and enter `input_version` (R-SYNTH-40).
@@ -41,6 +46,7 @@ impl OllamaConfig {
     pub fn new(model: impl Into<String>) -> Self {
         OllamaConfig {
             model: model.into(),
+            retry_model: None,
             url: DEFAULT_URL.to_owned(),
             options: SynthOptions::default(),
             timeout: Duration::from_secs(60),
@@ -64,6 +70,8 @@ pub fn normalize_model(model: &str) -> String {
 pub struct Ollama {
     config: OllamaConfig,
     model: String,
+    /// The normalized `retry_model`.
+    retry_model: Option<String>,
     input_version: String,
     sleeper: Arc<dyn Sleeper>,
 }
@@ -83,6 +91,7 @@ impl Ollama {
         let input_version = config.options.input_version(&prompt_version());
         Ollama {
             model: normalize_model(config.model.trim()),
+            retry_model: config.retry_model.as_deref().map(|m| normalize_model(m.trim())),
             config,
             input_version,
             sleeper: Arc::new(StdSleeper),
@@ -94,6 +103,14 @@ impl Ollama {
     pub fn with_sleeper(mut self, sleeper: Arc<dyn Sleeper>) -> Self {
         self.sleeper = sleeper;
         self
+    }
+
+    /// The model for attempt `attempt` of a goal: `model` for attempt 0, `retry_model` for the rest (R-SYNTH-39).
+    fn model_for(&self, attempt: u32) -> &str {
+        match (&self.retry_model, attempt) {
+            (Some(retry), 1..) => retry,
+            _ => &self.model,
+        }
     }
 
     /// The server's base URL without a trailing slash.
@@ -162,7 +179,7 @@ impl Ollama {
             ReplyFormat::Compact => json!("json"),
         };
         let body = json!({
-            "model": self.model,
+            "model": self.model_for(limits.attempt),
             "messages": messages,
             "stream": false,
             "format": format,
@@ -232,13 +249,18 @@ fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
 #[async_trait]
 impl SynthBackend for Ollama {
     /// Resolves the model's digest from `/api/tags` (R-SYNTH-24): `<model>@<digest>`, a model with no tag as
-    /// `<name>:latest`. The transport tries inside wait as the providers' do (R-SYNTH-12).
+    /// `<name>:latest`; with a `retry_model`, `<model>@<digest>+<retry_model>@<digest>` (R-SYNTH-39). The transport tries
+    /// inside wait as the providers' do (R-SYNTH-12).
     async fn identify(&self) -> Result<Identity, ProviderError> {
         let text = with_transport_retries(self.sleeper.as_ref(), || std::future::ready(self.get_tags())).await?;
         let digest = find_digest(&text, &self.model)?;
+        let mut model = format!("{}@{digest}", self.model);
+        if let Some(retry) = &self.retry_model {
+            model.push_str(&format!("+{retry}@{}", find_digest(&text, retry)?));
+        }
         Ok(Identity {
             provider: "ollama".to_owned(),
-            model: format!("{}@{digest}", self.model),
+            model,
             input_version: self.input_version.clone(),
             backend: None,
         })
@@ -264,6 +286,10 @@ impl SynthProvider for OllamaProvider {
         "ollama"
     }
 
+    fn default_max_output_tokens(&self) -> u32 {
+        DEFAULT_MAX_OUTPUT_TOKENS
+    }
+
     fn model(&self) -> &str {
         &self.identity.model
     }
@@ -276,7 +302,7 @@ impl SynthProvider for OllamaProvider {
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         let body = self.server.body(request, limits)?;
         let started = Instant::now();
-        let text = with_transport_retries(self.server.sleeper.as_ref(), || {
+        let text = with_generation_retries(self.server.sleeper.as_ref(), || {
             std::future::ready(self.server.post_chat(&body, limits.timeout))
         })
         .await?;

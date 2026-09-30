@@ -188,6 +188,10 @@ async fn run(
         request.attempts = carried(&earlier, external, options.retry_history);
         let mut limits = SynthLimits::new(task.synthesis_key);
         limits.attempt = attempt;
+        limits.timeout = std::time::Duration::from_secs(options.timeout_secs);
+        limits.max_output_tokens = options
+            .max_output_tokens
+            .unwrap_or_else(|| provider.default_max_output_tokens());
         let reply = match provider.complete(&request, &limits).await {
             Ok(reply) => reply,
             Err(error) => match failed_call(session, error, provider.backend(), name, span, &history) {
