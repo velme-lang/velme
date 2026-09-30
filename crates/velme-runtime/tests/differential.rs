@@ -21,6 +21,7 @@ use velme_runtime::{Backend, Wasm, eval_leaf};
 use velme_sema::hir::{GoalId, Program};
 use velme_test_support::differential::{Outcome, differential};
 use velme_test_support::generate::{check, generate};
+use velme_test_support::ir_json::{binary, builtin, input};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 
 /// One backend for every case, with no disk cache; it keeps the modules it compiled last in memory (R-SBX-20).
@@ -169,18 +170,6 @@ fn both((program, goal, ir): &(Program, GoalId, ValidIr), inputs: &[&str]) -> Ou
 
 fn number(text: &str) -> Json {
     json!({"kind": "literal", "type": {"t": "Number"}, "value": serde_json::from_str::<Json>(text).expect("a number")})
-}
-
-fn input(name: &str) -> Json {
-    json!({"kind": "input", "name": name})
-}
-
-fn builtin(name: &str, args: &[Json]) -> Json {
-    json!({"kind": "builtin", "name": name, "args": args})
-}
-
-fn binary(op: &str, left: Json, right: Json) -> Json {
-    json!({"kind": "binary", "op": op, "left": left, "right": right})
 }
 
 fn num(text: &str) -> Value {

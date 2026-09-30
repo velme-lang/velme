@@ -18,6 +18,7 @@ use velme_ir::{IR_VERSION, calls};
 use velme_runtime::{Backend, Clock, GoalRun, Lock, Options, Registry, Store, Wasm, eval_leaf, run_goal};
 use velme_sema::hir::Program;
 use velme_test_support::differential::{corpus, differential};
+use velme_test_support::ir_json::{binary, input, literal, local, number, numbers};
 use velme_test_support::{goal_id, install, program, valid_ir};
 
 const FILE: &str = "leaves.velme";
@@ -75,30 +76,6 @@ goal Fan(n: Number) -> Number:
         c = Spin(n)
     plan: \"Add the three counts.\"
 ";
-
-fn number() -> Json {
-    json!({"t": "Number"})
-}
-
-fn numbers() -> Json {
-    json!({"t": "List", "of": number()})
-}
-
-fn input(name: &str) -> Json {
-    json!({"kind": "input", "name": name})
-}
-
-fn local(name: &str) -> Json {
-    json!({"kind": "local", "name": name})
-}
-
-fn literal(value: i64) -> Json {
-    json!({"kind": "literal", "type": number(), "value": value})
-}
-
-fn binary(op: &str, left: Json, right: Json) -> Json {
-    json!({"kind": "binary", "op": op, "left": left, "right": right})
-}
 
 fn range(n: &str) -> Json {
     json!({"kind": "builtin", "name": "range", "args": [input(n)]})

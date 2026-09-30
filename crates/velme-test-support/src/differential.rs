@@ -3,12 +3,13 @@
 //! and notes), and the same fuel and memory, with no run near a quarter of its Wasmtime fuel backstop, at its limits
 //! or at the figures it spent. The corpus is the golden IR, the examples and the goals of [`crate::generate`].
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use velme_builtins::Value;
 use velme_builtins::execution::{Interrupt, Limits, Spent};
 use velme_diagnostics::{Code, Diagnostic};
-use velme_ir::{Goal, ValidIr, calls, decode_str, encode_value, from_json_str};
+use velme_ir::{CallNode, Goal, Origin, Request, ValidIr, calls, decode_str, encode_value, from_json_str};
 use velme_runtime::{Backend, Wasm, eval_leaf};
 use velme_sema::hir::{GoalId, Program};
 use velme_wasm::backstop_fuel;
@@ -54,12 +55,11 @@ pub struct Leaf {
 }
 
 /// The `.json` files of `path`, or `path` itself if it is one, in name order.
-fn documents(path: &str) -> Vec<std::path::PathBuf> {
-    let path = repo(path);
+pub fn documents(path: &Path) -> Vec<PathBuf> {
     if path.is_file() {
-        return vec![path];
+        return vec![path.to_owned()];
     }
-    let mut files: Vec<_> = std::fs::read_dir(&path)
+    let mut files: Vec<_> = std::fs::read_dir(path)
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
         .map(|entry| entry.expect("a directory entry").path())
         .filter(|p| p.extension().is_some_and(|e| e == "json"))
@@ -74,7 +74,7 @@ pub fn corpus() -> Vec<Leaf> {
     let mut leaves = Vec::new();
     let text = read(&repo("tests/golden/ir/goals.velme"));
     let golden = program(&text);
-    for path in documents("tests/golden/ir/accept") {
+    for path in documents(&repo("tests/golden/ir/accept")) {
         let document = read(&path);
         let parsed: Goal = from_json_str(&document).expect("an IR document");
         let id = goal_id(&golden, &parsed.goal);
@@ -107,7 +107,7 @@ pub fn corpus() -> Vec<Leaf> {
     for (source, ir) in EXAMPLES {
         let text = read(&repo(source));
         let checked = program(&text);
-        for path in documents(ir) {
+        for path in documents(&repo(ir)) {
             let document = read(&path);
             let parsed: Goal = from_json_str(&document).expect("an IR document");
             let id = goal_id(&checked, &parsed.goal);
@@ -213,4 +213,32 @@ pub fn differential(
         }
     }
     Ok(outcome)
+}
+
+/// Every IR `text` validates to, against each goal of `program` and each origin: the replay of the `validate` fuzz
+/// target (AC-IR-06). `composite` is the call section of `BuildPlayerSummary`, the one composite goal of the golden
+/// program, so its joined and compared calls are exercised too; the other goals have none.
+pub fn validated<'a>(
+    program: &'a Program,
+    composite: &'a [CallNode],
+    text: &'a str,
+) -> impl Iterator<Item = ValidIr> + 'a {
+    program.goals.iter().enumerate().flat_map(move |(goal, declared)| {
+        let calls = if declared.name == "BuildPlayerSummary" {
+            composite
+        } else {
+            &[]
+        };
+        [Origin::Candidate, Origin::Complete]
+            .into_iter()
+            .filter_map(move |origin| {
+                let request = Request {
+                    program,
+                    goal: GoalId(goal),
+                    calls,
+                    origin,
+                };
+                velme_ir::validate(text, &request).ok()
+            })
+    })
 }

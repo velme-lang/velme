@@ -8,6 +8,7 @@
 pub mod backend;
 pub mod differential;
 pub mod generate;
+pub mod ir_json;
 pub mod schema;
 
 use std::path::{Path, PathBuf};

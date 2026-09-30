@@ -17,6 +17,7 @@ use velme_diagnostics::Code;
 use velme_ir::{IR_VERSION, calls};
 use velme_runtime::{CallStatus, Clock, GoalRun, Lock, Options, Registry, Store, run_goal, run_goal_peak, test_goal};
 use velme_sema::hir::Program;
+use velme_test_support::ir_json::{binary, input, literal, local, number};
 use velme_test_support::{goal_id, install, program};
 
 const FILE: &str = "sched.velme";
@@ -135,26 +136,6 @@ goal Split(slow: Number, fast: Number) -> Number:
         after = Spin(third)
     plan: \"Add the counts.\"
 ";
-
-fn number() -> Json {
-    json!({"t": "Number"})
-}
-
-fn input(name: &str) -> Json {
-    json!({"kind": "input", "name": name})
-}
-
-fn local(name: &str) -> Json {
-    json!({"kind": "local", "name": name})
-}
-
-fn literal(value: i64) -> Json {
-    json!({"kind": "literal", "type": number(), "value": value})
-}
-
-fn binary(op: &str, left: Json, right: Json) -> Json {
-    json!({"kind": "binary", "op": op, "left": left, "right": right})
-}
 
 /// `n * n`, counted up by one per element of `range(n)` inside each element of `range(n)`.
 fn count(n: &str) -> Json {

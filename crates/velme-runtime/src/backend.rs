@@ -12,7 +12,7 @@ use velme_diagnostics::{Diagnostic, Span};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::ValidIr;
 use velme_sema::hir::{Goal, GoalKind};
-use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Program, Run, Sandbox, emit};
+use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Program, Run, Sandbox, cache_off_note, emit};
 
 /// The most leaf bodies running on WASM at once, whatever `--jobs` is: the scheduler's other bodies wait for a slot.
 /// A module's memory is never freed during its run (R-SBX-03), so each running body can hold up to its `max_memory`
@@ -151,14 +151,11 @@ impl Wasm {
         let Some(dir) = cache else {
             return Wasm::new(None);
         };
-        let shown = dir.display().to_string();
-        match CacheDir::new(dir, root) {
+        match CacheDir::new(dir.clone(), root) {
             Ok(dir) => Wasm::new(Some(dir)),
             Err(why) => {
                 let wasm = Wasm::new(None);
-                wasm.note(format!(
-                    "the compiled-module cache in `{shown}` is not used, since {why}; modules are compiled on every run"
-                ));
+                wasm.note(cache_off_note(&dir, why));
                 wasm
             }
         }
