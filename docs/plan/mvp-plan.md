@@ -120,7 +120,7 @@ the same with no key; with a service running (for example `velme-test-backend --
 **Read:** `runtime/32` §locked mode, `tooling/40` (all).
 **Slices:** M6a `--locked`, `--offline`, `artifact` command · M6b remaining CLI (input/output mapping D-23, config
 file, exit codes, cache commands) · M6c the synth log `.velme/synth-log.jsonl` (R-SYNTH-23), which M5 left unbuilt.
-**Exit:** AC-ART-05, AC-ART-07, AC-ART-11, all `AC-CLI-*` green; AC-SEC-08 green; AC-SYNTH-08 (`--locked` with a
+**Exit:** AC-ART-05, AC-ART-07, AC-ART-11, AC-BLT-10 (tested with a hand-written lock from an older builtins version), all `AC-CLI-*` green; AC-SEC-08 green; AC-SYNTH-08 (`--locked` with a
 stale entry is `VL0702`, `--offline` with a miss is `VL0404`, neither constructs a provider) green, moved here from
 M5 with the two flags it tests.
 **User verifies:** `velme run --locked` works with the network off; `velme artifact` shows a goal's IR; a stale goal

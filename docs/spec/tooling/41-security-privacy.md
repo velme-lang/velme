@@ -44,7 +44,7 @@ source, an RFC, and appear in the artifact manifest. `effects` is reserved (D-24
 | T-7 | Secret leakage | API key in trace, artifact, crash log | §4 | R-SEC-05..07 |
 | T-8 | Learner data leaves the machine | child's plan + examples sent to a provider | §5; only prompt contents go to the chosen provider; no telemetry | R-SEC-08..10, R-SEC-12, D-37 |
 | T-9 | Untrusted input JSON | 1 GB input, deep nesting | input size/depth caps before decoding; typed decode (D-23) | `tooling/40` R-CLI-07, `runtime/30` |
-| T-10 | Build sends the user's plans to an attacker's server | a cloned repo's `velme.toml` names its own server as the external backend, so the user's plans, checks and token would go there | the URL comes only from a flag, env var or user-level config, never the project; plain `http` only to this machine, `https` elsewhere, no user information in the URL, redirects never followed; the token goes to that URL alone; the reply is untrusted IR | D-42, D-101, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-13 |
+| T-10 | Build sends the user's plans to an attacker's server | a cloned repo's `velme.toml` names its own server as the external backend, so the user's plans, checks and token would go there | the URL comes only from a flag, env var or user-level config, never the project (for the Ollama server's URL too, so a project can't choose where plans are sent); plain `http` only to this machine, `https` elsewhere, no user information in the URL, redirects never followed; the token goes to that URL alone; the reply is untrusted IR | D-42, D-101, D-105, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-13 |
 | T-11 | Native code loaded from project files | a cloned repo ships a crafted `.cwasm` under `.velme/` hoping it gets deserialized instead of compiled from validated IR | the compiled-module cache lives in a user-level directory, never the project; `Module::deserialize` only reads from there | D-48, `runtime/31` R-SBX-13/14 |
 | T-12 | Tampered but structurally valid artifact/lock pair | an edited `.velme/artifacts/*.json` committed in a PR with a lock entry recomputed to match, so the hash check alone would pass | every load cross-checks the manifest against the lock entry and current source, and `build`/`velme test --locked` re-run the goal's examples and generated inputs before trusting a stored artifact | D-46, `runtime/32` R-ART-10/14 |
 | T-13 | Terminal escape injection | external backend reply body or a synthesized value contains `\x1b]52;c;…\x07` (clipboard write) or a Unicode bidi override | every string Velme didn't produce is escaped (control/ANSI/OSC/bidi) before human-mode display | D-47, `tooling/40` §3.5 |
@@ -74,20 +74,20 @@ a service that echoes it in a message text gets it replaced by `***` before anyt
 
 **R-SEC-08** The CLI sends data to exactly one place: the synthesis provider the user configured, only during
 synthesis, and only the prompt contents defined in `compiler/22` (signature, schemas, plan, checks, examples).
-Inputs passed to `run` are never sent. With `ollama` that place is the configured server (the local machine by
-default); with `external` it is the user's own service at the URL they configured.
+Inputs passed to `run` are never sent. With `ollama` that place is the server at the URL the user configured, by flag,
+environment or user-level config only, never the project's (the local machine by default); with `external` it is the user's own service at the URL they configured.
 **R-SEC-09** No telemetry, analytics or crash report leaves the machine in the open-source distribution. Local
 telemetry (timings, cache hits) is written only under `.velme/` and only with `-v`/`--json` or when the user opts in.
 This governs what is *displayed or aggregated*, not what is logged: `compiler/22` R-SYNTH-23 still appends one line
 per synthesis attempt to `.velme/synth-log.jsonl` unconditionally, since that log is what a failed build's `-v`
-diagnosis and Coach (Future) read from — it never leaves the machine either way (R-SEC-08).
+diagnosis and Coach (Future) read from — it never leaves the machine either way (R-SEC-08). The log holds no plan text, prompt, reply or value, is written only through a regular file (never a link), and `.velme/.gitignore` keeps it out of version control (`compiler/22` R-SYNTH-23, D-109).
 **R-SEC-10** Before any hosted, classroom or child-directed product ships, a consent and retention policy (COPPA,
 GDPR-K) must be approved after legal review (D-37); not a v0.1 CLI concern beyond R-SEC-08/09/12.
 **R-SEC-12** Every `velme build` that contacts a provider prints one line to stderr before the first contact of any kind
 — the identity step (`compiler/22` R-SYNTH-25) included — naming the provider and what is sent ("Sending your plans,
 types, checks and examples to Anthropic to write the code."). For `ollama` it names the model and server; for `external`
-it names the host of the URL. When a project's requested model or limits were clamped to a user-level ceiling (D-50), the notice
-also names what the project requested and which ceiling applied. `scripted` and `replay` print, where they would first
+it names the host of the URL. When a project's requested limits were clamped to a user-level ceiling (D-50), the notice
+also names what the project requested and which ceiling applied; a model outside `allowed_models` is not clamped but refused (`tooling/40` R-CLI-26). `scripted` and `replay` print, where they would first
 make contact, a version saying nothing is sent. `--json` puts it in the output's `notices` array instead. A build that
 would contact no provider prints nothing (D-92).
 

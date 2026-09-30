@@ -36,6 +36,7 @@ and every snapshot change appears in the PR diff for review. Never hand-edit a `
 **R-QA-05** Every diagnostic code in `reference/90` has at least one golden test that triggers it and snapshots its
 human and JSON rendering.
 **R-QA-06** Every bug fix adds a regression test named for the issue (`regression_gh_123_…`) or the AC it violated.
+**R-QA-09** Blessing fixtures with `VELME_BLESS_FIXTURES=1` takes a process-wide lock around the bless step, so tests running in parallel cannot race on the same files.
 
 ## 3. Determinism tests (INV-3)
 

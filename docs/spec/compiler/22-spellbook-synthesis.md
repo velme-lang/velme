@@ -130,7 +130,8 @@ step 1), before the store lookup: `ollama` resolves its digest (R-SYNTH-24), `ex
 (R-SYNTH-26), `replay` reads `replay.json` (R-SYNTH-43), and `anthropic` and `scripted` contact nothing. The provider
 that makes requests is constructed only when a goal also misses the store (step 3). An `ollama` server or an
 `external` service is therefore never contacted for a fully cached build — one where every goal is fresh in the lock
-(D-57).
+(D-57). Under `--offline` the identity step does not run at all: no provider is asked for anything, so a goal that isn't
+fresh in the lock is `VL0404` and the store is not consulted (`tooling/40` R-CLI-05, D-106).
 
 ### 3.2 External backend protocol (D-42, D-101)
 
@@ -166,7 +167,7 @@ bearer token ("the reply contains your token"), or an `{"error"}` reply is `Back
 cleaned and escaped like any untrusted text (T-13). Proxies and TLS: for a host that isn't loopback, the client honours
 `ALL_PROXY`, `HTTPS_PROXY` and `HTTP_PROXY` from the environment through a CONNECT tunnel; a loopback host is never
 proxied. TLS trusts only the bundled `webpki-roots`, so a TLS-inspecting proxy or a private CA fails with `VL0404`; a
-user-level `external_ca_file` setting is planned for the M6 config work (D-102). `external_timeout_secs` bounds each request, `describe` included; until the user-level config arrives with M6 it is fixed at its default of 30 s.
+user-level `external_ca_file` setting (`tooling/40` §5.1, D-105) adds one PEM file of roots to the bundled ones, for `external` only. `external_timeout_secs`, a user-level setting with a default of 30 s, bounds each request, `describe` included.
 Nothing is written to the store or the lock (D-98).
 **R-SYNTH-29** The base URL is a `https` URL, or a plain `http` URL whose host is `localhost`, in 127.0.0.0/8, or `[::1]`; every other host needs `https`. `localhost`
 connects to 127.0.0.1 or `::1` without asking DNS, so a resolver can't send it elsewhere. The URL's path holds only RFC 3986
@@ -284,7 +285,9 @@ real conversation turns: each carried reply as an assistant turn, then one user 
 by the template's retry text (D-95).
 At most `max_retries` (default and cap: 3) retries follow the first attempt.
 **R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried up to 2 times per attempt and
-do not consume a synthesis retry. The waits are 1 s then 2 s with no jitter; a `RateLimited` with `retry_after` waits
+do not consume a synthesis retry, except that the LLM providers (`anthropic`, `ollama`) never retry a `Timeout` that
+struck after the request was sent: a generation that ran out of time would only run out again, so the attempt ends with
+`VL0404` at once (D-110). The waits are 1 s then 2 s with no jitter; a `RateLimited` with `retry_after` waits
 that long instead, at most 30 s. The sleep is injected, so tests take no wall time (D-95).
 **R-SYNTH-13** After the last retry the goal fails with `VL0403`, whose message states the cause (R-SYNTH-31);
 `--verbose` adds every attempt's diagnostics. The source `plan` is never modified; nothing is written to the artifact
@@ -484,7 +487,7 @@ when `players` is `[]`"), so they can refine the check; the message suggests the
 ## 8. Configuration & secrets
 
 Synthesis settings live in the `[synthesis]` section of `velme.toml`, defined in `tooling/40` §5.1 (provider,
-model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_per_build`).
+model, `max_retries` 0..=3 per R-SYNTH-11, timeouts, output tokens, `max_calls_per_build`). `max_output_tokens` defaults per provider: 8192 for `anthropic` and 2048 for `ollama`, whose replies are a body only (D-103, D-110). The service URLs and the user's ceilings are read from the user-level config, not the project (`tooling/40` R-CLI-13, D-105).
 
 **R-SYNTH-20** API keys come only from the environment (`VELME_API_KEY`, or the `ANTHROPIC_API_KEY` fallback;
 `tooling/40` §5.2). A key-like value in `velme.toml` is an error. Keys never appear in logs, traces, fixtures,
@@ -506,9 +509,17 @@ validation and runs sandboxed with no capabilities (INV-1, INV-4, tooling/41).
 
 ## 10. Local synthesis log
 
-**R-SYNTH-23** Each attempt appends one JSON line to `.velme/synth-log.jsonl`: time, goal, synthesis key, provider,
-model, attempt, outcome code, tokens, latency. Plan text and values are excluded by default. The log never leaves the
-machine (tooling/41) and is git-ignored.
+**R-SYNTH-23** Each provider request appends one JSON line to `.velme/synth-log.jsonl`, for every provider and never for a
+lock or store hit (D-109). A request here is one `complete()` call (R-SYNTH-21): transport retries inside it add no line, and
+its latency covers them. The line is one object, keys in this order, no spaces:
+`{"format":"velme-synth-log/1","time":"2026-09-30T12:00:00.000Z","file":"player.velme","goal":"CalculateScore","key":"b3-…","provider":"ollama","model":"llama3.1@sha256:…","attempt":0,"outcome":"ok","tokens_in":812,"tokens_out":143,"latency_ms":2041}`.
+`time` is UTC with milliseconds, and the clock is injected so tests are exact. `file` is the project-relative path (R-CLI-19),
+`key` the synthesis key, `attempt` counts from 0, `outcome` is `ok` or the `VL` code the attempt ended with, and the token
+counts are `null` when the provider reports none. Plan text, prompts, replies and values are never written, and there is no
+opt-in for them in v0.1. The runtime crate writes the file, refusing a link and anything that is not a regular file as the
+artifact store does (`runtime/32` R-ART-09); a write that fails is a `-v` notice, never a build failure. When Velme creates
+`.velme/` it also writes `.velme/.gitignore` naming `synth-log.jsonl`, never overwriting an existing one. The log never
+leaves the machine (tooling/41).
 
 ## 11. Acceptance criteria
 
@@ -521,7 +532,7 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-05 | A candidate that passes validation but fails an example is rejected with `VL0502` and never cached. |
 | AC-SYNTH-06 | Generated inputs for a fixed goal are byte-identical across two runs and two OSes. |
 | AC-SYNTH-07 | The rendered prompt for a golden goal matches its snapshot and contains no child IR, file paths or env values. |
-| AC-SYNTH-08 | `--locked` with a stale entry fails with `VL0702`; `--offline` with a cache miss fails with `VL0404`; neither constructs a provider. |
+| AC-SYNTH-08 | `--locked` with a stale entry fails with `VL0702`; `--offline` with a goal that isn't fresh in the lock fails with `VL0404` in the offline wording, and both together fail with `VL0702`; none constructs a provider or contacts one. |
 | AC-SYNTH-09 | No API key string appears in any output, log, fixture or artifact after a recorded build (grep test with a sentinel key). |
 | AC-SYNTH-10 | `replay` provider reproduces a recorded build byte-for-byte (same artifacts, same lock). |
 | AC-SYNTH-11 | Against a mock Ollama server, the `ollama` provider sends the reply JSON Schema as `format` with temperature 0 and no streaming, and an accepted artifact records `"provider": "ollama"` and `<model>@<digest>` as `model_version`. |
@@ -531,7 +542,7 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-15 | An `external` backend returning a hostile body (a `call` node, an unknown builtin) is rejected with `VL0402` in both cases (D-63); nothing is stored. |
 | AC-SYNTH-16 | A reply that is not JSON, a body over the cap, a `5xx` after the transport retries, a redirect and an `{"error"}` reply each fail with `VL0406` naming the goal and backend, with the tail of the response body as a note; the lock is unchanged and no synthesis retry is made. A refused connection or a timeout is `VL0404`; a `401` or `403` is `VL0405` naming `VELME_EXTERNAL_TOKEN`. |
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
-| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` service receives neither and neither appears in any output or file; the `VELME_EXTERNAL_TOKEN` token is sent only as `Authorization: Bearer` and appears in no output, fixture or `replay.json`; a URL named in the project `velme.toml` is not used. |
+| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` service receives neither and neither appears in any output or file; the `VELME_EXTERNAL_TOKEN` token is sent only as `Authorization: Bearer` and appears in no output, fixture or `replay.json`; an `external_url` named in the project `velme.toml` is `VL0902`. |
 | AC-SYNTH-19 | A fully cached build (every goal fresh in the lock) with `--provider ollama` or `--provider external` sends no request to the server, and resolves no model digest / runs no `describe` (D-57). |
 | AC-SYNTH-20 | With `stop_on_repeat = false`, four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `VL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
 | AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `VL0403` reports attempt 4's cause. |
@@ -557,3 +568,5 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-41 | A reply that is not JSON, or has no `body`, is a failed attempt with `VL0401` in Velme's words; the help of `VL0403` names the listed builtins only for a rule about a built-in, not for a schema, type or size rule (D-103). |
 | AC-SYNTH-42 | The rendered prompt shows a check as written and never as lowered IR, says checks are not the body and that a dotted name is never written, and each of its worked examples validates as a body for the goal it describes (D-104), in both reply formats: in `compact` the snippets and examples are spelled with the aliases and still expand. |
 | AC-SYNTH-43 | After a reply that reads an input as a `local`, uses a dotted name, names a field or an input that isn't there, the next request's diagnostic lists the goal's inputs (and fields of the record) with types and the node that reads them, and repeats none of the reply's text (R-SYNTH-49, D-104); a composite lists its call results too, `add` on Text points to `concat` and `gt` on Text does not, a built-in named like an operator points to the `binary` or `unary` node and any other unknown built-in gets the callable built-ins, and in `compact` the nodes are named as that format spells them. |
+| AC-SYNTH-44 | A build with a scripted provider appends exactly one line per `complete()` call to `.velme/synth-log.jsonl`, none for a lock or store hit, each with the R-SYNTH-23 keys in order and an injected time; the line holds no plan text, prompt or reply; a log path that is a link, or a write that fails, gives a `-v` notice and the build still succeeds; `.velme/.gitignore` is created with the directory and never overwritten. |
+| AC-SYNTH-45 | The request an `ollama` provider sends carries `max_output_tokens` 2048 and an `anthropic` one 8192 unless configured, and a `Timeout` after the request was sent is not retried by either (one request, `VL0404`), while a refused connection still is (R-SYNTH-12, D-110). |
