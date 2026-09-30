@@ -300,6 +300,8 @@ struct Shared {
     /// How many goal bodies are being evaluated now, and the most there have been at once.
     in_flight: AtomicUsize,
     peak: AtomicUsize,
+    /// The goal whose own checks are not run (verification runs them, `compiler/22` §6).
+    unchecked: Option<GoalId>,
 }
 
 /// Runs the goal `goal` of `program`, whose source is `source`, on `inputs`, with every locked artifact it needs in
@@ -326,6 +328,31 @@ pub fn run_goal_peak(
     inputs: Vec<Value>,
     options: Options,
 ) -> (GoalRun, usize) {
+    run_goal_with(program, goal, source, registry, inputs, options, false)
+}
+
+/// [`run_goal`] without the checks of `goal` itself, which the caller judges: what verification runs a candidate with
+/// (`compiler/22` R-SYNTH-14). Its children run and are checked as usual.
+pub fn run_goal_unchecked(
+    program: &Program,
+    goal: GoalId,
+    source: &str,
+    registry: &Registry,
+    inputs: Vec<Value>,
+    options: Options,
+) -> GoalRun {
+    run_goal_with(program, goal, source, registry, inputs, options, true).0
+}
+
+fn run_goal_with(
+    program: &Program,
+    goal: GoalId,
+    source: &str,
+    registry: &Registry,
+    inputs: Vec<Value>,
+    options: Options,
+    unchecked: bool,
+) -> (GoalRun, usize) {
     let name = program.goals.get(goal.0).map_or("", |g| g.name.as_str());
     let runtime = Builder::new_current_thread()
         .max_blocking_threads(options.jobs.max(1))
@@ -343,6 +370,7 @@ pub fn run_goal_peak(
         watchdog: Arc::new(Watchdog::start(&options)),
         in_flight: AtomicUsize::new(0),
         peak: AtomicUsize::new(0),
+        unchecked: unchecked.then_some(goal),
     });
     let run = runtime.block_on(invocation(Arc::clone(&shared), goal, inputs));
     (run, shared.peak.load(Ordering::SeqCst))
@@ -528,6 +556,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             spent,
             interrupt: Some(watchdog(&shared)),
         };
+        let checked = shared.unchecked != Some(goal);
         let shared = Arc::clone(&shared);
         tokio::task::spawn_blocking(move || {
             let now = shared.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
@@ -542,6 +571,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                     inputs,
                     bindings,
                     progress,
+                    checked,
                 ),
                 None => Body::internal(),
             };

@@ -12,11 +12,12 @@ use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_runtime::{
-    CallStatus, EntryError, GoalRun, Lock, LockedGoal, Options, OrderedValue, Registry, Store, Trace, decode_inputs,
-    explain, find_goal, load, run_goal, test_leaf,
+    BuildInput, CallStatus, EntryError, GoalRun, Lock, LockedGoal, Options, OrderedValue, Registry, Source, Status,
+    Store, Trace, decode_inputs, explain, find_goal, load, run_goal, test_leaf,
 };
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_syntax::SourceFile;
+use velme_synth::{Replay, SynthBackend, SynthOptions};
 
 use crate::project::Project;
 
@@ -57,6 +58,7 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
+                     velme build FILE [--provider NAME] [-v] [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
@@ -81,6 +83,12 @@ enum Command {
     Check {
         file: String,
         json: bool,
+    },
+    Build {
+        file: String,
+        json: bool,
+        provider: Option<String>,
+        verbose: bool,
     },
     Run {
         file: String,
@@ -120,8 +128,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
         return (!json && rest.next().is_none()).then_some(Command::Version);
     }
     let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
+    let (mut provider, mut verbose) = (None, false);
     while let Some(arg) = rest.next() {
         match arg {
+            "--provider" if provider.is_none() => provider = Some(rest.next()?.to_owned()),
+            "-v" | "--verbose" => verbose = true,
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
             "--jobs" if jobs.is_none() => jobs = Some(rest.next()?.parse().ok().filter(|n| *n >= 1)?),
@@ -135,6 +146,18 @@ fn parse_args(args: &[String]) -> Option<Command> {
     }
     let file = file?;
     let inputs = input.is_some() || !pairs.is_empty();
+    if command == "build" {
+        let plain = goal.is_none() && !inputs && jobs.is_none();
+        return plain.then_some(Command::Build {
+            file,
+            json,
+            provider,
+            verbose,
+        });
+    }
+    if provider.is_some() || verbose {
+        return None;
+    }
     match command {
         "check" if goal.is_none() && !inputs && jobs.is_none() => Some(Command::Check { file, json }),
         "run" => Some(Command::Run {
@@ -177,7 +200,8 @@ fn stopped(args: &[String]) -> u8 {
         Some(
             Command::Check { file, json: true }
             | Command::Run { file, json: true, .. }
-            | Command::Test { file, json: true, .. },
+            | Command::Test { file, json: true, .. }
+            | Command::Build { file, json: true, .. },
         ) => file,
         _ => {
             print_err(&format!("{}\n", Diagnostic::internal_error().message));
@@ -202,6 +226,7 @@ fn internal_envelope(path: &str) -> Option<String> {
             &LineIndex::new(""),
         )],
         notices: Vec::new(),
+        summary: None,
     };
     let out = serde_json::to_string_pretty(&envelope).ok()?;
     Some(format!("{}\n", render::escape_json(&out)))
@@ -215,6 +240,12 @@ fn command(args: &[String]) -> u8 {
             EXIT_OK
         }
         Some(Command::Check { file, json }) => check(&file, json),
+        Some(Command::Build {
+            file,
+            json,
+            provider,
+            verbose,
+        }) => build_command(&file, json, provider.as_deref(), verbose),
         Some(Command::Run {
             file,
             json,
@@ -296,9 +327,14 @@ fn analyze(arg: &str) -> Analyzed {
 }
 
 /// What a command found, to print as text or as the `--json` envelope (`tooling/40` §3.2).
+#[derive(Default)]
 struct Outcome {
     /// Printed to stdout in human mode, above the diagnostics.
     progress: String,
+    /// The notice lines of `tooling/41` R-SEC-12, which `--json` carries instead of stderr.
+    notices: Vec<String>,
+    /// The build summary of `compiler/22` R-SYNTH-21, for `--json`.
+    summary: Option<serde_json::Value>,
     /// The diagnostics of the file rather than of one goal (D-72), besides the analysis's own.
     diagnostics: Vec<Diagnostic>,
     /// One per goal the command reports on.
@@ -377,6 +413,175 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
     Ok(Some((locked, failed)))
 }
 
+/// The provider `name` names, or why there is none (`tooling/40` §2.1, R-CLI-12): `replay` reads the fixtures of the
+/// project's `tests/fixtures/synth`; `scripted` is there only in a build with the `test-provider` feature (D-94).
+/// `anthropic`, `ollama` and `external` come with their providers.
+fn backend(name: &str, project: &Project) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
+    match name {
+        "replay" => Ok((
+            Box::new(Replay::new(project.root.join(REPLAY_DIR))),
+            "Nothing is sent: the replay provider answers from recorded fixtures.".to_owned(),
+        )),
+        #[cfg(feature = "test-provider")]
+        "scripted" => {
+            let path = std::env::var("VELME_SYNTH_SCRIPT").map_err(|_| {
+                Diagnostic::new(
+                    Code::InvalidInput,
+                    Span::default(),
+                    "The scripted provider needs `VELME_SYNTH_SCRIPT`, the path of its script.",
+                )
+            })?;
+            let text = std::fs::read_to_string(&path).map_err(|e| SourceFile::unreadable(&display_path(&path), &e))?;
+            let scripted = velme_synth::Scripted::from_script(&text)
+                .map_err(|e| Diagnostic::new(Code::InvalidInput, Span::default(), e.to_string()))?;
+            Ok((
+                Box::new(scripted),
+                "Nothing is sent: the scripted provider answers from its script.".to_owned(),
+            ))
+        }
+        "anthropic" | "ollama" | "external" => Err(Diagnostic::new(
+            Code::ProviderNotConfigured,
+            Span::default(),
+            format!("The `{name}` provider isn't available in this version of Velme yet."),
+        )
+        .with_help("build with `--provider replay`, or use the fixtures of a project that has them")),
+        _ => Err(Diagnostic::new(
+            Code::InvalidInput,
+            Span::default(),
+            format!("I don't know a provider called `{name}`."),
+        )
+        .with_help("the providers are anthropic, ollama, external and replay")),
+    }
+}
+
+/// The provider that can't be used: every goal that needs it is `VL0405` (`tooling/40` R-CLI-12).
+struct NotConfigured;
+
+#[async_trait::async_trait]
+impl SynthBackend for NotConfigured {
+    async fn identify(&self) -> Result<velme_synth::Identity, velme_synth::ProviderError> {
+        Err(velme_synth::ProviderError::NotConfigured)
+    }
+
+    fn open(
+        &self,
+        _identity: &velme_synth::Identity,
+    ) -> Result<Box<dyn velme_synth::SynthProvider>, velme_synth::ProviderError> {
+        Err(velme_synth::ProviderError::NotConfigured)
+    }
+}
+
+/// Where a project's replay fixtures are unless `[synthesis] replay_dir` says otherwise (`tooling/40` §5.1).
+const REPLAY_DIR: &str = "tests/fixtures/synth";
+
+/// `velme build FILE`: checks the file, then gives every goal without a fresh lock entry a verified artifact and a lock
+/// entry (`tooling/40` §2, `runtime/32` R-ART-15). `provider` is `--provider`; with `verbose`, every attempt of a
+/// failed goal is listed (`compiler/22` R-SYNTH-13).
+fn build_command(arg: &str, json: bool, provider: Option<&str>, verbose: bool) -> u8 {
+    let analyzed = analyze(arg);
+    let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
+        return finish(&analyzed, &Outcome::file(&analyzed), json);
+    };
+    let name = provider.unwrap_or(DEFAULT_PROVIDER);
+    let chosen = backend(name, project);
+    // A provider that can't be used doesn't stop a build that needs none; a name or script that is wrong does.
+    if let Err(diagnostic) = &chosen
+        && diagnostic.code == Code::InvalidInput
+    {
+        return finish(&analyzed, &Outcome::with(vec![diagnostic.clone()]), json);
+    }
+    let mut notices = Vec::new();
+    let mut announce = |line: &str| {
+        if json && !line.is_empty() {
+            notices.push(line.to_owned());
+        } else if !line.is_empty() {
+            print_err(&format!("{line}\n"));
+        }
+    };
+    let (backend, notice): (&dyn SynthBackend, &str) = match &chosen {
+        Ok((backend, notice)) => (backend.as_ref(), notice.as_str()),
+        Err(_) => (&NotConfigured, ""),
+    };
+    let input = BuildInput {
+        program,
+        source: text,
+        project: &project.root,
+        file: &project.file,
+        backend: Some(backend),
+        options: SynthOptions::default(),
+        run: Options::default(),
+    };
+    let report = velme_runtime::build(&input, &mut || announce(notice));
+    let mut outcome = Outcome::file(&analyzed);
+    outcome.progress.clear();
+    for goal in &report.goals {
+        let (line, status) = match goal.status {
+            Status::Built(source) => (built_line(source), "ok"),
+            Status::Failed => ("✗", "failed"),
+            Status::Pending => ("… waiting for an answer", "pending"),
+            Status::Blocked => ("– not built", "blocked"),
+        };
+        outcome.progress.push_str(&format!("{}  {line}\n", goal.goal));
+        let mut diagnostics = goal.diagnostics.clone();
+        if let Err(why) = &chosen {
+            for d in diagnostics.iter_mut().filter(|d| d.code == Code::ProviderNotConfigured) {
+                d.message.clone_from(&why.message);
+                d.help.clone_from(&why.help);
+            }
+        }
+        // The checked-again note stays; only the per-attempt lines wait for `-v` (R-SYNTH-13, R-SYNTH-46).
+        let mut notes = goal.notes.clone();
+        if verbose {
+            notes.extend(goal.attempts.iter().cloned());
+        }
+        if let Some(first) = diagnostics.first_mut() {
+            first.notes.extend(notes);
+        } else {
+            for note in notes {
+                outcome.progress.push_str(&format!("  note: {note}\n"));
+            }
+        }
+        outcome.results.push(GoalResult {
+            goal: goal.goal.clone(),
+            status,
+            diagnostics,
+            result: None,
+            trace: None,
+        });
+    }
+    outcome.diagnostics.extend(report.diagnostics.iter().cloned());
+    let summary = report.summary;
+    outcome.progress.push_str(&format!(
+        "\n{} provider calls, {} tokens in, {} out; {} goals up to date, {} from the store\n",
+        summary.calls, summary.usage.input_tokens, summary.usage.output_tokens, summary.lock_hits, summary.store_hits
+    ));
+    outcome.summary = Some(serde_json::json!({
+        "calls": summary.calls,
+        "input_tokens": summary.usage.input_tokens,
+        "output_tokens": summary.usage.output_tokens,
+        "cache_read_tokens": summary.usage.cache_read_tokens,
+        "cache_write_tokens": summary.usage.cache_write_tokens,
+        "lock_hits": summary.lock_hits,
+        "store_hits": summary.store_hits,
+        "synthesized": summary.synthesized,
+    }));
+    outcome.notices = notices;
+    finish(&analyzed, &outcome, json)
+}
+
+/// The provider of a build that doesn't name one (`tooling/40` §2.1).
+const DEFAULT_PROVIDER: &str = "anthropic";
+
+/// What the progress line of a built goal says.
+fn built_line(source: Source) -> &'static str {
+    match source {
+        Source::Lock | Source::Reverified => "✓ up to date",
+        Source::Store => "✓ from the store",
+        Source::Synthesized => "✓ built",
+        Source::Compiler => "✓ built by the compiler",
+    }
+}
+
 /// `velme run FILE --goal G`: runs a goal with its locked artifact and those of the goals it calls on the reference
 /// interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `jobs` is `--jobs`. With
 /// `traced` (`velme trace`) the whole execution trace is printed too (`runtime/30` §8).
@@ -437,6 +642,7 @@ fn run(
         progress,
         diagnostics: Vec::new(),
         results: vec![goal_result],
+        ..Outcome::default()
     };
     finish(&analyzed, &outcome, json)
 }
@@ -488,6 +694,7 @@ fn explain_goal(arg: &str, json: bool, goal: &str) -> u8 {
         progress: text.clone(),
         diagnostics: Vec::new(),
         results: vec![GoalResult::new(goal, Ok(Some(Value::text(&text))))],
+        ..Outcome::default()
     };
     finish(&analyzed, &outcome, json)
 }
@@ -586,6 +793,7 @@ impl Outcome {
             progress: progress_lines(&analyzed.diagnostics),
             diagnostics: Vec::new(),
             results: Vec::new(),
+            ..Outcome::default()
         }
     }
 
@@ -595,6 +803,7 @@ impl Outcome {
             progress: String::new(),
             diagnostics,
             results: Vec::new(),
+            ..Outcome::default()
         }
     }
 }
@@ -633,7 +842,8 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, json: bool) -> u8 {
             status: if failed { "failed" } else { "ok" },
             results,
             diagnostics: file.iter().map(|d| JsonDiagnostic::new(d, path, &lines)).collect(),
-            notices: Vec::new(),
+            notices: outcome.notices.clone(),
+            summary: outcome.summary.clone(),
         };
         match serde_json::to_string_pretty(&envelope) {
             Ok(out) => print_out(&format!("{}\n", render::escape_json(&out))),
@@ -707,6 +917,8 @@ struct Envelope<'a> {
     results: Vec<JsonResult<'a>>,
     diagnostics: Vec<JsonDiagnostic>,
     notices: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<serde_json::Value>,
 }
 
 /// One goal in the `--json` envelope (R-CLI-15).

@@ -716,6 +716,7 @@ dependencies = [
 name = "velme-cli"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "insta",
  "serde",
  "serde_json",
@@ -725,6 +726,7 @@ dependencies = [
  "velme-runtime",
  "velme-sema",
  "velme-syntax",
+ "velme-synth",
  "velme-test-support",
 ]
 
@@ -769,6 +771,7 @@ dependencies = [
 name = "velme-runtime"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "insta",
  "libc",
  "proptest",
@@ -782,6 +785,7 @@ dependencies = [
  "velme-interp",
  "velme-ir",
  "velme-sema",
+ "velme-synth",
  "velme-test-support",
 ]
 
@@ -832,7 +836,10 @@ name = "velme-test-support"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "velme-builtins",
+ "velme-check",
  "velme-diagnostics",
+ "velme-interp",
  "velme-ir",
  "velme-runtime",
  "velme-sema",

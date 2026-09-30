@@ -176,7 +176,7 @@ fn signature_of(program: &Program, goal: &hir::Goal) -> Option<Fingerprint> {
 }
 
 /// Every record type reachable from `roots`, through fields too, as IR (`compiler/21` R-IR-01).
-fn reachable<'p>(
+pub(crate) fn reachable<'p>(
     program: &'p Program,
     roots: impl Iterator<Item = &'p HirType>,
 ) -> Option<BTreeMap<&'p str, RecordType>> {

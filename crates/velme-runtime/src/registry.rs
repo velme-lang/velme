@@ -57,6 +57,11 @@ impl Registry {
         }
     }
 
+    /// A registry of goals already loaded or built.
+    pub fn of(goals: BTreeMap<GoalId, LockedGoal>) -> Registry {
+        Registry { goals }
+    }
+
     /// The locked artifact of `goal`, if it was loaded.
     pub fn get(&self, goal: GoalId) -> Option<&LockedGoal> {
         self.goals.get(&goal)

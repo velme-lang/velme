@@ -19,11 +19,13 @@ velme-diagnostics.workspace = true
 velme-interp.workspace = true
 velme-ir.workspace = true
 velme-sema.workspace = true
+velme-synth.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [dev-dependencies]
+async-trait.workspace = true
 insta.workspace = true
 proptest.workspace = true
 serde_json.workspace = true

@@ -17,6 +17,10 @@ pub struct Step {
     pub envs: Vec<(&'static str, &'static str)>,
 }
 
+/// The `velme-cli` feature that adds the `scripted` provider (`tooling/40` §5.2, D-94): on for the gate's tests, never for
+/// a release build.
+const TEST_PROVIDER: &str = "velme-cli/test-provider";
+
 fn cargo_step(name: &'static str, args: &[&str]) -> Step {
     Step {
         name,
@@ -43,9 +47,21 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
         cargo_step("fmt", &["fmt", "--all", "--check"]),
         cargo_step(
             "clippy",
-            &["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--features",
+                TEST_PROVIDER,
+                "--",
+                "-D",
+                "warnings",
+            ],
         ),
-        cargo_step("test", &["test", "--workspace", "--all-targets"]),
+        cargo_step(
+            "test",
+            &["test", "--workspace", "--all-targets", "--features", TEST_PROVIDER],
+        ),
     ];
     if !quick {
         let mut doc = cargo_step("doc", &["doc", "--workspace", "--no-deps"]);

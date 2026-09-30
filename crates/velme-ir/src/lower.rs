@@ -7,8 +7,9 @@ use velme_builtins::Number;
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType};
 
-use crate::node::{Call, CallNode, ItemShape, Lambda, Node, Type};
-use crate::signature;
+use crate::fingerprint::reachable;
+use crate::node::{Call, CallNode, Goal, ItemShape, Lambda, Node, RecordType, Type};
+use crate::{IR_VERSION, signature};
 
 /// The call section of `goal`: one `call` node per binding, in source order, each with its child's signature
 /// (`compiler/21` R-IR-09); empty for a leaf goal. It is what a composite candidate is joined with (R-CMP-08) and what a
@@ -41,6 +42,48 @@ pub fn calls(program: &Program, goal: GoalId) -> Result<Vec<CallNode>, Diagnosti
             }))
         })
         .collect()
+}
+
+/// The whole IR of the wired goal `goal` (`language/12` R-GOAL-12, D-4): the compiler's `calls`, and as `body` the
+/// binding `result`, which is the goal's output (`compiler/21` R-IR-03). Nothing is synthesized for it, so it has no
+/// provider and needs none.
+pub fn wired_goal(program: &Program, goal: GoalId) -> Result<Goal, Diagnostic> {
+    let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
+    let mut roots: Vec<&HirType> = target.params.iter().map(|p| &p.ty).chain([&target.output]).collect();
+    for binding in &target.bindings {
+        let callee = program
+            .goals
+            .get(binding.callee.0)
+            .ok_or_else(Diagnostic::internal_error)?;
+        roots.extend(callee.params.iter().map(|p| &p.ty).chain([&callee.output]));
+    }
+    let types: BTreeMap<String, RecordType> = reachable(program, roots.into_iter())
+        .ok_or_else(Diagnostic::internal_error)?
+        .into_iter()
+        .map(|(name, record)| (name.to_owned(), record))
+        .collect();
+    let inputs = target
+        .params
+        .iter()
+        .map(|p| {
+            Ok((
+                p.name.clone(),
+                ir_type(program, &p.ty).ok_or_else(Diagnostic::internal_error)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, Diagnostic>>()?;
+    Ok(Goal {
+        ir_version: IR_VERSION.to_owned(),
+        builtins_version: velme_builtins::BUILTINS_VERSION.to_owned(),
+        goal: target.name.clone(),
+        types,
+        inputs,
+        output: ir_type(program, &target.output).ok_or_else(Diagnostic::internal_error)?,
+        calls: calls(program, goal)?,
+        body: Node::Local {
+            name: "result".to_owned(),
+        },
+    })
 }
 
 /// `ty` as IR (`compiler/21` §2.1); `None` for a type with an error, which a checked program never has.

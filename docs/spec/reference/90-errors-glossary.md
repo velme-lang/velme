@@ -55,7 +55,7 @@ diagnostic's data.
 | VL0409 | SynthesisBlocked | IR/synthesis | an ancestor of a goal that ended with no artifact (`VL0403`, `VL0407`, `VL0408` or `VL0409`) is not synthesized (`compiler/22` R-SYNTH-42, D-56) | `{goal}` wasn't built because `{child}` {reason}. | — |
 | VL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | VL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
-| VL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is VL0403) | The generated program didn't pass `{check}` for {input}. | A009 |
+| VL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is VL0403, except a compiler-built wired goal that fails its own examples or checks, whose final code is VL0503) | The generated program didn't pass `{check}` for {input}. | A009 |
 | VL0601 | BudgetExceeded | runtime | fuel exhausted (deterministic, D-10) | `{goal}` took too many steps and was stopped. | A010 |
 | VL0602 | ArithmeticError | runtime | divide by zero, overflow, non-integer or out-of-range integer argument (D-22, D-36) | `{goal}` tried to {op}, which has no answer. | — |
 | VL0603 | Timeout | runtime | wall-clock watchdog fired (non-reproducible, D-10) | `{goal}` ran too long and was stopped. | A011 |

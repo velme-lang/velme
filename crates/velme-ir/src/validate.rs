@@ -191,7 +191,7 @@ impl<'p> CheckScope<'p> {
             let ty = v.expr(&holder.body, 1, 0);
             if !assignable(&ty, expected) {
                 let rule = format!("it is {}, where {} is needed", v.name(&ty), v.name(expected));
-                v.find(Stage::Types, rule);
+                v.find(Stage::Types, "types-1", rule);
             }
             v.findings
         };
@@ -215,15 +215,33 @@ impl<'p> CheckScope<'p> {
 /// first failing stage: `VL0401` for stage 1, `VL0402` for the others, each naming its JSON path (R-IR-19). Total and
 /// deterministic on any input (R-IR-18).
 pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagnostic>> {
+    validate_detailed(text, request).map_err(|found| found.into_iter().map(|f| f.diagnostic).collect())
+}
+
+/// One finding of [`validate_detailed`]: the diagnostic, and which rule it is, without any of what the document said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invalid {
+    /// The diagnostic, as [`validate`] reports it.
+    pub diagnostic: Diagnostic,
+    /// The stage: `schema`, `structure`, `names`, `types`, `callgraph` or `resources`.
+    pub stage: &'static str,
+    /// The rule's stable id, such as `types-7`: the same rule has the same id whatever the document names.
+    pub rule: &'static str,
+    /// The JSON Pointer of the fault, empty for the whole document or when the parser gave none.
+    pub path: String,
+}
+
+/// [`validate`], with each finding's stage, rule id and path beside its diagnostic (`compiler/22` R-SYNTH-31, D-95).
+pub fn validate_detailed(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Invalid>> {
     let Some(target) = request.program.goals.get(request.goal.0) else {
-        return Err(vec![Diagnostic::internal_error()]);
+        return Err(vec![Invalid::internal()]);
     };
     // A §7 limit, checked at stage 2 in the stage order, but before parsing so an oversized document costs nothing
     // to reject (R-IR-18); an oversized document that is also malformed is therefore `VL0402`, not `VL0401`.
     if text.len() > MAX_IR_BYTES {
         let rule = format!("it is {} bytes long; at most {MAX_IR_BYTES} are allowed", text.len());
         return Err(vec![
-            Finding::new(Stage::Structure, String::new(), rule).diagnostic(target.span),
+            Finding::new(Stage::Structure, "structure-1", String::new(), rule).invalid(target.span),
         ]);
     }
     let mut goal: Goal = from_json_str(text).map_err(|e| vec![schema_error(e, target.span)])?;
@@ -232,6 +250,7 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
         if !goal.calls.is_empty() {
             findings.push(Finding::new(
                 Stage::Structure,
+                "structure-2",
                 "/calls".to_owned(),
                 "it lists calls to other goals, which only the goal's `call` block can make".to_owned(),
             ));
@@ -250,45 +269,69 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
     let Some(first) = findings.iter().map(|f| f.stage).min() else {
         return canonical_size(&goal, target.span).map(|()| ValidIr(goal));
     };
-    let mut diags: Vec<Diagnostic> = findings
+    let mut found: Vec<Invalid> = findings
         .into_iter()
         .filter(|f| f.stage == first)
-        .map(|f| f.diagnostic(target.span))
+        .map(|f| f.invalid(target.span))
         .collect();
-    velme_diagnostics::sort(&mut diags);
-    Err(diags)
+    // `sort_by_key` is stable, so ties keep the walk's order as `velme_diagnostics::sort` does.
+    found.sort_by_key(|f| (f.diagnostic.span.start, f.diagnostic.code));
+    Err(found)
 }
 
 /// The §7 size limit on the canonical form of a goal that passed every other stage, which is what a store keeps: plain
 /// decimals can be far longer than the numbers written (`1e27` is 28 digits), and a candidate's joined-in `calls` add
 /// to it (R-IR-18, `runtime/32` R-ART-10). Checked last, so the walk over a document that fails a stage, however deep,
 /// is the parser's alone.
-fn canonical_size(goal: &Goal, span: Span) -> Result<(), Vec<Diagnostic>> {
+fn canonical_size(goal: &Goal, span: Span) -> Result<(), Vec<Invalid>> {
     let length = to_canonical_string(goal).map_or(0, |text| text.len());
     if length <= MAX_IR_BYTES {
         return Ok(());
     }
     let rule = format!("its canonical form is {length} bytes long; at most {MAX_IR_BYTES} are allowed");
     Err(vec![
-        Finding::new(Stage::Structure, String::new(), rule).diagnostic(span),
+        Finding::new(Stage::Structure, "structure-3", String::new(), rule).invalid(span),
     ])
 }
 
 /// Stage 1 (R-IR-11): the document is not JSON of the schema's shape.
-fn schema_error(error: ParseError, span: Span) -> Diagnostic {
+fn schema_error(error: ParseError, span: Span) -> Invalid {
     let diag = Diagnostic::new(
         Code::IRSchemaInvalid,
         span,
         "The generated program wasn't in the right shape.",
     );
-    match error {
-        ParseError::DuplicateKey { pointer } => diag.with_note(format!("at `{pointer}`: this key appears twice")),
-        ParseError::ReservedKey { pointer } => diag.with_note(format!("at `{pointer}`: this key is reserved")),
-        ParseError::TooDeep { pointer, limit } => {
-            diag.with_note(format!("at `{pointer}`: it nests deeper than {limit} levels"))
+    let (diagnostic, path) = match error {
+        ParseError::DuplicateKey { pointer } => (
+            diag.with_note(format!("at `{pointer}`: this key appears twice")),
+            pointer,
+        ),
+        ParseError::ReservedKey { pointer } => {
+            (diag.with_note(format!("at `{pointer}`: this key is reserved")), pointer)
         }
+        ParseError::TooDeep { pointer, limit } => (
+            diag.with_note(format!("at `{pointer}`: it nests deeper than {limit} levels")),
+            pointer,
+        ),
         // serde_json reports a line and column rather than a path.
-        ParseError::Json(error) => diag.with_note(error.to_string()),
+        ParseError::Json(error) => (diag.with_note(error.to_string()), String::new()),
+    };
+    Invalid {
+        diagnostic,
+        stage: "schema",
+        rule: "schema-1",
+        path,
+    }
+}
+
+impl Invalid {
+    fn internal() -> Invalid {
+        Invalid {
+            diagnostic: Diagnostic::internal_error(),
+            stage: "internal",
+            rule: "internal-1",
+            path: String::new(),
+        }
     }
 }
 
@@ -307,21 +350,45 @@ enum Stage {
     Resources,
 }
 
+impl Stage {
+    fn name(self) -> &'static str {
+        match self {
+            Stage::Structure => "structure",
+            Stage::Names => "names",
+            Stage::Types => "types",
+            Stage::CallGraph => "callgraph",
+            Stage::Resources => "resources",
+        }
+    }
+}
+
 /// One broken rule, at a JSON path.
 struct Finding {
     stage: Stage,
+    /// The rule's stable id: the stage's name and a number, which never depends on what the document says.
+    id: &'static str,
     path: String,
     rule: String,
     help: Option<String>,
 }
 
 impl Finding {
-    fn new(stage: Stage, path: String, rule: String) -> Self {
+    fn new(stage: Stage, id: &'static str, path: String, rule: String) -> Self {
         Finding {
             stage,
+            id,
             path,
             rule,
             help: None,
+        }
+    }
+
+    fn invalid(self, span: Span) -> Invalid {
+        Invalid {
+            stage: self.stage.name(),
+            rule: self.id,
+            path: self.path.clone(),
+            diagnostic: self.diagnostic(span),
         }
     }
 
@@ -394,13 +461,14 @@ impl<'a> Validator<'a> {
         }
     }
 
-    fn find(&mut self, stage: Stage, rule: String) {
-        self.help(stage, rule, None);
+    fn find(&mut self, stage: Stage, id: &'static str, rule: String) {
+        self.help(stage, id, rule, None);
     }
 
-    fn help(&mut self, stage: Stage, rule: String, help: Option<String>) {
+    fn help(&mut self, stage: Stage, id: &'static str, rule: String, help: Option<String>) {
         self.findings.push(Finding {
             stage,
+            id,
             path: pointer(&self.path),
             rule,
             help,
@@ -408,10 +476,10 @@ impl<'a> Validator<'a> {
     }
 
     /// A finding at `segments` below the current path.
-    fn find_at(&mut self, segments: &[&str], stage: Stage, rule: String, help: Option<String>) {
+    fn find_at(&mut self, segments: &[&str], stage: Stage, id: &'static str, rule: String, help: Option<String>) {
         let mark = self.path.len();
         self.path.extend(segments.iter().map(|s| (*s).to_owned()));
-        self.help(stage, rule, help);
+        self.help(stage, id, rule, help);
         self.path.truncate(mark);
     }
 
@@ -448,7 +516,7 @@ impl<'a> Validator<'a> {
         } else {
             format!("it uses {what} {found}, but {own} was asked for")
         };
-        self.find_at(&[segment], Stage::Structure, rule, None);
+        self.find_at(&[segment], Stage::Structure, "structure-4", rule, None);
     }
 
     /// Stages 2, 3, 4 and 7 over the whole goal.
@@ -459,6 +527,7 @@ impl<'a> Validator<'a> {
             self.find_at(
                 &["goal"],
                 Stage::Names,
+                "names-1",
                 format!(
                     "it is for the goal `{}`, but `{}` was asked for",
                     goal.goal, target.name
@@ -479,12 +548,13 @@ impl<'a> Validator<'a> {
                 target.name,
                 self.name(&target.output)
             );
-            self.find_at(&["body"], Stage::Types, rule, None);
+            self.find_at(&["body"], Stage::Types, "types-2", rule, None);
         }
         if self.nodes > MAX_NODES {
             self.path.clear();
             self.find(
                 Stage::Resources,
+                "resources-1",
                 format!("it has {} expressions; at most {MAX_NODES} are allowed", self.nodes),
             );
         }
@@ -503,12 +573,14 @@ impl<'a> Validator<'a> {
                     let help = did_you_mean(name, self.program.types.iter().map(|r| r.name.as_str()));
                     self.help(
                         Stage::Names,
+                        "names-2",
                         format!("it describes a record type `{name}` that the program doesn't have"),
                         help,
                     );
                 }
                 Some((id, _)) if !reached.contains(&TypeId(id)) => self.find(
                     Stage::Names,
+                    "names-3",
                     format!("it describes a record type `{name}` that the goal's inputs, output and calls don't use"),
                 ),
                 Some((_, declared)) => {
@@ -526,6 +598,7 @@ impl<'a> Validator<'a> {
                             .collect();
                         self.help(
                             Stage::Types,
+                            "types-3",
                             format!("its record type `{name}` differs from the program's"),
                             Some(format!("the program's is `{name}({})`", written.join(", "))),
                         );
@@ -618,6 +691,7 @@ impl<'a> Validator<'a> {
             );
             self.find(
                 Stage::Types,
+                "types-4",
                 format!(
                     "its inputs are ({found}), but the goal `{}` takes ({wanted})",
                     target.name
@@ -634,7 +708,7 @@ impl<'a> Validator<'a> {
                 target.name,
                 self.name(&target.output)
             );
-            self.find(Stage::Types, rule);
+            self.find(Stage::Types, "types-5", rule);
         }
         self.path.pop();
     }
@@ -653,7 +727,7 @@ impl<'a> Validator<'a> {
             } else {
                 let help = did_you_mean(&call.goal, self.program.goals.iter().map(|g| g.name.as_str()));
                 let rule = format!("it calls a goal `{}` that the program doesn't have", call.goal);
-                self.find_at(&["goal"], Stage::Names, rule, help);
+                self.find_at(&["goal"], Stage::Names, "names-4", rule, help);
             }
             self.path.push("args".to_owned());
             let args: Vec<HirType> = call
@@ -672,7 +746,7 @@ impl<'a> Validator<'a> {
                         args.len(),
                         callee.params.len()
                     );
-                    self.find_at(&["args"], Stage::Types, rule, None);
+                    self.find_at(&["args"], Stage::Types, "types-6", rule, None);
                 }
                 for (j, (arg, param)) in args.iter().zip(&callee.params).enumerate() {
                     if !assignable(arg, &param.ty) {
@@ -684,7 +758,7 @@ impl<'a> Validator<'a> {
                             param.name,
                             self.name(&param.ty)
                         );
-                        self.find_at(&["args", &j.to_string()], Stage::Types, rule, None);
+                        self.find_at(&["args", &j.to_string()], Stage::Types, "types-7", rule, None);
                     }
                 }
             }
@@ -715,7 +789,7 @@ impl<'a> Validator<'a> {
                     record.name, call.binding
                 );
                 let mark = std::mem::take(&mut self.path);
-                self.find_at(&["types"], Stage::Names, rule, None);
+                self.find_at(&["types"], Stage::Names, "names-5", rule, None);
                 self.path = mark;
             }
         }
@@ -754,8 +828,8 @@ impl<'a> Validator<'a> {
                 (None, None) => continue,
             };
             match at {
-                Some(i) => self.find_at(&[&i.to_string()], Stage::CallGraph, rule, None),
-                None => self.find(Stage::CallGraph, rule),
+                Some(i) => self.find_at(&[&i.to_string()], Stage::CallGraph, "callgraph-1", rule, None),
+                None => self.find(Stage::CallGraph, "callgraph-2", rule),
             }
         }
         self.path.pop();
@@ -791,7 +865,12 @@ impl<'a> Validator<'a> {
         let goal = self.goal;
         if !self.compiler_names && !goal.types.contains_key(name) {
             let help = did_you_mean(name, goal.types.keys().map(String::as_str));
-            self.help(Stage::Names, format!("there's no record type called `{name}`"), help);
+            self.help(
+                Stage::Names,
+                "names-6",
+                format!("there's no record type called `{name}`"),
+                help,
+            );
             return HirType::Error;
         }
         // One missing from the program has its finding at `/types`.
@@ -807,6 +886,7 @@ impl<'a> Validator<'a> {
         if self.scope.iter().any(|(n, _)| *n == name) {
             self.help(
                 Stage::Structure,
+                "structure-5",
                 format!("the name `{name}` is already in use here"),
                 Some("give it a name of its own".to_owned()),
             );
@@ -834,6 +914,7 @@ impl<'a> Validator<'a> {
             self.too_deep = true;
             self.find(
                 Stage::Resources,
+                "resources-2",
                 format!("it nests expressions more than {MAX_DEPTH} deep"),
             );
         }
@@ -877,6 +958,7 @@ impl<'a> Validator<'a> {
             Node::Call(call) => {
                 self.find(
                     Stage::Structure,
+                    "structure-6",
                     format!(
                         "it calls the goal `{}` from inside an expression; only the goal's `call` block calls goals",
                         call.goal
@@ -902,7 +984,7 @@ impl<'a> Validator<'a> {
                     _ => None,
                 };
                 let segments: Vec<&str> = error.path.iter().map(String::as_str).collect();
-                self.find_at(&segments, Stage::Types, error.problem.to_string(), help);
+                self.find_at(&segments, Stage::Types, "types-8", error.problem.to_string(), help);
             }
         }
         self.literal_sizes(value.json());
@@ -915,6 +997,7 @@ impl<'a> Validator<'a> {
         match value {
             Value::String(text) if text.len() > MAX_TEXT_BYTES => self.find(
                 Stage::Resources,
+                "resources-3",
                 format!(
                     "this text is {} bytes long; at most {MAX_TEXT_BYTES} are allowed",
                     text.len()
@@ -924,6 +1007,7 @@ impl<'a> Validator<'a> {
                 if items.len() > MAX_LIST_ITEMS {
                     self.find(
                         Stage::Resources,
+                        "resources-4",
                         format!(
                             "this list has {} items; at most {MAX_LIST_ITEMS} are allowed",
                             items.len()
@@ -965,6 +1049,7 @@ impl<'a> Validator<'a> {
         self.find_at(
             &["name"],
             Stage::Names,
+            "names-7",
             format!("there's no input called `{name}`"),
             help,
         );
@@ -976,7 +1061,13 @@ impl<'a> Validator<'a> {
             return ty.clone();
         }
         let help = did_you_mean(name, self.scope.iter().map(|(n, _)| *n));
-        self.find_at(&["name"], Stage::Names, format!("there's no name `{name}` here"), help);
+        self.find_at(
+            &["name"],
+            Stage::Names,
+            "names-8",
+            format!("there's no name `{name}` here"),
+            help,
+        );
         HirType::Error
     }
 
@@ -997,7 +1088,7 @@ impl<'a> Validator<'a> {
                 None => {
                     let help = did_you_mean(field, record.fields.iter().map(|f| f.name.as_str()));
                     let rule = format!("`{}` has no field `{field}`", record.name);
-                    self.find_at(&[field], Stage::Names, rule, help);
+                    self.find_at(&[field], Stage::Names, "names-9", rule, help);
                 }
                 Some(f) if !assignable(&found, &f.ty) => {
                     let rule = format!(
@@ -1006,7 +1097,7 @@ impl<'a> Validator<'a> {
                         self.name(&f.ty),
                         self.name(&found)
                     );
-                    self.find_at(&[field], Stage::Types, rule, None);
+                    self.find_at(&[field], Stage::Types, "types-9", rule, None);
                 }
                 Some(_) => {}
             }
@@ -1021,6 +1112,7 @@ impl<'a> Validator<'a> {
             if !missing.is_empty() {
                 self.find(
                     Stage::Types,
+                    "types-10",
                     format!("a `{}` needs the fields {}", record.name, missing.join(", ")),
                 );
             }
@@ -1035,6 +1127,7 @@ impl<'a> Validator<'a> {
         if items.len() > MAX_LIST_ITEMS {
             self.find(
                 Stage::Resources,
+                "resources-5",
                 format!(
                     "this list has {} items; at most {MAX_LIST_ITEMS} are allowed",
                     items.len()
@@ -1050,7 +1143,7 @@ impl<'a> Validator<'a> {
                     self.name(&found),
                     self.name(&of)
                 );
-                self.find_at(&[&i.to_string()], Stage::Types, rule, None);
+                self.find_at(&[&i.to_string()], Stage::Types, "types-11", rule, None);
             }
         }
         self.path.pop();
@@ -1070,7 +1163,7 @@ impl<'a> Validator<'a> {
                 }
                 let help = did_you_mean(field, record.fields.iter().map(|f| f.name.as_str()));
                 let rule = format!("`{}` has no field `{field}`", record.name);
-                self.find_at(&["field"], Stage::Names, rule, help);
+                self.find_at(&["field"], Stage::Names, "names-10", rule, help);
             }
             HirType::Optional(_) => {
                 let rule = format!(
@@ -1079,6 +1172,7 @@ impl<'a> Validator<'a> {
                 );
                 self.help(
                     Stage::Types,
+                    "types-12",
                     rule,
                     Some("narrow it first with `unwrap_or`, or `if` and `is_empty`".to_owned()),
                 );
@@ -1086,7 +1180,7 @@ impl<'a> Validator<'a> {
             HirType::Error => {}
             other => {
                 let rule = format!("{} has no fields", self.name(other));
-                self.find(Stage::Types, rule);
+                self.find(Stage::Types, "types-13", rule);
             }
         }
         HirType::Error
@@ -1107,7 +1201,7 @@ impl<'a> Validator<'a> {
             BinaryOperator::Eq | BinaryOperator::Ne => {
                 if !assignable(&l, &r) && !assignable(&r, &l) {
                     let rule = format!("`{}` can't compare {} with {}", wire(&op), self.name(&l), self.name(&r));
-                    self.find(Stage::Types, rule);
+                    self.find(Stage::Types, "types-14", rule);
                 }
                 return HirType::Boolean;
             }
@@ -1120,7 +1214,7 @@ impl<'a> Validator<'a> {
                 self.name(&l),
                 self.name(&r)
             );
-            self.find(Stage::Types, rule);
+            self.find(Stage::Types, "types-15", rule);
         }
         result
     }
@@ -1142,7 +1236,7 @@ impl<'a> Validator<'a> {
         };
         if !fits {
             let rule = format!("`{}` needs {wanted}, not {}", wire(&op), self.name(&found));
-            self.find(Stage::Types, rule);
+            self.find(Stage::Types, "types-16", rule);
         }
         result
     }
@@ -1177,7 +1271,7 @@ impl<'a> Validator<'a> {
         let c = self.child("cond", cond, depth, nesting);
         if !is(&c, &HirType::Boolean) {
             let rule = format!("the condition of `if` must be a Boolean, not {}", self.name(&c));
-            self.find_at(&["cond"], Stage::Types, rule, None);
+            self.find_at(&["cond"], Stage::Types, "types-17", rule, None);
         }
         let a = self.child("then", then, depth, nesting);
         let b = self.child("else", otherwise, depth, nesting);
@@ -1187,7 +1281,7 @@ impl<'a> Validator<'a> {
                 self.name(&a),
                 self.name(&b)
             );
-            self.find(Stage::Types, rule);
+            self.find(Stage::Types, "types-18", rule);
             HirType::Error
         })
     }
@@ -1205,7 +1299,7 @@ impl<'a> Validator<'a> {
                     "`unwrap_or` needs a value that may be nothing, not {}",
                     self.name(&other)
                 );
-                self.find_at(&["of"], Stage::Types, rule, None);
+                self.find_at(&["of"], Stage::Types, "types-19", rule, None);
                 other
             }
         };
@@ -1215,7 +1309,7 @@ impl<'a> Validator<'a> {
                 self.name(&fallback),
                 self.name(&present)
             );
-            self.find_at(&["default"], Stage::Types, rule, None);
+            self.find_at(&["default"], Stage::Types, "types-20", rule, None);
         }
         present
     }
@@ -1228,6 +1322,7 @@ impl<'a> Validator<'a> {
             self.too_nested = true;
             self.find(
                 Stage::Resources,
+                "resources-6",
                 format!(
                     "it nests list operations more than {MAX_COLLECTION_NESTING} deep inside one another's functions"
                 ),
@@ -1239,7 +1334,7 @@ impl<'a> Validator<'a> {
             HirType::Error => HirType::Error,
             other => {
                 let rule = format!("`{}` needs a list, not {}", node.kind(), self.name(&other));
-                self.find_at(&["list"], Stage::Types, rule, None);
+                self.find_at(&["list"], Stage::Types, "types-21", rule, None);
                 HirType::Error
             }
         };
@@ -1268,7 +1363,7 @@ impl<'a> Validator<'a> {
                 node.kind(),
                 self.name(&ty)
             );
-            self.find_at(&["fn", "body"], Stage::Types, rule, None);
+            self.find_at(&["fn", "body"], Stage::Types, "types-22", rule, None);
         }
     }
 
@@ -1300,7 +1395,7 @@ impl<'a> Validator<'a> {
                 self.name(&next),
                 self.name(&acc)
             );
-            self.find_at(&["body"], Stage::Types, rule, None);
+            self.find_at(&["body"], Stage::Types, "types-23", rule, None);
         }
         self.path.pop();
         acc
@@ -1322,7 +1417,7 @@ impl<'a> Validator<'a> {
                     None,
                 )
             };
-            self.find_at(&["key", "body"], Stage::Types, rule, help);
+            self.find_at(&["key", "body"], Stage::Types, "types-24", rule, help);
         }
         HirType::List(Box::new(element))
     }
@@ -1341,6 +1436,7 @@ impl<'a> Validator<'a> {
             self.find_at(
                 &["name"],
                 Stage::Names,
+                "names-11",
                 format!("there's no built-in called `{name}`"),
                 help,
             );
@@ -1349,7 +1445,7 @@ impl<'a> Validator<'a> {
         let takes_function = |shape: &Shape| matches!(shape, Shape::Lambda(..));
         if builtin.signatures.iter().any(|s| s.params.iter().any(takes_function)) {
             let rule = format!("`{name}` takes a function, so it is written as a `{name}` node, not a built-in call");
-            self.find_at(&["name"], Stage::Types, rule, None);
+            self.find_at(&["name"], Stage::Types, "types-25", rule, None);
             return HirType::Error;
         }
         if let Some(ty) = builtin.signatures.iter().find_map(|s| signature_output(s, &found)) {
@@ -1362,7 +1458,7 @@ impl<'a> Validator<'a> {
             let arities: Vec<String> = builtin.signatures.iter().map(|s| s.params.len().to_string()).collect();
             format!("`{name}` takes {} inputs, not {}", arities.join(" or "), found.len())
         };
-        self.find(Stage::Types, rule);
+        self.find(Stage::Types, "types-26", rule);
         HirType::Error
     }
 }
