@@ -189,6 +189,7 @@ fn build_with(dir: &Path, text: &str, backend: &dyn SynthBackend, options: Synth
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
+        mode: velme_runtime::Mode::Build,
         program: &program,
         source: text,
         project: dir,
@@ -796,6 +797,7 @@ goal Both(n: Number) -> Number:
     install(&project, FILE, &parsed, &add_one().to_string());
     let program = program(text);
     let input = BuildInput {
+        mode: velme_runtime::Mode::Build,
         program: &program,
         source: text,
         project: &project,

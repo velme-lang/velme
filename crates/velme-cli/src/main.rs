@@ -13,12 +13,12 @@ use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_runtime::{
-    BuildInput, CallStatus, EntryError, GoalRun, Lock, LockedGoal, Options, OrderedValue, Registry, Source, Status,
-    Store, Trace, decode_inputs, explain, find_goal, load, run_goal, test_leaf,
+    ARTIFACT_FORMAT, BuildInput, CallStatus, EntryError, GoalRun, Lock, LockedGoal, Mode, Options, OrderedValue,
+    Registry, Source, Status, Store, Trace, decode_inputs, explain, find_goal, load, run_goal, test_leaf,
 };
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_syntax::SourceFile;
-use velme_synth::SynthBackend;
+use velme_synth::{SynthBackend, SynthOptions};
 
 use crate::project::Project;
 use crate::synth::{BuildFlags, DEFAULT_PROVIDER, NotConfigured, backend, reword_not_configured, synth_options};
@@ -60,10 +60,11 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
-                     velme build FILE [--provider NAME] [--model ID] [--external-url URL] [-v] [--json]\n       \
+                     velme build FILE [--provider NAME] [--model ID] [--external-url URL] [--locked] [--offline] [-v] [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
+                     velme artifact FILE --goal G [--json]\n       \
                      velme trace FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme --version";
 
@@ -93,6 +94,8 @@ enum Command {
         model: Option<String>,
         external_url: Option<String>,
         verbose: bool,
+        locked: bool,
+        offline: bool,
     },
     Run {
         file: String,
@@ -111,6 +114,16 @@ enum Command {
         file: String,
         json: bool,
         goal: String,
+    },
+    Artifact {
+        file: String,
+        json: bool,
+        goal: String,
+    },
+    /// `--build` with `--locked` (R-CLI-14): a usage error, reported as `VL0902` and nothing else done.
+    BuildLocked {
+        file: String,
+        json: bool,
     },
     Trace {
         file: String,
@@ -133,12 +146,16 @@ fn parse_args(args: &[String]) -> Option<Command> {
     }
     let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
     let (mut provider, mut model, mut external_url, mut verbose) = (None, None, None, false);
+    let (mut locked, mut offline, mut build) = (false, false, false);
     while let Some(arg) = rest.next() {
         match arg {
             "--provider" if provider.is_none() => provider = Some(rest.next()?.to_owned()),
             "--model" if model.is_none() => model = Some(rest.next()?.to_owned()),
             "--external-url" if external_url.is_none() => external_url = Some(rest.next()?.to_owned()),
             "-v" | "--verbose" => verbose = true,
+            "--locked" => locked = true,
+            "--offline" => offline = true,
+            "--build" => build = true,
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
             "--jobs" if jobs.is_none() => jobs = Some(rest.next()?.parse().ok().filter(|n| *n >= 1)?),
@@ -151,6 +168,10 @@ fn parse_args(args: &[String]) -> Option<Command> {
         }
     }
     let file = file?;
+    // `--build` itself comes with M6b; together with `--locked` it is the usage error R-CLI-14 names.
+    if build {
+        return locked.then_some(Command::BuildLocked { file, json });
+    }
     let inputs = input.is_some() || !pairs.is_empty();
     if command == "build" {
         let plain = goal.is_none() && !inputs && jobs.is_none();
@@ -161,6 +182,8 @@ fn parse_args(args: &[String]) -> Option<Command> {
             model,
             external_url,
             verbose,
+            locked,
+            offline,
         });
     }
     if provider.is_some() || model.is_some() || external_url.is_some() || verbose {
@@ -189,6 +212,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
             json,
             goal: goal?,
         }),
+        "artifact" if !inputs && jobs.is_none() => Some(Command::Artifact {
+            file,
+            json,
+            goal: goal?,
+        }),
         "test" if !inputs && jobs.is_none() => Some(Command::Test { file, json, goal }),
         _ => None,
     }
@@ -209,7 +237,8 @@ fn stopped(args: &[String]) -> u8 {
             Command::Check { file, json: true }
             | Command::Run { file, json: true, .. }
             | Command::Test { file, json: true, .. }
-            | Command::Build { file, json: true, .. },
+            | Command::Build { file, json: true, .. }
+            | Command::Artifact { file, json: true, .. },
         ) => file,
         _ => {
             print_err(&format!("{}\n", Diagnostic::internal_error().message));
@@ -255,12 +284,16 @@ fn command(args: &[String]) -> u8 {
             model,
             external_url,
             verbose,
+            locked,
+            offline,
         }) => {
             let flags = BuildFlags {
                 provider: provider.as_deref(),
                 model: model.as_deref(),
                 external_url: external_url.as_deref(),
                 verbose,
+                locked,
+                offline,
             };
             build_command(&file, json, &flags)
         }
@@ -281,6 +314,8 @@ fn command(args: &[String]) -> u8 {
             jobs,
         }) => run(&file, json, &goal, input.as_deref(), &args, jobs, true),
         Some(Command::Explain { file, json, goal }) => explain_goal(&file, json, &goal),
+        Some(Command::Artifact { file, json, goal }) => artifact(&file, json, &goal),
+        Some(Command::BuildLocked { file, json }) => build_locked(&file, json),
         Some(Command::Test { file, json, goal }) => test(&file, json, goal.as_deref()),
         None => {
             print_err(&format!("{USAGE}\n"));
@@ -349,6 +384,8 @@ fn analyze(arg: &str) -> Analyzed {
 struct Outcome {
     /// Printed to stdout in human mode, above the diagnostics.
     progress: String,
+    /// Whether `progress` is already escaped (R-CLI-17), as `velme artifact` does so its IR stays JSON.
+    escaped: bool,
     /// The notice lines of `tooling/41` R-SEC-12, which `--json` carries instead of stderr.
     notices: Vec<String>,
     /// The build summary of `compiler/22` R-SYNTH-21, for `--json`.
@@ -367,6 +404,8 @@ struct GoalResult {
     result: Option<Value>,
     /// The run and the file it is of, for `velme trace` to show its trace (`runtime/30` §8).
     trace: Option<(GoalRun, String)>,
+    /// The artifact `velme artifact` shows, as the `result` of `--json` (R-CLI-22).
+    artifact: Option<LockedGoal>,
 }
 
 impl GoalResult {
@@ -381,6 +420,7 @@ impl GoalResult {
             diagnostics,
             result,
             trace: None,
+            artifact: None,
         }
     }
 }
@@ -441,11 +481,29 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
     };
     let name = flags.provider.unwrap_or(DEFAULT_PROVIDER);
     let verbose = flags.verbose;
+    // `--locked` is checked first, so with `--offline` too a stale goal is `VL0702` (R-CLI-05, D-106).
+    let mode = if flags.locked {
+        Mode::Locked
+    } else if flags.offline {
+        Mode::Offline
+    } else {
+        Mode::Build
+    };
+    // Neither flag constructs a provider, not even to ask its identity (R-CLI-04, R-CLI-05, AC-SYNTH-08).
+    let contacts = mode == Mode::Build;
     // One set of options for the prompt side and the loop, so they can't disagree (R-SYNTH-40).
-    let options = synth_options(name, project);
-    let chosen = backend(name, project, flags, &options);
+    let options = if contacts {
+        synth_options(name, project)
+    } else {
+        SynthOptions::default()
+    };
+    // The names and values are still checked, without building anything or reading a key (R-CLI-21).
+    if !contacts && let Err(diagnostic) = synth::check_flags(name, flags) {
+        return finish(&analyzed, &Outcome::with(vec![diagnostic]), json);
+    }
+    let chosen = contacts.then(|| backend(name, project, flags, &options));
     // A provider that can't be used doesn't stop a build that needs none; a name or script that is wrong does.
-    if let Err(diagnostic) = &chosen
+    if let Some(Err(diagnostic)) = &chosen
         && diagnostic.code == Code::InvalidInput
     {
         return finish(&analyzed, &Outcome::with(vec![diagnostic.clone()]), json);
@@ -461,23 +519,25 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
     };
     // Why a request would end with `VL0405` in the words of the setup: a provider that couldn't be built, or an Anthropic
     // one built with no usable key, which still answers from the store and sends nothing (R-SYNTH-02).
-    let key_problem = if name == "anthropic" {
+    let key_problem = if contacts && name == "anthropic" {
         synth::key_problem()
     } else {
         None
     };
-    let unusable = chosen.as_ref().err().or(key_problem.as_ref());
-    let (backend, notice): (&dyn SynthBackend, &str) = match &chosen {
-        Ok((backend, _)) if key_problem.is_some() => (backend.as_ref(), ""),
-        Ok((backend, notice)) => (backend.as_ref(), notice.as_str()),
-        Err(_) => (&NotConfigured, ""),
+    let unusable = chosen.as_ref().and_then(|c| c.as_ref().err()).or(key_problem.as_ref());
+    let (backend, notice): (Option<&dyn SynthBackend>, &str) = match &chosen {
+        None => (None, ""),
+        Some(Ok((backend, _))) if key_problem.is_some() => (Some(backend.as_ref()), ""),
+        Some(Ok((backend, notice))) => (Some(backend.as_ref()), notice.as_str()),
+        Some(Err(_)) => (Some(&NotConfigured), ""),
     };
     let input = BuildInput {
+        mode,
         program,
         source: text,
         project: &project.root,
         file: &project.file,
-        backend: Some(backend),
+        backend,
         options,
         run: Options::default(),
     };
@@ -512,6 +572,7 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
             diagnostics,
             result: None,
             trace: None,
+            artifact: None,
         });
     }
     outcome.diagnostics.extend(report.diagnostics.iter().cloned());
@@ -687,6 +748,7 @@ fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
                 diagnostics: Vec::new(),
                 result: None,
                 trace: None,
+                artifact: None,
             });
             continue;
         }
@@ -701,6 +763,93 @@ fn test(arg: &str, json: bool, goal: Option<&str>) -> u8 {
         outcome.results.push(GoalResult::new(&g.name, tested.map(|_| None)));
     }
     finish(&analyzed, &outcome, json)
+}
+
+/// `velme artifact FILE --goal G`: the goal's locked artifact, loaded with the checks and the codes `velme run` has
+/// (`runtime/32` R-ART-10, R-ART-16), then its hash, its manifest and its IR (`tooling/40` R-CLI-22, D-107). It never
+/// builds and never shows a stale artifact.
+fn artifact(arg: &str, json: bool, goal: &str) -> u8 {
+    let analyzed = analyze(arg);
+    let (Some(program), Some(project)) = (&analyzed.program, &analyzed.project) else {
+        return finish(&analyzed, &Outcome::file(&analyzed), json);
+    };
+    let id = match find_goal(program, goal) {
+        Ok(id) => id,
+        Err(diag) => return finish(&analyzed, &Outcome::with(vec![diag]), json),
+    };
+    let mut outcome = Outcome::with(Vec::new());
+    let result = match locked_goal(project, program, id) {
+        Ok(locked) => {
+            let Some(text) = shown_artifact(&locked) else {
+                return finish(&analyzed, &Outcome::with(vec![Diagnostic::internal_error()]), json);
+            };
+            outcome.progress = text;
+            outcome.escaped = true;
+            let mut result = GoalResult::new(goal, Ok(None));
+            result.artifact = Some(locked);
+            result
+        }
+        Err(diagnostics) => GoalResult::new(goal, Err(diagnostics)),
+    };
+    outcome.results.push(result);
+    finish(&analyzed, &outcome, json)
+}
+
+/// The compact JSON of `value`.
+fn compact<T: Serialize>(value: &T) -> Option<String> {
+    serde_json::to_string(value).ok()
+}
+
+/// What `velme artifact` prints: the hash, the manifest's fields one `name: value` per line, a blank line, then the IR
+/// as pretty JSON. The fields are named here, in the manifest's order, because a JSON map would sort them; a test keeps
+/// the list whole.
+fn shown_artifact(locked: &LockedGoal) -> Option<String> {
+    let m = &locked.manifest;
+    let mut lines = vec![
+        ("format", ARTIFACT_FORMAT.to_owned()),
+        ("goal", m.goal.clone()),
+        ("kind", compact(&m.kind)?.trim_matches('"').to_owned()),
+        ("signature", m.signature.to_string()),
+        ("contract_key", m.contract_key.to_string()),
+        ("synthesis_key", m.synthesis_key.to_string()),
+        ("language_version", m.language_version.clone()),
+        ("compiler_version", m.compiler_version.clone()),
+        ("ir_version", m.ir_version.clone()),
+        ("builtins_version", m.builtins_version.clone()),
+    ];
+    lines.extend(m.prompt_version.iter().map(|v| ("prompt_version", v.clone())));
+    lines.push(("provider", m.provider.clone()));
+    lines.extend(m.backend.iter().map(|v| ("backend", v.clone())));
+    lines.extend(m.model_version.iter().map(|v| ("model_version", v.clone())));
+    lines.push(("children", compact(&m.children)?));
+    lines.push(("verification", compact(&m.verification)?));
+    let mut out = format!("{}\n", locked.artifact);
+    for (name, value) in lines {
+        out.push_str(&format!("{name}: {value}\n"));
+    }
+    // The manifest's lines are escaped like any text; the IR is JSON, so it is escaped as JSON and stays parseable.
+    let ir = serde_json::to_string_pretty(locked.ir.goal()).ok()?;
+    Some(format!("{}\n{}\n", render::escape(&out), render::escape_json(&ir)))
+}
+
+/// `--build` with `--locked` (R-CLI-14): `VL0902`, and nothing is built or run. The rest of the bad-flag reporting
+/// (D-108) comes with M6b.
+fn build_locked(arg: &str, json: bool) -> u8 {
+    let project = Project::of(Path::new(arg));
+    let analyzed = Analyzed {
+        path: shown_path(&project, arg),
+        project: None,
+        text: None,
+        program: None,
+        diagnostics: Vec::new(),
+    };
+    let diagnostic = Diagnostic::new(
+        Code::InvalidInput,
+        Span::default(),
+        "`--build` and `--locked` can't be used together.",
+    )
+    .with_help("`--locked` forbids synthesis; drop one of them");
+    finish(&analyzed, &Outcome::with(vec![diagnostic]), json)
 }
 
 /// The name of goal `id` if it is a leaf goal, the only kind `velme test` runs yet.
@@ -794,7 +943,17 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, json: bool) -> u8 {
                     .iter()
                     .map(|d| JsonDiagnostic::new(d, path, &lines))
                     .collect(),
-                result: r.result.as_ref().map(OrderedValue),
+                result: r
+                    .artifact
+                    .as_ref()
+                    .map(|a| {
+                        ResultJson::Artifact(ArtifactJson {
+                            artifact: a.artifact.to_string(),
+                            manifest: &a.manifest,
+                            ir: a.ir.goal(),
+                        })
+                    })
+                    .or_else(|| r.result.as_ref().map(|v| ResultJson::Value(OrderedValue(v)))),
                 trace: r.trace.as_ref().map(|(run, file)| run.trace(file)),
             })
             .collect();
@@ -813,7 +972,11 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, json: bool) -> u8 {
         }
     } else {
         // Progress first, so the lines for what passed read above the errors (`tooling/40` §3.3).
-        print_out(&render::escape(&outcome.progress));
+        if outcome.escaped {
+            print_out(&outcome.progress);
+        } else {
+            print_out(&render::escape(&outcome.progress));
+        }
         let text = analyzed.text.as_deref();
         let mut err = render::render_human(&analyzed.diagnostics, path, text, use_color());
         // What a command adds without a place in the file, such as an unknown `--goal` or an unreadable lock, is shown
@@ -890,9 +1053,25 @@ struct JsonResult<'a> {
     status: &'static str,
     diagnostics: Vec<JsonDiagnostic>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<OrderedValue<'a>>,
+    result: Option<ResultJson<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace: Option<Trace<'a>>,
+}
+
+/// The `result` of a goal in the `--json` envelope: a value, or the artifact `velme artifact` shows.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum ResultJson<'a> {
+    Value(OrderedValue<'a>),
+    Artifact(ArtifactJson<'a>),
+}
+
+/// The `result` of `velme artifact --json` (R-CLI-22): the artifact's hash, its manifest and its IR.
+#[derive(Serialize)]
+struct ArtifactJson<'a> {
+    artifact: String,
+    manifest: &'a velme_runtime::Manifest,
+    ir: &'a velme_ir::Goal,
 }
 
 /// Paths are shown with `/` separators on every platform (R-CLI-19).

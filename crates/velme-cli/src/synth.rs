@@ -61,13 +61,17 @@ fn provider(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOp
         "anthropic" => anthropic(flags.model, options),
         "ollama" => ollama(flags.model, options),
         "external" => external(flags.external_url),
-        _ => Err(Diagnostic::new(
-            Code::InvalidInput,
-            Span::default(),
-            format!("I don't know a provider called `{name}`."),
-        )
-        .with_help("the providers are anthropic, ollama, external and replay")),
+        _ => Err(unknown_provider(name)),
     }
+}
+
+fn unknown_provider(name: &str) -> Diagnostic {
+    Diagnostic::new(
+        Code::InvalidInput,
+        Span::default(),
+        format!("I don't know a provider called `{name}`."),
+    )
+    .with_help("the providers are anthropic, ollama, external and replay")
 }
 
 /// Whether `d` is the library's own `VL0405` for a provider that isn't set up, not a rejected key (R-SYNTH-07).
@@ -133,6 +137,10 @@ pub struct BuildFlags<'a> {
     pub model: Option<&'a str>,
     pub external_url: Option<&'a str>,
     pub verbose: bool,
+    /// `--locked`: no synthesis and no write (`tooling/40` R-CLI-04).
+    pub locked: bool,
+    /// `--offline`: no contact of any kind (`tooling/40` R-CLI-05).
+    pub offline: bool,
 }
 
 /// Rewords the `VL0405` of `goal` in `diagnostics` for the setup that produced it: `unusable` when the provider couldn't
@@ -247,6 +255,29 @@ pub fn ollama(flag: Option<&str>, options: &SynthOptions) -> Result<Chosen, Diag
     Ok((Box::new(Ollama::new(config)), notice))
 }
 
+/// The external URL `text`, or `VL0902` before any contact (`compiler/22` R-SYNTH-29).
+fn parse_url(text: &str) -> Result<ExternalUrl, Diagnostic> {
+    ExternalUrl::parse(text).map_err(|why| {
+        Diagnostic::new(
+            Code::InvalidInput,
+            Span::default(),
+            format!("The external URL can't be used: {why}."),
+        )
+        .with_help("give an https URL, or an http one to localhost, 127.0.0.1 or [::1], with no user name or password")
+    })
+}
+
+/// The provider name and the flag values of a build that constructs no provider (`--locked`, `--offline`), checked as a
+/// build would: the same `VL0902`, with no provider built and no key or token read (`tooling/40` R-CLI-21).
+pub fn check_flags(name: &str, flags: &BuildFlags) -> Result<(), Diagnostic> {
+    if !(["anthropic", "ollama", "external", "replay"].contains(&name)
+        || (cfg!(feature = "test-provider") && name == "scripted"))
+    {
+        return Err(unknown_provider(name));
+    }
+    flags.external_url.map(parse_url).transpose().map(|_| ())
+}
+
 /// The `external` provider for the URL from `--external-url`, else `VELME_EXTERNAL_URL` (R-CLI-13; the user-level config
 /// comes with M6, and the project's `velme.toml` is never a source), with the bearer token of `VELME_EXTERNAL_TOKEN` if
 /// there is one. A URL that can't be used is `VL0902` before any contact (`compiler/22` R-SYNTH-29); a token that can't be
@@ -262,14 +293,7 @@ pub fn external(flag: Option<&str>) -> Result<Chosen, Diagnostic> {
             "pass `--external-url URL`, or set `VELME_EXTERNAL_URL`; the project's velme.toml can't name it",
         ));
     };
-    let url = ExternalUrl::parse(&text).map_err(|why| {
-        Diagnostic::new(
-            Code::InvalidInput,
-            Span::default(),
-            format!("The external URL can't be used: {why}."),
-        )
-        .with_help("give an https URL, or an http one to localhost, 127.0.0.1 or [::1], with no user name or password")
-    })?;
+    let url = parse_url(&text)?;
     let token = ExternalToken::lookup().map_err(|_| {
         not_configured(
             format!("The token in `{TOKEN_VARIABLE}` can't be used."),

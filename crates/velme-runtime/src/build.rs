@@ -64,6 +64,20 @@ impl Provenance<'_> {
     }
 }
 
+/// What a build may do (`tooling/40` R-CLI-04, R-CLI-05, D-106).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Mode {
+    /// `velme build`: synthesize what has no fresh lock entry, and write the store and the lock.
+    #[default]
+    Build,
+    /// `--offline`: no contact of any kind, the identity step and the store included, so a goal that isn't fresh in
+    /// the lock is `VL0404`.
+    Offline,
+    /// `--locked`: no synthesis and no write. A goal whose lock entry is missing or changed, or whose locked artifact
+    /// no longer passes its examples, is `VL0702`; a missing or damaged artifact file is `VL0701`/`VL0703`.
+    Locked,
+}
+
 /// What a build works on.
 pub struct BuildInput<'a> {
     /// The checked program.
@@ -74,6 +88,8 @@ pub struct BuildInput<'a> {
     pub project: &'a Path,
     /// The file's path from the project root, as the lock names it (`tooling/40` R-CLI-19).
     pub file: &'a str,
+    /// What the build may do.
+    pub mode: Mode,
     /// The provider, or `None` where synthesis is impossible by construction (`compiler/20` R-CMP-19).
     pub backend: Option<&'a dyn SynthBackend>,
     /// The `[synthesis]` settings.
@@ -229,9 +245,13 @@ impl<'a> Build<'a> {
         }
         let mut diagnostics = Vec::new();
         let names: Vec<&str> = self.input.program.goals.iter().map(|g| g.name.as_str()).collect();
-        self.lock.retain_declared(self.input.file, &names);
-        self.lock.language.clone_from(&self.input.program.language_version);
-        if self.lock != before
+        // A locked build writes nothing, and ignores the entries of goals no longer in the source (D-106).
+        if self.input.mode != Mode::Locked {
+            self.lock.retain_declared(self.input.file, &names);
+            self.lock.language.clone_from(&self.input.program.language_version);
+        }
+        if self.input.mode != Mode::Locked
+            && self.lock != before
             && let Err(error) = self.lock.write(self.input.project)
         {
             diagnostics.push(Diagnostic::new(
@@ -255,19 +275,11 @@ impl<'a> Build<'a> {
             return outcome("", Status::Failed, vec![Diagnostic::internal_error()]);
         };
         let (name, span) = (target.name.clone(), target.span);
-        if let Some((child, code)) = target
-            .bindings
-            .iter()
-            .find_map(|b| self.failed.get(&b.callee).map(|code| (b.callee, *code)))
-        {
-            let child_name = program.goals.get(child.0).map_or("", |g| g.name.as_str());
-            let d = Diagnostic::new(
-                Code::SynthesisBlocked,
-                span,
-                format!("`{name}` wasn't built because `{child_name}` couldn't be built."),
-            )
-            .with_note(format!("`{child_name}` ended with {}", code.as_str()));
-            return outcome(&name, Status::Blocked, vec![d]);
+        if self.input.mode == Mode::Locked {
+            return self.locked(id, &name, span);
+        }
+        if let Some(blocked) = self.blocked(id, &name, span) {
+            return blocked;
         }
         let mut notes = Vec::new();
         let mut feedback = Vec::new();
@@ -292,7 +304,11 @@ impl<'a> Build<'a> {
                     return done(&name, Status::Built(source), notes);
                 }
                 Verdict::Rejected(rejection) => {
-                    self.rejected.insert(id);
+                    // Offline nothing is synthesized, so the entry isn't dropped: only a failed re-verification and a
+                    // failed re-synthesis together drop it (D-100, D-106).
+                    if self.input.mode != Mode::Offline {
+                        self.rejected.insert(id);
+                    }
                     notes.push(self.recheck_note(id, &rejection.line));
                     feedback.push(previous(&candidate, &rejection));
                 }
@@ -300,13 +316,72 @@ impl<'a> Build<'a> {
                 Verdict::Internal => return outcome(&name, Status::Failed, vec![Diagnostic::internal_error()]),
             }
         }
-        let mut result = if target.kind == GoalKind::Wired {
+        let mut result = if self.input.mode == Mode::Offline {
+            // Not fresh in the lock, and nothing may be contacted or looked up (R-CLI-05).
+            outcome(&name, Status::Failed, vec![velme_synth::offline(&name, span)])
+        } else if target.kind == GoalKind::Wired {
             self.wired(id, &name, span)
         } else {
             self.synthesize(id, &name, span, feedback, first_contact).await
         };
         notes.append(&mut result.notes);
         noted(result, notes)
+    }
+
+    /// `id` blocked by a goal it calls that has no artifact, if there is one (`VL0409`).
+    fn blocked(&self, id: GoalId, name: &str, span: Span) -> Option<GoalOutcome> {
+        let program = self.input.program;
+        let target = program.goals.get(id.0)?;
+        let (child, code) = target
+            .bindings
+            .iter()
+            .find_map(|b| self.failed.get(&b.callee).map(|code| (b.callee, *code)))?;
+        let child_name = program.goals.get(child.0).map_or("", |g| g.name.as_str());
+        // A locked build builds nothing, so it says what it did not do (`reference/90` VL0409).
+        let message = if self.input.mode == Mode::Locked {
+            format!("`{name}` wasn't checked because `{child_name}` isn't usable.")
+        } else {
+            format!("`{name}` wasn't built because `{child_name}` couldn't be built.")
+        };
+        let d = Diagnostic::new(Code::SynthesisBlocked, span, message)
+            .with_note(format!("`{child_name}` ended with {}", code.as_str()));
+        Some(outcome(name, Status::Blocked, vec![d]))
+    }
+
+    /// A goal of a `--locked` build: its locked artifact loaded and verified as `build` does, with no provider and no
+    /// write; whatever is wrong is reported and nothing is dropped or replaced (R-ART-15, D-106).
+    fn locked(&mut self, id: GoalId, name: &str, span: Span) -> GoalOutcome {
+        let program = self.input.program;
+        let locked = match load(program, id, self.input.file, &self.lock, &self.store) {
+            Ok(locked) => locked,
+            Err(error) => return outcome(name, Status::Failed, vec![error.diagnostic(name, span)]),
+        };
+        if let Some(blocked) = self.blocked(id, name, span) {
+            return blocked;
+        }
+        match self.verify(id, &locked.ir) {
+            Verdict::Accepted(_) => {
+                self.summary.lock_hits += 1;
+                let source = if program.goals.get(id.0).is_some_and(|g| g.bindings.is_empty()) {
+                    Source::Lock
+                } else {
+                    Source::Reverified
+                };
+                self.built.insert(id, locked);
+                done(name, Status::Built(source), Vec::new())
+            }
+            Verdict::Rejected(rejection) => {
+                let d = Diagnostic::new(
+                    Code::LockStale,
+                    span,
+                    format!("`{name}` no longer passes its examples — run `velme build`."),
+                )
+                .with_note(rejection.line);
+                outcome(name, Status::Failed, vec![d])
+            }
+            Verdict::Watchdog(d) => outcome(name, Status::Failed, vec![retarget(d, span)]),
+            Verdict::Internal => outcome(name, Status::Failed, vec![Diagnostic::internal_error()]),
+        }
     }
 
     /// The children of `id` that changed in this build, quoted and named (R-SYNTH-46).

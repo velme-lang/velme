@@ -16,7 +16,7 @@ mod store;
 mod trace;
 
 pub use artifact::{ARTIFACT_FORMAT, Artifact, ArtifactFormat, Child, Kind, Manifest, Verification};
-pub use build::{BuildInput, BuildReport, GoalOutcome, Source, Status, Summary, build};
+pub use build::{BuildInput, BuildReport, GoalOutcome, Mode, Source, Status, Summary, build};
 pub use clock::{Clock, SystemClock};
 pub use explain::explain;
 pub use input::{MAX_INPUT_BYTES, decode_inputs, find_goal, read_input};

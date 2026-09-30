@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::Code;
 use velme_ir::IR_VERSION;
-use velme_runtime::{BuildInput, BuildReport, Clock, Lock, Options, Source, Status, build};
+use velme_runtime::{BuildInput, BuildReport, Clock, Lock, Mode, Options, Source, Status, build};
 use velme_synth::{
     AnthropicConfig, Identity, ProviderError, Recorder, Replay, Scripted, Step, SynthBackend, SynthOptions,
     SynthProvider,
@@ -129,9 +129,14 @@ struct Built {
 }
 
 fn build_with(dir: &Path, text: &str, backend: Option<&dyn SynthBackend>, options: SynthOptions) -> Built {
+    build_mode(dir, text, backend, options, Mode::Build)
+}
+
+fn build_mode(dir: &Path, text: &str, backend: Option<&dyn SynthBackend>, options: SynthOptions, mode: Mode) -> Built {
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
+        mode,
         program: &program,
         source: text,
         project: dir,
@@ -415,6 +420,7 @@ fn ac_synth_35_a_watchdog_stop_is_not_a_rejection() {
     let script = replies(&[double(), add_one()]);
     let mut contacts = 0;
     let input = BuildInput {
+        mode: velme_runtime::Mode::Build,
         program: &program,
         source: &text,
         project: &dir,
@@ -792,6 +798,7 @@ fn ac_art_10_a_watchdog_stop_on_a_lock_hit_keeps_the_entry() {
     let program = program(&text);
     let mut contacts = 0;
     let input = BuildInput {
+        mode: velme_runtime::Mode::Build,
         program: &program,
         source: &text,
         project: &dir,
@@ -866,4 +873,166 @@ fn ac_art_10_a_rejected_store_hit_leaves_no_note_when_another_is_taken() {
     assert!(double.notes.is_empty(), "{:?}", double.notes);
     let lock = Lock::read(&dir).expect("lock").expect("a lock");
     assert_eq!(lock.entry(FILE, "Double").expect("entry").artifact, good);
+}
+
+/// The one-line codes of a goal's diagnostics, for asserting how a locked or offline build ended.
+fn codes(built: &Built, goal: &str) -> Vec<Code> {
+    diagnostics(built, goal).iter().map(|d| d.code).collect()
+}
+
+/// `--locked` with one stale goal fails with `VL0702` naming it, constructs no provider, contacts none, and writes
+/// nothing (AC-ART-05, AC-SYNTH-08, R-ART-15, D-106).
+#[test]
+fn ac_art_05_a_locked_build_lists_the_stale_goal_and_constructs_no_provider() {
+    let dir = project("locked_stale");
+    build_with(
+        &dir,
+        &source("Double it."),
+        Some(&full_script()),
+        SynthOptions::default(),
+    );
+    let before = snapshot(&dir);
+    // Only what the artifact doesn't record changed, so the entry is stale by its `contract_key` alone.
+    let edited = source("Twice the number.");
+    let locked = build_mode(
+        &dir,
+        &edited,
+        Some(&PanicProvider),
+        SynthOptions::default(),
+        Mode::Locked,
+    );
+    assert_eq!(status(&locked, "Double"), Status::Failed);
+    let d = &diagnostics(&locked, "Double")[0];
+    assert_eq!(d.code, Code::LockStale);
+    assert!(
+        d.message.contains("`Double` changed since it was last built"),
+        "{}",
+        d.message
+    );
+    assert_eq!(status(&locked, "AddOne"), Status::Built(Source::Lock));
+    // Goals above the stale one can't be checked against it.
+    assert_eq!(status(&locked, "Sum"), Status::Blocked);
+    // A locked build builds nothing, so it says it didn't check.
+    assert_eq!(
+        diagnostics(&locked, "Sum")[0].message,
+        "`Sum` wasn't checked because `Double` isn't usable."
+    );
+    assert_eq!((locked.report.summary.calls, locked.contacts), (0, 0));
+    assert_eq!(snapshot(&dir), before);
+}
+
+/// A locked build ignores the lock entries of goals no longer in the source, and never prunes them (D-106).
+#[test]
+fn a_locked_build_ignores_entries_of_deleted_goals_and_writes_nothing() {
+    let dir = project("locked_deleted");
+    build_with(
+        &dir,
+        &source("Double it."),
+        Some(&full_script()),
+        SynthOptions::default(),
+    );
+    let before = snapshot(&dir);
+    // `Both` is gone from the source, but its entry stays in the lock.
+    let text = source("Double it.");
+    let text = text.split("goal Both").next().expect("a prefix").to_owned();
+    let locked = build_mode(&dir, &text, Some(&PanicProvider), SynthOptions::default(), Mode::Locked);
+    assert!(locked.report.goals.iter().all(|g| matches!(g.status, Status::Built(_))));
+    assert_eq!(locked.report.goals.len(), 3);
+    assert_eq!(locked.report.summary.lock_hits, 3);
+    assert_eq!(snapshot(&dir), before);
+}
+
+/// A locked artifact that no longer passes its examples, though its file is consistent, is `VL0702` with that cause;
+/// the entry is not dropped and nothing is written (R-ART-15, D-106, AC-ART-11 locked part).
+#[test]
+fn a_locked_build_reverifies_lock_hits_and_reports_a_failure_as_vl0702() {
+    let dir = project("locked_reverify");
+    let text = source("Double it.");
+    let program = program(&text);
+    // `n + 1` is a valid `Double` that fails its example.
+    install(
+        &dir,
+        FILE,
+        &program,
+        &ir(
+            "Double",
+            &json!({"kind": "binary", "op": "add", "left": input(), "right": literal(1)}),
+        ),
+    );
+    install(&dir, FILE, &program, &add_one());
+    let before = snapshot(&dir);
+    let lock = fs::read(dir.join("velme.lock")).expect("lock");
+    let locked = build_mode(&dir, &text, Some(&PanicProvider), SynthOptions::default(), Mode::Locked);
+    assert_eq!(codes(&locked, "Double"), [Code::LockStale]);
+    let d = &diagnostics(&locked, "Double")[0];
+    assert!(d.message.contains("no longer passes its examples"), "{}", d.message);
+    assert!(!d.notes.is_empty());
+    assert_eq!(status(&locked, "AddOne"), Status::Built(Source::Lock));
+    assert_eq!((locked.report.summary.calls, locked.contacts), (0, 0));
+    assert_eq!(snapshot(&dir), before);
+    assert_eq!(fs::read(dir.join("velme.lock")).expect("lock"), lock);
+}
+
+/// A missing lock entry is `VL0702`; a missing or damaged artifact file is `VL0701` or `VL0703` (R-ART-10, D-106).
+#[test]
+fn a_locked_build_tells_a_missing_entry_from_a_missing_or_damaged_file() {
+    let dir = project("locked_codes");
+    let text = source("Double it.");
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let lock = Lock::read(&dir).expect("lock").expect("a lock");
+    let file = |goal: &str| velme_runtime::Store::new(&dir).path(lock.entry(FILE, goal).expect("an entry").artifact);
+    fs::remove_file(file("Double")).expect("removed");
+    let mut bytes = fs::read(file("AddOne")).expect("artifact");
+    bytes.push(b' ');
+    fs::write(file("AddOne"), bytes).expect("damaged");
+    let locked = build_mode(&dir, &text, Some(&PanicProvider), SynthOptions::default(), Mode::Locked);
+    assert_eq!(codes(&locked, "Double"), [Code::ArtifactUnavailable]);
+    assert_eq!(codes(&locked, "AddOne"), [Code::ArtifactCorrupt]);
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    let locked = build_mode(&dir, &text, Some(&PanicProvider), SynthOptions::default(), Mode::Locked);
+    assert_eq!(codes(&locked, "Double"), [Code::LockStale]);
+    assert!(diagnostics(&locked, "Double")[0].message.contains("no verified build"));
+}
+
+/// `--offline` contacts no provider at all, the identity step included, and doesn't look in the store: a goal that
+/// isn't fresh in the lock is `VL0404` in the offline wording, even when the store holds its artifact (AC-SYNTH-08,
+/// R-CLI-05, D-106).
+#[test]
+fn ac_synth_08_an_offline_build_needs_no_contact_and_skips_the_store() {
+    let dir = project("offline");
+    let first = source("Double it.");
+    build_with(&dir, &first, Some(&full_script()), SynthOptions::default());
+    // A second plan, so the store holds a `Double` for each and the lock the newer one.
+    build_with(
+        &dir,
+        &source("Twice the number."),
+        Some(&replies(&[double()])),
+        SynthOptions::default(),
+    );
+    let before = snapshot(&dir);
+    let offline = build_mode(
+        &dir,
+        &first,
+        Some(&PanicProvider),
+        SynthOptions::default(),
+        Mode::Offline,
+    );
+    assert_eq!(status(&offline, "Double"), Status::Failed);
+    let d = &diagnostics(&offline, "Double")[0];
+    assert_eq!(d.code, Code::ProviderUnavailable);
+    assert_eq!(d.message, "`Double` needs building, and `--offline` is on.");
+    assert_eq!(d.help.as_deref(), Some("run `velme build` without `--offline`"));
+    assert_eq!(status(&offline, "AddOne"), Status::Built(Source::Lock));
+    assert_eq!((offline.report.summary.calls, offline.contacts), (0, 0));
+    assert_eq!(snapshot(&dir), before);
+    // With every goal fresh, an offline build is a plain re-check.
+    let fresh = build_mode(
+        &dir,
+        &source("Twice the number."),
+        Some(&PanicProvider),
+        SynthOptions::default(),
+        Mode::Offline,
+    );
+    assert!(fresh.report.goals.iter().all(|g| matches!(g.status, Status::Built(_))));
+    assert_eq!(fresh.contacts, 0);
 }
