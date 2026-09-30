@@ -73,7 +73,7 @@ spelling suggestion.
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14); the provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) are valid only on `build` or together with `--build` (R-CLI-21) |
 | `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` R-RUN-07); results are identical for every value, including 1 (INV-3) |
-| `--backend interp\|wasm` | `interp` until M7, then `wasm` for leaf goals | execution backend for `run`/`test`/`trace` (`runtime/31`); results must be identical (INV-3); `--backend wasm` before M7 is `VL0902` "not available yet" (R-CLI-21) |
+| `--backend interp\|wasm\|auto` | `interp` until the M7 gate, then `auto` | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
 | `--config PATH` | nearest `velme.toml` upward from `FILE` | alternative project config: it supplies settings only and does not move the project root (R-CLI-25) |
 | `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds phase timings and cache hits |
 
@@ -301,9 +301,11 @@ relative paths keep resolving from the source file's own root (D-105).
 too) must be in it; if not, the build fails with `VL0405` "The model `{model}` isn't in your allowed models." before any
 contact, naming the list. Nothing is swapped for the first allowed model, across providers or otherwise (D-105).
 **R-CLI-21** Provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) apply only to `build` and to
-`run`/`test`/`trace` with `--build`; given anywhere else they are `VL0902`, not ignored, and so is `--backend wasm` before
-M7 ("not available yet"). A bad flag is reported like any input error: as a top-level diagnostic in the normal `--json`
-envelope, exit `64` (D-108).
+`run`/`test`/`trace` with `--build`; given anywhere else they are `VL0902`, not ignored. `--backend` takes `interp`,
+`wasm` or `auto`, and any other value is `VL0902`; under `--backend wasm` a leaf goal the emitter declines is `VL0607`,
+never a silent fallback (`runtime/31` R-SBX-02, D-117). The output has no `backend` field, in `velme-cli/1` or in the
+trace. A bad flag is reported like any input error: as a top-level diagnostic in the normal `--json` envelope, exit
+`64` (D-108).
 **R-CLI-22** `velme artifact FILE --goal G` loads the goal's artifact with the same checks and the same codes as `run`
 (`runtime/32` R-ART-10, R-ART-16): a missing lock entry or a changed one is `VL0702`, a missing file `VL0701`, a damaged
 one `VL0703`; it never shows a stale artifact. On success it prints the artifact's hash, then the manifest's fields one
@@ -368,6 +370,6 @@ name to set.
 | AC-CLI-21 | `velme gc` run from a subdirectory of a project deletes exactly the unreferenced artifact files and temp files and prints the count; with no `velme.lock` it refuses. `velme cache clean` exits 0 with no cache directory present. |
 | AC-CLI-22 | An `ollama_url` or `external_url` in a project's `velme.toml`, an unknown key in the user-level file, and a wrong type or out-of-range value in either each fail with `VL0902` and the "should be … but got …" wording; an unreadable config or `external_ca_file` is `VL0901`; a user-level file is found at the R-CLI-25 location for each platform. |
 | AC-CLI-23 | A model outside `allowed_models`, from the flag, `VELME_MODEL` or the project, fails with `VL0405` and is never swapped. |
-| AC-CLI-24 | `--provider` on `velme check`, `--backend wasm` before M7 and an invalid flag value each exit 64 with `VL0902`, inside the `--json` envelope when `--json` is given; `-q` removes progress lines but not diagnostics, results or the R-SEC-12 notice. |
+| AC-CLI-24 | `--provider` on `velme check`, an unknown `--backend` value and an invalid flag value each exit 64 with `VL0902`, inside the `--json` envelope when `--json` is given; `-q` removes progress lines but not diagnostics, results or the R-SEC-12 notice. |
 | AC-CLI-25 | `--color auto` colours stderr but not stdout when only stderr is a TTY, and neither with `NO_COLOR` set. |
 | AC-CLI-26 | `run --json` for a composite goal has one `results[]` entry for the requested goal, with `calls[]` in source order holding `binding`, `goal` and `status`. |
