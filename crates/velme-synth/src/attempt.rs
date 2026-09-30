@@ -4,9 +4,12 @@
 //! provider never reaches it (R-SYNTH-22).
 
 use velme_diagnostics::{Code, Diagnostic};
-use velme_ir::{Invalid, ParseError};
+use velme_ir::{Invalid, ParseError, Subject};
 
-use crate::request::{AttemptDiagnostic, AttemptFeedback};
+use crate::compact;
+use crate::options::ReplyFormat;
+use crate::prompt::type_name;
+use crate::request::{AttemptDiagnostic, AttemptFeedback, SynthRequest};
 
 /// The most Unicode scalar values of a question or pending text (R-SYNTH-33).
 pub(crate) const MAX_TEXT_CHARS: usize = 280;
@@ -98,8 +101,23 @@ impl Rejection {
     /// A candidate that failed validation (`compiler/21` §6): the first finding, in `R-CMP-16` order, is primary. What the
     /// learner reads is composed from the stage, the rule's id and the path, never from the finding's message, which can
     /// carry the candidate's own names (R-SYNTH-22); the next request carries the full detail.
-    pub(crate) fn invalid(reply: &str, found: &[Invalid]) -> Rejection {
-        let diagnostics: Vec<AttemptDiagnostic> = found.iter().map(|f| feedback(&f.diagnostic)).collect();
+    pub(crate) fn invalid(reply: &str, found: &[Invalid], request: &SynthRequest, format: ReplyFormat) -> Rejection {
+        // A hint is said once per attempt, on the first finding that has it.
+        let mut said: Vec<String> = Vec::new();
+        let diagnostics: Vec<AttemptDiagnostic> = found
+            .iter()
+            .map(|f| {
+                let mut sent = feedback(&f.diagnostic);
+                if let Some(hint) = hint(f, request, format).filter(|h| !said.contains(h)) {
+                    said.push(hint.clone());
+                    sent.detail = Some(match sent.detail.take() {
+                        Some(detail) => format!("{detail}; {hint}"),
+                        None => hint,
+                    });
+                }
+                sent
+            })
+            .collect();
         let (code, stage, rule, path) = found
             .first()
             .map_or((Code::IRInvalid, "internal", "internal-1", String::new()), |f| {
@@ -203,6 +221,83 @@ fn rule_words(rule: &str) -> &'static str {
         "resources-1" | "resources-2" | "resources-6" => "is too large or too deeply nested",
         "resources-3" | "resources-4" | "resources-5" => "holds a text or list that is too long",
         _ => "broke a rule of the IR",
+    }
+}
+
+/// What the next request adds to a name or field the goal doesn't have (D-104, R-SYNTH-49): what is there, from the request
+/// alone, and which node reads it, named as the reply is asked to spell it. The finding's `subject` only chooses the
+/// words; nothing of the candidate's own text is repeated.
+fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<String> {
+    let node = |kind: &str| match (format, compact::table().kinds.get(kind)) {
+        (ReplyFormat::Compact, Some(alias)) => format!("`{kind}` (`{alias}`) node"),
+        _ => format!("`{kind}` node"),
+    };
+    let list = |items: Vec<String>| {
+        if items.is_empty() {
+            "none".to_owned()
+        } else {
+            items.join(", ")
+        }
+    };
+    let inputs = format!(
+        "the goal's inputs, each read with an {}, are: {}",
+        node("input"),
+        list(
+            request
+                .signature
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
+                .collect()
+        )
+    );
+    // A composite's call bindings are names too (`compiler/22` R-SYNTH-49).
+    let locals = if request.locals.is_empty() {
+        String::new()
+    } else {
+        format!(
+            ", and the call results, each read with a {}, are: {}",
+            node("local"),
+            list(
+                request
+                    .locals
+                    .iter()
+                    .map(|l| format!("{}: {}", l.name, type_name(&l.ty)))
+                    .collect()
+            )
+        )
+    };
+    match (found.rule, &found.subject) {
+        ("names-7", Subject::Name(_)) => Some(format!("{inputs}{locals}")),
+        ("names-8", Subject::Name(name)) if name.contains('.') => {
+            let head = name.split('.').next().unwrap_or_default();
+            let base = if request.locals.iter().any(|l| l.name == head) {
+                "local"
+            } else {
+                "input"
+            };
+            Some(format!(
+                "a name is never dotted: read a field with a {} over the {}; {inputs}{locals}",
+                node("field"),
+                node(base)
+            ))
+        }
+        ("names-8", Subject::Name(_)) => Some(format!(
+            "{inputs}{locals}; a {} reads only a call result or a lambda's parameter",
+            node("local")
+        )),
+        ("names-9" | "names-10", Subject::Record(name)) => {
+            let record = request.types.iter().find(|r| &r.name == name)?;
+            let fields = record
+                .fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, type_name(&f.ty)));
+            Some(format!("the fields of `{name}` are: {}", list(fields.collect())))
+        }
+        ("types-15", Subject::TextArithmetic) => {
+            Some("`add`, `sub`, `mul` and `div` are for Numbers only; join Text with the `concat` builtin".to_owned())
+        }
+        _ => None,
     }
 }
 

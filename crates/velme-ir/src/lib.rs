@@ -22,7 +22,9 @@ pub use node::{
     BinaryOperator, Call, CallNode, Goal, ItemShape, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type,
     UnaryOperator,
 };
-pub use validate::{CheckScope, Invalid, Origin, Request, Trusted, TrustedExpr, ValidIr, validate, validate_detailed};
+pub use validate::{
+    CheckScope, Invalid, Origin, Request, Subject, Trusted, TrustedExpr, ValidIr, validate, validate_detailed,
+};
 
 /// The IR version this crate reads and writes (`compiler/21` R-IR-22).
 pub const IR_VERSION: &str = "0.1";

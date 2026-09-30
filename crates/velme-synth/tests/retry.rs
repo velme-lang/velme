@@ -9,8 +9,8 @@ use velme_diagnostics::Code;
 use velme_ir::{Fingerprint, contract_key};
 use velme_synth::{
     AttemptDiagnostic, AttemptFeedback, Outcome, ProviderError, ReplyFormat, RetryHistory, Scripted, Session, Sleeper,
-    Step, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, compress, render_with, synthesize,
-    unavailable, with_transport_retries,
+    Step, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, alias_table, compress, render_with,
+    synthesize, unavailable, with_transport_retries,
 };
 use velme_test_support::{LeafRunner, RecordingSleeper, goal_id, program};
 
@@ -281,6 +281,160 @@ fn ac_synth_41_a_reply_body_that_cannot_be_read_is_a_failed_attempt() {
 
 fn literal_text() -> Value {
     json!({"kind": "literal", "type": {"t": "Text"}, "value": "x"})
+}
+
+/// What the next request says to a reply that reads names or fields the goal doesn't have (AC-SYNTH-43, R-SYNTH-49,
+/// D-104): the detail of the first diagnostic of each reply, after `replies` in turn, from the request alone.
+fn hints(source: &str, goal: &str, format: ReplyFormat, replies: Vec<String>) -> Vec<Vec<Option<String>>> {
+    let program = program(source);
+    let id = goal_id(&program, goal);
+    let task = Task {
+        program: &program,
+        goal: id,
+        source,
+        contract_key: contract_key(&program, id).expect("a key"),
+        synthesis_key: Fingerprint::of_bytes(b"synthesis"),
+        feedback: Vec::new(),
+    };
+    let count = replies.len() as u32;
+    let options = SynthOptions {
+        max_retries: count,
+        stop_on_repeat: false,
+        retry_history: RetryHistory::All,
+        reply_format: format,
+        ..SynthOptions::default()
+    };
+    let provider = Scripted::replies(replies.iter().cloned().chain([good()]));
+    let mut session = Session::new(options);
+    let _ = block_on(synthesize(&mut session, &provider, &task, &LeafRunner::new()));
+    let sent = provider.requests();
+    let last = &sent[replies.len()];
+    last.attempts
+        .iter()
+        .map(|a| a.diagnostics.iter().map(|d| d.detail.clone()).collect())
+        .collect()
+}
+
+/// A name or field the goal doesn't have is answered with what is there and which node reads it, in the reply's format,
+/// once per attempt, and none of the reply's text comes back (AC-SYNTH-43, R-SYNTH-49, D-104).
+#[test]
+fn ac_synth_43_feedback_for_a_wrong_name_lists_what_is_available() {
+    const RECORDS: &str = "language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+
+goal Rank(player: Player, bonus: Number) -> Number:
+    plan: \"Return the score plus the bonus.\"
+
+goal Bump(n: Number) -> Number:
+    plan: \"Add one.\"
+
+goal Twice(n: Number) -> Number:
+    call:
+        b = Bump(n)
+    plan: \"Bump the result again.\"
+";
+    let field = |name: &str| json!({"kind": "field", "of": {"kind": "input", "name": "player"}, "field": name});
+    let local = |name: &str| json!({"kind": "local", "name": name});
+    let text = |value: &str| json!({"kind": "literal", "type": {"t": "Text"}, "value": value});
+    let binary = |op: &str, l: &Value, r: &Value| json!({"kind": "binary", "op": op, "left": l, "right": r});
+    let inputs = "the goal's inputs, each read with an `input` node, are: player: Player, bonus: Number";
+    let detail = |found: &Vec<Vec<Option<String>>>, n: usize| found[n][0].clone().unwrap_or_default();
+    let ir = ReplyFormat::IrJson;
+    let leaf = hints(
+        RECORDS,
+        "Rank",
+        ir,
+        vec![
+            // An input written as a `local`; a dotted name; a field the record doesn't have; an input that isn't there.
+            reply(&local("player")),
+            reply(&local("SENTINEL.score")),
+            reply(&field("SENTINEL")),
+            reply(&json!({"kind": "input", "name": "SENTINEL"})),
+            // `add` on Text points to `concat`; `gt` on Text says nothing of the kind.
+            reply(&binary("add", &text("a"), &text("b"))),
+            reply(&binary("gt", &text("a"), &literal(1))),
+            // Two unknown inputs in one reply: the list is said once.
+            reply(&binary(
+                "add",
+                &json!({"kind": "input", "name": "X"}),
+                &json!({"kind": "input", "name": "Y"}),
+            )),
+        ],
+    );
+    assert_eq!(
+        detail(&leaf, 0),
+        format!("{inputs}; a `local` node reads only a call result or a lambda's parameter")
+    );
+    let dotted = detail(&leaf, 1);
+    assert!(
+        dotted.contains("a name is never dotted: read a field with a `field` node over the `input` node; ")
+            && dotted.contains(inputs),
+        "{dotted}"
+    );
+    assert_eq!(
+        detail(&leaf, 2).split("; ").last(),
+        Some("the fields of `Player` are: name: Text, score: Number")
+    );
+    assert!(detail(&leaf, 3).contains(inputs), "{}", detail(&leaf, 3));
+    for n in 0..4 {
+        // The hint is the request's own words: the message beside it may quote the reply, the hint never does.
+        assert!(!detail(&leaf, n).contains("SENTINEL"), "{}", detail(&leaf, n));
+    }
+    assert!(
+        detail(&leaf, 4).contains("join Text with the `concat` builtin"),
+        "{}",
+        detail(&leaf, 4)
+    );
+    assert!(!detail(&leaf, 5).contains("concat"), "{}", detail(&leaf, 5));
+    assert_eq!(leaf[6].len(), 2);
+    assert!(leaf[6][0].as_deref().unwrap_or_default().contains(inputs));
+    assert!(
+        !leaf[6][1].as_deref().unwrap_or_default().contains(inputs),
+        "{:?}",
+        leaf[6]
+    );
+
+    // A composite lists its call results too, and a dotted name that starts at one is a field over a `local`.
+    let calls = "the goal's inputs, each read with an `input` node, are: n: Number, and the call results, each read with a `local` node, are: b: Number";
+    let composite = hints(
+        RECORDS,
+        "Twice",
+        ir,
+        vec![
+            reply(&json!({"kind": "input", "name": "SENTINEL"})),
+            reply(&local("b.SENTINEL")),
+            reply(&local("n.x")),
+        ],
+    );
+    assert!(detail(&composite, 0).contains(calls), "{}", detail(&composite, 0));
+    let over_local = detail(&composite, 1);
+    assert!(
+        over_local.contains("a `field` node over the `local` node; ") && over_local.contains(calls),
+        "{over_local}"
+    );
+    assert!(
+        detail(&composite, 2).contains("over the `input` node; "),
+        "{}",
+        detail(&composite, 2)
+    );
+
+    // In the compact format the nodes are named as the reply is asked to spell them.
+    let compact = hints(
+        RECORDS,
+        "Twice",
+        ReplyFormat::Compact,
+        vec![compress(&json!({"body": {"kind": "input", "name": "SENTINEL"}})).to_string()],
+    );
+    let table = alias_table();
+    let alias = &table.kinds["input"];
+    assert!(
+        detail(&compact, 0).contains(&format!("read with an `input` (`{alias}`) node")),
+        "{}",
+        detail(&compact, 0)
+    );
 }
 
 /// Two invalid replies with different causes, then a valid one: built after two retries, each retry carrying what was

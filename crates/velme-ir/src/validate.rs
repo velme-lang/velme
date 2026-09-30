@@ -218,6 +218,21 @@ pub fn validate(text: &str, request: &Request<'_>) -> Result<ValidIr, Vec<Diagno
     validate_detailed(text, request).map_err(|found| found.into_iter().map(|f| f.diagnostic).collect())
 }
 
+/// What a finding is about, as data: what a caller may say about the rule without quoting the document (`compiler/22`
+/// R-SYNTH-49). It can hold a name the document chose, so it is for choosing words, never for showing.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Subject {
+    /// Nothing more than the rule.
+    #[default]
+    None,
+    /// The input or local name that isn't there (`names-7`, `names-8`).
+    Name(String),
+    /// The record that has no such field (`names-9`, `names-10`).
+    Record(String),
+    /// `add`, `sub`, `mul` or `div` given a Text operand (`types-15`).
+    TextArithmetic,
+}
+
 /// One finding of [`validate_detailed`]: the diagnostic, and which rule it is, without any of what the document said.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invalid {
@@ -229,6 +244,8 @@ pub struct Invalid {
     pub rule: &'static str,
     /// The JSON Pointer of the fault, empty for the whole document or when the parser gave none.
     pub path: String,
+    /// What the finding is about, for choosing words.
+    pub subject: Subject,
 }
 
 /// [`validate`], with each finding's stage, rule id and path beside its diagnostic (`compiler/22` R-SYNTH-31, D-95).
@@ -321,6 +338,7 @@ fn schema_error(error: ParseError, span: Span) -> Invalid {
         stage: "schema",
         rule: "schema-1",
         path,
+        subject: Subject::None,
     }
 }
 
@@ -331,6 +349,7 @@ impl Invalid {
             stage: "internal",
             rule: "internal-1",
             path: String::new(),
+            subject: Subject::None,
         }
     }
 }
@@ -370,6 +389,7 @@ struct Finding {
     path: String,
     rule: String,
     help: Option<String>,
+    subject: Subject,
 }
 
 impl Finding {
@@ -380,6 +400,7 @@ impl Finding {
             path,
             rule,
             help: None,
+            subject: Subject::None,
         }
     }
 
@@ -388,6 +409,7 @@ impl Finding {
             stage: self.stage.name(),
             rule: self.id,
             path: self.path.clone(),
+            subject: self.subject.clone(),
             diagnostic: self.diagnostic(span),
         }
     }
@@ -472,7 +494,15 @@ impl<'a> Validator<'a> {
             path: pointer(&self.path),
             rule,
             help,
+            subject: Subject::None,
         });
+    }
+
+    /// Says what the finding just recorded is about.
+    fn about(&mut self, subject: Subject) {
+        if let Some(found) = self.findings.last_mut() {
+            found.subject = subject;
+        }
     }
 
     /// A finding at `segments` below the current path.
@@ -1053,6 +1083,7 @@ impl<'a> Validator<'a> {
             format!("there's no input called `{name}`"),
             help,
         );
+        self.about(Subject::Name(name.to_owned()));
         HirType::Error
     }
 
@@ -1068,6 +1099,7 @@ impl<'a> Validator<'a> {
             format!("there's no name `{name}` here"),
             help,
         );
+        self.about(Subject::Name(name.to_owned()));
         HirType::Error
     }
 
@@ -1089,6 +1121,7 @@ impl<'a> Validator<'a> {
                     let help = did_you_mean(field, record.fields.iter().map(|f| f.name.as_str()));
                     let rule = format!("`{}` has no field `{field}`", record.name);
                     self.find_at(&[field], Stage::Names, "names-9", rule, help);
+                    self.about(Subject::Record(record.name.clone()));
                 }
                 Some(f) if !assignable(&found, &f.ty) => {
                     let rule = format!(
@@ -1164,6 +1197,7 @@ impl<'a> Validator<'a> {
                 let help = did_you_mean(field, record.fields.iter().map(|f| f.name.as_str()));
                 let rule = format!("`{}` has no field `{field}`", record.name);
                 self.find_at(&["field"], Stage::Names, "names-10", rule, help);
+                self.about(Subject::Record(record.name.clone()));
             }
             HirType::Optional(_) => {
                 let rule = format!(
@@ -1215,6 +1249,13 @@ impl<'a> Validator<'a> {
                 self.name(&r)
             );
             self.find(Stage::Types, "types-15", rule);
+            let arithmetic = matches!(
+                op,
+                BinaryOperator::Add | BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div
+            );
+            if arithmetic && (matches!(l, HirType::Text) || matches!(r, HirType::Text)) {
+                self.about(Subject::TextArithmetic);
+            }
         }
         result
     }

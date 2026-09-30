@@ -15,11 +15,30 @@ use crate::schema::{reply_schema, schema_summary};
 
 /// A template's id: the task kind and the template's own version. Editing a template's text keeps its id and changes
 /// its bytes, which `prompt_version` hashes.
-const LEAF_ID: &str = "leaf-2";
-const COMPOSITE_ID: &str = "composite-2";
+const LEAF_ID: &str = "leaf-3";
+const COMPOSITE_ID: &str = "composite-3";
 
 const LEAF: &str = include_str!("../prompts/leaf.txt");
 const COMPOSITE: &str = include_str!("../prompts/composite.txt");
+
+/// The JSON the templates teach with, as canonical IR: shown as written, or through the compact aliases when the reply is
+/// to be compact, so an example is never in a spelling the expander refuses (D-104).
+const EXAMPLES: [(&str, &str); 5] = [
+    ("example_input", r#"{"kind":"input","name":"player"}"#),
+    (
+        "example_field",
+        r#"{"kind":"field","of":{"kind":"input","name":"player"},"field":"score"}"#,
+    ),
+    ("example_dotted", r#"{"kind":"local","name":"player.score"}"#),
+    (
+        "example_describe",
+        r#"{"body":{"kind":"if","cond":{"kind":"binary","op":"gt","left":{"kind":"field","of":{"kind":"input","name":"item"},"field":"stock"},"right":{"kind":"literal","type":{"t":"Number"},"value":0}},"then":{"kind":"builtin","name":"concat","args":[{"kind":"field","of":{"kind":"input","name":"item"},"field":"title"},{"kind":"literal","type":{"t":"Text"},"value":" is in stock"}]},"else":{"kind":"builtin","name":"concat","args":[{"kind":"field","of":{"kind":"input","name":"item"},"field":"title"},{"kind":"literal","type":{"t":"Text"},"value":" is sold out"}]}}}"#,
+    ),
+    (
+        "example_total",
+        r#"{"body":{"kind":"builtin","name":"sum","args":[{"kind":"map","list":{"kind":"input","name":"items"},"fn":{"param":"i","body":{"kind":"field","of":{"kind":"local","name":"i"},"field":"stock"}}}]}}"#,
+    ),
+];
 
 /// Where the fixed prefix ends and the goal's own part begins, and where the retry turn's text begins.
 const TASK_MARK: &str = "\n--- task ---\n";
@@ -86,9 +105,10 @@ fn compute_version() -> String {
         "composite": {"id": COMPOSITE_ID, "template": COMPOSITE},
         "schema_summary": schema_summary(),
         "alias_table": compact::table(),
+        "examples": EXAMPLES,
     });
     let hash = Fingerprint::of(&doc).map(|f| f.hex()).unwrap_or_default();
-    format!("prompt-2:{hash}")
+    format!("prompt-3:{hash}")
 }
 
 /// `request` rendered through its task kind's template with the default options.
@@ -199,6 +219,15 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
         notes.push_str(&compact::describe());
     }
     fields.insert("format_notes", notes);
+    for (name, text) in EXAMPLES {
+        let value: Value = velme_ir::from_json_str(text).map_err(|_| Diagnostic::internal_error())?;
+        let shown = if options.reply_format == ReplyFormat::Compact {
+            compact::compress(&value)
+        } else {
+            value
+        };
+        fields.insert(name, canonical(&shown)?);
+    }
     fields.insert("prompt_version", prompt_version());
     fields.insert("ir_version", request.ir_version.clone());
     fields.insert("builtins_version", request.builtins_version.clone());
@@ -233,12 +262,11 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
         ),
     );
     fields.insert("plan", fenced(&request.plan));
-    let checks: Result<Vec<String>, Diagnostic> = request
-        .checks
-        .iter()
-        .map(|c| Ok(format!("{}\n  IR: {}", c.source, canonical(&c.ir)?)))
-        .collect();
-    fields.insert("checks", fenced(&or_none(checks?)));
+    // A check is shown as written: its lowered form reads like a body, and models copy it (D-104).
+    fields.insert(
+        "checks",
+        fenced(&or_none(request.checks.iter().map(|c| c.source.clone()).collect())),
+    );
     let examples: Result<Vec<String>, Diagnostic> = request
         .examples
         .iter()
@@ -349,7 +377,7 @@ fn record(record: &RecordType) -> String {
 }
 
 /// `ty` as a learner writes it: `List<Player?>`.
-fn type_name(ty: &Type) -> String {
+pub(crate) fn type_name(ty: &Type) -> String {
     match ty {
         Type::Number {} => "Number".to_owned(),
         Type::Text {} => "Text".to_owned(),
