@@ -316,6 +316,7 @@ pub fn reaches_no_further(error: &ProviderError) -> bool {
             | ProviderError::RateLimited { .. }
             | ProviderError::NotConfigured
             | ProviderError::KeyRejected
+            | ProviderError::TokenRejected { .. }
             | ProviderError::File { .. }
     )
 }
@@ -324,9 +325,10 @@ pub fn reaches_no_further(error: &ProviderError) -> bool {
 /// stopped it, else `VL0404` (R-SYNTH-45).
 pub fn stopped_diagnostic(error: &ProviderError, name: &str, span: Span) -> Diagnostic {
     match error {
-        ProviderError::NotConfigured | ProviderError::KeyRejected | ProviderError::File { .. } => {
-            provider_diagnostic(error, "", name, span)
-        }
+        ProviderError::NotConfigured
+        | ProviderError::KeyRejected
+        | ProviderError::TokenRejected { .. }
+        | ProviderError::File { .. } => provider_diagnostic(error, "", name, span),
         _ => unavailable(name, span, None),
     }
 }
@@ -347,10 +349,22 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             format!("I can't write `{name}` because the API key was rejected."),
         )
         .with_help("check the key in `VELME_API_KEY` (or `ANTHROPIC_API_KEY`), or set a valid one"),
+        ProviderError::TokenRejected { sent: true } => Diagnostic::new(
+            Code::ProviderNotConfigured,
+            span,
+            format!("I can't write `{name}` because the external backend rejected the token."),
+        )
+        .with_help("check the token in `VELME_EXTERNAL_TOKEN`, or unset it if the backend needs none"),
+        ProviderError::TokenRejected { sent: false } => Diagnostic::new(
+            Code::ProviderNotConfigured,
+            span,
+            format!("I can't write `{name}` because the external backend wants a token."),
+        )
+        .with_help("set `VELME_EXTERNAL_TOKEN` to the token the backend expects"),
         ProviderError::Unavailable(why) => unavailable(name, span, Some(why)),
         ProviderError::Timeout => unavailable(name, span, Some("the request timed out")),
         ProviderError::RateLimited { .. } => unavailable(name, span, Some("the provider is rate limiting requests")),
-        ProviderError::BackendFailed { reason, stderr } => {
+        ProviderError::BackendFailed { reason, body } => {
             let reason = clean_line(reason);
             let reason = if reason.is_empty() {
                 "it failed".to_owned()
@@ -362,8 +376,8 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
                 span,
                 format!("The backend `{backend}` couldn't build `{name}`: {reason}"),
             );
-            if !stderr.is_empty() {
-                d = d.with_note(format!("The backend's stderr ended: {stderr}"));
+            if !body.is_empty() {
+                d = d.with_note(format!("The backend's reply ended: {body}"));
             }
             d
         }

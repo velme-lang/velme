@@ -13,7 +13,7 @@ own IR validity (that is [21](21-ir.md) §6), execution semantics ([runtime/30](
 the artifact store and lockfile ([runtime/32](../runtime/32-artifacts-cache.md)).
 
 Principle: the provider proposes, the deterministic pipeline disposes (INV-1, INV-2). A provider is an LLM
-(`anthropic`, `ollama`) or any program speaking the external protocol (§3.2, D-42); the pipeline treats every
+(`anthropic`, `ollama`) or any service speaking the external protocol (§3.2, D-42); the pipeline treats every
 candidate the same way, whoever wrote it.
 
 ## 2. When synthesis happens
@@ -60,9 +60,9 @@ pub struct SynthRequest { pub request_version: String, pub ir_version: String, p
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
                           pub output_schema: serde_json::Value }             // reply schema: IR goal or question (R-SYNTH-10)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
-pub enum  ProviderError { NotConfigured, KeyRejected, Unavailable(String), RateLimited { retry_after: Option<Duration> },
+pub enum  ProviderError { NotConfigured, KeyRejected, TokenRejected, Unavailable(String), RateLimited { retry_after: Option<Duration> },
                           Refused(String), Timeout, Malformed(String),
-                          BackendFailed { reason: String, stderr: String },      // R-SYNTH-28
+                          BackendFailed { reason: String, body: String },        // R-SYNTH-28: body = cleaned last 4 KiB of the reply
                           Pending(String), File { path: String, reason: String }, // R-SYNTH-43
                           Internal(String) }
 ```
@@ -79,7 +79,7 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 |---|---|---|
 | `anthropic` | hosted LLM (D-14) | Messages API, temperature 0; output through two tools, `write_goal` (input: the IR goal schema) and `ask_question` (input: the question object), with the model forced to call one (R-SYNTH-44) |
 | `ollama` | local LLM (D-41) | Ollama chat API at the configured URL, `format` set to the IR JSON Schema, temperature 0, no streaming; no API key |
-| `external` | human- or tool-written IR (D-42) | runs the user's command and speaks the §3.2 protocol over stdin/stdout; no network of its own |
+| `external` | human- or tool-written IR (D-42) | speaks the §3.2 protocol over HTTP and JSON to a standalone service the user starts, at the URL the user configures (D-101); Velme starts no process |
 | `replay` | integration tests, golden builds, CI | reads `<replay_dir>/b3-<hex>.json`, named from the synthesis key as store files are (R-SYNTH-43); missing fixture → `VL0404` naming the key; `VELME_SYNTH_RECORD=1` with a live provider writes fixtures |
 | `scripted` | unit tests of the retry loop and pipeline | a queue of replies/errors: in memory from library tests, or from the script file in `VELME_SYNTH_SCRIPT` in a `velme-cli` built with the `test-provider` feature, never in release builds (`tooling/40` §5.2) |
 
@@ -108,7 +108,8 @@ is the reply (R-SYNTH-10), and a reply with no tool call, both tools or anything
 mock server through a base URL set only by the test-only constructor in `velme-test-support`, never by a config key
 or environment variable (D-98).
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `KeyRejected` (the API answered 401 or 403 to a key
-that is set) → `VL0405` worded "the API key was rejected" (`reference/90`); `File` (a replay file that is a link, is
+that is set) → `VL0405` worded "the API key was rejected" (`reference/90`); `TokenRejected` (an `external` service
+answered 401 or 403) → `VL0405` worded "the external backend rejected the token", with a hint naming `VELME_EXTERNAL_TOKEN`; `File` (a replay file that is a link, is
 not a regular file, is too large or can't be read or written) → `VL0901`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5) with `VL0401`, in Velme's own
 wording, never the provider's text (R-SYNTH-22, D-93); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
@@ -128,20 +129,23 @@ every store lookup and request in that build (D-57). A tag that now points at di
 step 1), before the store lookup: `ollama` resolves its digest (R-SYNTH-24), `external` sends `describe`
 (R-SYNTH-26), `replay` reads `replay.json` (R-SYNTH-43), and `anthropic` and `scripted` contact nothing. The provider
 that makes requests is constructed only when a goal also misses the store (step 3). An `ollama` server or an
-`external` command is therefore never contacted for a fully cached build — one where every goal is fresh in the lock
+`external` service is therefore never contacted for a fully cached build — one where every goal is fresh in the lock
 (D-57).
 
-### 3.2 External backend protocol (D-42)
+### 3.2 External backend protocol (D-42, D-101)
 
-The `external` provider lets a person or any tool supply the implementation instead of an LLM. Velme starts the
-configured command once per message, writes one JSON document to its stdin, closes stdin, and reads one JSON document
-from its stdout. Both documents follow the committed `velme-synth-request` JSON Schema, generated from the Rust types
-like the IR schema (21 R-IR-20).
+The `external` provider lets a person or any tool supply the implementation instead of an LLM. The backend is a
+standalone service that the user starts; Velme starts no process. Velme sends HTTP requests with JSON bodies to the
+service's base URL (`tooling/40` R-CLI-13) and reads one JSON document from each response. The request body follows the
+committed `velme-synth-request` JSON Schema, generated from the Rust types like the IR schema (21 R-IR-20).
 
-| Message | Velme sends | Backend replies |
+| Endpoint | Velme sends | Backend replies |
 |---|---|---|
-| `describe` | `{"request_version": "0.1", "kind": "describe"}` | `{"backend": "<name>", "backend_version": "<version>"}` |
-| `synthesize` | `{"request_version": "0.1", "kind": "synthesize", "request": <SynthRequest>}` | `{"ir": <IR goal>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
+| `GET /v1/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}` |
+| `POST /v1/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"ir": <IR goal>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
+
+The endpoints are relative to the base URL, so a service may live under a path prefix. `SynthRequest` carries its own
+`request_version` (`"0.1"`); the `/v1/` prefix versions the endpoints.
 
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
 cached build; its `backend_version` is `model()` and enters `synthesis_key`, so a new backend version is a cache miss
@@ -152,19 +156,23 @@ fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
 verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
 R-SYNTH-32..33, as an LLM's does.
-**R-SYNTH-28** Non-zero exit, exceeding `external_timeout_secs`, a broken stdin pipe, stdout that is not one JSON
-document, stdout above 2 MiB, a reply that is not exactly one of the four kinds above, or an `{"error"}` reply is
-`BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of stderr in the notes. The timeout covers
-every message, `describe` included. However a message ends, a reply included, the command's whole process group is
-killed and the command reaped, so a child left holding the pipes (given 250 ms after the command exits) dies with it;
-group kill is unix-only for now, elsewhere only the command itself is stopped. Nothing is written to the store or the
-lock (D-98).
-**R-SYNTH-29** The command runs in the project root with the user's own permissions, outside the sandbox (tooling/41
-T-10). Its environment is the user's minus every variable whose name ends in `_API_KEY` (`tooling/41` R-SEC-13). The
-command itself comes only from the `--external-command` flag, `VELME_EXTERNAL_COMMAND` or the user-level config, never
-from the project's `velme.toml` (`tooling/40` R-CLI-13). It is run directly with no shell (`tooling/41` T-10, D-50): the
-program is either an absolute path or a bare name resolved on `PATH`, with the current directory, `.` and other relative entries, and the project directory, each with its
-subdirectories, excluded from that lookup; any other relative path is `VL0902` before the command is run.
+**R-SYNTH-28** Transport uses the same HTTP client and transport retries as `ollama` (R-SYNTH-12, D-101). A refused
+connection, a DNS failure or a timeout is `Unavailable` or `Timeout` → `VL0404` after those retries, and the build then
+contacts the provider no more (R-SYNTH-45); so does a body that stalls after its headers. A `429` is `RateLimited` → `VL0404` and a `408` is retried like a `5xx` (then `VL0406` if it persists). A `401` or `403` is `TokenRejected` → `VL0405` (R-SYNTH-07), not retried: "rejected the token" when a token was sent, "wants a token" (hint: set `VELME_EXTERNAL_TOKEN`) when none was.
+A `5xx` after the retries, any other non-2xx status (a redirect included: redirects are never followed), a body above
+2 MiB, a body that is not one JSON document, a reply that is not exactly one of the four kinds above, or an `{"error"}`
+reply is `BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of the response body in the notes,
+cleaned and escaped like any untrusted text (T-13). `external_timeout_secs` bounds each request, `describe` included; until the user-level config arrives with M6 it is fixed at its default of 30 s.
+Nothing is written to the store or the lock (D-98).
+**R-SYNTH-29** The base URL is a `https` URL, or a plain `http` URL whose host is literally `localhost`, in 127.0.0.0/8,
+or `[::1]`; every other host needs `https`. Any other scheme, user information (`user:pass@`) in the URL, or a URL that
+does not parse is `VL0902` before any contact. The URL comes only from the `--external-url` flag, `VELME_EXTERNAL_URL` or
+the user-level config, never from the project's `velme.toml` (`tooling/40` R-CLI-13, `tooling/41` T-10). An optional
+bearer token from `VELME_EXTERNAL_TOKEN` is sent as `Authorization: Bearer <token>` to that URL and nowhere else, and is
+never logged, echoed or recorded (`tooling/41` R-SEC-13); a token containing whitespace, a control character or a
+non-ASCII character is an error, not left out (leading and trailing whitespace is trimmed). Everything the service sends is
+scrubbed of the token, in the whole body before the 4 KiB tail is cut and in every string of a parsed reply, before it
+is kept or shown. The service runs outside Velme's sandbox and with whatever authority its owner gave it.
 **R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
 again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
 retry turn does (R-SYNTH-11).
@@ -488,12 +496,12 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-11 | Against a mock Ollama server, the `ollama` provider sends the IR JSON Schema as `format` with temperature 0 and no streaming, and an accepted artifact records `"provider": "ollama"` and `<model>@<digest>` as `model_version`. |
 | AC-SYNTH-12 | Changing the digest behind the same Ollama tag, with an up-to-date lock, makes zero requests; after deleting the store entry, the next build misses on the new `synthesis_key`. |
 | AC-SYNTH-13 | An unreachable Ollama server yields `VL0404`; a model the server doesn't have yields `VL0405` with an `ollama pull` hint. |
-| AC-SYNTH-14 | The `external` `synthesize` message for a golden goal matches its snapshot, validates against the committed request schema, and contains no file paths, environment values or API keys. |
+| AC-SYNTH-14 | The `external` `synthesize` request body for a golden goal matches its snapshot, validates against the committed request schema, and contains no file paths, environment values or API keys. |
 | AC-SYNTH-15 | An `external` backend returning hostile IR (a `call` node, an unknown builtin) is rejected with `VL0402` in both cases (D-63); nothing is stored. |
-| AC-SYNTH-16 | Non-zero exit, timeout, non-JSON stdout, stdout over the cap, and an `{"error"}` reply each fail with `VL0406` naming the goal and backend; the lock is unchanged and no retry is made. |
+| AC-SYNTH-16 | A reply that is not JSON, a body over the cap, a `5xx` after the transport retries, a redirect and an `{"error"}` reply each fail with `VL0406` naming the goal and backend, with the tail of the response body as a note; the lock is unchanged and no synthesis retry is made. A refused connection or a timeout is `VL0404`; a `401` or `403` is `VL0405` naming `VELME_EXTERNAL_TOKEN`. |
 | AC-SYNTH-17 | With `max_retries = 1`, a second `external` request carries the first reply and its diagnostics in `attempts`; with the default 0, a rejected reply fails the goal after one request. |
-| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` command's environment contains neither; an `external_command` key in the project `velme.toml` fails with `VL0902`. |
-| AC-SYNTH-19 | A fully cached build (every goal fresh in the lock) with `--provider ollama` or `--provider external` sends no request to the server, never starts the command, and resolves no model digest / runs no `describe` (D-57). |
+| AC-SYNTH-18 | With sentinel values in `VELME_API_KEY` and `ANTHROPIC_API_KEY`, the `external` service receives neither and neither appears in any output or file; the `VELME_EXTERNAL_TOKEN` token is sent only as `Authorization: Bearer` and appears in no output, fixture or `replay.json`; a URL named in the project `velme.toml` is not used. |
+| AC-SYNTH-19 | A fully cached build (every goal fresh in the lock) with `--provider ollama` or `--provider external` sends no request to the server, and resolves no model digest / runs no `describe` (D-57). |
 | AC-SYNTH-20 | With `stop_on_repeat = false`, four scripted replies where attempts 1, 2 and 4 fail the same check on different inputs and attempt 3 fails an example: `VL0403` names the check with attempt 4's counterexample and "3 of 4", and one note names the example. A sentinel string in the replies' text appears nowhere in the output. |
 | AC-SYNTH-21 | Four scripted replies failing two causes twice each, alternating: `VL0403` reports attempt 4's cause. |
 | AC-SYNTH-22 | A scripted `{"question"}` reply with `max_retries = 3` fails the goal with `VL0407` showing the question after exactly one provider call; nothing is stored, the lock is unchanged, and another goal in the same file still builds. |
@@ -505,12 +513,12 @@ machine (tooling/41) and is git-ignored.
 | AC-SYNTH-28 | Two scripted replies failing the same check on different inputs: `VL0403` after exactly 2 calls, naming the check and "stopped after 2 attempts"; with `stop_on_repeat = false`, 4 calls. |
 | AC-SYNTH-29 | With `max_prompt_examples = 2` and 3 examples, the prompt shows the first two; a candidate failing the third is rejected with `VL0502` and the next retry turn shows the third with its values. |
 | AC-SYNTH-30 | With `retry_model` set, attempt 0 uses `model` and retries use `retry_model`; the accepted artifact records `<model>+<retry_model>`. Changing `retry_model`, `reply_format` or `max_prompt_examples` changes `synthesis_key`, not `contract_key`, and a build with an up-to-date lock makes zero calls. |
-| AC-SYNTH-31 | An `external` backend replying `{"pending": "ticket 42"}` with `max_retries = 3` fails the goal with `VL0408` showing "ticket 42" after exactly one `synthesize` message; nothing is stored, the lock is unchanged, another goal in the same file still builds, and the exit code is 2. When the backend then replies `{"ir"}` to the same request, the next build accepts and locks it. |
+| AC-SYNTH-31 | An `external` backend replying `{"pending": "ticket 42"}` with `max_retries = 3` fails the goal with `VL0408` showing "ticket 42" after exactly one `synthesize` request; nothing is stored, the lock is unchanged, another goal in the same file still builds, and the exit code is 2. When the backend then replies `{"ir"}` to the same request, the next build accepts and locks it. |
 | AC-SYNTH-32 | With `max_retries = 1`, a first `external` reply whose IR fails a check and a second reply `{"pending"}` give `VL0408` with a note naming the failed check. An empty pending text gives `VL0406`. |
 | AC-SYNTH-33 | `BuildPlayerSummary` calls `FindBadge`, which fails with `VL0403`: `BuildPlayerSummary` ends with `VL0409` naming `FindBadge` and its code as a note, with no provider call made for `BuildPlayerSummary` (D-56). |
 | AC-SYNTH-34 | A build with several lock misses sends exactly one Ollama digest resolution (or `external` `describe`) request, on the first miss, reused for every later request in the build (D-57). |
 | AC-SYNTH-35 | A scripted watchdog timeout (`VL0603`) during verification ends the goal with `VL0603` and exit 3 after exactly one provider call, never as a rejected candidate; nothing is stored, and its parent ends with `VL0409` (D-51, D-93). |
-| AC-SYNTH-36 | An `external_command` naming a relative path (e.g. `./evil.sh`) fails with `VL0902` before any process is started; a bare name found via `PATH` still runs (D-50). |
+| AC-SYNTH-36 | An `external` URL that is `http` to a host other than `localhost`, 127.0.0.0/8 or `[::1]`, has another scheme or user information, or does not parse fails with `VL0902` before any contact; a redirect from the service is not followed (D-101). |
 | AC-SYNTH-37 | The test-input generator reproduces golden vectors V1–V3 of §7.4 exactly, stage counts included (D-96). |
 | AC-SYNTH-38 | A recorded fixture holds request hashes, replies and usage but no plan text; replaying it with one edited request, or with one request more than recorded, fails with `VL0404` naming the key and attempt (D-94). |
 | AC-SYNTH-39 | With two goals needing synthesis and an unreachable provider, the first ends with `VL0404` after its transport retries (waits 1 s and 2 s on the injected clock) and the second ends with `VL0404` with no request made (D-93, D-95). |

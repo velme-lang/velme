@@ -37,7 +37,7 @@ pub trait SynthBackend: Send + Sync {
     fn open(&self, identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError>;
 }
 
-/// A source of candidate IR: an LLM, an external program, or a test double. One [`SynthProvider::complete`] call is
+/// A source of candidate IR: an LLM, an external service, or a test double. One [`SynthProvider::complete`] call is
 /// one provider call, whatever happens inside it (`compiler/22` R-SYNTH-21, D-92).
 #[async_trait]
 pub trait SynthProvider: Send + Sync {
@@ -116,6 +116,11 @@ pub enum ProviderError {
     NotConfigured,
     /// The provider rejected the API key that is set (`VL0405`, its own wording).
     KeyRejected,
+    /// An external backend rejected the bearer token that is sent, with `401` or `403` (`VL0405`, its own wording).
+    TokenRejected {
+        /// Whether a token was sent; if not, the backend wants one.
+        sent: bool,
+    },
     /// Unreachable, or a transport failure that outlived its retries (`VL0404`).
     Unavailable(String),
     /// Rate limited, after the allowed waits (`VL0404`).
@@ -133,8 +138,8 @@ pub enum ProviderError {
     BackendFailed {
         /// Why, in one cleaned line: Velme's wording, or the backend's own `{"error"}` text, collapsed and bounded.
         reason: String,
-        /// The cleaned tail of the backend's stderr, empty if there was none.
-        stderr: String,
+        /// The cleaned tail of the last 4 KiB of the backend's reply body, empty if there was none.
+        body: String,
     },
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),
@@ -156,6 +161,7 @@ impl ProviderError {
         match self {
             ProviderError::NotConfigured => "not_configured",
             ProviderError::KeyRejected => "key_rejected",
+            ProviderError::TokenRejected { .. } => "token_rejected",
             ProviderError::Unavailable(_) => "unavailable",
             ProviderError::RateLimited { .. } => "rate_limited",
             ProviderError::Refused(_) => "refused",
@@ -174,6 +180,7 @@ impl ProviderError {
         Some(match name {
             "not_configured" => ProviderError::NotConfigured,
             "key_rejected" => ProviderError::KeyRejected,
+            "token_rejected" => ProviderError::TokenRejected { sent: true },
             "unavailable" => ProviderError::Unavailable(String::new()),
             "rate_limited" => ProviderError::RateLimited { retry_after: None },
             "refused" => ProviderError::Refused(String::new()),
@@ -181,7 +188,7 @@ impl ProviderError {
             "malformed" => ProviderError::Malformed(String::new()),
             "backend_failed" => ProviderError::BackendFailed {
                 reason: String::new(),
-                stderr: String::new(),
+                body: String::new(),
             },
             "pending" => ProviderError::Pending(text.unwrap_or_default().to_owned()),
             "internal" => ProviderError::Internal(String::new()),

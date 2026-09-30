@@ -1,6 +1,6 @@
 //! `build` with the `external` and `ollama` providers (`compiler/22` §3.2, R-SYNTH-24..29, R-SYNTH-41, D-42, D-45,
-//! D-57, D-92, D-98): the real provider code against the test backend and a mock Ollama server, through the whole build
-//! and its store and lock. No network; only the hang test waits on the clock.
+//! D-57, D-92, D-98): the real provider code against the test backend (an HTTP service) and a mock Ollama server, through the whole build
+//! and its store and lock. No network but this machine's; the hang tests wait a short timeout.
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -15,10 +15,12 @@ use velme_diagnostics::Code;
 use velme_ir::{IR_VERSION, Synthesis, contract_key, synthesis_key};
 use velme_runtime::{BuildInput, BuildReport, Lock, Options, Source, Status, Store, build};
 use velme_synth::{
-    External, ExternalCommand, ExternalConfig, Ollama, OllamaConfig, Scripted, SynthBackend, SynthOptions,
+    External, ExternalConfig, ExternalUrl, Identity, Ollama, OllamaConfig, ProviderError, Scripted, SynthBackend,
+    SynthOptions, SynthProvider,
 };
+use velme_test_support::backend::{Config, Mode, On, Server};
 use velme_test_support::mock::{MockResponse, MockServer};
-use velme_test_support::{PanicProvider, RecordingSleeper, backend_words, goal_id, install, program};
+use velme_test_support::{PanicProvider, RecordingSleeper, goal_id, install, program};
 
 const FILE: &str = "game.velme";
 
@@ -124,20 +126,36 @@ fn all_replies(name: &str) -> PathBuf {
     )
 }
 
-/// The test backend, run in `project`, answering from `replies`, and writing its calls to `log`.
-fn external(project: &Path, replies: &Path, extra: &[&str], timeout: Duration) -> External {
-    let log = project.join("backend.log");
-    let mut args = vec![
-        "--dir",
-        replies.to_str().expect("utf-8"),
-        "--log",
-        log.to_str().expect("utf-8"),
-    ];
-    args.extend_from_slice(extra);
-    let command = ExternalCommand::resolve(&backend_words(&args), project).expect("a command");
-    let mut config = ExternalConfig::new(command, project);
+/// The test backend, serving `replies` and writing its calls to a log in `project`, with `tune` applied to its settings; it
+/// stops when the value is dropped. Transport retries wait on a sleeper that never waits.
+struct Held {
+    _server: Server,
+    backend: External,
+    sleeper: RecordingSleeper,
+}
+
+#[async_trait::async_trait]
+impl SynthBackend for Held {
+    async fn identify(&self) -> Result<Identity, ProviderError> {
+        self.backend.identify().await
+    }
+
+    fn open(&self, identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError> {
+        self.backend.open(identity)
+    }
+}
+
+fn external(project: &Path, replies: &Path, tune: impl FnOnce(Config) -> Config, timeout: Duration) -> Held {
+    let server = Server::start(tune(Config::replying(replies).logging(project.join("backend.log"))));
+    let mut config = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
     config.timeout = timeout;
-    External::new(config)
+    let sleeper = RecordingSleeper::default();
+    let backend = External::new(config).with_sleeper(Arc::new(sleeper.clone()));
+    Held {
+        _server: server,
+        backend,
+        sleeper,
+    }
 }
 
 const PATIENT: Duration = Duration::from_secs(30);
@@ -213,7 +231,7 @@ fn assert_nothing_stored(dir: &Path) {
 fn r_synth_36_the_compact_format_does_not_apply_to_an_external_backend() {
     let project = scratch("compact-external");
     let replies = replies("compact-external", &[("Double.json", &double())]);
-    let backend = external(&project, &replies, &[], PATIENT);
+    let backend = external(&project, &replies, |c| c, PATIENT);
     let options = SynthOptions {
         reply_format: velme_synth::ReplyFormat::Compact,
         ..no_retries()
@@ -239,7 +257,7 @@ fn ac_synth_15_hostile_ir_from_an_external_backend_is_rejected() {
     for (name, hostile) in [("call", call), ("unknown", unknown)] {
         let project = scratch(&format!("hostile-{name}"));
         let replies = replies(&format!("hostile-{name}"), &[("Double.json", &hostile)]);
-        let backend = external(&project, &replies, &[], PATIENT);
+        let backend = external(&project, &replies, |c| c, PATIENT);
         let built = build_with(&project, ONE, &backend, no_retries());
         assert_eq!(status(&built, "Double"), Status::Failed, "{name}");
         let attempts = built.report.goals[0].attempts.join("\n");
@@ -248,29 +266,32 @@ fn ac_synth_15_hostile_ir_from_an_external_backend_is_rejected() {
     }
 }
 
-/// A non-zero exit, a timeout, output that isn't JSON, output over the cap and an `{"error"}` reply each end the goal
-/// with `VL0406` naming the goal and the backend; the lock is unchanged and the goal is asked once, whatever
-/// `max_retries` says (AC-SYNTH-16, R-SYNTH-28).
+/// Output that isn't JSON, output over the cap, a redirect, a server error and an `{"error"}` reply each end the goal with
+/// `VL0406` naming the goal and the backend; the lock is unchanged and the goal is asked once, whatever `max_retries`
+/// says (AC-SYNTH-16, R-SYNTH-28). Only the transport retries of a server error ask the service again inside that call.
 #[test]
 fn ac_synth_16_each_backend_failure_is_vl0406_with_no_retry() {
     let error = json!({"error": "cannot do this"});
-    let cases: [(&str, Vec<&str>, Option<&Value>); 5] = [
-        ("exit", vec!["--mode", "exit"], None),
-        ("hang", vec!["--mode", "hang"], None),
-        ("garbage", vec!["--mode", "garbage"], None),
-        ("huge", vec!["--mode", "huge"], None),
-        ("error", vec![], Some(&error)),
+    let cases: [(&str, Option<Mode>, Option<&Value>); 5] = [
+        ("garbage", Some(Mode::Garbage), None),
+        ("huge", Some(Mode::Huge), None),
+        ("redirect", Some(Mode::Redirect), None),
+        ("server-error", Some(Mode::Status(500)), None),
+        ("error", None, Some(&error)),
     ];
-    for (name, extra, reply) in cases {
+    for (name, mode, reply) in cases {
         let project = scratch(&format!("fail-{name}"));
         let files: Vec<(&str, &Value)> = reply.map(|r| ("Double.json", r)).into_iter().collect();
         let replies = replies(&format!("fail-{name}"), &files);
-        let timeout = if name == "hang" {
-            Duration::from_millis(400)
-        } else {
-            PATIENT
-        };
-        let backend = external(&project, &replies, &extra, timeout);
+        let backend = external(
+            &project,
+            &replies,
+            |c| match mode {
+                Some(mode) => c.misbehaving(mode, On::Synthesize),
+                None => c,
+            },
+            PATIENT,
+        );
         let options = SynthOptions {
             max_retries: 3,
             ..SynthOptions::default()
@@ -284,18 +305,52 @@ fn ac_synth_16_each_backend_failure_is_vl0406_with_no_retry() {
             d.message
         );
         assert_nothing_stored(&project);
-        assert_eq!(log(&project), ["describe", "synthesize Double"], "{name}");
+        assert_eq!(built.report.summary.calls, 1, "{name}: one provider call");
+        let asked = log(&project);
+        assert_eq!(asked[0], "describe", "{name}");
+        // A server error is asked again by the transport, with the waits of every provider; nothing else is.
+        let tries = if name == "server-error" { 3 } else { 1 };
+        assert_eq!(asked.len(), 1 + tries, "{name}: {asked:?}");
+        assert_eq!(backend.sleeper.waits().len(), tries - 1, "{name}");
     }
-    // The last words of the backend's stderr ride along as a note, cleaned.
-    let project = scratch("fail-stderr");
-    let backend = external(&project, &replies("fail-stderr", &[]), &["--mode", "exit"], PATIENT);
+    // The last words of the backend's reply ride along as a note, cleaned.
+    let project = scratch("fail-body");
+    let backend = external(
+        &project,
+        &replies("fail-body", &[]),
+        |c| c.misbehaving(Mode::Status(500), On::Synthesize),
+        PATIENT,
+    );
     let built = build_with(&project, ONE, &backend, no_retries());
     let d = diagnostic(&built, "Double");
-    assert!(d.message.ends_with("it exited with status 3"), "{}", d.message);
-    assert_eq!(d.notes, ["The backend's stderr ended: backend exploded : it is a test"]);
+    assert!(d.message.ends_with("it answered with status 500"), "{}", d.message);
+    assert_eq!(d.notes, [r#"The backend's reply ended: {"note":"a test failure"}"#]);
 }
 
-/// A failed `describe`, a timeout in it included, is `VL0406`, and no goal is asked (AC-SYNTH-16, D-98).
+/// A service that never answers, or isn't there, is `VL0404` after the transport retries, not `VL0406`; the goal is not
+/// asked again by the loop (R-SYNTH-07, R-SYNTH-12, D-101).
+#[test]
+fn a_backend_that_does_not_answer_is_vl0404() {
+    let project = scratch("hang");
+    let replies = replies("hang", &[("Double.json", &double())]);
+    let backend = external(
+        &project,
+        &replies,
+        |c| c.misbehaving(Mode::Hang, On::Synthesize),
+        Duration::from_millis(300),
+    );
+    let options = SynthOptions {
+        max_retries: 3,
+        ..SynthOptions::default()
+    };
+    let built = build_with(&project, ONE, &backend, options);
+    assert_eq!(diagnostic(&built, "Double").code, Code::ProviderUnavailable);
+    assert_eq!(backend.sleeper.waits().len(), 2);
+    assert_nothing_stored(&project);
+}
+
+/// A failed `describe` is `VL0406`, and no goal is asked; one that times out is `VL0404` for every goal (AC-SYNTH-16, D-98,
+/// D-101).
 #[test]
 fn a_failed_describe_is_vl0406_and_no_goal_is_asked() {
     let project = scratch("describe-fails");
@@ -303,8 +358,8 @@ fn a_failed_describe_is_vl0406_and_no_goal_is_asked() {
     let backend = external(
         &project,
         &replies,
-        &["--mode", "hang", "--on", "describe"],
-        Duration::from_millis(400),
+        |c| c.misbehaving(Mode::Garbage, On::Describe),
+        PATIENT,
     );
     let built = build_with(&project, SOURCE, &backend, no_retries());
     for goal in ["Double", "AddOne"] {
@@ -312,6 +367,24 @@ fn a_failed_describe_is_vl0406_and_no_goal_is_asked() {
     }
     assert_eq!(diagnostic(&built, "Sum").code, Code::SynthesisBlocked);
     assert_eq!(log(&project), ["describe"], "the failed identity step is not repeated");
+    assert_nothing_stored(&project);
+
+    let project = scratch("describe-hangs");
+    let backend = external(
+        &project,
+        &replies,
+        |c| c.misbehaving(Mode::Hang, On::Describe),
+        Duration::from_millis(300),
+    );
+    let built = build_with(&project, SOURCE, &backend, no_retries());
+    for goal in ["Double", "AddOne"] {
+        assert_eq!(diagnostic(&built, goal).code, Code::ProviderUnavailable, "{goal}");
+    }
+    assert_eq!(
+        log(&project),
+        ["describe", "describe", "describe"],
+        "three tries, then no more"
+    );
     assert_nothing_stored(&project);
 }
 
@@ -321,9 +394,8 @@ fn a_failed_describe_is_vl0406_and_no_goal_is_asked() {
 fn ac_synth_17_a_retry_carries_the_earlier_reply_and_its_diagnostics() {
     let project = scratch("retry");
     let files = replies("retry", &[("Double.json", &triple()), ("Double.1.json", &double())]);
-    let capture = project.join("last-message.json");
-    let extra = ["--capture", capture.to_str().expect("utf-8")];
-    let backend = external(&project, &files, &extra, PATIENT);
+    let capture = project.join("last-body.json");
+    let backend = external(&project, &files, |c| c.capturing(&capture), PATIENT);
     let options = SynthOptions {
         max_retries: 1,
         ..SynthOptions::default()
@@ -331,8 +403,8 @@ fn ac_synth_17_a_retry_carries_the_earlier_reply_and_its_diagnostics() {
     let built = build_with(&project, ONE, &backend, options);
     assert_eq!(status(&built, "Double"), Status::Built(Source::Synthesized));
     assert_eq!(log(&project), ["describe", "synthesize Double", "synthesize Double"]);
-    let second: Value = serde_json::from_str(&fs::read_to_string(&capture).expect("message")).expect("JSON");
-    let attempts = second["request"]["attempts"].as_array().expect("attempts");
+    let second: Value = serde_json::from_str(&fs::read_to_string(&capture).expect("body")).expect("JSON");
+    let attempts = second["attempts"].as_array().expect("attempts");
     assert_eq!(attempts.len(), 1);
     let first: Value = serde_json::from_str(attempts[0]["reply"].as_str().expect("a reply text")).expect("JSON");
     assert_eq!(first, triple());
@@ -340,19 +412,19 @@ fn ac_synth_17_a_retry_carries_the_earlier_reply_and_its_diagnostics() {
 
     let project = scratch("no-retry");
     let files = replies("no-retry", &[("Double.json", &triple()), ("Double.1.json", &double())]);
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let built = build_with(&project, ONE, &backend, no_retries());
     assert_eq!(diagnostic(&built, "Double").code, Code::SynthesisFailed);
     assert_eq!(log(&project), ["describe", "synthesize Double"]);
 }
 
-/// A fully cached build never starts the command; a build with several misses sends one `describe`, on the first miss
+/// A fully cached build never contacts the service; a build with several misses sends one `describe`, on the first miss
 /// (AC-SYNTH-19, AC-SYNTH-34, D-57).
 #[test]
-fn ac_synth_19_a_cached_build_never_starts_the_command_and_describe_runs_once() {
+fn ac_synth_19_a_cached_build_never_contacts_the_service_and_describe_runs_once() {
     let project = scratch("cached");
     let files = all_replies("cached");
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let first = build_with(&project, SOURCE, &backend, no_retries());
     assert_eq!(status(&first, "Sum"), Status::Built(Source::Synthesized));
     // AC-SYNTH-34: one `describe` for three lock misses, ahead of the first request.
@@ -364,7 +436,7 @@ fn ac_synth_19_a_cached_build_never_starts_the_command_and_describe_runs_once() 
     fs::remove_file(project.join("backend.log")).expect("log removed");
     let second = build_with(&project, SOURCE, &backend, no_retries());
     assert_eq!((second.report.summary.calls, second.contacts), (0, 0));
-    assert!(!project.join("backend.log").exists(), "the command was started");
+    assert!(!project.join("backend.log").exists(), "the service was contacted");
 }
 
 /// With a matching lock entry, or a store hit under the goal's `synthesis_key`, a build makes zero provider calls; the
@@ -387,7 +459,7 @@ fn ac_synth_01_a_lock_entry_or_a_store_hit_makes_zero_provider_calls() {
 fn ac_synth_24_an_external_question_is_vl0407() {
     let project = scratch("question");
     let files = replies("question", &[("Double.json", &json!({"question": "Round up?"}))]);
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let options = SynthOptions {
         max_retries: 3,
         ..SynthOptions::default()
@@ -407,7 +479,7 @@ fn ac_synth_31_a_pending_reply_is_vl0408_and_the_next_build_asks_again() {
     let project = scratch("pending");
     let pending = json!({"pending": "ticket 42"});
     let files = replies("pending", &[("Double.json", &pending), ("AddOne.json", &add_one())]);
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let options = SynthOptions {
         max_retries: 3,
         ..SynthOptions::default()
@@ -446,7 +518,7 @@ fn ac_synth_32_a_pending_after_a_failed_attempt_names_it_and_an_empty_one_is_vl0
             ("Double.1.json", &json!({"pending": "later"})),
         ],
     );
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let options = SynthOptions {
         max_retries: 1,
         ..SynthOptions::default()
@@ -468,7 +540,7 @@ fn ac_synth_32_a_pending_after_a_failed_attempt_names_it_and_an_empty_one_is_vl0
 
     let project = scratch("pending-empty");
     let files = replies("pending-empty", &[("Double.json", &json!({"pending": "  "}))]);
-    let backend = external(&project, &files, &[], PATIENT);
+    let backend = external(&project, &files, |c| c, PATIENT);
     let built = build_with(&project, ONE, &backend, no_retries());
     assert_eq!(diagnostic(&built, "Double").code, Code::BackendFailed);
 }
@@ -478,7 +550,7 @@ fn ac_synth_32_a_pending_after_a_failed_attempt_names_it_and_an_empty_one_is_vl0
 fn an_external_artifact_names_its_backend() {
     let project = scratch("manifest");
     let files = replies("manifest", &[("Double.json", &double())]);
-    let backend = external(&project, &files, &["--describe", "queue", "v7"], PATIENT);
+    let backend = external(&project, &files, |c| c.describing("queue", "v7"), PATIENT);
     let built = build_with(&project, ONE, &backend, no_retries());
     assert_eq!(status(&built, "Double"), Status::Built(Source::Synthesized));
     let lock = Lock::read(&project).expect("lock").expect("a lock");

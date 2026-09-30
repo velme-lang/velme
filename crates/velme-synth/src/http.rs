@@ -1,4 +1,4 @@
-//! What the HTTP providers (`anthropic`, `ollama`) share: the body cap, the depth allowance for a response envelope, the
+//! What the HTTP providers (`anthropic`, `ollama`, `external`) share: the body cap, the depth allowance for a response envelope, the
 //! agent, and how a failed exchange maps to a [`ProviderError`] (`compiler/22` R-SYNTH-12, D-98). No error text here holds
 //! an address or anything the server sent (R-SYNTH-22).
 

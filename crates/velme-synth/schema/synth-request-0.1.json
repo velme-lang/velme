@@ -270,107 +270,6 @@
       ],
       "type": "object"
     },
-    "SynthRequest": {
-      "additionalProperties": false,
-      "description": "Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the `request` of the external\n`synthesize` message.",
-      "properties": {
-        "attempts": {
-          "description": "Earlier attempts at this goal, oldest first.",
-          "items": {
-            "$ref": "#/$defs/AttemptFeedback"
-          },
-          "type": "array"
-        },
-        "budget": {
-          "$ref": "#/$defs/Budget",
-          "description": "The effective budget."
-        },
-        "builtins": {
-          "description": "The builtins a candidate may use.",
-          "items": {
-            "$ref": "#/$defs/BuiltinSig"
-          },
-          "type": "array"
-        },
-        "builtins_version": {
-          "description": "The builtin catalog version the candidate must be written against (D-97).",
-          "type": "string"
-        },
-        "checks": {
-          "description": "The `check` items.",
-          "items": {
-            "$ref": "#/$defs/CheckItem"
-          },
-          "type": "array"
-        },
-        "examples": {
-          "description": "The `examples:` items, in source order.",
-          "items": {
-            "$ref": "#/$defs/Example"
-          },
-          "type": "array"
-        },
-        "goal": {
-          "description": "The goal's name.",
-          "type": "string"
-        },
-        "ir_version": {
-          "description": "The IR version the candidate must be written against (D-97).",
-          "type": "string"
-        },
-        "locals": {
-          "description": "The call bindings, for a composite goal.",
-          "items": {
-            "$ref": "#/$defs/LocalBinding"
-          },
-          "type": "array"
-        },
-        "output_schema": {
-          "description": "The JSON Schema the reply must satisfy: an IR goal or a question (R-SYNTH-10)."
-        },
-        "plan": {
-          "description": "The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).",
-          "type": "string"
-        },
-        "request_version": {
-          "description": "[`REQUEST_VERSION`].",
-          "type": "string"
-        },
-        "signature": {
-          "$ref": "#/$defs/Signature",
-          "description": "The goal's signature."
-        },
-        "task": {
-          "$ref": "#/$defs/TaskKind",
-          "description": "What to write."
-        },
-        "types": {
-          "description": "Every record type reachable from the signature and the bindings, by name.",
-          "items": {
-            "$ref": "#/$defs/RecordType"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "request_version",
-        "ir_version",
-        "builtins_version",
-        "task",
-        "goal",
-        "signature",
-        "types",
-        "locals",
-        "plan",
-        "checks",
-        "examples",
-        "budget",
-        "builtins",
-        "attempts",
-        "output_schema"
-      ],
-      "type": "object"
-    },
     "TaskKind": {
       "description": "What is synthesized (`compiler/22` §2).",
       "oneOf": [
@@ -506,51 +405,104 @@
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A message to an `external` backend (`compiler/22` §3.2): the document written to its stdin.",
-  "oneOf": [
-    {
-      "additionalProperties": false,
-      "description": "Asks the backend to name itself; answered once per build (R-SYNTH-26).",
-      "properties": {
-        "kind": {
-          "const": "describe",
-          "type": "string"
-        },
-        "request_version": {
-          "description": "[`REQUEST_VERSION`].",
-          "type": "string"
-        }
+  "additionalProperties": false,
+  "description": "Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the body of the external\n`synthesize` request.",
+  "properties": {
+    "attempts": {
+      "description": "Earlier attempts at this goal, oldest first.",
+      "items": {
+        "$ref": "#/$defs/AttemptFeedback"
       },
-      "required": [
-        "kind",
-        "request_version"
-      ],
-      "type": "object"
+      "type": "array"
     },
-    {
-      "additionalProperties": false,
-      "description": "Asks for one candidate.",
-      "properties": {
-        "kind": {
-          "const": "synthesize",
-          "type": "string"
-        },
-        "request": {
-          "$ref": "#/$defs/SynthRequest",
-          "description": "The request."
-        },
-        "request_version": {
-          "description": "[`REQUEST_VERSION`].",
-          "type": "string"
-        }
+    "budget": {
+      "$ref": "#/$defs/Budget",
+      "description": "The effective budget."
+    },
+    "builtins": {
+      "description": "The builtins a candidate may use.",
+      "items": {
+        "$ref": "#/$defs/BuiltinSig"
       },
-      "required": [
-        "kind",
-        "request_version",
-        "request"
-      ],
-      "type": "object"
+      "type": "array"
+    },
+    "builtins_version": {
+      "description": "The builtin catalog version the candidate must be written against (D-97).",
+      "type": "string"
+    },
+    "checks": {
+      "description": "The `check` items.",
+      "items": {
+        "$ref": "#/$defs/CheckItem"
+      },
+      "type": "array"
+    },
+    "examples": {
+      "description": "The `examples:` items, in source order.",
+      "items": {
+        "$ref": "#/$defs/Example"
+      },
+      "type": "array"
+    },
+    "goal": {
+      "description": "The goal's name.",
+      "type": "string"
+    },
+    "ir_version": {
+      "description": "The IR version the candidate must be written against (D-97).",
+      "type": "string"
+    },
+    "locals": {
+      "description": "The call bindings, for a composite goal.",
+      "items": {
+        "$ref": "#/$defs/LocalBinding"
+      },
+      "type": "array"
+    },
+    "output_schema": {
+      "description": "The JSON Schema the reply must satisfy: an IR goal or a question (R-SYNTH-10)."
+    },
+    "plan": {
+      "description": "The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).",
+      "type": "string"
+    },
+    "request_version": {
+      "description": "[`REQUEST_VERSION`].",
+      "type": "string"
+    },
+    "signature": {
+      "$ref": "#/$defs/Signature",
+      "description": "The goal's signature."
+    },
+    "task": {
+      "$ref": "#/$defs/TaskKind",
+      "description": "What to write."
+    },
+    "types": {
+      "description": "Every record type reachable from the signature and the bindings, by name.",
+      "items": {
+        "$ref": "#/$defs/RecordType"
+      },
+      "type": "array"
     }
+  },
+  "required": [
+    "request_version",
+    "ir_version",
+    "builtins_version",
+    "task",
+    "goal",
+    "signature",
+    "types",
+    "locals",
+    "plan",
+    "checks",
+    "examples",
+    "budget",
+    "builtins",
+    "attempts",
+    "output_schema"
   ],
-  "title": "ExternalMessage"
+  "title": "SynthRequest",
+  "type": "object"
 }

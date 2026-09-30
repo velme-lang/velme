@@ -5,6 +5,8 @@
 // non-test code only).
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
+pub mod backend;
+
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -277,64 +279,6 @@ pub fn mock_anthropic(
         .with_test_endpoint(server.url(), velme_synth::ApiKey::new(key))
 }
 
-/// The path of the `velme-test-backend` binary (`compiler/22` §3.2, D-99), built beside the running test binary if a plain
-/// `cargo test` hasn't already: an integration test has no `CARGO_BIN_EXE_` for another package's binary.
-pub fn backend_binary() -> PathBuf {
-    static BINARY: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    BINARY
-        .get_or_init(|| {
-            let exe = std::env::current_exe().expect("the test binary's path");
-            let profile = exe
-                .ancestors()
-                .find(|dir| dir.file_name().is_some_and(|n| n == "deps"))
-                .and_then(Path::parent)
-                .expect("a test binary under target/<profile>/deps")
-                .to_path_buf();
-            let binary = profile.join(format!("velme-test-backend{}", std::env::consts::EXE_SUFFIX));
-            // It needs only its own source: a binary newer than that is used as it is, which spares every test process a
-            // cargo run.
-            let source = repo("crates/velme-test-support/src/bin/velme-test-backend.rs");
-            let built = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
-            if built(&binary) >= built(&source) && built(&binary).is_some() {
-                return binary;
-            }
-            let mut build = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
-            build
-                .args([
-                    "build",
-                    "--quiet",
-                    "-p",
-                    "velme-test-support",
-                    "--bin",
-                    "velme-test-backend",
-                ])
-                .current_dir(repo(""));
-            if profile.file_name().is_some_and(|n| n == "release") {
-                build.arg("--release");
-            }
-            assert!(build.status().expect("cargo runs").success(), "the test backend builds");
-            assert!(binary.is_file(), "the test backend is at {}", binary.display());
-            binary
-        })
-        .clone()
-}
-
-/// The command line that runs the test backend with `args`, as words for [`velme_synth::ExternalCommand::resolve`].
-pub fn backend_words(args: &[&str]) -> Vec<String> {
-    let mut words = vec![backend_binary().to_string_lossy().into_owned()];
-    words.extend(args.iter().map(|a| (*a).to_owned()));
-    words
-}
-
-/// [`backend_words`] as one `--external-command` text: every word in single quotes (`tooling/40` R-CLI-13).
-pub fn backend_command(args: &[&str]) -> String {
-    backend_words(args)
-        .iter()
-        .map(|w| format!("'{w}'"))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// A local HTTP server that plays back canned responses, for the tests of the `anthropic` provider: no network.
 pub mod mock {
     use std::collections::{BTreeMap, VecDeque};
@@ -434,6 +378,8 @@ pub mod mock {
     /// One request the server received.
     #[derive(Debug, Clone)]
     pub struct MockRequest {
+        /// The request method.
+        pub method: String,
         /// The request path.
         pub path: String,
         /// The headers, with lower-case names.
@@ -531,7 +477,7 @@ pub mod mock {
         }
     }
 
-    fn read_request(stream: &mut TcpStream) -> Option<MockRequest> {
+    pub(crate) fn read_request(stream: &mut TcpStream) -> Option<MockRequest> {
         let mut data = Vec::new();
         let mut chunk = [0_u8; 4096];
         let end = loop {
@@ -543,7 +489,9 @@ pub mod mock {
         };
         let head = String::from_utf8_lossy(&data[..end]).into_owned();
         let mut lines = head.lines();
-        let path = lines.next()?.split_whitespace().nth(1)?.to_owned();
+        let mut first = lines.next()?.split_whitespace();
+        let method = first.next()?.to_owned();
+        let path = first.next()?.to_owned();
         let headers: BTreeMap<String, String> = lines
             .filter_map(|line| line.split_once(':'))
             .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
@@ -555,6 +503,7 @@ pub mod mock {
             data.extend_from_slice(&chunk[..n]);
         }
         Some(MockRequest {
+            method,
             path,
             headers,
             body: String::from_utf8_lossy(&data[end..end + length]).into_owned(),

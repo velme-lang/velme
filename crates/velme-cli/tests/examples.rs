@@ -1,6 +1,6 @@
 //! Every example builds, and rebuilds for free, on the `replay` provider (`compiler/22` R-SYNTH-43, D-94, D-99;
 //! AC-RDM-01, AC-RDM-08): the replay fixtures under `tests/fixtures/synth` are recorded, unattended, from the test
-//! `external` backend answering with the hand-written IR of `tests/fixtures/run`. A fixture that is out of date fails
+//! `external` backend, an HTTP service, answering with the hand-written IR of `tests/fixtures/run`. A fixture that is out of date fails
 //! here; `VELME_BLESS_FIXTURES=1` rewrites them, and the diff is then reviewed.
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
@@ -10,7 +10,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use velme_test_support::{backend_command, repo};
+use velme_test_support::backend::{Config, Server};
+use velme_test_support::repo;
 
 /// Set to rewrite the committed fixtures, then review the diff.
 const BLESS: &str = "VELME_BLESS_FIXTURES";
@@ -56,7 +57,8 @@ fn velme(dir: &Path, args: &[&str]) -> Out {
         .env_remove("VELME_API_KEY")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("VELME_MODEL")
-        .env_remove("VELME_EXTERNAL_COMMAND")
+        .env_remove("VELME_EXTERNAL_URL")
+        .env_remove("VELME_EXTERNAL_TOKEN")
         .output()
         .expect("velme runs");
     Out {
@@ -152,12 +154,13 @@ fn record_all() -> Recorded {
     for (example, ir) in EXAMPLES {
         let name = format!("{}-record", stem(example));
         let (dir, file) = project(example, &name);
-        let command = backend_command(&["--dir", replies(ir, &name).to_str().expect("utf-8")]);
+        let server = Server::start(Config::replying(replies(ir, &name)));
         let out = Command::new(env!("CARGO_BIN_EXE_velme"))
-            .args(["build", &file, "--provider", "external", "--external-command", &command])
+            .args(["build", &file, "--provider", "external", "--external-url", server.url()])
             .current_dir(&dir)
             .env("VELME_SYNTH_RECORD", "1")
-            .env_remove("VELME_EXTERNAL_COMMAND")
+            .env_remove("VELME_EXTERNAL_URL")
+            .env_remove("VELME_EXTERNAL_TOKEN")
             .output()
             .expect("velme runs");
         assert!(
