@@ -5,7 +5,7 @@
 //! A directory that fails a check turns the disk cache off for the process. There is no disk cache off Unix in v0.1.
 
 use std::hash::{Hash as _, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, is_separator};
 use std::sync::OnceLock;
 
 use wasmtime::Engine;
@@ -38,6 +38,8 @@ pub(crate) enum Unusable {
     /// A file in it is a symbolic link, is not a regular file, belongs to another user, is writable by others, or
     /// could not be read.
     File,
+    /// Once made, it resolves inside the project after all (T-11).
+    Misplaced(Misplaced),
 }
 
 impl std::fmt::Display for Unusable {
@@ -48,14 +50,116 @@ impl std::fmt::Display for Unusable {
             Unusable::Owner => "it belongs to another user",
             Unusable::Open => "its group or other users have access to it",
             Unusable::File => "a file in it is a symbolic link, not a regular file, or not yours alone",
+            Unusable::Misplaced(why) => return why.fmt(f),
         })
+    }
+}
+
+/// Why a directory cannot hold the compiled-module cache of a project (T-11): the disk cache is then off for the
+/// process, and the runtime can say why under `--verbose` (R-SBX-20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Misplaced {
+    /// It is not an absolute path.
+    Relative,
+    /// It has a `.` or `..` component, which would be read before the directories it passes through are made.
+    Dots,
+    /// It, or the project's directory, could not be resolved: a symbolic link to nowhere, or no access.
+    Unresolved,
+    /// It lies inside the project once resolved.
+    Inside,
+}
+
+impl std::fmt::Display for Misplaced {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Misplaced::Relative => "it is not an absolute path",
+            Misplaced::Dots => "it has a `.` or `..` component",
+            Misplaced::Unresolved => "it or the project's directory could not be resolved",
+            Misplaced::Inside => "it is inside the project",
+        })
+    }
+}
+
+/// A directory the compiled-module cache may be kept in, for one project: absolute, with no `.` or `..` component,
+/// and outside the project once both are resolved (R-SBX-14, T-11). It is the only way to give a sandbox a disk
+/// cache, and it is checked again each time it is opened, before and after it is made:
+///
+/// ```compile_fail
+/// let _ = velme_wasm::Sandbox::new(Some(std::path::PathBuf::from("/tmp/velme/wasm")));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheDir {
+    dir: PathBuf,
+    /// The project's directory, resolved.
+    project: PathBuf,
+}
+
+impl CacheDir {
+    /// `dir` as the cache of the project at `project`, or why it can't be.
+    pub fn new(dir: PathBuf, project: &Path) -> Result<CacheDir, Misplaced> {
+        if !dir.is_absolute() {
+            return Err(Misplaced::Relative);
+        }
+        // Read from the text, since `Path::components` drops a `.`, and a last `.` would follow a symbolic link.
+        let text = dir.as_os_str().to_string_lossy();
+        if text.split(is_separator).any(|part| part == "." || part == "..") {
+            return Err(Misplaced::Dots);
+        }
+        let project = project.canonicalize().map_err(|_| Misplaced::Unresolved)?;
+        let dir = CacheDir { dir, project };
+        dir.outside()?;
+        Ok(dir)
+    }
+
+    /// Whether the directory lies outside the project, resolved as far as it exists and the rest, which the cache
+    /// would make as plain directories, taken as written.
+    fn outside(&self) -> Result<(), Misplaced> {
+        let (mut existing, mut rest) = (self.dir.as_path(), Vec::new());
+        let mut resolved = loop {
+            match existing.canonicalize() {
+                Ok(resolved) => break resolved,
+                // There but not resolvable: a link to nowhere, which making the rest would follow.
+                Err(_) if existing.symlink_metadata().is_ok() => return Err(Misplaced::Unresolved),
+                Err(_) => {
+                    rest.extend(existing.file_name());
+                    existing = existing.parent().ok_or(Misplaced::Unresolved)?;
+                }
+            }
+        };
+        resolved.extend(rest.into_iter().rev());
+        if resolved.starts_with(&self.project) {
+            return Err(Misplaced::Inside);
+        }
+        Ok(())
+    }
+
+    /// The directory, as given.
+    pub fn path(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Whether the directory is still outside the project just before it is made: nothing swapped into its path since
+    /// [`CacheDir::new`] has moved it inside (T-11).
+    #[cfg(unix)]
+    pub(crate) fn unmade(&self) -> Result<(), Unusable> {
+        self.outside().map_err(Unusable::Misplaced)
+    }
+
+    /// Whether the directory, now made, still lies outside the project, resolved whole (T-11).
+    #[cfg(unix)]
+    pub(crate) fn made(&self) -> Result<(), Unusable> {
+        let resolved = self.dir.canonicalize().map_err(|_| Unusable::Directory)?;
+        if resolved.starts_with(&self.project) {
+            return Err(Unusable::Misplaced(Misplaced::Inside));
+        }
+        Ok(())
     }
 }
 
 /// The cache directory and the engine whose output it holds.
 #[derive(Debug)]
 pub(crate) struct Cache {
-    dir: PathBuf,
+    dir: CacheDir,
     /// Wasmtime's compatibility hash for the engine, as the second half of every file name (R-SBX-13).
     compat: String,
     /// Why the disk cache is off, once it is: it stays off for the process.
@@ -80,7 +184,7 @@ impl Hasher for Blake3 {
 
 impl Cache {
     /// The cache in `dir` for `engine`; off from the start where there is no disk cache.
-    pub(crate) fn new(dir: PathBuf, engine: &Engine) -> Cache {
+    pub(crate) fn new(dir: CacheDir, engine: &Engine) -> Cache {
         let mut hasher = Blake3(blake3::Hasher::new());
         engine.precompile_compatibility_hash().hash(&mut hasher);
         let off = OnceLock::new();
@@ -98,20 +202,21 @@ impl Cache {
     /// (R-SBX-13), so a change to the emitter, to Wasmtime or to the engine's configuration is a new name.
     pub(crate) fn path(&self, bytes: &[u8]) -> PathBuf {
         let module = blake3::hash(bytes).to_hex();
-        self.dir.join(format!("{module}-{}.{EXTENSION}", self.compat))
+        self.dir.path().join(format!("{module}-{}.{EXTENSION}", self.compat))
     }
 
     /// Why the disk cache is off, if it is, with the directory it is about.
     pub(crate) fn off(&self) -> Option<(&Path, Unusable)> {
-        self.off.get().map(|why| (self.dir.as_path(), *why))
+        self.off.get().map(|why| (self.dir.path(), *why))
     }
 
     /// The name of `path` in the directory, if it is a cached file directly in it (R-SBX-14): anything else is
     /// [`Refused::Outside`] before the disk is touched.
     fn name<'p>(&self, path: &'p Path) -> Result<&'p str, Refused> {
-        let inside = path.parent() == Some(self.dir.as_path())
+        let dir = self.dir.path();
+        let inside = path.parent() == Some(dir)
             && path.extension().is_some_and(|extension| extension == EXTENSION)
-            && path.file_name().is_some_and(|name| self.dir.join(name) == path);
+            && path.file_name().is_some_and(|name| dir.join(name) == path);
         let name = path.file_name().and_then(|name| name.to_str());
         name.filter(|_| inside).ok_or(Refused::Outside)
     }
@@ -203,14 +308,13 @@ mod disk {
     use std::fs::File;
     use std::io::{Read as _, Write as _};
     use std::os::fd::{AsFd, OwnedFd};
-    use std::path::Path;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, fstat, open, openat, renameat, unlinkat};
     use rustix::io::Errno;
     use rustix::process::geteuid;
 
-    use super::{Unusable, verdict};
+    use super::{CacheDir, Unusable, verdict};
 
     /// Makes the names of temporary files unique within this process.
     static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -226,12 +330,17 @@ mod disk {
     pub(super) struct Dir(OwnedFd);
 
     impl Dir {
-        /// `path`, made if it is missing with mode `0700`, then opened without following a symbolic link and checked
-        /// on the handle: the user's, with no access for group or others. One that fails is never changed.
-        pub(super) fn open(path: &Path) -> Result<Dir, Unusable> {
+        /// `dir`, made if it is missing with mode `0700` and checked again to lie outside the project before and after,
+        /// then opened without following a symbolic link and checked on the handle: the user's, with no access for group or others. One
+        /// that fails is never changed.
+        pub(super) fn open(dir: &CacheDir) -> Result<Dir, Unusable> {
             use std::os::unix::fs::DirBuilderExt as _;
-            // Made by path; whatever is there is checked below on the handle, so a swap in between is refused.
+            let path = dir.path();
+            // Made by path, and resolved again on either side; whatever is there is checked below on the handle, so a
+            // swap in between is refused.
+            dir.unmade()?;
             let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(path);
+            dir.made()?;
             let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
             let fd = open(path, flags, Mode::empty()).map_err(|_| Unusable::Directory)?;
             owned(&fd, true, Unusable::Directory)?;

@@ -188,8 +188,9 @@ test passes a temporary directory or none (no disk cache). The directory is crea
 without following a symbolic link, and checked on that handle: a directory owned by the process's effective user, with
 no access for group or others. One that fails is refused and never changed. Every file is reached through that handle:
 read only if, opened without following a link, it is a regular file of the same owner that group and others cannot
-write; written under a temporary name, mode `0600`, and renamed into place atomically. The runtime also refuses a
-directory that is not absolute, or that lies inside the project once both are resolved (T-11). A refusal turns the disk
+write; written under a temporary name, mode `0600`, and renamed into place atomically. The backend also refuses a
+directory that is not absolute, has a `.` or `..` component, or lies inside the project once both are resolved, checked
+when given and again before and after it is made (T-11). A refusal turns the disk
 cache off for the process: modules are compiled on every run, and `--verbose` says why. There is no disk cache off Unix
 in v0.1 (D-116, D-120).
 **R-SBX-14** `Module::deserialize` is used only on files under the configured cache directory, written by this

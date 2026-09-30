@@ -3,7 +3,7 @@
 //! (R-SBX-05); Wasmtime's fuel, its resource limiter and the epoch watchdog stand behind them (R-SBX-12, INV-5).
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
@@ -19,7 +19,7 @@ use wasmtime::{
 };
 
 use crate::abi::{self, FRAME_BYTES, FRAME_MARSHAL, FRAME_VISITING, FRAMES, Import, MARSHAL_BYTES, Reason};
-use crate::cache::Cache;
+use crate::cache::{Cache, CacheDir};
 use crate::code::PAGE_BYTES;
 use crate::codec::{Image, Reader};
 use crate::ty::Signature;
@@ -437,8 +437,8 @@ impl std::fmt::Debug for Sandbox {
 
 impl Sandbox {
     /// A sandbox that keeps compiled modules in the directory `cache`, or only in memory for `None` (R-SBX-20).
-    /// The directory is the user-level one, never one inside a project (R-SBX-13, D-48).
-    pub fn new(cache: Option<PathBuf>) -> Result<Sandbox, LoadError> {
+    /// The directory is the user-level one, checked to lie outside the project (R-SBX-13, T-11, D-48).
+    pub fn new(cache: Option<CacheDir>) -> Result<Sandbox, LoadError> {
         let engine = engine().map_err(internal)?;
         let linker = linker(&engine).map_err(internal)?;
         // One ticker for the engine: it holds the engine weakly, so it ends with the last module (D-115).
@@ -554,17 +554,17 @@ impl Sandbox {
         let bytes = cache.read(path).ok()??;
         // SAFETY: a compiled module is native code that Wasmtime runs as it is, so the bytes must be ones Wasmtime
         // made. What `Cache::read` checked, and nothing more (Unix only; there is no disk cache elsewhere): the
-        // directory given to the sandbox (the user-level one, absolute and outside the project, which the runtime
-        // checks before it gives it: R-SBX-14, T-11), opened without following a symbolic link in its last component,
-        // is, by `fstat` of that handle, a directory owned by this process's effective user with no permission bit for
-        // group or others; the file, a name of the form `<BLAKE3 of the module>-<compatibility hash>.cwasm` directly in
-        // it, opened through that handle without following a symbolic link, is, by `fstat` of its own handle, a regular
-        // file of the same owner that neither group nor others can write (R-SBX-20, D-120). The bytes are read from
-        // that handle into memory, so no swap after the checks reaches them. Only this user, or root, could have put
-        // them there; Velme writes a file there only whole, `0600`, by rename. Extended ACLs (macOS) are not checked:
-        // only the owner or root can set one on a `0700` directory, so they are out of scope (T-11). Wasmtime checks
-        // again that it was made by this version and configuration of the engine, which is no defence against crafted
-        // bytes.
+        // directory given to the sandbox, a `CacheDir` and so absolute, with no `.` or `..` component, and outside the
+        // project resolved both when it was given and again once made, just before this open (R-SBX-14, T-11), opened
+        // without following a symbolic link in its last component, is, by `fstat` of that handle, a directory owned by
+        // this process's effective user with no permission bit for group or others; the file, a name of the form
+        // `<BLAKE3 of the module>-<compatibility hash>.cwasm` directly in it, opened through that handle without
+        // following a symbolic link, is, by `fstat` of its own handle, a regular file of the same owner that neither
+        // group nor others can write (R-SBX-20, D-120). The bytes are read from that handle into memory, so no swap
+        // after the checks reaches them. Only this user, or root, could have put them there; Velme writes a file there
+        // only whole, `0600`, by rename. Extended ACLs (macOS) are not checked: only the owner or root can set one on a
+        // `0700` directory, so they are out of scope (T-11). Wasmtime checks again that it was made by this version and
+        // configuration of the engine, which is no defence against crafted bytes.
         #[allow(unsafe_code)]
         let module = unsafe { wasmtime::Module::deserialize(&self.engine, &bytes) };
         if module.is_err() {
