@@ -574,7 +574,7 @@ fn run(cli: &Cli, traced: bool) -> u8 {
     }
     // Input and lock problems are both reported, so the exit code follows R-CLI-16's precedence.
     let registry = registry(project, program, id);
-    let options = run_options(cli);
+    let options = run_options(cli, &project.root);
     let (executed, result) = match (inputs, registry) {
         (Ok(inputs), Ok(registry)) => {
             let executed = run_goal(program, id, text, &registry, inputs, options);
@@ -708,7 +708,7 @@ fn test(cli: &Cli) -> u8 {
     if let Some(built) = built.as_ref().filter(|b| build_stopped(b)) {
         return finish(&analyzed, built, cli);
     }
-    let options = run_options(cli);
+    let options = run_options(cli, &project.root);
     let mut outcome = Outcome::with(Vec::new());
     for id in ids {
         let Some(g) = program.goals.get(id.0) else { continue };
@@ -889,28 +889,32 @@ fn read_lock(project: &Project, program: &Program) -> Result<Lock, Vec<Diagnosti
         .unwrap_or_else(|| Lock::new(program.language_version.clone())))
 }
 
-/// The execution options `--jobs` and `--backend` ask for. Only leaf bodies of this command use the backend: a
-/// `--build` before it verifies on the interpreter (`runtime/31` R-SBX-17).
-fn run_options(cli: &Cli) -> Options {
+/// The execution options `--jobs` and `--backend` ask for, for the project at `root`. Only leaf bodies of this
+/// command use the backend: a `--build` before it verifies on the interpreter (`runtime/31` R-SBX-17).
+fn run_options(cli: &Cli, root: &Path) -> Options {
     let mut options = cli
         .jobs
         .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
     options.backend = match cli.backend.unwrap_or(args::Backend::Interp) {
         args::Backend::Interp => Backend::Interp,
-        args::Backend::Wasm => Backend::Wasm(wasm()),
-        args::Backend::Auto => Backend::Auto(wasm()),
+        args::Backend::Wasm => Backend::Wasm(wasm(root)),
+        args::Backend::Auto => Backend::Auto(wasm(root)),
     };
     options
 }
 
-/// The process's WASM backend, the one sandbox of `runtime/31` §6, with the user-level module cache (R-SBX-13,
-/// R-SBX-20): made only for `--backend wasm` or `auto`, and Wasmtime starts only when a leaf runs on it.
+/// The process's WASM backend, the one sandbox of `runtime/31` §6, with the user-level module cache if it lies
+/// outside the project at `root` (R-SBX-13, R-SBX-20, T-11): made only for `--backend wasm` or `auto`, and Wasmtime
+/// starts only when a leaf runs on it.
 static WASM: OnceLock<Arc<Wasm>> = OnceLock::new();
 
-fn wasm() -> Arc<Wasm> {
+fn wasm(root: &Path) -> Arc<Wasm> {
     let made = WASM.get_or_init(|| {
         let get = |name: &str| std::env::var_os(name);
-        Arc::new(Wasm::new(config::wasm_cache_path(&get, config::Platform::current())))
+        Arc::new(Wasm::for_project(
+            config::wasm_cache_path(&get, config::Platform::current()),
+            root,
+        ))
     });
     Arc::clone(made)
 }

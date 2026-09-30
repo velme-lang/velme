@@ -4,7 +4,7 @@
 //! Both give the same value, failure, fuel and memory (INV-3, R-SBX-18), so nothing after this point knows which ran.
 
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use velme_builtins::Value;
@@ -144,6 +144,25 @@ impl Wasm {
         }
     }
 
+    /// A backend for the project at `root` whose disk cache is `cache`, as [`Wasm::new`], but only if the directory
+    /// is absolute and lies outside the project once both are resolved (R-SBX-13, T-11): otherwise the disk cache is
+    /// off for the process, with a note for `--verbose` (R-SBX-20).
+    pub fn for_project(cache: Option<PathBuf>, root: &Path) -> Wasm {
+        let refused = cache.as_deref().and_then(|dir| {
+            outside_project(dir, root)
+                .err()
+                .map(|why| (dir.display().to_string(), why))
+        });
+        let Some((dir, why)) = refused else {
+            return Wasm::new(cache);
+        };
+        let wasm = Wasm::new(None);
+        wasm.note(format!(
+            "the compiled-module cache in `{dir}` is not used, since {why}; modules are compiled on every run"
+        ));
+        wasm
+    }
+
     /// A backend whose modules fail at `stage`, for the tests of D-121.
     #[cfg(test)]
     fn failing(stage: Stage) -> Wasm {
@@ -231,6 +250,40 @@ impl Wasm {
         *running += 1;
         Slot(self)
     }
+}
+
+/// Whether the cache directory `dir` is absolute and outside the project at `root` (T-11), and if not, why. Both are
+/// compared resolved: the part of `dir` that exists through its symbolic links, and the rest, which Velme would make,
+/// as written.
+fn outside_project(dir: &Path, root: &Path) -> Result<(), &'static str> {
+    if !dir.is_absolute() {
+        return Err("it is not an absolute path");
+    }
+    let unresolved = "it or the project's directory could not be resolved";
+    let root = root.canonicalize().map_err(|_| unresolved)?;
+    let (mut existing, mut rest) = (dir, Vec::new());
+    let mut resolved = loop {
+        match existing.canonicalize() {
+            Ok(resolved) => break resolved,
+            Err(_) => {
+                rest.extend(existing.components().next_back());
+                existing = existing.parent().ok_or(unresolved)?;
+            }
+        }
+    };
+    for part in rest.into_iter().rev() {
+        match part {
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Normal(name) => resolved.push(name),
+            _ => {}
+        }
+    }
+    if resolved.starts_with(&root) {
+        return Err("it is inside the project");
+    }
+    Ok(())
 }
 
 /// The body of the leaf goal `goal`, whose locked IR is `ir`, evaluated on `inputs` within `limits` and watched by
@@ -394,5 +447,35 @@ mod tests {
         let stopped = eval_leaf(&auto, goal, &ir, vec![Value::from(Number::from(7_i64))], short, None);
         assert_eq!(stopped.0.expect_err("out of fuel").code, Code::BudgetExceeded);
         assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
+    }
+
+    /// The disk cache is refused, with a note, when its directory is relative or lies inside the project once
+    /// resolved: through `..`, or through a symbolic link to the project (T-11, R-SBX-13).
+    #[test]
+    fn t_11_a_cache_directory_that_is_relative_or_inside_the_project_is_refused() {
+        let temp = std::env::temp_dir().join(format!("velme-backend-cache-{}", std::process::id()));
+        let project = temp.join("project");
+        let _ = std::fs::remove_dir_all(&temp);
+        std::fs::create_dir_all(&project).expect("a project directory");
+        let refused = |cache: PathBuf, why: &str| {
+            let wasm = Wasm::for_project(Some(cache.clone()), &project);
+            assert_eq!(wasm.cache, None, "{}", cache.display());
+            assert_eq!(wasm.notes().len(), 1);
+            assert!(wasm.notes()[0].contains(why), "{:?}", wasm.notes());
+        };
+        refused(PathBuf::from("velme/wasm"), "it is not an absolute path");
+        refused(project.join(".cache/velme/wasm"), "it is inside the project");
+        refused(temp.join("elsewhere/../project/velme/wasm"), "it is inside the project");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&project, temp.join("alias")).expect("a link");
+            refused(temp.join("alias/velme/wasm"), "it is inside the project");
+        }
+        let outside = temp.join("cache/velme/wasm");
+        let wasm = Wasm::for_project(Some(outside.clone()), &project);
+        assert_eq!(wasm.cache, Some(outside));
+        assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
+        assert_eq!(Wasm::for_project(None, &project).cache, None);
+        std::fs::remove_dir_all(&temp).expect("cleaned up");
     }
 }

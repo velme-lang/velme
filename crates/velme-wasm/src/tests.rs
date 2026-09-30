@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use velme_builtins::limits::MAX_LIST_SIZE;
 use velme_builtins::memory::{list_bytes, value_bytes};
 use velme_builtins::{BUILTINS_VERSION, CATALOG, Number, Value};
-use velme_ir::{Goal, IR_VERSION, Node, ValidIr, calls, from_json_str, to_canonical_string, wired_goal};
+use velme_ir::{
+    Goal, IR_VERSION, Node, Origin, Request, ValidIr, calls, from_json_str, to_canonical_string, wired_goal,
+};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 use wasm_encoder::{
     CodeSection, Function, FunctionSection, HeapType, Instruction, MemorySection, MemoryType, TagKind, TagSection,
@@ -197,6 +199,49 @@ fn emission_is_deterministic() {
     let (program, document) = (program(EVERYTHING), everything());
     let (first, second) = (valid_ir(&program, &document), valid_ir(&program, &document));
     assert_eq!(emit(&first), emit(&second));
+}
+
+/// The `validate` fuzz target's corpus on stable, with the golden IR as `ac_ir_06_*` replays it (AC-IR-06,
+/// R-SBX-01): whatever IR the validator accepts, against any goal of the golden program, emits a module, a decline or `NotLeaf`, and never panics or reports a backend bug.
+#[test]
+fn ac_ir_06_the_validate_corpus_emits_without_panic() {
+    let program = program(&read(&repo("tests/golden/ir/goals.velme")));
+    let composite: Goal = from_json_str(&read(&repo("tests/golden/ir/accept/player_summary.json"))).expect("its IR");
+    let (mut replayed, mut emitted) = (0, 0);
+    let dirs = [
+        "fuzz/corpus/validate",
+        "tests/golden/ir/accept",
+        "tests/golden/ir/reject",
+    ];
+    for path in dirs
+        .iter()
+        .flat_map(|dir| std::fs::read_dir(repo(dir)).expect("a corpus"))
+    {
+        let bytes = std::fs::read(path.expect("an entry").path()).expect("a corpus file");
+        let text = String::from_utf8_lossy(&bytes);
+        for declared in &program.goals {
+            let calls = if declared.name == "BuildPlayerSummary" {
+                &composite.calls[..]
+            } else {
+                &[]
+            };
+            for origin in [Origin::Candidate, Origin::Complete] {
+                let request = Request {
+                    program: &program,
+                    goal: goal_id(&program, &declared.name),
+                    calls,
+                    origin,
+                };
+                if let Ok(ir) = velme_ir::validate(&text, &request) {
+                    let module = emit(&ir);
+                    assert!(!matches!(module, Err(EmitError::Internal(_))), "{module:?}");
+                    emitted += 1;
+                }
+            }
+        }
+        replayed += 1;
+    }
+    assert!(replayed > 20 && emitted > 0, "{replayed}, {emitted}");
 }
 
 pub(super) const EVERYTHING: &str = r#"language: velme/0.1

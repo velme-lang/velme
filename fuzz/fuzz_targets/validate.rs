@@ -1,6 +1,7 @@
 //! The IR validator is total: any bytes end in validated IR or diagnostics, never a panic (`compiler/21` R-IR-18,
-//! AC-IR-06). Run with `cargo +nightly fuzz run validate`; `fuzz/corpus/validate/` is replayed by `cargo test` on
-//! stable.
+//! AC-IR-06). The WASM emitter is too on whatever the validator accepts: a module that validates, a decline or a
+//! composite goal, never a panic or a backend bug (R-SBX-01, R-SBX-16). Run with `cargo +nightly fuzz run validate`;
+//! `fuzz/corpus/validate/` is replayed by `cargo test` on stable, in `velme-ir` and in `velme-wasm`.
 #![no_main]
 
 use std::sync::LazyLock;
@@ -8,6 +9,7 @@ use std::sync::LazyLock;
 use libfuzzer_sys::fuzz_target;
 use velme_ir::{CallNode, Goal, Origin, Request, from_json_str, validate};
 use velme_sema::hir::{GoalId, Program};
+use velme_wasm::EmitError;
 
 /// The golden IR corpus's program: fuzzed IR is validated against each of its goals.
 static PROGRAM: LazyLock<Option<Program>> = LazyLock::new(|| {
@@ -36,7 +38,10 @@ fuzz_target!(|data: &[u8]| {
                 calls,
                 origin,
             };
-            let _ = validate(text, &request);
+            if let Ok(ir) = validate(text, &request) {
+                let emitted = velme_wasm::emit(&ir);
+                assert!(!matches!(emitted, Err(EmitError::Internal(_))), "{emitted:?}");
+            }
         }
     }
 });

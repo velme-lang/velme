@@ -40,7 +40,7 @@ impl Platform {
 
 /// The user-level config file (R-CLI-25): `$XDG_CONFIG_HOME/velme/config.toml`, else `~/.config/velme/config.toml` on Unix
 /// and macOS, and `%APPDATA%\velme\config.toml` on Windows. `get` reads the environment; a variable that is empty, or on
-/// Unix not an absolute path, is not set (the XDG rule). `None` when the home can't be found.
+/// Unix not an absolute path (`HOME` too), is not set (the XDG rule). `None` when the home can't be found.
 pub fn user_config_path(get: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Option<PathBuf> {
     Some(under_base(get, platform, ("APPDATA", "XDG_CONFIG_HOME", ".config"))?.join("config.toml"))
 }
@@ -64,7 +64,7 @@ fn under_base(
         Platform::Windows => set(windows)?,
         Platform::Unix => match set(xdg).filter(|p| p.is_absolute()) {
             Some(xdg) => xdg,
-            None => set("HOME")?.join(dot_dir),
+            None => set("HOME").filter(|p| p.is_absolute())?.join(dot_dir),
         },
     };
     Some(base.join("velme"))
@@ -164,24 +164,28 @@ mod tests {
     #[test]
     fn ac_cli_22_the_user_file_is_found_at_the_location_of_each_platform() {
         let path = |vars: &[(&str, &str)], platform| user_config_path(&env(vars), platform);
-        // The XDG variables count only when absolute, and `/x` is not absolute on a Windows host.
-        let (x, c) = if cfg!(windows) { ("C:/x", "C:/c") } else { ("/x", "/c") };
+        // The XDG variables and `HOME` count only when absolute, and `/x` is not absolute on a Windows host.
+        let (x, c, h) = if cfg!(windows) {
+            ("C:/x", "C:/c", "C:/h")
+        } else {
+            ("/x", "/c", "/h")
+        };
         assert_eq!(
-            path(&[("XDG_CONFIG_HOME", x), ("HOME", "/h")], Platform::Unix),
+            path(&[("XDG_CONFIG_HOME", x), ("HOME", h)], Platform::Unix),
             Some(PathBuf::from(x).join("velme/config.toml"))
         );
         assert_eq!(
-            path(&[("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/h/.config/velme/config.toml"))
+            path(&[("HOME", h)], Platform::Unix),
+            Some(PathBuf::from(h).join(".config/velme/config.toml"))
         );
         // A relative or empty XDG_CONFIG_HOME is not set.
         assert_eq!(
-            path(&[("XDG_CONFIG_HOME", "rel"), ("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/h/.config/velme/config.toml"))
+            path(&[("XDG_CONFIG_HOME", "rel"), ("HOME", h)], Platform::Unix),
+            Some(PathBuf::from(h).join(".config/velme/config.toml"))
         );
         assert_eq!(
-            path(&[("XDG_CONFIG_HOME", ""), ("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/h/.config/velme/config.toml"))
+            path(&[("XDG_CONFIG_HOME", ""), ("HOME", h)], Platform::Unix),
+            Some(PathBuf::from(h).join(".config/velme/config.toml"))
         );
         assert_eq!(
             path(
@@ -197,13 +201,20 @@ mod tests {
         assert_eq!(path(&[], Platform::Unix), None);
         let cache = |vars: &[(&str, &str)], platform| wasm_cache_path(&env(vars), platform);
         assert_eq!(
-            cache(&[("XDG_CACHE_HOME", c), ("HOME", "/h")], Platform::Unix),
+            cache(&[("XDG_CACHE_HOME", c), ("HOME", h)], Platform::Unix),
             Some(PathBuf::from(c).join("velme/wasm"))
         );
         assert_eq!(
-            cache(&[("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/h/.cache/velme/wasm"))
+            cache(&[("HOME", h)], Platform::Unix),
+            Some(PathBuf::from(h).join(".cache/velme/wasm"))
         );
         assert_eq!(path(&[("XDG_CONFIG_HOME", x)], Platform::Windows), None);
+        // A relative `HOME` is not set either, so neither file is looked for under the current directory (T-11).
+        assert_eq!(path(&[("HOME", "rel")], Platform::Unix), None);
+        assert_eq!(
+            cache(&[("XDG_CACHE_HOME", "rel"), ("HOME", "rel")], Platform::Unix),
+            None
+        );
+        assert_eq!(cache(&[("HOME", "")], Platform::Unix), None);
     }
 }

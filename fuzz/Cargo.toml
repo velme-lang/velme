@@ -16,6 +16,7 @@ velme-ir = { path = "../crates/velme-ir" }
 velme-runtime = { path = "../crates/velme-runtime" }
 velme-sema = { path = "../crates/velme-sema" }
 velme-test-support = { path = "../crates/velme-test-support" }
+velme-wasm = { path = "../crates/velme-wasm" }
 
 # Not a member of the main workspace: cargo-fuzz needs nightly and its own build.
 [workspace]

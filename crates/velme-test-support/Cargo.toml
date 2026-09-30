@@ -23,6 +23,7 @@ velme-ir.workspace = true
 velme-runtime.workspace = true
 velme-sema.workspace = true
 velme-synth = { workspace = true, features = ["test-endpoint", "provider-ollama", "provider-external"] }
+velme-wasm.workspace = true
 arbitrary.workspace = true
 async-trait.workspace = true
 serde_json = { workspace = true, features = ["arbitrary_precision"] }

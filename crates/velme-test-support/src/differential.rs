@@ -1,7 +1,7 @@
 //! The differential harness (`runtime/31` R-SBX-15, `delivery/51` §2, D-118): a leaf goal body run on the interpreter
 //! and on WASM through the runtime's seam, which must give the same value or the same full diagnostic (code, message
-//! and notes), and the same fuel and memory, with no run near a quarter of its Wasmtime fuel backstop. The corpus is
-//! the golden IR, the examples and the goals of [`crate::generate`].
+//! and notes), and the same fuel and memory, with no run near a quarter of its Wasmtime fuel backstop, at its limits
+//! or at the figures it spent. The corpus is the golden IR, the examples and the goals of [`crate::generate`].
 
 use std::sync::Arc;
 
@@ -11,6 +11,7 @@ use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Goal, ValidIr, calls, decode_str, encode_value, from_json_str};
 use velme_runtime::{Backend, Wasm, eval_leaf};
 use velme_sema::hir::{GoalId, Program};
+use velme_wasm::backstop_fuel;
 
 use crate::{example_cases, goal_id, program, read, repo, valid_ir};
 
@@ -162,6 +163,17 @@ pub fn compare(
         .map_err(|unrun| format!("wasm didn't run it: {unrun:?}"))?;
     if run.backstop.is_some() || !run.wasmtime_fuel.within_a_quarter() {
         return Err(format!("the backstops: {:?}, {:?}", run.backstop, run.wasmtime_fuel));
+    }
+    // The backstop of the figures the run spent, not of its limits, which at the system caps leave K untested.
+    // Its memory term is the bytes charged: every bulk copy writes a charged value, or a `map` result into its
+    // frame on the way to its list, so no byte moves more than `MEMORY_MOVES` times, which M allows; the one other
+    // copy, a `sort_by` order within scratch, and growth by the page are paid for by K and A.
+    let spent = backstop_fuel(run.spent.fuel, run.spent.memory);
+    if run.wasmtime_fuel.used > spent / 4 {
+        return Err(format!(
+            "{:?} over a quarter of {spent}, the backstop of {:?}",
+            run.wasmtime_fuel, run.spent
+        ));
     }
     Ok(interpreted)
 }
