@@ -3,15 +3,176 @@
 //! (`tooling/41` R-SEC-12).
 
 use velme_diagnostics::{Code, Diagnostic, Span};
+#[cfg(feature = "test-provider")]
+use velme_syntax::SourceFile;
 use velme_synth::{
     Anthropic, AnthropicConfig, ApiKey, CommandError, External, ExternalCommand, ExternalConfig, KeyError, OLLAMA_URL,
-    Ollama, OllamaConfig, SynthBackend, SynthOptions,
+    Ollama, OllamaConfig, Replay, SynthBackend, SynthOptions,
 };
 
 use crate::project::Project;
 
 /// A provider and the notice that says what it sends.
 pub type Chosen = (Box<dyn SynthBackend>, String);
+
+/// The provider `name` names, or why there is none (`tooling/40` §2.1, R-CLI-12), recorded as replay fixtures when
+/// `VELME_SYNTH_RECORD=1` says so (`compiler/22` R-SYNTH-43); the `replay` provider is never recorded onto itself.
+pub fn backend(
+    name: &str,
+    project: &Project,
+    flags: &BuildFlags,
+    options: &SynthOptions,
+) -> Result<Chosen, Diagnostic> {
+    let (backend, notice) = provider(name, project, flags, options)?;
+    if name != "replay" && std::env::var("VELME_SYNTH_RECORD").is_ok_and(|v| v == "1") {
+        let recorder = velme_synth::Recorder::new(backend, project.root.join(REPLAY_DIR)).with_options(options);
+        return Ok((Box::new(recorder), notice));
+    }
+    Ok((backend, notice))
+}
+
+/// The provider `name` names, and the notice that says what it sends (`tooling/41` R-SEC-12): `replay` reads the
+/// fixtures of the project's `tests/fixtures/synth`; `scripted` is there only in a build with the `test-provider`
+/// feature (D-94).
+fn provider(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, Diagnostic> {
+    match name {
+        "replay" => Ok((
+            Box::new(Replay::new(project.root.join(REPLAY_DIR))),
+            "Nothing is sent: the replay provider answers from recorded fixtures.".to_owned(),
+        )),
+        #[cfg(feature = "test-provider")]
+        "scripted" => {
+            let path = std::env::var("VELME_SYNTH_SCRIPT").map_err(|_| {
+                Diagnostic::new(
+                    Code::InvalidInput,
+                    Span::default(),
+                    "The scripted provider needs `VELME_SYNTH_SCRIPT`, the path of its script.",
+                )
+            })?;
+            let text =
+                std::fs::read_to_string(&path).map_err(|e| SourceFile::unreadable(&crate::display_path(&path), &e))?;
+            let scripted = velme_synth::Scripted::from_script(&text)
+                .map_err(|e| Diagnostic::new(Code::InvalidInput, Span::default(), e.to_string()))?;
+            Ok((
+                Box::new(scripted),
+                "Nothing is sent: the scripted provider answers from its script.".to_owned(),
+            ))
+        }
+        "anthropic" => anthropic(flags.model, options),
+        "ollama" => ollama(flags.model, options),
+        "external" => external(flags.external_command, project),
+        _ => Err(Diagnostic::new(
+            Code::InvalidInput,
+            Span::default(),
+            format!("I don't know a provider called `{name}`."),
+        )
+        .with_help("the providers are anthropic, ollama, external and replay")),
+    }
+}
+
+/// Whether `d` is the library's own `VL0405` for a provider that isn't set up, not a rejected key (R-SYNTH-07).
+fn is_generic_not_configured(d: &Diagnostic, goal: &str) -> bool {
+    d.code == Code::ProviderNotConfigured
+        && d.message
+            == velme_synth::provider_diagnostic(&velme_synth::ProviderError::NotConfigured, "", goal, d.span).message
+}
+
+/// The provider that can't be used: every goal that needs it is `VL0405` (`tooling/40` R-CLI-12).
+pub struct NotConfigured;
+
+#[async_trait::async_trait]
+impl SynthBackend for NotConfigured {
+    async fn identify(&self) -> Result<velme_synth::Identity, velme_synth::ProviderError> {
+        Err(velme_synth::ProviderError::NotConfigured)
+    }
+
+    fn open(
+        &self,
+        _identity: &velme_synth::Identity,
+    ) -> Result<Box<dyn velme_synth::SynthProvider>, velme_synth::ProviderError> {
+        Err(velme_synth::ProviderError::NotConfigured)
+    }
+}
+
+/// Where a project's replay fixtures are unless `[synthesis] replay_dir` says otherwise (`tooling/40` §5.1).
+pub const REPLAY_DIR: &str = "tests/fixtures/synth";
+
+/// The `[synthesis]` settings of a build with provider `name`: `external` defaults to no retries, since a deterministic
+/// backend gives the same answer again (`compiler/22` R-SYNTH-30). A replay follows the build it replays: the provider
+/// it recorded, so a replayed external build asks for what the recorded one did, and the settings that shaped its
+/// requests and replies (R-SYNTH-43).
+pub fn synth_options(name: &str, project: &Project) -> SynthOptions {
+    let recorded = if name == "replay" {
+        velme_synth::read_replay_identity(&project.root.join(REPLAY_DIR))
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    let external = name == "external" || recorded.as_ref().is_some_and(|r| r.provider == "external");
+    let mut options = SynthOptions {
+        max_retries: if external {
+            0
+        } else {
+            SynthOptions::default().max_retries
+        },
+        ..SynthOptions::default()
+    };
+    if let Some(recorded) = &recorded {
+        recorded.apply(&mut options);
+    }
+    options
+}
+
+/// The provider of a build that doesn't name one (`tooling/40` §2.1).
+pub const DEFAULT_PROVIDER: &str = "anthropic";
+
+/// The flags of `velme build` that choose and set up the provider (`tooling/40` §2.1).
+pub struct BuildFlags<'a> {
+    pub provider: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub external_command: Option<&'a str>,
+    pub verbose: bool,
+}
+
+/// Rewords the `VL0405` of `goal` in `diagnostics` for the setup that produced it: `unusable` when the provider couldn't
+/// be used, else the missing Ollama model or unknown Anthropic model (`compiler/22` R-SYNTH-24, R-SYNTH-07).
+pub fn reword_not_configured(
+    diagnostics: &mut [Diagnostic],
+    provider: &str,
+    model_flag: Option<&str>,
+    unusable: Option<&Diagnostic>,
+    goal: &str,
+) {
+    let (message, help): (String, Option<String>) = if let Some(why) = unusable {
+        (why.message.clone(), why.help.clone())
+    } else if provider == "ollama" {
+        let model = model_name(model_flag);
+        (
+            format!("The Ollama server doesn't have the model `{model}`."),
+            Some(format!(
+                "run `ollama pull {model}`, or choose another model with `--model`"
+            )),
+        )
+    } else if provider == "anthropic" {
+        let model = model_name(model_flag);
+        (
+            format!("The Anthropic API doesn't know the model `{model}`."),
+            Some("choose another model with `--model`, or set `VELME_MODEL`".to_owned()),
+        )
+    } else {
+        return;
+    };
+    // A rejected key has its own words and stays as it is (R-SYNTH-07).
+    let only_generic = unusable.is_none() && provider == "anthropic";
+    for d in diagnostics
+        .iter_mut()
+        .filter(|d| d.code == Code::ProviderNotConfigured && (!only_generic || is_generic_not_configured(d, goal)))
+    {
+        d.message.clone_from(&message);
+        d.help.clone_from(&help);
+    }
+}
 
 pub fn not_configured(message: impl Into<String>, help: &str) -> Diagnostic {
     Diagnostic::new(Code::ProviderNotConfigured, Span::default(), message).with_help(help)
@@ -184,7 +345,7 @@ fn split_words(text: &str) -> Result<Vec<String>, &'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::split_words;
+    use super::{is_generic_not_configured, split_words};
 
     /// Quoting only: quotes group, a backslash escapes, and nothing else is expanded (R-CLI-13).
     #[test]
@@ -198,5 +359,17 @@ mod tests {
         assert!(split_words("impl 'open").is_err());
         assert!(split_words("impl \"open").is_err());
         assert!(split_words("impl \\").is_err());
+    }
+
+    /// Only the library's own "no provider is set up" `VL0405` (an unknown model) is reworded for the Anthropic provider;
+    /// a rejected key keeps its words (R-SYNTH-07).
+    #[test]
+    fn only_the_generic_not_configured_diagnostic_is_reworded() {
+        use velme_synth::{ProviderError, provider_diagnostic};
+        let generic = provider_diagnostic(&ProviderError::NotConfigured, "", "Double", Default::default());
+        let rejected = provider_diagnostic(&ProviderError::KeyRejected, "", "Double", Default::default());
+        assert!(is_generic_not_configured(&generic, "Double"));
+        assert!(!is_generic_not_configured(&rejected, "Double"));
+        assert!(!is_generic_not_configured(&generic, "Other"));
     }
 }
