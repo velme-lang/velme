@@ -2,13 +2,14 @@
 //! Rust implementations over the value model (`Number`, D-36), and the budget caps every layer checks against (D-77).
 #![forbid(unsafe_code)]
 
+pub mod execution;
 mod function;
 pub mod limits;
 pub mod memory;
 mod number;
 mod value;
 
-pub use function::{Error, Function, Output, equals, sort_by_fuel, sort_order};
+pub use function::{Error, Function, Output, TEXT_BLOCK_BYTES, equals, range_length, sort_by_fuel, sort_order};
 pub use number::Number;
 pub use value::{List, Record, Value};
 

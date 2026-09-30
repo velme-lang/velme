@@ -7,7 +7,7 @@ use serde_json::Value as Json;
 use velme_builtins::limits::MAX_FUEL;
 use velme_builtins::{BUILTINS_VERSION, Value};
 use velme_diagnostics::{Code, Span};
-use velme_interp::{Error, Evaluator, Failure, Limits, Output, Probe, run};
+use velme_interp::{Budget, Error, Evaluator, Failure, Limits, Output, Probe, Spent, run, run_measured};
 use velme_ir::limits::MAX_NODES;
 use velme_ir::{IR_VERSION, Node, ValidIr, decode_str, encode_value, from_json_str};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
@@ -808,6 +808,46 @@ fn memory_is_the_cumulative_bytes_allocated() {
     assert_eq!(f.code(), Code::MemoryLimitExceeded);
     let diag = f.diagnostic("Compute", Span::new(0, 4));
     assert_eq!(diag.message, "`Compute` needed more memory than it's allowed.");
+}
+
+/// A total of bytes past `u64::MAX` is past every limit, `u64::MAX` itself too, so the WASM meter, which counts down
+/// from the limit, stops at the same allocation (`runtime/31` R-SBX-05, INV-3).
+#[test]
+fn memory_past_u64_max_is_out_of_memory_under_any_limit() {
+    // `[1, 2]` is 16 + 2 × 16 bytes.
+    let list = format!(
+        r#"{{"kind": "list", "of": {{"t": "Number"}}, "items": [{}, {}]}}"#,
+        number("1"),
+        number("2")
+    );
+    let program = program(GOALS);
+    let ir = valid_ir(&program, &document("Inverses", &list));
+    let inputs = || {
+        vec![
+            decode_str(
+                "[]",
+                &program.goals[goal_id(&program, "Inverses").0].params[0].ty,
+                &program,
+            )
+            .expect("decodes"),
+        ]
+    };
+    let limits = Limits {
+        fuel: MAX_FUEL,
+        memory: u64::MAX,
+    };
+    let after = |memory| Budget::new(limits).after(Spent { fuel: 0, memory });
+    // Exactly `u64::MAX` is within the limit.
+    let (value, spent) = run_measured(&ir, inputs(), Vec::new(), after(u64::MAX - 48));
+    assert!(value.is_ok());
+    assert_eq!(spent.memory, u64::MAX);
+    // One byte more has no `u64`, and is the limit's failure, not a total that stays at `u64::MAX`.
+    let (value, spent) = run_measured(&ir, inputs(), Vec::new(), after(u64::MAX - 47));
+    assert_eq!(
+        value.expect_err("out of memory").error,
+        Error::OutOfMemory { max_memory: u64::MAX }
+    );
+    assert_eq!(spent.memory, u64::MAX);
 }
 
 /// When one step would pass both limits, the first crossed in the order of `runtime/30` R-RUN-04 is reported (D-88):

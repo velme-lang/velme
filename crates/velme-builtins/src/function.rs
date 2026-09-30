@@ -208,13 +208,17 @@ fn optional(x: Option<Number>) -> Value {
     x.map_or(Value::Nothing, Value::Number)
 }
 
+/// The bytes of text one fuel unit pays for (D-52).
+pub const TEXT_BLOCK_BYTES: u64 = 64;
+
 /// ⌈bytes / 64⌉, the size unit of text built-ins (D-52). `concat`'s inputs together are exactly its output.
 fn blocks(bytes: usize) -> u64 {
-    u64::try_from(bytes.div_ceil(64)).unwrap_or(u64::MAX)
+    u64::try_from(bytes).unwrap_or(u64::MAX).div_ceil(TEXT_BLOCK_BYTES)
 }
 
 /// The length of `range(count)`: `count` integer-valued and `≥ 0`, else `VL0602`; above `max_list_size`, `VL0606`.
-fn range_length(count: Number) -> Result<u64, Error> {
+/// The WASM host's `velme.range_len` is this check (`runtime/31` §5).
+pub fn range_length(count: Number) -> Result<u64, Error> {
     if !count.is_integer() || count < Number::ZERO {
         return Err(Error::arithmetic(format!("make a list of {count} numbers with range")));
     }

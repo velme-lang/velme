@@ -8,5 +8,15 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+velme-builtins.workspace = true
+velme-diagnostics.workspace = true
+velme-ir.workspace = true
+wasm-encoder.workspace = true
+wasmparser.workspace = true
+
+[dev-dependencies]
+velme-test-support.workspace = true
+
 [lints]
 workspace = true
