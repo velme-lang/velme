@@ -4,7 +4,7 @@ assertion_line: 149
 expression: out
 input_file: tests/golden/ir/accept/find_badge.json
 ---
-{"player":{"jump_height":1,"name":"Ana","score":100}} -> "Gold \"★\"\n" (fuel 6)
-{"player":{"jump_height":3.25,"name":"Lina","score":20}} -> "Jumper\t3.25" (fuel 22)
-{"player":{"jump_height":3.25,"name":"","score":20}} -> "Rookie" (fuel 16)
-{"player":{"jump_height":2.5,"name":"Bo","score":99.9}} -> "Rookie" (fuel 12)
+{"player":{"jump_height":1,"name":"Ana","score":100}} -> "Gold \"★\"\n" (fuel 6, memory 0)
+{"player":{"jump_height":3.25,"name":"Lina","score":20}} -> "Jumper\t3.25" (fuel 22, memory 56)
+{"player":{"jump_height":3.25,"name":"","score":20}} -> "Rookie" (fuel 16, memory 0)
+{"player":{"jump_height":2.5,"name":"Bo","score":99.9}} -> "Rookie" (fuel 12, memory 0)

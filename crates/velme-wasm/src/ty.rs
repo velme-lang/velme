@@ -57,14 +57,14 @@ pub(crate) fn join(a: &Ty, b: &Ty) -> Option<Ty> {
 }
 
 /// A record type laid out: its logical size, then its fields in declared order, each in its slot (§3).
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Record {
     pub(crate) fields: Vec<Field>,
     /// The bytes of its slot, the size before the fields included.
     pub(crate) slot: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Field {
     pub(crate) name: String,
     pub(crate) ty: Ty,
@@ -74,7 +74,7 @@ pub(crate) struct Field {
 
 /// The record types of a goal. One the emitter has no layout for says why, and declines the goal only if the goal
 /// uses it.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Types {
     names: Vec<String>,
     records: Vec<Result<Record, &'static str>>,
@@ -140,6 +140,11 @@ impl Types {
         }
     }
 
+    /// The name of record `index`.
+    pub(crate) fn name(&self, index: usize) -> Option<&str> {
+        self.names.get(index).map(String::as_str)
+    }
+
     /// The bytes of a slot of `ty` (§3).
     pub(crate) fn slot(&self, ty: &Ty) -> Result<u32, EmitError> {
         Ok(match ty {
@@ -184,6 +189,18 @@ impl Types {
 
 fn internal() -> EmitError {
     EmitError::Internal("the IR names a type the validator should have rejected".to_owned())
+}
+
+/// What the host needs of a goal to call its module (R-SBX-03): the layouts the module was emitted with, so the two
+/// sides cannot disagree on one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Signature {
+    pub(crate) types: Types,
+    /// The inputs in declared order, each with where its slot starts from `input_ptr`.
+    pub(crate) inputs: Vec<(Ty, u32)>,
+    /// The bytes of the inputs' slots together.
+    pub(crate) input_bytes: u32,
+    pub(crate) output: Ty,
 }
 
 /// The slot of a type that isn't a record (§3). A `T?` is one pointer, whatever `T` is, so an absent one takes no

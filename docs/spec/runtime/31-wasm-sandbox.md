@@ -138,12 +138,12 @@ module is neither compiled nor run (INV-4, D-116). The entry point that takes ra
 
 | Setting | Value | Why |
 |---|---|---|
-| `consume_fuel` | on, set to `max_fuel × K + A`, saturating: K is 4 × the most instructions one paid Velme fuel unit covers, and A is 4 × what runs unpaid (the one `sum` paid after its work, `velme_alloc` and storing the result); both are named constants of `velme-wasm` | backstop only; Velme fuel (R-SBX-05) is the deterministic limit, and a legal program never reaches the backstop (D-115) |
-| `epoch_interruption` | on; ticker thread increments every 10 ms; the deadline is one tick, and at each deadline a callback asks the run's shared watchdog (30 §7), which reads the injected clock: it either allows one more tick or stops the module | wall-clock safety net → `VL0603` (D-10, D-51, D-115); tests drive it with the fake clock |
-| `wasm_threads`, `wasm_simd`, `wasm_relaxed_simd` | off | determinism (R-SBX-07) |
-| `StoreLimits` | memory ≤ `max_memory` + the ABI bytes of the invocation's inputs + the data-segment bytes + S (R-SBX-19) + a fixed overhead of 1 MiB, rounded up to 64 KiB pages; 1 memory, 1 table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` (D-53, D-90, D-113) |
-| Memory reservation | equal to the `StoreLimits` memory figure, not Wasmtime's 4 GiB default | no address space beyond what a run may use (D-113) |
-| WASM stack | 4 MiB | fixed, so deep emitted code fails the same way on every host (D-113) |
+| `consume_fuel` | on, set to `max_fuel × K + A + M × m`, saturating, where m is the run's `StoreLimits` memory figure: K is 4 × the most instructions one paid Velme fuel unit covers, A is 4 × what runs unpaid (the one `sum` paid after its work, `velme_alloc` and storing the result), and M is 4 × the most times emitted code moves one charged byte with a bulk copy; all three are named constants of `velme-wasm`. Wasmtime's own costs are kept: one unit an instruction, and one a byte or page that bulk memory or growth moves, so Cranelift checks fuel and the epoch after each such instruction | backstop only; Velme fuel (R-SBX-05) is the deterministic limit, and a legal program never reaches the backstop (D-115, D-120) |
+| `epoch_interruption` | on; ticker thread increments every 10 ms; the deadline is one tick, and at each deadline a callback asks the run's shared watchdog (30 §7), which reads the injected clock: it either allows one more tick or stops the module. The first deadline is the call of `velme_run` itself, so a run that starts past its time is stopped before it runs | wall-clock safety net → `VL0603` (D-10, D-51, D-115); tests drive it with the fake clock |
+| Wasm features | every feature off, then exactly the R-SBX-07 set on: threads, SIMD, floats, sign extension and saturating conversions are off in Wasmtime too | determinism (R-SBX-07, D-120) |
+| `StoreLimits` | memory ≤ `max_memory` + the ABI bytes of the invocation's inputs + the data-segment bytes + S (R-SBX-19) + a fixed overhead of 1 MiB, rounded up to 64 KiB pages, and under 4 GiB; 1 memory, no table, 1 instance | host-side backstop behind the deterministic memory counter → `VL0604` (D-53, D-90, D-113, D-120) |
+| Memory reservation | the `StoreLimits` memory figure at the system cap `max_memory`, one figure for the engine, not Wasmtime's 4 GiB default; memory may move, so a run whose inputs or literals take it past that grows by moving. The runtime's limits are always within the system caps | no address space beyond what a run may use (D-113, D-120) |
+| WASM stack | 4 MiB, emitted code never recursing; a module runs on a thread of its own with a 6 MiB stack, room for that and the host's calls. A panic of the host on that thread goes on in the caller's, never as `VL0607` | fixed, so deep emitted code fails the same way on every host (D-113, D-120) |
 | `wasmtime` crate | default features off; only `runtime`, `cranelift` and `std`; always built in, with no cargo feature to turn it off | small dependency surface; one build of `velme` (D-116) |
 | Instantiation | `InstancePre` per module, fresh `Store` + instance per invocation | no state shared between calls |
 
@@ -154,9 +154,13 @@ deadline) → `VL0603`; (3) Wasmtime out of fuel → the backstop `VL0601`; (4) 
 stack overflow, an out-of-bounds access, `unreachable` with reason 0 → `VL0607 InternalError` (and is a bug).
 The host also reports `VL0607` for: a `left` global above the limit it set; a reason outside 0..4; a non-zero reason
 after a normal return; reason 1 or 2 with its global not 0; a visiting index, or a list length, above `max_list_size`.
-Decoding the result stops once the logical size decoded passes `max_memory`. The `to_text` import refuses a text longer
-than the 48 marshalling bytes and bounds-checks `ptr`; every `Number` that crosses the boundary, in either direction,
-goes through the canonical-form check of R-SBX-04.
+Decoding the result stops, as `VL0607`, once it passes either of two budgets (D-120). Bytes: the logical size decoded
+passes `max_memory` plus what no run is charged for, the logical size of the inputs and the sum of the logical sizes
+of the goal's literals as the emitter counts them (D-53, D-83). Items: the items of the lists of `Nothing` the host
+makes, which have no size, pass the fuel spent plus the items of the inputs' and the literals' lists of `Nothing`; a
+list of a length already made is shared and takes nothing. The `to_text` import refuses a text longer than the 48
+marshalling bytes and a `ptr` that is not the marshalling bytes of a scratch frame; every `Number` that crosses the
+boundary, in either direction, goes through the canonical-form check of R-SBX-04.
 **R-SBX-12** Only the deterministic limits (Velme fuel, Velme memory) can produce reproducible outcomes; if a backstop
 fires first, the run is reported as that backstop's code. `--verbose` adds a note on stderr saying that a backstop
 fired, which is a backend bug; nothing else changes, in `--json` or in the trace (D-115).
@@ -169,9 +173,13 @@ project: `$XDG_CACHE_HOME/velme/wasm/<module-hash>-<compat-hash>.cwasm` (or the 
 so a change to the emitter, to Wasmtime or to the engine configuration gives a new name (D-116). Emission always runs;
 only Wasmtime's compiled output is cached. They are never locked, never committed and may be deleted at any time (D-48).
 **R-SBX-20** The cache directory is an option passed to the backend: `velme-cli` passes the user-level directory, and a
-test passes a temporary directory or none (no disk cache). The directory is created with mode `0700`; a symbolic link,
-as the directory or as a file in it, is refused; a file is written under a temporary name and renamed into place
-atomically (D-116).
+test passes a temporary directory or none (no disk cache). The directory is created with mode `0700`, then opened
+without following a symbolic link, and checked on that handle: a directory owned by the process's effective user, with
+no access for group or others. One that fails is refused and never changed. Every file is reached through that handle:
+read only if, opened without following a link, it is a regular file of the same owner that group and others cannot
+write; written under a temporary name, mode `0600`, and renamed into place atomically. A refusal turns the disk cache
+off for the process: modules are compiled on every run, and `--verbose` says why. There is no disk cache off Unix in
+v0.1 (D-116, D-120).
 **R-SBX-14** `Module::deserialize` is used only on files under the configured cache directory, written by this
 process's engine configuration: the loader refuses any path outside that directory, and a name mismatch or read error
 falls back to compiling the emitted module. Files anywhere under
@@ -204,6 +212,6 @@ composite goals, and WASI capabilities tied to declared `effects`. Tracked by RF
 | AC-SBX-04 | A leaf that allocates past `max_memory` fails with `VL0604` on both backends at the same point. |
 | AC-SBX-05 | Division by zero traps with `VL0602` on WASM; a module containing any `f32`/`f64` instruction is rejected by validation. |
 | AC-SBX-06 | Every emitted module in the golden set validates with `wasmparser` under exactly the R-SBX-07 feature set. |
-| AC-SBX-07 | Deleting the WASM cache directory changes no result; the next run recompiles, seen as the cache file appearing again. Tested with a temporary cache directory (R-SBX-20). |
+| AC-SBX-07 | Deleting the WASM cache directory changes no result; the next run recompiles, seen as the cache file appearing again. Tested with a temporary cache directory (R-SBX-20), on Unix; elsewhere there is no disk cache in v0.1 and nothing is written (D-120). |
 | AC-SBX-08 | With the injected clock past `max_wall_clock`, a run on WASM ends with `VL0603`, flagged non-reproducible (D-115). |
 | AC-SBX-09 | A garbage `.cwasm` file planted under the project's `.velme/` is never read: the goal compiles from IR and runs normally, and the loader refuses any path outside the configured cache directory (D-48, D-116). |

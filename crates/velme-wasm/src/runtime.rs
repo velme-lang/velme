@@ -53,7 +53,7 @@ pub(crate) enum Rt {
 }
 
 impl Rt {
-    const ALL: [Rt; 18] = [
+    pub(crate) const ALL: [Rt; 18] = [
         Rt::Fail,
         Rt::Tick,
         Rt::ChargeFuel,
@@ -77,6 +77,12 @@ impl Rt {
     /// Its function index.
     pub(crate) fn index(self) -> u32 {
         Import::ALL.len() as u32 + self as u32
+    }
+
+    /// The instructions of its body ([`Func::instructions`]).
+    #[cfg(test)]
+    pub(crate) fn instructions(self) -> u64 {
+        self.build().instructions()
     }
 
     fn build(self) -> Func {

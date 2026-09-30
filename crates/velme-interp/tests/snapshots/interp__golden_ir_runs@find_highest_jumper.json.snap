@@ -4,5 +4,5 @@ assertion_line: 149
 expression: out
 input_file: tests/golden/ir/accept/find_highest_jumper.json
 ---
-{"players":[{"jump_height":2,"name":"Ana","score":10},{"jump_height":3,"name":"Lina","score":20},{"jump_height":3.0,"name":"Bo","score":30}]} -> {"name":"Lina","jump_height":3,"score":20} (fuel 30)
-{"players":[]} -> null (fuel 6)
+{"players":[{"jump_height":2,"name":"Ana","score":10},{"jump_height":3,"name":"Lina","score":20},{"jump_height":3.0,"name":"Bo","score":30}]} -> {"name":"Lina","jump_height":3,"score":20} (fuel 30, memory 64)
+{"players":[]} -> null (fuel 6, memory 16)

@@ -1,27 +1,56 @@
 //! The Velme WASM backend (`runtime/31`): a verified leaf goal body as a core WebAssembly module, emitted with
-//! `wasm-encoder` and validated with `wasmparser`. It is an optimization backend (P-4): the interpreter defines what
-//! IR means, and a module must give the same value, the same failure and the same fuel and memory (INV-3).
+//! `wasm-encoder`, validated with `wasmparser` and run in Wasmtime with no ambient capability. It is an optimization
+//! backend (P-4): the interpreter defines what IR means, and a module must give the same value, the same failure and
+//! the same fuel and memory (INV-3).
+
+// The one `unsafe` is loading a compiled module from the cache, in `sandbox` (CC-API-04).
+#![deny(unsafe_code)]
 
 pub mod abi;
+mod cache;
 mod code;
+mod codec;
 mod data;
 mod emit;
 mod runtime;
+mod sandbox;
 mod ty;
 mod validate;
 
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers of the tests are test code too.
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+mod sandbox_tests;
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 mod tests;
 
 use velme_ir::ValidIr;
+
+pub use sandbox::{
+    Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Program, Run, Sandbox, UNIT_INSTRUCTIONS,
+    WasmtimeFuel, backstop_fuel,
+};
 
 /// An emitted module: a pure function of its IR, with no limit baked in (R-SBX-03).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     bytes: Vec<u8>,
     data_bytes: u32,
+    /// The layouts the module reads its inputs and leaves its output in.
+    signature: ty::Signature,
+    literals: Literals,
+}
+
+/// What the literals of a module hold, which no run is charged for (D-83): with the inputs and `max_memory`, the
+/// bound on what the host reads back of a result (R-SBX-11, D-120). Counted from the literals' values, so it does not
+/// change with how they are laid out in the data segment.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Literals {
+    /// The sum of their logical sizes (`runtime/30` §7.1).
+    pub(crate) bytes: u64,
+    /// The items of their lists of `Nothing`, which have no size.
+    pub(crate) sizeless: u64,
 }
 
 impl Module {
@@ -54,7 +83,12 @@ pub enum EmitError {
 /// The module of the leaf goal `ir` (R-SBX-01): only validated IR is emitted (INV-1), and the module is validated
 /// under the R-SBX-07 feature set before anyone sees it.
 pub fn emit(ir: &ValidIr) -> Result<Module, EmitError> {
-    let (bytes, data_bytes) = emit::module(ir.goal(), ir.body().node())?;
+    let (bytes, data_bytes, signature, literals) = emit::module(ir.goal(), ir.body().node())?;
     validate::validate(&bytes).map_err(EmitError::Internal)?;
-    Ok(Module { bytes, data_bytes })
+    Ok(Module {
+        bytes,
+        data_bytes,
+        signature,
+        literals,
+    })
 }

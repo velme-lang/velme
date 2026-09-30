@@ -22,7 +22,7 @@ use crate::validate::{FEATURES, validate};
 use crate::{EmitError, emit};
 
 /// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or one file.
-const EXAMPLES: [(&str, &str); 7] = [
+pub(super) const EXAMPLES: [(&str, &str); 7] = [
     ("examples/beginner/add.velme", "tests/fixtures/run/add.json"),
     ("examples/beginner/hello.velme", "tests/fixtures/run/hello.ir"),
     ("examples/beginner/find_badge.velme", "tests/fixtures/run/find_badge.ir"),
@@ -45,7 +45,7 @@ const EXAMPLES: [(&str, &str); 7] = [
 ];
 
 /// The `.json` files of `dir`, or `dir` itself if it is one, in name order.
-fn documents(dir: &Path) -> Vec<PathBuf> {
+pub(super) fn documents(dir: &Path) -> Vec<PathBuf> {
     if dir.is_file() {
         return vec![dir.to_owned()];
     }
@@ -60,7 +60,7 @@ fn documents(dir: &Path) -> Vec<PathBuf> {
 
 /// The IR of every leaf goal of the golden set and of the examples, validated, with a name for messages. A composite
 /// goal's tail stays on the interpreter (R-SBX-17).
-fn corpus() -> Vec<(String, ValidIr)> {
+pub(super) fn corpus() -> Vec<(String, ValidIr)> {
     let mut sources = vec![("tests/golden/ir/goals.velme", "tests/golden/ir/accept")];
     sources.extend(EXAMPLES);
     let mut out = Vec::new();
@@ -133,6 +133,82 @@ fn ac_sbx_06_every_golden_and_example_leaf_validates() {
     }
 }
 
+/// Each function of the module `bytes`, by index, with the functions it calls: an import has none. A module that
+/// calls through a table or makes a tail call fails here, since no emitted one does.
+fn call_graph(bytes: &[u8]) -> Vec<BTreeSet<u32>> {
+    let mut graph = Vec::new();
+    for payload in Parser::new(0).parse_all(bytes) {
+        match payload.expect("a module") {
+            Payload::ImportSection(section) => {
+                for import in section.into_imports() {
+                    let import = import.expect("an import");
+                    assert!(matches!(import.ty, wasmparser::TypeRef::Func(_)), "{}", import.name);
+                    graph.push(BTreeSet::new());
+                }
+            }
+            Payload::CodeSectionEntry(body) => {
+                let mut callees = BTreeSet::new();
+                for operator in body.get_operators_reader().expect("a body") {
+                    match operator.expect("an operator") {
+                        wasmparser::Operator::Call { function_index } => {
+                            callees.insert(function_index);
+                        }
+                        wasmparser::Operator::CallIndirect { .. }
+                        | wasmparser::Operator::ReturnCall { .. }
+                        | wasmparser::Operator::ReturnCallIndirect { .. } => panic!("a call the emitter never makes"),
+                        _ => {}
+                    }
+                }
+                graph.push(callees);
+            }
+            _ => {}
+        }
+    }
+    graph
+}
+
+/// Whether some function of `graph` calls itself, through others or directly.
+fn recurses(graph: &[BTreeSet<u32>]) -> bool {
+    // 0 unseen, 1 on the path being walked, 2 done: a call to a function on the path is a cycle.
+    fn walk(graph: &[BTreeSet<u32>], state: &mut [u8], f: usize) -> bool {
+        state[f] = 1;
+        for &callee in &graph[f] {
+            let callee = callee as usize;
+            if state[callee] == 1 || (state[callee] == 0 && walk(graph, state, callee)) {
+                return true;
+            }
+        }
+        state[f] = 2;
+        false
+    }
+    let mut state = vec![0; graph.len()];
+    (0..graph.len()).any(|f| state[f] == 0 && walk(graph, &mut state, f))
+}
+
+/// No emitted function calls itself, directly or through others, so a module's stack depth is a function of its IR
+/// alone, and the same on every host (`runtime/31` §6, D-113).
+#[test]
+fn emitted_code_never_recurses() {
+    let everything = valid_ir(&program(EVERYTHING), &everything());
+    let mut corpus = corpus();
+    corpus.push(("Everything".to_owned(), everything));
+    for (name, ir) in &corpus {
+        let module = emit(ir).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let graph = call_graph(module.bytes());
+        assert!(graph.len() > Import::ALL.len(), "{name}");
+        assert!(!recurses(&graph), "{name}");
+    }
+    // The check itself sees a cycle.
+    let cycle = [BTreeSet::from([1]), BTreeSet::from([2]), BTreeSet::from([1])];
+    assert!(recurses(&cycle));
+    assert!(recurses(&[BTreeSet::from([0])]));
+    assert!(!recurses(&[
+        BTreeSet::from([1, 2]),
+        BTreeSet::from([2]),
+        BTreeSet::new()
+    ]));
+}
+
 #[test]
 fn emission_is_deterministic() {
     // The same IR read twice gives the same bytes: a module is a pure function of its IR (R-SBX-03, CC-DET-01).
@@ -144,7 +220,7 @@ fn emission_is_deterministic() {
     assert_eq!(emit(&first), emit(&second));
 }
 
-const EVERYTHING: &str = r#"language: velme/0.1
+pub(super) const EVERYTHING: &str = r#"language: velme/0.1
 
 type Item:
     k: Number
@@ -154,62 +230,62 @@ goal Everything(xs: List<Number>, items: List<Item>, s: Text, n: Number?) -> Ite
     plan: "Something of everything."
 "#;
 
-fn number(n: &str) -> String {
+pub(super) fn number(n: &str) -> String {
     format!(r#"{{"kind": "literal", "type": {{"t": "Number"}}, "value": {n}}}"#)
 }
 
-fn input(name: &str) -> String {
+pub(super) fn input(name: &str) -> String {
     format!(r#"{{"kind": "input", "name": "{name}"}}"#)
 }
 
-fn local(name: &str) -> String {
+pub(super) fn local(name: &str) -> String {
     format!(r#"{{"kind": "local", "name": "{name}"}}"#)
 }
 
-fn binary(op: &str, left: &str, right: &str) -> String {
+pub(super) fn binary(op: &str, left: &str, right: &str) -> String {
     format!(r#"{{"kind": "binary", "op": "{op}", "left": {left}, "right": {right}}}"#)
 }
 
-fn unary(op: &str, arg: &str) -> String {
+pub(super) fn unary(op: &str, arg: &str) -> String {
     format!(r#"{{"kind": "unary", "op": "{op}", "arg": {arg}}}"#)
 }
 
-fn builtin(name: &str, args: &[&str]) -> String {
+pub(super) fn builtin(name: &str, args: &[&str]) -> String {
     format!(
         r#"{{"kind": "builtin", "name": "{name}", "args": [{}]}}"#,
         args.join(", ")
     )
 }
 
-fn collection(kind: &str, list: &str, param: &str, body: &str) -> String {
+pub(super) fn collection(kind: &str, list: &str, param: &str, body: &str) -> String {
     format!(r#"{{"kind": "{kind}", "list": {list}, "fn": {{"param": "{param}", "body": {body}}}}}"#)
 }
 
-fn field(of: &str, name: &str) -> String {
+pub(super) fn field(of: &str, name: &str) -> String {
     format!(r#"{{"kind": "field", "of": {of}, "field": "{name}"}}"#)
 }
 
-fn conditional(cond: &str, then: &str, otherwise: &str) -> String {
+pub(super) fn conditional(cond: &str, then: &str, otherwise: &str) -> String {
     format!(r#"{{"kind": "if", "cond": {cond}, "then": {then}, "else": {otherwise}}}"#)
 }
 
-fn unwrap_or(of: &str, default: &str) -> String {
+pub(super) fn unwrap_or(of: &str, default: &str) -> String {
     format!(r#"{{"kind": "unwrap_or", "of": {of}, "default": {default}}}"#)
 }
 
-fn numbers(items: &[&str]) -> String {
+pub(super) fn numbers(items: &[&str]) -> String {
     format!(
         r#"{{"kind": "list", "of": {{"t": "Number"}}, "items": [{}]}}"#,
         items.join(", ")
     )
 }
 
-fn item(k: &str, name: &str) -> String {
+pub(super) fn item(k: &str, name: &str) -> String {
     format!(r#"{{"kind": "record", "type": "Item", "fields": {{"k": {k}, "name": {name}}}}}"#)
 }
 
 /// The IR document of the goal of [`EVERYTHING`] with `body`.
-fn document(body: &str) -> String {
+pub(super) fn document(body: &str) -> String {
     let number = r#"{"t": "Number"}"#;
     let item = r#"{"t": "Record", "name": "Item"}"#;
     format!(
@@ -223,7 +299,7 @@ fn document(body: &str) -> String {
 
 /// The IR of a goal of [`EVERYTHING`] whose body has every node kind a body may hold, every operator and every
 /// value built-in.
-fn everything() -> String {
+pub(super) fn everything() -> String {
     let zero = number("0");
     let bindings = [
         (

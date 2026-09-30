@@ -12,10 +12,17 @@ authors.workspace = true
 velme-builtins.workspace = true
 velme-diagnostics.workspace = true
 velme-ir.workspace = true
+blake3.workspace = true
 wasm-encoder.workspace = true
 wasmparser.workspace = true
+wasmtime.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
 velme-test-support.workspace = true
 
 [lints]
