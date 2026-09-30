@@ -37,7 +37,7 @@ together.
 A leaf goal's lock hit is checked the same way: its examples, checks and generated inputs run again against the locked
 IR with no provider call, and a leaf that fails is stale and goes through ordinary synthesis (D-100). An unchanged,
 passing project still makes no provider call (AC-RDM-08). Because every build re-verifies every locked leaf, a fully
-locked build on a slow machine can stop with `VL0603` (the watchdog); the goal fails and its lock entry is kept.
+locked build on a slow machine can stop with `VL0603` (the watchdog); the goal fails and its lock entry is kept. Under `--offline` a lock hit that fails re-verification also keeps its entry (D-106).
 **R-ART-03** A verified artifact stays valid when only the prompt, compiler patch/minor, provider or model changes:
 those enter `synthesis_key` (cache reuse) but not `contract_key` (validity). Switching models never forces
 re-synthesis of a locked project.

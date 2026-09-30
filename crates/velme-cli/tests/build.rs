@@ -380,6 +380,7 @@ fn a_warm_store_builds_with_no_api_key() {
     let mut contacts = 0;
     let report = velme_runtime::build(
         &velme_runtime::BuildInput {
+            mode: velme_runtime::Mode::Build,
             program: &parsed,
             source: SOURCE,
             project: &dir,

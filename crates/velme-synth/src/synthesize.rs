@@ -121,6 +121,17 @@ pub fn unavailable(goal: &str, span: Span, why: Option<&str>) -> Diagnostic {
     d
 }
 
+/// The `VL0404` of a goal that needs building under `--offline`, which contacts no provider at all (`tooling/40`
+/// R-CLI-05, D-106).
+pub fn offline(goal: &str, span: Span) -> Diagnostic {
+    Diagnostic::new(
+        Code::ProviderUnavailable,
+        span,
+        format!("`{goal}` needs building, and `--offline` is on."),
+    )
+    .with_help("run `velme build` without `--offline`")
+}
+
 /// Synthesizes `task` with `provider`: at most `1 + max_retries` calls (R-SYNTH-11), each counted in `session`.
 pub async fn synthesize(
     session: &mut Session,
