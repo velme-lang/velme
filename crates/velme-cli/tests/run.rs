@@ -371,7 +371,7 @@ fn run_of_a_goal_with_calls_needs_every_goal_built() {
     for goal in ["Main", "Double", "AddOne"] {
         assert!(
             run.stderr
-                .contains(&format!("`{goal}` changed since it was last built")),
+                .contains(&format!("`{goal}` has no verified build in `velme.lock`")),
             "{}",
             run.stderr
         );

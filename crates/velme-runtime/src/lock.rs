@@ -186,6 +186,11 @@ impl Lock {
             .retain(|e| e.file != file || declared.contains(&e.name.as_str()));
     }
 
+    /// Drops the entry of the goal `name` declared in `file`, if it has one.
+    pub fn remove(&mut self, file: &str, name: &str) {
+        self.entries.retain(|e| e.file != file || e.name != name);
+    }
+
     /// Pins `entry`, replacing the goal's earlier entry if it has one.
     pub fn insert(&mut self, entry: Entry) {
         match self.entries.binary_search_by(|e| key(e).cmp(&key(&entry))) {

@@ -456,7 +456,8 @@ candidate, whatever its reply, a `{"pending"}` or `{"question"}` included (D-56)
 Ollama digest lookup and `describe` are not calls and never count toward the cap, but they are provider contact: a
 build that must make none, such as a fully cached one (D-57), makes none of them either (D-92). Each `complete()`
 invocation is exactly one call, even when every transport try inside it failed and it ended in `VL0404`. The build summary reports calls, tokens in/out, prompt-cache tokens read and written
-(R-SYNTH-34) and store/lock hits.
+(R-SYNTH-34) and store/lock hits. A lock hit is verified again on every build, leaves included, on the interpreter with
+no provider call; one that no longer passes is stale and synthesized in the ordinary way (runtime/32 R-ART-22, D-100).
 
 ## 9. Untrusted plan text
 
@@ -476,7 +477,7 @@ machine (tooling/41) and is git-ignored.
 |---|---|
 | AC-SYNTH-01 | With a matching lock entry or store hit, a build makes zero provider calls (asserted with a panicking provider). |
 | AC-SYNTH-02 | `scripted` provider returning invalid IR twice, with different causes, then valid IR: build succeeds after 2 retries; each retry turn contains the previous diagnostics. |
-| AC-SYNTH-03 | Four consecutive invalid replies, no two in a row with the same cause → `VL0403`; no artifact written, lock unchanged, source unchanged. |
+| AC-SYNTH-03 | Four consecutive invalid replies, no two in a row with the same cause → `VL0403`; no artifact written, no new lock entry, source unchanged; a locked artifact that failed its examples or checks on re-verification, with no replacement built, loses its entry; any other goal keeps its old one (runtime/32 R-ART-22, D-100). |
 | AC-SYNTH-04 | A reply with a `call` node fails validation and the retry turn cites `VL0402` (INV-6). |
 | AC-SYNTH-05 | A candidate that passes validation but fails an example is rejected with `VL0502` and never cached. |
 | AC-SYNTH-06 | Generated inputs for a fixed goal are byte-identical across two runs and two OSes. |

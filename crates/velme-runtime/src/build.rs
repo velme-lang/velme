@@ -183,6 +183,8 @@ struct Build<'a> {
     failed: BTreeMap<GoalId, Code>,
     /// The goals whose artifact changed, or that were checked again against a child that did (R-ART-22).
     touched: BTreeSet<GoalId>,
+    /// The goals whose locked artifact failed its examples or checks in this build.
+    rejected: BTreeSet<GoalId>,
     identity: Option<Result<Identity, velme_synth::ProviderError>>,
     provider: Option<Box<dyn SynthProvider>>,
     summary: Summary,
@@ -198,6 +200,7 @@ impl<'a> Build<'a> {
             built: BTreeMap::new(),
             failed: BTreeMap::new(),
             touched: BTreeSet::new(),
+            rejected: BTreeSet::new(),
             identity: None,
             provider: None,
             summary: Summary::default(),
@@ -213,6 +216,14 @@ impl<'a> Build<'a> {
                 && !matches!(outcome.status, Status::Built(_))
             {
                 self.failed.insert(id, code);
+                // A locked artifact that failed its checks and was not replaced no longer stands: its entry goes, and
+                // `velme run` asks for a build. Goals above it are blocked, and run fails on the missing entry
+                // below them. An inconclusive verdict keeps the entry (R-ART-22, D-100, INV-3).
+                if self.rejected.contains(&id)
+                    && let Some(target) = self.input.program.goals.get(id.0)
+                {
+                    self.lock.remove(self.input.file, &target.name);
+                }
             }
             goals.push(outcome);
         }
@@ -261,14 +272,9 @@ impl<'a> Build<'a> {
         let mut notes = Vec::new();
         let mut feedback = Vec::new();
         if let Ok(locked) = load(program, id, self.input.file, &self.lock, &self.store) {
-            // The manifest doesn't record the artifacts of its children, so a goal with calls is checked again against
-            // the current ones on every build, on the interpreter and with no provider (R-ART-22): a build that failed
-            // to rebuild it after a child changed leaves the lock as it was, and this finds it stale next time.
-            if target.bindings.is_empty() {
-                self.summary.lock_hits += 1;
-                self.built.insert(id, locked);
-                return done(&name, Status::Built(Source::Lock), notes);
-            }
+            // The manifest doesn't record the artifacts of its children, so every locked goal is checked again against
+            // the current ones on every build, on the interpreter and with no provider (R-ART-22). One that no longer
+            // passes is stale and goes through ordinary synthesis.
             let candidate = locked.ir.clone();
             match self.verify(id, &candidate) {
                 Verdict::Accepted(_) => {
@@ -278,9 +284,15 @@ impl<'a> Build<'a> {
                         self.touched.insert(id);
                     }
                     self.built.insert(id, locked);
-                    return done(&name, Status::Built(Source::Reverified), notes);
+                    let source = if target.bindings.is_empty() {
+                        Source::Lock
+                    } else {
+                        Source::Reverified
+                    };
+                    return done(&name, Status::Built(source), notes);
                 }
                 Verdict::Rejected(rejection) => {
+                    self.rejected.insert(id);
                     notes.push(self.recheck_note(id, &rejection.line));
                     feedback.push(previous(&candidate, &rejection));
                 }
@@ -310,7 +322,9 @@ impl<'a> Build<'a> {
     fn recheck_note(&self, id: GoalId, line: &str) -> String {
         let name = self.input.program.goals.get(id.0).map_or("", |g| g.name.as_str());
         let changed = self.changed_children(id);
-        if changed.is_empty() {
+        if changed.is_empty() && target_calls(self.input.program, id).next().is_none() {
+            format!("the locked version of `{name}` was checked again, and no longer passes: {line}")
+        } else if changed.is_empty() {
             format!("`{name}` was checked again against the goals it calls, and no longer passes: {line}")
         } else {
             format!(

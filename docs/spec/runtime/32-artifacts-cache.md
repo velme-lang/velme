@@ -28,7 +28,15 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 leaves `BuildPlayerSummary`'s keys and artifact unchanged; only its `execution_id` changes.
 **R-ART-22** When `velme build` changes a child's artifact, it re-runs every ancestor composite's `examples` and
 `check`s against the new children, with no LLM call (D-55). An ancestor that now fails is stale and goes through
-ordinary synthesis (`compiler/22`); its diagnostic names the child that changed.
+ordinary synthesis (`compiler/22`); its diagnostic names the child that changed. If that synthesis fails too, the
+build drops that ancestor's lock entry (only where its locked artifact failed an example or check in this build, not on
+a watchdog stop or internal error, which fail the goal and keep the entry, INV-3). Goals above it are blocked and keep
+theirs; `velme run` fails on them naming the goal with no entry (`VL0702`, R-ART-16, D-100). A goal whose own contract
+changed and whose synthesis failed keeps its stale entry. This way a lock never pins a tree that was not verified
+together.
+A leaf goal's lock hit is checked the same way: its examples, checks and generated inputs run again against the locked
+IR with no provider call, and a leaf that fails is stale and goes through ordinary synthesis (D-100). An unchanged,
+passing project still makes no provider call (AC-RDM-08).
 **R-ART-03** A verified artifact stays valid when only the prompt, compiler patch/minor, provider or model changes:
 those enter `synthesis_key` (cache reuse) but not `contract_key` (validity). Switching models never forces
 re-synthesis of a locked project.
