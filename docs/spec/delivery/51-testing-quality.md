@@ -22,12 +22,12 @@ assertions, no unseeded randomness, no dependence on test execution order.
 | **Unit** | lexer rules, type rules, IR validator rules, builtins, fingerprints, scheduler waves | `cargo test` in each crate | pure, no I/O except temp dirs |
 | **Golden** | parser → AST JSON; diagnostics → rendered text + JSON; source → IR; `explain`/`trace` output | `insta` snapshots, inputs under `tests/golden/<kind>/*.velme` | R-QA-03 |
 | **Property** | parser round-trip (print → parse), canonical-JSON stability, type-checker never panics, interpreter determinism | `proptest` with fixed seeds in CI | failing seeds committed as regression cases |
-| **Fuzz** | parser, IR validator (arbitrary JSON), runtime boundary (arbitrary valid IR + inputs) | `cargo-fuzz` in `fuzz/` | 60 s smoke per target on PR; long runs nightly |
-| **Differential** | interpreter vs WASM on the same IR + inputs: equal result, equal failure code, equal fuel class | `velme-test-support` harness | all golden IR + proptest-generated IR (M7) |
+| **Fuzz** | targets `parse` (parser), `validate` (IR validator, arbitrary JSON), `differential` (typed valid IR + inputs on both backends, M7) | `cargo-fuzz` in `fuzz/`, on a pinned nightly toolchain | 60 s smoke per target in a CI job; the stable test `ac_qa_06_*` replays the committed corpora and checks that the workflow lists every target (D-118) |
+| **Differential** | interpreter vs WASM on the same IR + inputs: equal value, equal full diagnostic, equal fuel and memory used (`runtime/31` R-SBX-15) | `velme-test-support` harness and typed valid-IR generator, shared by proptest and the fuzz target | all golden IR + examples + generated IR (M7, D-118) |
 | **Integration** | CLI end-to-end on `examples/` using the `replay` provider and committed locks | `assert_cmd` + `insta` | covers the AC-RDM set |
 | **Examples-as-tests** | every file in `examples/` passes `velme test --locked` | xtask step | an example that stops working fails the gate |
 | **Live LLM** | real provider synthesis of the success-criteria programs | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` | opt-in only (D-13); records fixtures with `--record` |
-| **Benchmarks** | compile time, interpreter throughput, scheduler overhead, WASM compile + run | `criterion` in `benches/` | tracked nightly; not a pass/fail gate except §6 budgets |
+| **Benchmarks** | compile time, interpreter throughput, scheduler overhead, WASM compile + run | `criterion` in `benches/`, from M8 | tracked nightly; not a pass/fail gate except §6 budgets. M7 has one ignored release-mode test that prints fuel/s for both backends: the number goes in the gate report, and it fails only if the maximum budget would take over 60 s (D-51, D-118) |
 
 **R-QA-03** Golden snapshots are updated only with `cargo insta review` (or `INSTA_UPDATE=always` for a bulk rename),
 and every snapshot change appears in the PR diff for review. Never hand-edit a `.snap` file.
@@ -44,7 +44,7 @@ human and JSON rendering.
 |---|---|
 | repeat-run | 100 runs of each success-criteria program: byte-identical result JSON and trace (excluding durations) |
 | parallel-vs-sequential | scheduler with 1 worker vs N workers: identical result, trace, failure code (D-9) |
-| cross-backend | interpreter vs WASM: identical result and failure code (differential layer) |
+| cross-backend | interpreter vs WASM: identical value, full diagnostic, fuel and memory used (differential layer, D-118) |
 | fingerprint stability | fixed program → fixed hash, committed as a snapshot; changes only with a version bump |
 | random | `random(seed, index)` reference vectors committed (`language/14`) |
 | platform | CI matrix Linux/macOS/Windows produces the same fingerprints and results |
@@ -89,7 +89,7 @@ Measured on a mid-range laptop (4 performance cores), release build, warm file c
 | Parse only, 1,000 lines | < 10 ms |
 | `velme run --locked`, cache hit, small program (CLI start to exit) | < 50 ms |
 | Interpreter: `reduce` over 1M numbers | < 200 ms |
-| WASM leaf: same workload | ≤ 0.5× interpreter time, excluding first compile |
+| WASM leaf: same workload | ≤ 0.5× interpreter time, excluding first compile (measured at M8, D-118) |
 | Scheduler overhead per call node | < 20 µs |
 | Fingerprint of a 100-goal program | < 5 ms |
 
@@ -105,5 +105,5 @@ does not block PRs.
 | AC-QA-03 | `xtask ac-audit` fails when an `AC-*` id is added to a spec with no matching test. |
 | AC-QA-04 | Every `VLnnnn` code in `reference/90` is triggered by a golden test. |
 | AC-QA-05 | The determinism tests in §3 pass on Linux, macOS and Windows. |
-| AC-QA-06 | Each fuzz target runs a 60-second smoke without crash in CI. |
+| AC-QA-06 | Each fuzz target runs a 60-second smoke without crash in the pinned-nightly CI job; on stable, `ac_qa_06_*` replays the committed corpora without crash and fails if the workflow omits a target (D-118). |
 | AC-QA-07 | §6 targets are met at the M8 gate. |

@@ -24,8 +24,9 @@ sandbox escape, validator bypass or secret leak.
 | use whitelisted built-ins (`language/14`) | spawn processes, read the clock |
 | use whitelisted host functions (`runtime/31`) | call any other host API or WASI |
 
-**R-SEC-02** The host exposes an explicit allowlist of host functions to a WASM module; anything else a module imports
-fails instantiation with `VL0801 CapabilityDenied`. No WASI context is linked in v0.1.
+**R-SEC-02** The host exposes an explicit allowlist of host functions to a WASM module (`runtime/31` §5); a module that
+imports anything else is refused with `VL0801 CapabilityDenied` before it is compiled (D-116). No WASI context is
+linked in v0.1.
 **R-SEC-03** The IR validator (`compiler/21`) rejects any node, builtin or name outside the goal's allowed set before
 execution; `Call` nodes are rejected in synthesized IR (D-5).
 **R-SEC-04** Future capabilities (`effects: random, clock, storage, network`) each require an explicit declaration in
@@ -108,12 +109,12 @@ would contact no provider prints nothing (D-92).
 
 | ID | Criterion |
 |---|---|
-| AC-SEC-01 | A WASM module importing any function outside the allowlist fails to instantiate with `VL0801`. |
+| AC-SEC-01 | A WASM module importing any function outside the allowlist is refused with `VL0801` and never compiled or run. |
 | AC-SEC-02 | Synthesized IR containing a `Call` node, an unknown builtin, or a reference outside scope is rejected before execution. |
 | AC-SEC-03 | A plan containing instructions to read files/network produces, at worst, IR that fails validation or runs with no capability — verified with the scripted provider returning hostile IR. |
 | AC-SEC-04 | Editing one byte of a locked artifact yields `VL0703 ArtifactCorrupt` on the next `run`. |
 | AC-SEC-05 | With a sentinel key in `VELME_API_KEY`, no output stream, trace, artifact, fixture or log contains it (also AC-CLI-08). |
 | AC-SEC-06 | A `velme run` with `--input` data makes no provider request containing any input value. |
-| AC-SEC-07 | A goal exceeding each budget dimension (fuel, memory, calls, depth, list size, output size) terminates with its specific `VL06xx` code. |
+| AC-SEC-07 | A goal exceeding each budget dimension (fuel, memory, calls, depth, list size, output size) terminates with its specific `VL06xx` code. Calls and depth are static, decided before any backend runs, so "on WASM" covers fuel, memory, list size and output size (D-117). |
 | AC-SEC-08 | Oversized or over-deep input JSON is rejected with `VL0902` before type decoding. |
 | AC-SEC-09 | A `velme build` with a scripted provider that makes one request prints the R-SEC-12 notice exactly once; a second, fully cached build prints none. |

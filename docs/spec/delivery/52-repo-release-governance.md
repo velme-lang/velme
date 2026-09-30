@@ -24,8 +24,8 @@ velme/
 ├── tests/
 │   ├── golden/{parser,diagnostics,ir,explain,trace}/
 │   └── fixtures/synth/           replay provider fixtures
-├── benches/                      criterion benchmarks (or per-crate benches/)
-├── fuzz/                         cargo-fuzz targets: parser, ir_validator, runtime
+├── benches/                      criterion benchmarks, from M8 (or per-crate benches/)
+├── fuzz/                         cargo-fuzz targets: parse, validate, differential (M7, D-118)
 ├── xtask/                        verify, ac-audit, layering check, release helpers
 ├── rfc/                          README.md, 0000-template.md, accepted RFCs
 ├── docs/{spec,plan}/  docs/code-conventions.md
@@ -60,7 +60,7 @@ no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/vel
 
 | Workflow | Trigger | Runs |
 |---|---|---|
-| `ci.yml` | every PR and push to `main` | `cargo xtask verify` on Linux; test job on macOS + Windows; fuzz smoke; `cargo check --all-targets` on MSRV |
+| `ci.yml` | every PR and push to `main` | `cargo xtask verify` on Linux; test job on macOS + Windows; fuzz smoke job on a pinned nightly toolchain, 60 s per target (from M7, D-118); `cargo check --all-targets` on MSRV |
 | `nightly.yml` | schedule | long fuzz runs, benchmark suite vs baseline, large examples, cross-platform determinism |
 | `live-llm.yml` | manual dispatch only | live provider tests with repository secret; never on forks' PRs |
 | `release.yml` | tag `vX.Y.Z[-pre]` | full verify → build Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows x86_64 → release tests → reproducibility check → checksums + signatures → GitHub Release → `cargo publish` |

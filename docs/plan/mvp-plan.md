@@ -132,7 +132,8 @@ under `--locked` exits 4 with `VL0702`.
 **Slices:** M7a IR → core WASM emitter for leaf goals + wasmparser validation · M7b Wasmtime embedding: fuel,
 epoch, `ResourceLimiter`, host-function whitelist, no WASI · M7c differential test interpreter vs WASM over all
 examples and golden IR; backend selection flag.
-**Exit:** all `AC-SBX-*`, AC-SEC-01/07 green; AC-RDM-07, AC-RDM-09 green on WASM; AC-QA-06 (fuzz smoke) green.
+**Exit:** all `AC-SBX-*`, AC-SEC-01/07 green; AC-RDM-07, AC-RDM-09 green on WASM; the WASM halves of AC-BLT-01/04,
+AC-TYP-06/15, AC-QA-05 and AC-CHK-11 green through the differential harness (D-118); AC-QA-06 (fuzz smoke) green.
 **User verifies:** `velme run --backend wasm` gives byte-identical output to `--backend interp` on every example.
 
 ### M8 — MVP gate

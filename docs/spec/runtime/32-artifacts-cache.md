@@ -95,7 +95,6 @@ can be recomputed from the manifest (D-97).
   velme.lock                   pins — commit
   .velme/
     artifacts/b3-<hex>.json   verified artifacts — commit (D-12)
-    cache/wasm/…              derived modules (31 §7) — ignore
     synth-log.jsonl           local attempt log — ignore
     tmp/                      in-progress artifact writes (R-ART-09) — ignore
 ```
