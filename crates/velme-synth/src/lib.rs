@@ -59,8 +59,8 @@ pub use request::{
 pub use schema::{reply_schema, schema_summary};
 pub use scripted::{ScriptError, Scripted, Step};
 pub use synthesize::{
-    Built, Failure, Outcome, Session, Task, offline, provider_diagnostic, reaches_no_further, stopped_diagnostic,
-    synthesize, unavailable,
+    Built, CallRecord, Failure, Outcome, Session, SystemWallClock, Task, WallClock, offline, provider_diagnostic,
+    reaches_no_further, stopped_diagnostic, synthesize, unavailable,
 };
 pub use transport::{Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 pub use verify::{ChildRunner, Verdict, Verified, verify};

@@ -119,3 +119,47 @@ pub fn check_dir(dir: &Path) -> io::Result<()> {
         _ => Ok(()),
     }
 }
+
+/// Appends `bytes` to the file `name` in `dir` with one `O_APPEND` write, creating `dir` and the file if missing. Nothing
+/// is written through a link: `dir` being a symbolic link, or `name` being anything but a regular file, is an error
+/// (`runtime/32` R-ART-09). On Unix the file is opened without following a link, and what was opened is checked again.
+pub fn append_file(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<()> {
+    let not_a_file = || io::Error::other("it is not a regular file");
+    refuse_links(&[dir])?;
+    let path = dir.join(name);
+    match fs::symlink_metadata(&path) {
+        Ok(meta) if !meta.file_type().is_file() => return Err(not_a_file()),
+        Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    fs::create_dir_all(dir)?;
+    let mut options = OpenOptions::new();
+    options.append(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let mut file = match options.open(&path) {
+        #[cfg(unix)]
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => return Err(not_a_file()),
+        other => other?,
+    };
+    if !file.metadata()?.file_type().is_file() {
+        return Err(not_a_file());
+    }
+    file.write_all(bytes)
+}
+
+/// Creates the file `name` in `dir` with `bytes` unless something is there already, which is left as it is. Creates `dir`
+/// if it is missing, and a link at `dir` is an error. An existing entry of any kind, a link included, is left as it is
+/// and nothing is written through it.
+pub fn create_file_if_absent(dir: &Path, name: &str, bytes: &[u8]) -> io::Result<()> {
+    refuse_links(&[dir])?;
+    fs::create_dir_all(dir)?;
+    match OpenOptions::new().write(true).create_new(true).open(dir.join(name)) {
+        Ok(mut file) => file.write_all(bytes),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e),
+    }
+}

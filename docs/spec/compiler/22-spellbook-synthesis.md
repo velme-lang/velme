@@ -512,10 +512,10 @@ validation and runs sandboxed with no capabilities (INV-1, INV-4, tooling/41).
 **R-SYNTH-23** Each provider request appends one JSON line to `.velme/synth-log.jsonl`, for every provider and never for a
 lock or store hit (D-109). A request here is one `complete()` call (R-SYNTH-21): transport retries inside it add no line, and
 its latency covers them. The line is one object, keys in this order, no spaces:
-`{"format":"velme-synth-log/1","time":"2026-09-30T12:00:00.000Z","file":"player.velme","goal":"CalculateScore","key":"b3-…","provider":"ollama","model":"llama3.1@sha256:…","attempt":0,"outcome":"ok","tokens_in":812,"tokens_out":143,"latency_ms":2041}`.
+`{"format":"velme-synth-log/1","time":"2026-09-30T12:00:00.000Z","file":"player.velme","goal":"CalculateScore","key":"b3:…","provider":"ollama","model":"llama3.1@sha256:…","attempt":0,"outcome":"ok","tokens_in":812,"tokens_out":143,"latency_ms":2041}`.
 `time` is UTC with milliseconds, and the clock is injected so tests are exact. `file` is the project-relative path (R-CLI-19),
 `key` the synthesis key, `attempt` counts from 0, `outcome` is `ok` or the `VL` code the attempt ended with, and the token
-counts are `null` when the provider reports none. Plan text, prompts, replies and values are never written, and there is no
+counts are `null` when the provider reports none: a count it doesn't report, or reports as 0, is written as `null`. Plan text, prompts, replies and values are never written, and there is no
 opt-in for them in v0.1. The runtime crate writes the file, refusing a link and anything that is not a regular file as the
 artifact store does (`runtime/32` R-ART-09); a write that fails is a `-v` notice, never a build failure. When Velme creates
 `.velme/` it also writes `.velme/.gitignore` naming `synth-log.jsonl`, never overwriting an existing one. The log never

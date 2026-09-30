@@ -18,6 +18,7 @@ use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_interp::{Budget, Error, Failure, Interrupt, Spent};
 use velme_ir::Fingerprint;
 use velme_sema::hir::{GoalId, GoalKind, Program};
+use velme_synth::{SystemWallClock, WallClock};
 
 use crate::clock::{Clock, SystemClock, Watchdog};
 use crate::leaf::{Body, Progress, limits, run_body};
@@ -39,6 +40,9 @@ pub struct Options {
     /// How long the whole run may take by that clock before the watchdog stops it with `VL0603`: `max_wall_clock`, 60 s
     /// (D-51). Only a safety net: the deterministic limits stop a run long before.
     pub max_wall_clock: Duration,
+    /// The calendar clock for the time of each synth-log line (`compiler/22` R-SYNTH-23), injectable so tests read the
+    /// log exactly.
+    pub wall_clock: Arc<dyn WallClock>,
 }
 
 impl Default for Options {
@@ -48,6 +52,7 @@ impl Default for Options {
             jobs: std::thread::available_parallelism().map_or(1, usize::from),
             clock: Arc::new(SystemClock::new()),
             max_wall_clock: Duration::from_millis(MAX_WALL_CLOCK_MS),
+            wall_clock: Arc::new(SystemWallClock),
         }
     }
 }
