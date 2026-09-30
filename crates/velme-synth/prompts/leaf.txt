@@ -13,7 +13,9 @@ Output contract
 - Read a record's field with a `field` node over the record: for `player.score` write
   {{example_field}}. Never write a dotted name such as
   {{example_dotted}}.
-- `add` is for Numbers only. Join Text with the `concat` builtin, and turn a Number into Text with `to_text`.
+- Arithmetic and comparison are ops of a `binary` node and never builtins: `op` is one of {{binary_ops}}. A `unary`
+  node's `op` is one of {{unary_ops}}. A `builtin` node's `name` is only one of the names listed below; `add` is for
+  Numbers only, so join Text with the `concat` builtin and turn a Number into Text with `to_text`.
 - Checks and examples describe what the result must be. They are never the body, and `result` is the value you
   return, not a name the body can read.
 - Only if the plan leaves open a choice that changes the result, return {"question": "<text>"} instead.
@@ -24,9 +26,11 @@ The IR expression node kinds, and the question object:
 
 Worked example, for a made-up goal that is not yours (a goal's inputs are read with `input`, a record's fields with
 `field`, a lambda's parameter with `local`):
-  type Item = { title: Text, stock: Number }
+  type Item = { title: Text, stock: Number, price: Number }
   Describe(item: Item) -> Text, plan "Say the title, then whether there is any stock."
 {{example_describe}}
+  Cost(item: Item) -> Number, plan "Multiply the stock by the price."
+{{example_cost}}
   Total(items: List<Item>) -> Number, plan "Add up the stock of all items."
 {{example_total}}
 

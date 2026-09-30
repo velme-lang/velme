@@ -229,6 +229,8 @@ pub enum Subject {
     Name(String),
     /// The record that has no such field (`names-9`, `names-10`).
     Record(String),
+    /// The built-in name that isn't there (`names-11`).
+    Builtin(String),
     /// `add`, `sub`, `mul` or `div` given a Text operand (`types-15`).
     TextArithmetic,
 }
@@ -1481,6 +1483,7 @@ impl<'a> Validator<'a> {
                 format!("there's no built-in called `{name}`"),
                 help,
             );
+            self.about(Subject::Builtin(name.to_owned()));
             return HirType::Error;
         };
         let takes_function = |shape: &Shape| matches!(shape, Shape::Lambda(..));

@@ -397,6 +397,56 @@ goal Twice(n: Number) -> Number:
         leaf[6]
     );
 
+    // A built-in that is an operator points to the node that writes it; any other name gets the list, said once.
+    let builtin =
+        |name: &str| reply(&json!({"kind": "builtin", "name": name, "args": [{"kind": "input", "name": "bonus"}]}));
+    let named = hints(
+        RECORDS,
+        "Rank",
+        ir,
+        vec![
+            builtin("add"),
+            builtin("not"),
+            builtin("SENTINEL"),
+            reply(&binary(
+                "add",
+                &json!({"kind": "builtin", "name": "X", "args": []}),
+                &json!({"kind": "builtin", "name": "Y", "args": []}),
+            )),
+        ],
+    );
+    assert_eq!(
+        detail(&named, 0).split("; ").last(),
+        Some("`add` is an operator, not a built-in: write a `binary` node with `op` `add`")
+    );
+    assert!(
+        detail(&named, 1).contains("write a `unary` node with `op` `not`"),
+        "{}",
+        detail(&named, 1)
+    );
+    // Only what a `builtin` node can call: the collection primitives are nodes of their own.
+    assert_eq!(
+        detail(&named, 2).split("; ").last(),
+        Some(
+            "a `builtin` node names only a built-in of the list: length, is_empty, maximum, minimum, sum, contains, \
+             abs, floor, ceil, round, clamp, concat, to_text, range, random"
+        )
+    );
+    assert!(
+        named[3][0]
+            .as_deref()
+            .unwrap_or_default()
+            .contains("names only a built-in")
+    );
+    assert!(
+        !named[3][1]
+            .as_deref()
+            .unwrap_or_default()
+            .contains("names only a built-in"),
+        "{:?}",
+        named[3]
+    );
+
     // A composite lists its call results too, and a dotted name that starts at one is a field over a `local`.
     let calls = "the goal's inputs, each read with an `input` node, are: n: Number, and the call results, each read with a `local` node, are: b: Number";
     let composite = hints(

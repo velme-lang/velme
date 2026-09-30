@@ -62,6 +62,23 @@ pub fn reply_schema() -> Value {
     })
 }
 
+/// The operator names of a `binary` node and of a `unary` node, from the IR schema (D-104).
+pub(crate) fn operators() -> (Vec<String>, Vec<String>) {
+    let names = |def: &str| -> Vec<String> {
+        IR_SCHEMA
+            .pointer(&format!("/$defs/{def}/oneOf"))
+            .and_then(Value::as_array)
+            .map(|variants| {
+                variants
+                    .iter()
+                    .filter_map(|v| v.get("const").and_then(Value::as_str).map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    (names("BinaryOperator"), names("UnaryOperator"))
+}
+
 /// Whether the `Node` variant `variant` is the `call` node.
 fn is_call(variant: &Value) -> bool {
     variant.pointer("/properties/kind/const").and_then(Value::as_str) == Some("call")
@@ -124,4 +141,17 @@ fn summary() -> Vec<String> {
 /// `text` with every run of whitespace as one space.
 fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::operators;
+
+    /// Both operator lists come out of the schema, and hold the operators the prompt and the hints name.
+    #[test]
+    fn the_operator_lists_are_read_from_the_schema() {
+        let (binary, unary) = operators();
+        assert!(binary.iter().any(|op| op == "add"), "{binary:?}");
+        assert!(unary.iter().any(|op| op == "not"), "{unary:?}");
+    }
 }
