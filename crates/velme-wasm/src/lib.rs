@@ -75,8 +75,8 @@ pub enum EmitError {
     /// The goal is composite: its calls are the host scheduler's, and only leaf goal bodies become modules
     /// (R-SBX-17). A caller passes leaves only, so this is its bug and never a decline of a valid program.
     NotLeaf,
-    /// A backend bug, `VL0607` on any backend choice: IR the validator should have rejected, or a module that
-    /// didn't validate.
+    /// A backend bug: IR the validator should have rejected, or a module that didn't validate. `VL0607` under an
+    /// explicit `wasm`; under `auto` the leaf runs on the interpreter, with a `--verbose` note (D-121).
     Internal(String),
 }
 

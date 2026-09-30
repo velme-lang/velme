@@ -554,15 +554,17 @@ impl Sandbox {
         let bytes = cache.read(path).ok()??;
         // SAFETY: a compiled module is native code that Wasmtime runs as it is, so the bytes must be ones Wasmtime
         // made. What `Cache::read` checked, and nothing more (Unix only; there is no disk cache elsewhere): the
-        // directory given to the sandbox (the user-level one, never a path under a project: R-SBX-14, T-11), opened
-        // without following a symbolic link in its last component, is, by `fstat` of that handle, a directory owned
-        // by this process's effective user with no permission bit for group or others; the file, a name of the form
-        // `<BLAKE3 of the module>-<compatibility hash>.cwasm` directly in it, opened through that handle without
-        // following a symbolic link, is, by `fstat` of its own handle, a regular file of the same owner that neither
-        // group nor others can write (R-SBX-20, D-120). The bytes are read from that handle into memory, so no swap
-        // after the checks reaches them. Only this user, or root, could have put them there; Velme writes a file
-        // there only whole, `0600`, by rename. Wasmtime checks again that it was made by this version and
-        // configuration of the engine, which is no defence against crafted bytes.
+        // directory given to the sandbox (the user-level one, absolute and outside the project, which the runtime
+        // checks before it gives it: R-SBX-14, T-11), opened without following a symbolic link in its last component,
+        // is, by `fstat` of that handle, a directory owned by this process's effective user with no permission bit for
+        // group or others; the file, a name of the form `<BLAKE3 of the module>-<compatibility hash>.cwasm` directly in
+        // it, opened through that handle without following a symbolic link, is, by `fstat` of its own handle, a regular
+        // file of the same owner that neither group nor others can write (R-SBX-20, D-120). The bytes are read from
+        // that handle into memory, so no swap after the checks reaches them. Only this user, or root, could have put
+        // them there; Velme writes a file there only whole, `0600`, by rename. Extended ACLs (macOS) are not checked:
+        // only the owner or root can set one on a `0700` directory, so they are out of scope (T-11). Wasmtime checks
+        // again that it was made by this version and configuration of the engine, which is no defence against crafted
+        // bytes.
         #[allow(unsafe_code)]
         let module = unsafe { wasmtime::Module::deserialize(&self.engine, &bytes) };
         if module.is_err() {

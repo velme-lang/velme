@@ -317,8 +317,8 @@ deletes only artifact files under `.velme/artifacts/` that no lock entry names, 
 `.velme/tmp/`, never the lock, the log or anything else, and prints how many files it removed (D-108). It skips store and temp files modified in the last 10 minutes, so it is safe
 beside a running build (D-111). `summary.removed` is a file count for `gc` and `0` or `1` (the directory removed) for
 `cache clean`.
-**R-CLI-24** `velme cache clean` deletes the user-level WASM module cache directory if it exists and exits `0` when it
-does not, so the command ships before the cache does (M7, D-48) and needs no other change then (D-108).
+**R-CLI-24** `velme cache clean` deletes the user-level WASM module cache directory (`runtime/31` R-SBX-13) if it
+exists, and exits `0` when it does not (D-48, D-108).
 **R-CLI-28** `--color auto` decides for each output stream by that stream's own state: stdout is coloured when it is a TTY,
 stderr when it is a TTY, and `NO_COLOR` set to any value disables both. `always` and `never` apply to both (D-108).
 **R-CLI-18** `[artifacts] dir` and `[synthesis] replay_dir` must be relative paths that stay inside the project root

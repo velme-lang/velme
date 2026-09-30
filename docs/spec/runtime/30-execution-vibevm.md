@@ -165,9 +165,9 @@ a fake clock instead of real time (R-QA-02).
 The interpreter charges each Text, List and Record it creates by a fixed size function (Number 16, Boolean 8, Nothing
 0, `T?` 8 + `T`, Text 16 + ⌈bytes/8⌉ · 8, List 16 + Σ items, Record 16 + Σ fields — never less than the value's bytes
 in the WASM ABI's 8-byte-aligned slots, 31 §3). The WASM backend keeps in linear memory only the values charged here,
-each in no more than its charged size, plus the invocation's inputs, literal data segments and one fixed scratch
-region (31 §3, D-90), and its `StoreLimits` backstop allows for those besides `max_memory` (31 §6), so it can't fire
-before `VL0604`. A Number, Boolean or optional scalar result on its own is charged nothing, since only Text, List and
+each in no more than its charged size, plus the invocation's inputs, literal data segments and a fixed stack of
+scratch frames (31 §3, D-90, D-113, D-119), and its `StoreLimits` backstop allows for those besides `max_memory`
+(31 §6), so it can't fire before `VL0604`. A Number, Boolean or optional scalar result on its own is charged nothing, since only Text, List and
 Record values live in linear memory; scalars count at the sizes above inside a List or Record (D-89). The 8 of `T?`
 is charged only for a List item or Record field of optional type; a standalone `T?` result of any kind is charged as
 its value. Whether the items of a `map` result are optional comes from the validator's typing of the lambda body.

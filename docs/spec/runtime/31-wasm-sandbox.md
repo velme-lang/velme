@@ -34,12 +34,14 @@ a leaf the WASM backend can't run is `VL0607` (`VL0801` for an import the sandbo
 a composite goal both run the leaves on WASM and the tail on the interpreter.
 **R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Under `velme test` the leaf body of each
 example and of each generated input runs on the selected backend, while the examples' expected-value expressions and
-every check evaluate on the interpreter (D-80); nothing from a test run is persisted. Call arguments, composite tails,
-build verification and `--locked` re-verification stay on the interpreter, whatever `--backend` says (D-80, D-117).
+every check evaluate on the interpreter (D-80); a test run changes no artifact, lock or store, and only the derived
+module cache (R-SBX-13) may be written. Call arguments, composite tails, build verification and `--locked`
+re-verification stay on the interpreter, whatever `--backend` says (D-80, D-117).
 **R-SBX-18** Output is byte-identical for all three values: stdout, the diagnostics on stderr, the exit code, `--json`,
 and `trace --json` with its fuel and memory figures, for a success and for every deterministic failure, except a leaf
-the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607`. Timings and `VL0603` are excluded, and
-`--verbose` notes are outside this rule. Neither `velme-cli/1` nor the trace has a `backend` field (D-117, D-121).
+the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801`. Timings and `VL0603` are excluded,
+and `--verbose` notes are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts against the run's wall
+clock, so `VL0603` can come earlier on WASM. Neither `velme-cli/1` nor the trace has a `backend` field (D-117, D-121).
 
 ## 3. Value layout (ABI)
 
@@ -162,31 +164,34 @@ stack overflow, an out-of-bounds access, `unreachable` with reason 0 → `VL0607
 The host also reports `VL0607` for: a `left` global above the limit it set; a reason outside 0..4; a non-zero reason
 after a normal return; reason 1 or 2 with its global not 0; a visiting index, or a list length, above `max_list_size`.
 Decoding the result stops, as `VL0607`, once it passes either of two budgets (D-120). Bytes: the logical size decoded
-passes `max_memory` plus what no run is charged for, the logical size of the inputs and the sum of the logical sizes
-of the goal's literals as the emitter counts them (D-53, D-83). Items: the items of the lists of `Nothing` the host
-makes, which have no size, pass the fuel spent plus the items of the inputs' and the literals' lists of `Nothing`; a
-list of a length already made is shared and takes nothing. The `to_text` import refuses a text longer than the 48
-marshalling bytes and a `ptr` that is not the marshalling bytes of a scratch frame; every `Number` that crosses the
-boundary, in either direction, goes through the canonical-form check of R-SBX-04.
+passes `max_memory` plus what no run is charged for: the logical size of the inputs, the sum of the logical sizes of the
+goal's literals as the emitter counts them, and 64 bytes for a scalar output (D-53, D-83, D-89). Items: the items of the
+lists of `Nothing` the host makes, which have no size, pass the fuel spent plus the items of the inputs' and the
+literals' lists of `Nothing`; a list of a length already made is shared and takes nothing. The `to_text` import refuses
+a text longer than the 48 marshalling bytes and a `ptr` that is not the marshalling bytes of a scratch frame; every
+`Number` that crosses the boundary, in either direction, goes through the canonical-form check of R-SBX-04.
 **R-SBX-12** Only the deterministic limits (Velme fuel, Velme memory) can produce reproducible outcomes; if a backstop
-fires first, the run is reported as that backstop's code. `--verbose` adds a note on stderr saying that a backstop
-fired, which is a backend bug; nothing else changes, in `--json` or in the trace (D-115).
+fires first, including host resource exhaustion (memory growth refused by the OS after start), the run is reported as
+that backstop's code. `--verbose` adds a note on stderr saying that a backstop fired, which is a backend bug; nothing
+else changes, in `--json` or in the trace (D-115).
 
 ## 7. Compiled-module cache
 
 **R-SBX-13** Compiled modules are a **derived** cache (D-12) kept in a **user-level** directory, never inside the
-project: `$XDG_CACHE_HOME/velme/wasm/<module-hash>-<compat-hash>.cwasm` (or the platform equivalent), where
-`module-hash` = BLAKE3 of the emitted module's bytes and `compat-hash` is Wasmtime's compatibility hash for the engine,
-so a change to the emitter, to Wasmtime or to the engine configuration gives a new name (D-116). Emission always runs;
-only Wasmtime's compiled output is cached. They are never locked, never committed and may be deleted at any time (D-48).
+project: `$XDG_CACHE_HOME/velme/wasm/<module-hash>-<compat-hash>.cwasm`, else `~/.cache/velme/wasm/…` by the XDG rule on
+Linux and macOS alike, where `module-hash` = BLAKE3 of the emitted module's bytes and `compat-hash` is Wasmtime's
+compatibility hash for the engine, so a change to the emitter, to Wasmtime or to the engine configuration gives a new
+name (D-116). Emission always runs; only Wasmtime's compiled output is cached. They are never locked, never committed
+and may be deleted at any time (D-48).
 **R-SBX-20** The cache directory is an option passed to the backend: `velme-cli` passes the user-level directory, and a
 test passes a temporary directory or none (no disk cache). The directory is created with mode `0700`, then opened
 without following a symbolic link, and checked on that handle: a directory owned by the process's effective user, with
 no access for group or others. One that fails is refused and never changed. Every file is reached through that handle:
 read only if, opened without following a link, it is a regular file of the same owner that group and others cannot
-write; written under a temporary name, mode `0600`, and renamed into place atomically. A refusal turns the disk cache
-off for the process: modules are compiled on every run, and `--verbose` says why. There is no disk cache off Unix in
-v0.1 (D-116, D-120).
+write; written under a temporary name, mode `0600`, and renamed into place atomically. The runtime also refuses a
+directory that is not absolute, or that lies inside the project once both are resolved (T-11). A refusal turns the disk
+cache off for the process: modules are compiled on every run, and `--verbose` says why. There is no disk cache off Unix
+in v0.1 (D-116, D-120).
 **R-SBX-14** `Module::deserialize` is used only on files under the configured cache directory, written by this
 process's engine configuration: the loader refuses any path outside that directory, and a name mismatch or read error
 falls back to compiling the emitted module. Files anywhere under

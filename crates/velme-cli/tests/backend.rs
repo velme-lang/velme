@@ -234,3 +234,44 @@ fn r_sbx_12_verbose_notes_are_on_stderr_only() {
     let plain = velme(&cache, &[&args[..], &["--json", "-v"]].concat(), b"");
     assert_eq!(plain, interp);
 }
+
+/// A user-level cache directory inside the project is refused at the seam: the disk cache is off, nothing is
+/// written there, `--verbose` says why, and the output is the interpreter's (T-11, R-SBX-13, R-SBX-20).
+#[test]
+fn t_11_a_cache_directory_inside_the_project_is_refused() {
+    let project = scratch("inside");
+    let fixture = repo("tests/fixtures/run/add");
+    let artifacts = ".velme/artifacts";
+    fs::create_dir_all(project.join(artifacts)).expect("the store");
+    for file in ["add.velme", "velme.lock"] {
+        fs::copy(fixture.join(file), project.join(file)).expect("a fixture file");
+    }
+    for entry in fs::read_dir(fixture.join(artifacts)).expect("the fixture's store") {
+        let path = entry.expect("an entry").path();
+        let name = path.file_name().expect("a name");
+        fs::copy(&path, project.join(artifacts).join(name)).expect("an artifact");
+    }
+    let cache = project.join("cache");
+    let source = project.join("add.velme");
+    let args = [
+        "run",
+        source.to_str().expect("a UTF-8 path"),
+        "--goal",
+        "Add",
+        "--arg",
+        "a=2",
+        "--arg",
+        "b=3",
+        "--json",
+    ];
+    let interp = velme(&cache, &args, b"");
+    assert_eq!(interp.code, 0, "{interp:?}");
+    let loud = velme(&cache, &[&args[..], &["--backend", "wasm", "-v"]].concat(), b"");
+    assert_eq!((&loud.stdout, loud.code), (&interp.stdout, interp.code));
+    assert!(
+        loud.stderr.contains("since it is inside the project"),
+        "{}",
+        loud.stderr
+    );
+    assert!(!cache.exists(), "nothing is written under the project");
+}
