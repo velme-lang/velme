@@ -135,9 +135,11 @@ fn replies(ir: &str, name: &str) -> PathBuf {
     dir
 }
 
-/// What a build wrote for the lock and the store, for comparing two builds.
+/// What a build wrote for the lock and the store, for comparing two builds. The synth log holds the time and latency of
+/// each request, so it differs from build to build (R-SYNTH-23).
 fn built(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut files = tree(&dir.join(".velme"));
+    files.remove("synth-log.jsonl");
     files.insert(
         "velme.lock".to_owned(),
         fs::read(dir.join("velme.lock")).expect("a lock"),

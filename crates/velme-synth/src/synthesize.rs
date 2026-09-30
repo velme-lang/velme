@@ -1,6 +1,9 @@
 //! The retry loop (`compiler/22` §5): ask the provider for a candidate, validate it, verify it, and on failure ask again
 //! with what Velme found, up to `max_retries` times. One goal at a time (R-SYNTH-01, D-93).
 
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::{Fingerprint, Origin, Request, ValidIr, calls, from_json_str, validate_detailed};
 use velme_sema::hir::{GoalId, Program};
@@ -8,9 +11,43 @@ use velme_sema::hir::{GoalId, Program};
 use crate::attempt::{Rejection, clean_line, clean_text, summary};
 use crate::compact;
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
-use crate::provider::{ProviderError, SynthLimits, SynthProvider, Usage};
+use crate::provider::{ProviderError, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{AttemptFeedback, SynthRequest, build_request};
 use crate::verify::{ChildRunner, Verdict, Verified, verify};
+
+/// A source of wall-clock time for the synth log's `time` (`compiler/22` R-SYNTH-23): injected, so tests read the log
+/// exactly.
+pub trait WallClock: std::fmt::Debug + Send + Sync {
+    /// Milliseconds since the Unix epoch, UTC.
+    fn unix_millis(&self) -> i64;
+}
+
+/// The host's clock.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemWallClock;
+
+impl WallClock for SystemWallClock {
+    fn unix_millis(&self) -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+    }
+}
+
+/// One provider request, as the synth log records it (R-SYNTH-23, D-109): what the runtime turns into a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallRecord {
+    /// When the request was made, in milliseconds since the Unix epoch.
+    pub time_millis: i64,
+    /// The goal's attempt, from 0.
+    pub attempt: u32,
+    /// `ok`, or the `VL` code the attempt ended with.
+    pub outcome: String,
+    /// Tokens sent and received: `None` for a count the provider didn't report or reported as 0.
+    pub tokens: (Option<u64>, Option<u64>),
+    /// How long the request took, as the provider measured it, else as this loop did.
+    pub latency: Duration,
+}
 
 /// What one build's synthesis has done so far: the calls made and the tokens used, and the error that put the provider
 /// out of reach, after which it is contacted no more (R-SYNTH-45, D-93).
@@ -20,6 +57,8 @@ pub struct Session {
     calls: usize,
     stopped: Option<ProviderError>,
     usage: Usage,
+    clock: Arc<dyn WallClock>,
+    records: Vec<CallRecord>,
 }
 
 impl Session {
@@ -30,7 +69,20 @@ impl Session {
             calls: 0,
             stopped: None,
             usage: Usage::default(),
+            clock: Arc::new(SystemWallClock),
+            records: Vec::new(),
         }
+    }
+
+    /// The same session reading `clock` for the time of each request.
+    pub fn with_wall_clock(mut self, clock: Arc<dyn WallClock>) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The requests made since the last call, oldest first, for the synth log.
+    pub fn take_records(&mut self) -> Vec<CallRecord> {
+        std::mem::take(&mut self.records)
     }
 
     /// The provider calls made: one per `complete()` (R-SYNTH-21).
@@ -192,24 +244,50 @@ async fn run(
         limits.max_output_tokens = options
             .max_output_tokens
             .unwrap_or_else(|| provider.default_max_output_tokens());
-        let reply = match provider.complete(&request, &limits).await {
+        let (time_millis, started) = (session.clock.unix_millis(), Instant::now());
+        let called = provider.complete(&request, &limits).await;
+        let record = |session: &mut Session, outcome: &str, reply: Option<&SynthReply>| {
+            let count = |n: fn(&Usage) -> u64| reply.map(|r| n(&r.usage)).filter(|&n| n > 0);
+            let tokens = (count(|u| u.input_tokens), count(|u| u.output_tokens));
+            session.records.push(CallRecord {
+                time_millis,
+                attempt,
+                outcome: outcome.to_owned(),
+                tokens,
+                latency: reply.map_or_else(|| started.elapsed(), |r| r.latency),
+            });
+        };
+        let reply = match called {
             Ok(reply) => reply,
             Err(error) => match failed_call(session, error, provider.backend(), name, span, &history) {
                 Ok(rejection) => {
+                    record(session, rejection.cause.code.as_str(), None);
                     history.push(rejection);
                     if let Some(end) = next(&mut earlier, &history, &options, attempt, name, span) {
                         return Err(end);
                     }
                     continue;
                 }
-                Err(failure) => return Err(failure),
+                Err(failure) => {
+                    record(session, failure.diagnostic.code.as_str(), None);
+                    return Err(failure);
+                }
             },
         };
         session.usage = add(session.usage, reply.usage);
         let rejection = match read(&reply.reply_json, format, &base) {
-            Reply::Question(question) => return Err(Failure::of(question_diagnostic(name, span, &question))),
-            Reply::Bad(rejection) => rejection,
-            Reply::Internal => return Err(internal()),
+            Reply::Question(question) => {
+                record(session, Code::PlanUnclear.as_str(), Some(&reply));
+                return Err(Failure::of(question_diagnostic(name, span, &question)));
+            }
+            Reply::Bad(rejection) => {
+                record(session, rejection.cause.code.as_str(), Some(&reply));
+                rejection
+            }
+            Reply::Internal => {
+                record(session, Code::InternalError.as_str(), Some(&reply));
+                return Err(internal());
+            }
             Reply::Candidate(text) => {
                 let request = Request {
                     program: task.program,
@@ -218,19 +296,31 @@ async fn run(
                     origin: Origin::Candidate,
                 };
                 match validate_detailed(&text, &request) {
-                    Err(found) => Rejection::invalid(&reply.reply_json, &found, &base, format),
+                    Err(found) => {
+                        let rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
+                        record(session, rejection.cause.code.as_str(), Some(&reply));
+                        rejection
+                    }
                     Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
-                        Verdict::Accepted(verified) => return Ok(Built { ir, verified }),
+                        Verdict::Accepted(verified) => {
+                            record(session, "ok", Some(&reply));
+                            return Ok(Built { ir, verified });
+                        }
                         Verdict::Rejected(mut rejection) => {
                             rejection.reply = reply.reply_json.clone();
+                            record(session, rejection.cause.code.as_str(), Some(&reply));
                             rejection
                         }
                         Verdict::Watchdog(d) => {
                             let mut d = d;
                             d.span = span;
+                            record(session, d.code.as_str(), Some(&reply));
                             return Err(Failure::of(d));
                         }
-                        Verdict::Internal => return Err(internal()),
+                        Verdict::Internal => {
+                            record(session, Code::InternalError.as_str(), Some(&reply));
+                            return Err(internal());
+                        }
                     },
                 }
             }

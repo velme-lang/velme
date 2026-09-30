@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::Arc;
 
 use tokio::runtime::Builder;
 use velme_builtins::Value;
@@ -26,6 +27,7 @@ use crate::locked::{LockedGoal, load};
 use crate::registry::Registry;
 use crate::sched::{Options, run_goal_unchecked};
 use crate::store::{Store, StoreError};
+use crate::synth_log;
 
 /// The compiler's version, recorded in every manifest (`runtime/32` R-ART-04).
 const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -212,7 +214,7 @@ impl<'a> Build<'a> {
             input,
             store: Store::new(input.project),
             lock,
-            session: Session::new(input.options.clone()),
+            session: Session::new(input.options.clone()).with_wall_clock(Arc::clone(&input.run.wall_clock)),
             built: BTreeMap::new(),
             failed: BTreeMap::new(),
             touched: BTreeSet::new(),
@@ -591,17 +593,35 @@ impl<'a> Build<'a> {
             synthesis_key: key,
             feedback,
         };
-        let mut session = std::mem::replace(&mut self.session, Session::new(self.input.options.clone()));
+        let mut session = std::mem::replace(
+            &mut self.session,
+            Session::new(self.input.options.clone()).with_wall_clock(Arc::clone(&self.input.run.wall_clock)),
+        );
         let synthesized = {
             let runner = Runner { build: self, goal: id };
             synthesize(&mut session, provider.as_ref(), &task, &runner).await
         };
+        let records = session.take_records();
         self.session = session;
         self.provider = Some(provider);
+        // Never a build failure: a log that can't be written is a line for `-v` (R-SYNTH-23, D-109).
+        let logged = synth_log::append(
+            self.input.project,
+            &synth_log::Goal {
+                file: self.input.file,
+                goal: name,
+                key,
+                provider: &identity.provider,
+                model: &identity.model,
+            },
+            &records,
+        );
+        let unlogged = logged.err();
         match synthesized {
             Outcome::Failed(failure) => {
                 let mut result = noted(fail(failure.diagnostic), notes);
                 result.attempts = failure.attempts;
+                result.attempts.extend(unlogged);
                 result
             }
             Outcome::Built(built) => {
@@ -617,9 +637,15 @@ impl<'a> Build<'a> {
                 match stored {
                     Ok(()) => {
                         self.summary.synthesized += 1;
-                        done(name, Status::Built(Source::Synthesized), notes)
+                        let mut result = done(name, Status::Built(Source::Synthesized), notes);
+                        result.attempts.extend(unlogged);
+                        result
                     }
-                    Err(d) => noted(fail(d), notes),
+                    Err(d) => {
+                        let mut result = noted(fail(d), notes);
+                        result.attempts.extend(unlogged);
+                        result
+                    }
                 }
             }
         }
