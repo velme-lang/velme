@@ -294,8 +294,7 @@ impl<'a> Build<'a> {
             self.synthesize(id, &name, span, feedback, first_contact).await
         };
         notes.append(&mut result.notes);
-        result.notes = notes;
-        result
+        noted(result, notes)
     }
 
     /// The children of `id` that changed in this build, quoted and named (R-SYNTH-46).
@@ -484,9 +483,7 @@ impl<'a> Build<'a> {
         // Step 3: after one `VL0404` the provider is contacted no more, so every goal that gets this far ends with it and
         // no request (R-SYNTH-45, D-93).
         if let Some(error) = self.session.stopped() {
-            let mut result = fail(velme_synth::stopped_diagnostic(error, name, span));
-            result.notes = notes;
-            return result;
+            return noted(fail(velme_synth::stopped_diagnostic(error, name, span)), notes);
         }
         if self.provider.is_none() {
             match backend.open(&identity) {
@@ -514,9 +511,8 @@ impl<'a> Build<'a> {
         self.provider = Some(provider);
         match synthesized {
             Outcome::Failed(failure) => {
-                let mut result = fail(failure.diagnostic);
+                let mut result = noted(fail(failure.diagnostic), notes);
                 result.attempts = failure.attempts;
-                result.notes = notes;
                 result
             }
             Outcome::Built(built) => {
@@ -534,11 +530,7 @@ impl<'a> Build<'a> {
                         self.summary.synthesized += 1;
                         done(name, Status::Built(Source::Synthesized), notes)
                     }
-                    Err(d) => {
-                        let mut result = fail(d);
-                        result.notes = notes;
-                        result
-                    }
+                    Err(d) => noted(fail(d), notes),
                 }
             }
         }
@@ -639,6 +631,12 @@ fn done(goal: &str, status: Status, notes: Vec<String>) -> GoalOutcome {
         notes,
         attempts: Vec::new(),
     }
+}
+
+/// `outcome` with `notes` as its notes.
+fn noted(mut outcome: GoalOutcome, notes: Vec<String>) -> GoalOutcome {
+    outcome.notes = notes;
+    outcome
 }
 
 /// A watchdog failure, pointing at the goal.

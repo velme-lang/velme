@@ -22,6 +22,9 @@ use crate::transport::ENVELOPE_DEPTH;
 /// The most stdout a backend may write for one message (R-SYNTH-28).
 const MAX_STDOUT_BYTES: usize = 2 * 1024 * 1024;
 
+/// The provider id of the backend (R-SYNTH-26).
+const PROVIDER: &str = "external";
+
 /// How often the supervisor looks whether the command has exited.
 const POLL: Duration = Duration::from_millis(10);
 
@@ -208,7 +211,7 @@ impl SynthBackend for External {
             ));
         };
         Ok(Identity {
-            provider: "external".to_owned(),
+            provider: PROVIDER.to_owned(),
             model: version,
             input_version: REQUEST_VERSION.to_owned(),
             backend: Some(backend),
@@ -232,7 +235,7 @@ struct ExternalProvider {
 #[async_trait]
 impl SynthProvider for ExternalProvider {
     fn id(&self) -> &str {
-        "external"
+        PROVIDER
     }
 
     fn model(&self) -> &str {
@@ -244,7 +247,7 @@ impl SynthProvider for ExternalProvider {
     }
 
     fn backend(&self) -> &str {
-        self.identity.backend.as_deref().unwrap_or("external")
+        self.identity.backend.as_deref().unwrap_or(PROVIDER)
     }
 
     /// One `synthesize` message (R-SYNTH-26): one provider call, with no transport retry (R-SYNTH-28).
@@ -389,8 +392,7 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<(Vec<u8>, String), Pro
         if exited.is_none() && has_exited(&mut child, pid) {
             exited = Some(Instant::now());
         }
-        let done = heard.stdout.is_some() && heard.stderr.is_some() && heard.stdin.is_some();
-        if heard.cut.is_some() || exited.is_some_and(|at| done || at.elapsed() >= EXIT_GRACE) {
+        if heard.cut.is_some() || exited.is_some_and(|at| heard.complete() || at.elapsed() >= EXIT_GRACE) {
             break;
         }
         let left = deadline.saturating_duration_since(Instant::now());
@@ -413,7 +415,7 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<(Vec<u8>, String), Pro
     let status = child.wait();
     // The pipes close with the group, so its last words arrive at once; a holder outside the group is not waited for.
     let drain = Instant::now() + DRAIN;
-    while !(heard.stdout.is_some() && heard.stderr.is_some() && heard.stdin.is_some()) {
+    while !heard.complete() {
         let left = drain.saturating_duration_since(Instant::now());
         match rx.recv_timeout(left) {
             Ok(event) => heard.hear(event),
@@ -438,10 +440,10 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<(Vec<u8>, String), Pro
     if heard.stdin != Some(true) {
         return Err(failed("it closed its input before reading the message", &tail));
     }
-    heard
-        .stdout
-        .map(|out| (out, tail.clone()))
-        .ok_or_else(|| failed("its output couldn't be read", &tail))
+    match heard.stdout {
+        Some(out) => Ok((out, tail)),
+        None => Err(failed("its output couldn't be read", &tail)),
+    }
 }
 
 /// What the supervisor has heard from the pipe threads, and why it cut the command short, if it did.
@@ -454,6 +456,11 @@ struct Heard {
 }
 
 impl Heard {
+    /// Whether every pipe thread has reported.
+    fn complete(&self) -> bool {
+        self.stdout.is_some() && self.stderr.is_some() && self.stdin.is_some()
+    }
+
     fn hear(&mut self, event: Event) {
         match event {
             Event::Stdout(bytes, over) => {
