@@ -624,11 +624,10 @@ impl<'a> Build<'a> {
             &records,
         );
         let unlogged = logged.err();
-        match synthesized {
+        let mut result = match synthesized {
             Outcome::Failed(failure) => {
                 let mut result = noted(fail(failure.diagnostic), notes);
                 result.attempts = failure.attempts;
-                result.attempts.extend(unlogged);
                 result
             }
             Outcome::Built(built) => {
@@ -644,18 +643,14 @@ impl<'a> Build<'a> {
                 match stored {
                     Ok(()) => {
                         self.summary.synthesized += 1;
-                        let mut result = done(name, Status::Built(Source::Synthesized), notes);
-                        result.attempts.extend(unlogged);
-                        result
+                        done(name, Status::Built(Source::Synthesized), notes)
                     }
-                    Err(d) => {
-                        let mut result = noted(fail(d), notes);
-                        result.attempts.extend(unlogged);
-                        result
-                    }
+                    Err(d) => noted(fail(d), notes),
                 }
             }
-        }
+        };
+        result.attempts.extend(unlogged);
+        result
     }
 
     /// Writes the artifact of a verified `ir` and pins it (R-ART-11); the store refusing it is `VL0607` (R-SYNTH-47).

@@ -42,30 +42,32 @@ impl Platform {
 /// and macOS, and `%APPDATA%\velme\config.toml` on Windows. `get` reads the environment; a variable that is empty, or on
 /// Unix not an absolute path, is not set (the XDG rule). `None` when the home can't be found.
 pub fn user_config_path(get: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Option<PathBuf> {
-    let set = |name: &str| get(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let base = match platform {
-        Platform::Windows => set("APPDATA")?,
-        Platform::Unix => match set("XDG_CONFIG_HOME").filter(|p| p.is_absolute()) {
-            Some(xdg) => xdg,
-            None => set("HOME")?.join(".config"),
-        },
-    };
-    Some(base.join("velme").join("config.toml"))
+    Some(under_base(get, platform, ("APPDATA", "XDG_CONFIG_HOME", ".config"))?.join("config.toml"))
 }
 
 /// The user-level WASM module cache (`runtime/31` R-SBX-13, D-48): `$XDG_CACHE_HOME/velme/wasm`, else `~/.cache/velme/wasm`
 /// on Unix and macOS, and `%LOCALAPPDATA%\velme\wasm` on Windows. `get` reads the environment, as for
 /// [`user_config_path`].
 pub fn wasm_cache_path(get: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Option<PathBuf> {
+    Some(under_base(get, platform, ("LOCALAPPDATA", "XDG_CACHE_HOME", ".cache"))?.join("wasm"))
+}
+
+/// `velme` under the platform's base directory, given as the Windows variable, the XDG variable and the directory under
+/// `~` that the XDG variable defaults to.
+fn under_base(
+    get: &dyn Fn(&str) -> Option<OsString>,
+    platform: Platform,
+    (windows, xdg, dot_dir): (&str, &str, &str),
+) -> Option<PathBuf> {
     let set = |name: &str| get(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     let base = match platform {
-        Platform::Windows => set("LOCALAPPDATA")?,
-        Platform::Unix => match set("XDG_CACHE_HOME").filter(|p| p.is_absolute()) {
+        Platform::Windows => set(windows)?,
+        Platform::Unix => match set(xdg).filter(|p| p.is_absolute()) {
             Some(xdg) => xdg,
-            None => set("HOME")?.join(".cache"),
+            None => set("HOME")?.join(dot_dir),
         },
     };
-    Some(base.join("velme").join("wasm"))
+    Some(base.join("velme"))
 }
 
 /// The text of the config file at `path`, shown as `shown`: `None` if it isn't there and `optional`; `VL0901` if it can't be
@@ -94,23 +96,37 @@ fn read(path: &Path, shown: &str, optional: bool) -> Result<Option<String>, Diag
     }
 }
 
+/// The config file at `path`, shown as `shown`, parsed by `parse`; the default if it isn't there and `optional`. A problem
+/// in the file has no place in the source file; it is about this one (D-111).
+fn parse_file<T: Default>(
+    path: &Path,
+    shown: String,
+    optional: bool,
+    parse: fn(&str, &str) -> Result<T, Diagnostic>,
+) -> Result<T, Diagnostic> {
+    read(path, &shown, optional)
+        .and_then(|text| text.map_or_else(|| Ok(T::default()), |text| parse(&text, &shown)))
+        .map_err(|d| d.with_file(shown))
+}
+
 /// The project's settings: `flag`'s file if `--config` gave one, else the `velme.toml` in `root` if there is one. The flag
 /// changes where settings come from and nothing else: the root, the lock and `.velme/` stay where the source file put
 /// them (R-CLI-25).
 fn project(root: &Path, flag: Option<&str>) -> Result<ProjectConfig, Diagnostic> {
-    let (path, shown, optional) = match flag {
-        Some(flag) => (PathBuf::from(flag), crate::display_path(flag), false),
-        None => (root.join(PROJECT_FILE), PROJECT_FILE.to_owned(), true),
-    };
-    // A problem in the file has no place in the source file; it is about this one (D-111).
-    read(&path, &shown, optional)
-        .and_then(|text| {
-            text.map_or_else(
-                || Ok(ProjectConfig::default()),
-                |text| ProjectConfig::parse(&text, &shown),
-            )
-        })
-        .map_err(|d| d.with_file(shown))
+    match flag {
+        Some(flag) => parse_file(
+            &PathBuf::from(flag),
+            crate::display_path(flag),
+            false,
+            ProjectConfig::parse,
+        ),
+        None => parse_file(
+            &root.join(PROJECT_FILE),
+            PROJECT_FILE.to_owned(),
+            true,
+            ProjectConfig::parse,
+        ),
+    }
 }
 
 /// The user-level settings, from the file at `path` if there is one (R-CLI-25).
@@ -119,9 +135,7 @@ fn user(path: Option<PathBuf>) -> Result<UserConfig, Diagnostic> {
         return Ok(UserConfig::default());
     };
     let shown = crate::display_path(&path.to_string_lossy());
-    read(&path, &shown, true)
-        .and_then(|text| text.map_or_else(|| Ok(UserConfig::default()), |text| UserConfig::parse(&text, &shown)))
-        .map_err(|d| d.with_file(shown))
+    parse_file(&path, shown, true, UserConfig::parse)
 }
 
 /// Both config files of a command on the project at `root`, each validated; every file that is wrong is reported, the

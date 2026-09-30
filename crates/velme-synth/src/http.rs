@@ -24,12 +24,6 @@ pub(crate) fn host_of(url: &str) -> &str {
     }
 }
 
-/// The settings of an agent that gives up after `timeout`, follows no redirect and reads a non-2xx status as a response,
-/// not an error. A server on this machine is never reached through a proxy from the environment.
-pub(crate) fn agent_config(timeout: Duration, direct: bool) -> ureq::config::Config {
-    agent_config_trusting(timeout, direct, &[])
-}
-
 /// The certificates a connection trusts when `external_ca_file` gave `extra`: the bundled roots and then those (D-105).
 pub(crate) fn root_set(extra: &[ureq::tls::Certificate<'static>]) -> Vec<ureq::tls::Certificate<'static>> {
     let bundled = webpki_root_certs::TLS_SERVER_ROOT_CERTS
@@ -38,7 +32,9 @@ pub(crate) fn root_set(extra: &[ureq::tls::Certificate<'static>]) -> Vec<ureq::t
     bundled.chain(extra.iter().cloned()).collect()
 }
 
-/// [`agent_config`] that trusts `roots` in addition to the bundled ones, when there are any (`external_ca_file`, D-105).
+/// The settings of an agent that gives up after `timeout`, follows no redirect and reads a non-2xx status as a response,
+/// not an error. A server on this machine (`direct`) is never reached through a proxy from the environment. It trusts
+/// `roots` in addition to the bundled certificates, when there are any (`external_ca_file`, D-105).
 pub(crate) fn agent_config_trusting(
     timeout: Duration,
     direct: bool,
@@ -64,10 +60,10 @@ pub(crate) fn agent_config_trusting(
     config.build()
 }
 
-/// [`agent_config`] as an agent.
+/// [`agent_config_trusting`] with no extra roots, as an agent.
 #[cfg(feature = "provider-anthropic")]
 pub(crate) fn agent(timeout: Duration, direct: bool) -> ureq::Agent {
-    agent_config(timeout, direct).into()
+    agent_config_trusting(timeout, direct, &[]).into()
 }
 
 /// The body of a success response, at most [`MAX_BODY_BYTES`].
