@@ -55,11 +55,12 @@ human and JSON rendering.
 | Step | Command |
 |---|---|
 | Format | `cargo fmt --all --check` |
-| Lint | `cargo clippy --workspace --all-targets -- -D warnings` |
-| Tests (unit, golden, property, integration, examples) | `cargo test --workspace --all-targets` (nextest optional) |
+| Lint | `cargo clippy --workspace --all-targets --features velme-cli/test-provider -- -D warnings` |
+| Tests (unit, golden, property, integration, examples) | `cargo test --workspace --all-targets --features velme-cli/test-provider` (nextest optional; D-94), also the macOS and Windows CI jobs |
 | Docs build | `cargo doc --workspace --no-deps` with `-D warnings` |
 | Dependencies | `cargo deny check` (advisories, licenses, bans, sources) |
 | Layering | `xtask` crate-graph check against INV-9 (`delivery/52` R-REL-03) |
+| Release features | `cargo tree -e features,normal -p velme-cli` names no `test-endpoint` (`compiler/22` R-SYNTH-44) |
 | Coverage audit | `xtask ac-audit` (§5) |
 | Fixture scrub | no key-shaped strings under `tests/fixtures` (R-SEC-07) |
 

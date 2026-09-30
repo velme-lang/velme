@@ -273,7 +273,10 @@ impl<'a> Build<'a> {
             match self.verify(id, &candidate) {
                 Verdict::Accepted(_) => {
                     self.summary.lock_hits += 1;
-                    self.touched.insert(id);
+                    // Only a goal with a callee that changed is itself changed for the note of its own callers.
+                    if target_calls(program, id).any(|c| self.touched.contains(&c)) {
+                        self.touched.insert(id);
+                    }
                     self.built.insert(id, locked);
                     return done(&name, Status::Built(Source::Reverified), notes);
                 }
@@ -400,7 +403,7 @@ impl<'a> Build<'a> {
             if let Err(error) = &identity
                 && reaches_no_further(error)
             {
-                self.session.mark_unavailable();
+                self.session.stop(error);
             }
             self.identity = Some(identity);
         }
@@ -436,21 +439,21 @@ impl<'a> Build<'a> {
                 artifact,
             });
             if let Ok(locked) = load(program, id, self.input.file, &probe, &self.store) {
-                // Built against other children, it must still pass against these (R-ART-22).
-                // A hit already found to fail in this build (the lock's own artifact) isn't tried again.
-                if !locked.ir.goal().calls.is_empty() && !(pinned == Some(artifact) && !feedback.is_empty()) {
-                    match self.verify(id, &locked.ir) {
-                        Verdict::Accepted(_) => {}
-                        Verdict::Rejected(rejection) => {
-                            notes.push(self.recheck_note(id, &rejection.line));
-                            feedback.push(previous(&locked.ir, &rejection));
-                            continue;
-                        }
-                        Verdict::Watchdog(d) => return fail(retarget(d, span)),
-                        Verdict::Internal => return fail(Diagnostic::internal_error()),
-                    }
-                } else if pinned == Some(artifact) && !feedback.is_empty() {
+                // A hit is verified like any candidate before it is pinned, whoever wrote it (D-46, T-12): the store
+                // checks its hashes, not its behaviour. A hit already found to fail in this build (the lock's own
+                // artifact) isn't tried again.
+                if pinned == Some(artifact) && !feedback.is_empty() {
                     continue;
+                }
+                match self.verify(id, &locked.ir) {
+                    Verdict::Accepted(_) => {}
+                    Verdict::Rejected(rejection) => {
+                        notes.push(self.recheck_note(id, &rejection.line));
+                        feedback.push(previous(&locked.ir, &rejection));
+                        continue;
+                    }
+                    Verdict::Watchdog(d) => return fail(retarget(d, span)),
+                    Verdict::Internal => return fail(Diagnostic::internal_error()),
                 }
                 self.pin(id, name, signature, contract, artifact, pinned);
                 self.built.insert(id, locked);
@@ -460,8 +463,8 @@ impl<'a> Build<'a> {
         }
         // Step 3: after one `VL0404` the provider is contacted no more, so every goal that gets this far ends with it and
         // no request (R-SYNTH-45, D-93).
-        if self.session.unavailable() {
-            let mut result = fail(velme_synth::unavailable(name, span, None));
+        if let Some(error) = self.session.stopped() {
+            let mut result = fail(velme_synth::stopped_diagnostic(error, name, span));
             result.notes = notes;
             return result;
         }

@@ -31,6 +31,8 @@ velme-sema.workspace = true
 ureq = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
+# `O_NOFOLLOW` for the no-follow reads of `fsio`.
+libc.workspace = true
 # Signals the external command's process group on a timeout: a safe wrapper, already in the lock through `insta`.
 rustix = { version = "1", default-features = false, features = ["process"] }
 

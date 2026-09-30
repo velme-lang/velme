@@ -234,3 +234,50 @@ fn ac_synth_09_no_key_string_appears_in_a_recorded_fixture() {
         }
     }
 }
+
+/// Fixtures and `replay.json` are written and read as the artifact store's files are: a link at either path is never
+/// written through or followed, and is `VL0901` (R-SYNTH-43, R-ART-09, R-ART-10).
+#[cfg(unix)]
+#[test]
+fn r_synth_43_a_link_in_place_of_a_fixture_is_vl0901_and_is_never_followed() {
+    use std::os::unix::fs::symlink;
+    use velme_diagnostics::{Code, Span};
+    use velme_synth::provider_diagnostic;
+
+    let dir = dir("links");
+    fs::create_dir_all(&dir).expect("directory");
+    let outside = dir.join("outside.txt");
+    fs::write(&outside, "untouched").expect("outside file");
+    symlink(&outside, fixture_path(&dir, key())).expect("a link");
+    symlink(&outside, dir.join(IDENTITY_FILE)).expect("a link");
+    let file_error = |error: ProviderError| {
+        assert!(matches!(error, ProviderError::File { .. }), "{error:?}");
+        assert_eq!(
+            provider_diagnostic(&error, "test", "Rank", Span::default()).code,
+            Code::FileError
+        );
+    };
+
+    // Recording refuses both, leaving the file behind the links as it was.
+    let recorder = Recorder::new(Box::new(Scripted::new([Step::Reply("{}".to_owned())])), &dir);
+    file_error(block_on(recorder.identify()).expect_err("replay.json is a link"));
+    fs::remove_file(dir.join(IDENTITY_FILE)).expect("link removed");
+    let identity = block_on(recorder.identify()).expect("identity");
+    let provider = recorder.open(&identity).expect("a provider");
+    file_error(block_on(provider.complete(&request(), &SynthLimits::new(key()))).expect_err("the fixture is a link"));
+    assert_eq!(fs::read_to_string(&outside).expect("outside file"), "untouched");
+
+    // Replaying does not follow them either, though the file behind holds a plausible fixture.
+    fs::write(&outside, "[]").expect("outside file");
+    let replay = Replay::new(&dir);
+    let provider = replay.open(&identity).expect("a provider");
+    file_error(block_on(provider.complete(&request(), &SynthLimits::new(key()))).expect_err("the fixture is a link"));
+    fs::remove_file(dir.join(IDENTITY_FILE)).expect("replay.json removed");
+    symlink(&outside, dir.join(IDENTITY_FILE)).expect("a link");
+    file_error(block_on(replay.identify()).expect_err("replay.json is a link"));
+
+    // A fixture past the bound is not read.
+    fs::remove_file(fixture_path(&dir, key())).expect("link removed");
+    fs::write(fixture_path(&dir, key()), vec![b' '; 16 * 1024 * 1024 + 1]).expect("a big file");
+    file_error(block_on(provider.complete(&request(), &SynthLimits::new(key()))).expect_err("too long"));
+}

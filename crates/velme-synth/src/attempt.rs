@@ -75,17 +75,15 @@ impl Rejection {
         } else {
             format!(" at {path}")
         };
-        let line = if stage == "schema" {
-            format!("the reply isn't valid JSON of the shape the IR needs{at}")
-        } else {
-            format!("the reply broke the IR {stage} rule {rule}{at}")
-        };
+        // What the learner reads is a one-line paraphrase of the rule; its id goes to `--verbose`, for tools and bug
+        // reports (P-6).
+        let line = format!("the reply {}{at}", rule_words(rule));
         Rejection {
             cause: Cause {
                 code,
                 name: format!("{stage}/{rule}"),
             },
-            verbose: format!("{}: {line}", code.as_str()),
+            verbose: format!("{}: {line} ({rule})", code.as_str()),
             input: String::new(),
             line,
             reply: reply.to_owned(),
@@ -120,6 +118,43 @@ impl Rejection {
             Code::ArithmeticError => "say in the plan what should happen in that case",
             _ => "make the plan do less work per input, or split the goal",
         }
+    }
+}
+
+/// The validator rule `rule` (`compiler/21` §6) in a learner's words, completing "the reply …". Only what the rule means:
+/// never a name or value from the candidate (R-SYNTH-22).
+fn rule_words(rule: &str) -> &'static str {
+    match rule {
+        "schema-1" => "isn't valid JSON of the shape the IR needs",
+        "structure-1" | "structure-3" => "is longer than an IR program may be",
+        "structure-2" | "structure-6" => "calls another goal itself, which only the goal's `call` block may do",
+        "structure-4" => "is written for another version of the IR",
+        "structure-5" => "uses one name twice in the same place",
+        "names-1" => "is for a different goal than the one asked for",
+        "names-2" | "names-3" | "names-5" | "names-6" | "types-3" => {
+            "describes a record type the goal doesn't have, or describes one wrongly"
+        }
+        "names-4" => "calls a goal the program doesn't have",
+        "names-7" | "names-8" => "uses a name that isn't defined there",
+        "names-9" | "names-10" => "uses a field its record doesn't have",
+        "names-11" => "uses a built-in that doesn't exist",
+        "types-1" | "types-2" | "types-5" => "gives a result of a different type than the goal promises",
+        "types-4" => "takes inputs that differ from the goal's",
+        "types-6" | "types-7" | "types-26" => "passes the wrong number or type of inputs",
+        "types-8" => "holds a value that doesn't fit its type",
+        "types-9" | "types-10" => "builds a record with the wrong fields",
+        "types-11" => "puts an item in a list of another type",
+        "types-12" | "types-13" => "reads a field from a value that may be nothing, or has none",
+        "types-14" | "types-15" | "types-16" => "combines values of types that don't go together",
+        "types-17" => "uses a condition that isn't true or false",
+        "types-18" => "gives `if` branches of types that don't mix",
+        "types-19" | "types-20" => "misuses a value that may be nothing",
+        "types-21" | "types-22" | "types-23" | "types-24" => "misuses a list operation",
+        "types-25" => "calls a list operation as a built-in",
+        "callgraph-1" | "callgraph-2" => "lists calls that differ from the goal's `call` block",
+        "resources-1" | "resources-2" | "resources-6" => "is too large or too deeply nested",
+        "resources-3" | "resources-4" | "resources-5" => "holds a text or list that is too long",
+        _ => "broke a rule of the IR",
     }
 }
 
@@ -215,10 +250,27 @@ fn collapse(text: &str) -> String {
     spaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// `text` cleaned as in [`clean_text`], but `None` unless it is 1..=`max` Unicode scalar values (R-SYNTH-26).
+/// A backend's name or version (R-SYNTH-26): `None` if it holds any control, format (Unicode `Cf`) or bidi character,
+/// which no honest name needs and which could reorder or hide what is shown; else whitespace runs collapse to one space
+/// and the result must be 1..=`max` Unicode scalar values.
 pub(crate) fn clean_name(text: &str, max: usize) -> Option<String> {
+    if text
+        .chars()
+        .any(|c| c.is_control() || is_format(c) || velme_diagnostics::is_bidi_control(c))
+    {
+        return None;
+    }
     let collapsed = collapse(text);
     (1..=max).contains(&collapsed.chars().count()).then_some(collapsed)
+}
+
+/// Whether `c` is in Unicode general category `Cf` (format), which `std` doesn't expose: invisible characters such as
+/// zero-width spaces and joiners, the bidi controls, and the tag characters.
+fn is_format(c: char) -> bool {
+    matches!(u32::from(c),
+        0xad | 0x600..=0x605 | 0x61c | 0x6dd | 0x70f | 0x890..=0x891 | 0x8e2 | 0x180e | 0x200b..=0x200f
+        | 0x202a..=0x202e | 0x2060..=0x2064 | 0x2066..=0x206f | 0xfeff | 0xfff9..=0xfffb | 0x110bd | 0x110cd
+        | 0x13430..=0x1343f | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0001 | 0xe0020..=0xe007f)
 }
 
 /// The last `max` bytes of a backend's error output, cleaned as one line (R-SYNTH-28); a character cut by the start is
@@ -290,4 +342,28 @@ pub(crate) fn summary(goal: &str, history: &[Rejection], stopped: bool, span: ve
         main.help().to_owned()
     };
     diagnostic.with_help(help)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rule_words;
+
+    /// Every rule id of the validator (`compiler/21` §6) has words of its own (they are fixed text, so none can quote the candidate).
+    #[test]
+    fn every_validator_rule_has_a_learner_sentence() {
+        let stages: [(&str, u32); 6] = [
+            ("schema", 1),
+            ("structure", 6),
+            ("names", 11),
+            ("types", 26),
+            ("callgraph", 2),
+            ("resources", 6),
+        ];
+        for (stage, count) in stages {
+            for n in 1..=count {
+                let words = rule_words(&format!("{stage}-{n}"));
+                assert_ne!(words, rule_words("no-such-rule"), "{stage}-{n}");
+            }
+        }
+    }
 }

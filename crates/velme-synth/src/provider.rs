@@ -114,6 +114,8 @@ pub struct Usage {
 pub enum ProviderError {
     /// No provider, model or key is configured, or the model isn't there (`VL0405`).
     NotConfigured,
+    /// The provider rejected the API key that is set (`VL0405`, its own wording).
+    KeyRejected,
     /// Unreachable, or a transport failure that outlived its retries (`VL0404`).
     Unavailable(String),
     /// Rate limited, after the allowed waits (`VL0404`).
@@ -136,6 +138,14 @@ pub enum ProviderError {
     },
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),
+    /// A replay fixture or `replay.json` couldn't be read or written, or is a link or another file that isn't regular
+    /// (`VL0901`, R-SYNTH-43).
+    File {
+        /// The file.
+        path: String,
+        /// Why, in Velme's wording.
+        reason: String,
+    },
     /// A bug in Velme itself, such as a request that has no hash (`VL0607`); never a verdict on the candidate.
     Internal(String),
 }
@@ -145,6 +155,7 @@ impl ProviderError {
     pub fn variant(&self) -> &'static str {
         match self {
             ProviderError::NotConfigured => "not_configured",
+            ProviderError::KeyRejected => "key_rejected",
             ProviderError::Unavailable(_) => "unavailable",
             ProviderError::RateLimited { .. } => "rate_limited",
             ProviderError::Refused(_) => "refused",
@@ -152,6 +163,7 @@ impl ProviderError {
             ProviderError::Malformed(_) => "malformed",
             ProviderError::BackendFailed { .. } => "backend_failed",
             ProviderError::Pending(_) => "pending",
+            ProviderError::File { .. } => "file",
             ProviderError::Internal(_) => "internal",
         }
     }
@@ -161,6 +173,7 @@ impl ProviderError {
     pub fn from_variant(name: &str, text: Option<&str>) -> Option<Self> {
         Some(match name {
             "not_configured" => ProviderError::NotConfigured,
+            "key_rejected" => ProviderError::KeyRejected,
             "unavailable" => ProviderError::Unavailable(String::new()),
             "rate_limited" => ProviderError::RateLimited { retry_after: None },
             "refused" => ProviderError::Refused(String::new()),

@@ -4,13 +4,14 @@
 //!
 //! ```text
 //! velme-test-backend --dir DIR [--log FILE] [--env-dump FILE]
-//!                    [--capture FILE] [--describe NAME VERSION] [--describe-extra] [--mode MODE [--on describe|synthesize|both] [--pidfile FILE]]
+//!                    [--capture FILE] [--describe NAME VERSION] [--describe-extra] [--sleeper --pidfile FILE] [--mode MODE [--on describe|synthesize|both] [--pidfile FILE]]
 //! ```
 //!
 //! `synthesize` for goal `G` answers with `DIR/G.json` (`DIR/G.N.json` when the request carries `N` earlier attempts,
 //! else `G.json`): a file holding IR is wrapped as `{"ir": …}`, any other file is sent as it is. A goal with no file is
 //! an `{"error"}` reply. `--mode` makes the backend `exit` with status 3, `hang`, `hang-group` (a child that also
-//! hangs, its pid written to `--pidfile`), print `garbage` or a `huge` output.
+//! hangs, its pid written to `--pidfile`), print `garbage` or a `huge` output. `--sleeper` leaves a `sleep 60` behind
+//! that holds the backend's stdout open (its pid in `--pidfile`), then replies and exits as usual.
 #![forbid(unsafe_code)]
 // A tool for tests: it fails loudly on a bad invocation.
 #![allow(clippy::expect_used, clippy::panic, clippy::print_stdout, clippy::print_stderr)]
@@ -30,6 +31,7 @@ struct Args {
     pidfile: Option<PathBuf>,
     describe: Option<(String, String)>,
     describe_extra: bool,
+    sleeper: bool,
     mode: Option<String>,
     on: String,
 }
@@ -53,6 +55,7 @@ fn parse() -> Args {
                 args.describe = Some((name, value()));
             }
             "--describe-extra" => args.describe_extra = true,
+            "--sleeper" => args.sleeper = true,
             "--mode" => args.mode = Some(value()),
             "--on" => args.on = value(),
             other => panic!("unknown flag {other}"),
@@ -83,6 +86,9 @@ fn main() -> ExitCode {
             .open(path)
             .expect("log");
         writeln!(log, "{}", format!("{kind} {goal}").trim()).expect("log line");
+    }
+    if args.sleeper {
+        leave_sleeper(&args);
     }
     if let Some(mode) = &args.mode
         && (args.on == "both" || args.on == kind)
@@ -157,15 +163,20 @@ fn misbehave(mode: &str, args: &Args) -> ExitCode {
         }
         "hang" => hang(),
         "hang-group" => {
-            // Left running on purpose: the supervisor's group kill is what stops it.
-            #[allow(clippy::zombie_processes)]
-            let child = Command::new("sleep").arg("60").spawn().expect("a child");
-            if let Some(path) = &args.pidfile {
-                std::fs::write(path, child.id().to_string()).expect("pidfile");
-            }
+            leave_sleeper(args);
             hang()
         }
         other => panic!("unknown mode {other}"),
+    }
+}
+
+/// Starts a `sleep 60` that inherits stdout and stderr, and writes its pid to `--pidfile`. Left running on purpose: the
+/// supervisor's group kill is what stops it.
+fn leave_sleeper(args: &Args) {
+    #[allow(clippy::zombie_processes)]
+    let child = Command::new("sleep").arg("60").spawn().expect("a child");
+    if let Some(path) = &args.pidfile {
+        std::fs::write(path, child.id().to_string()).expect("pidfile");
     }
 }
 

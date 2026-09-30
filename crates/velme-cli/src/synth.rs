@@ -5,6 +5,7 @@
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_synth::{
     CommandError, External, ExternalCommand, ExternalConfig, OLLAMA_URL, Ollama, OllamaConfig, SynthBackend,
+    SynthOptions,
 };
 
 use crate::project::Project;
@@ -26,7 +27,7 @@ pub fn model_name(flag: Option<&str>) -> String {
 
 /// The `ollama` provider for the model from `--model`, else `VELME_MODEL`. No key is needed; the server is the default
 /// local one, since the config file that sets `ollama_url` comes with M6.
-pub fn ollama(flag: Option<&str>) -> Result<Chosen, Diagnostic> {
+pub fn ollama(flag: Option<&str>, options: &SynthOptions) -> Result<Chosen, Diagnostic> {
     let model = model_name(flag);
     if model.is_empty() {
         return Err(not_configured(
@@ -37,7 +38,11 @@ pub fn ollama(flag: Option<&str>) -> Result<Chosen, Diagnostic> {
     let notice = format!(
         "Sending your plans, types, checks and examples to the Ollama server at {OLLAMA_URL}, model {model}, to write the code."
     );
-    Ok((Box::new(Ollama::new(OllamaConfig::new(model))), notice))
+    let config = OllamaConfig {
+        options: options.clone(),
+        ..OllamaConfig::new(model)
+    };
+    Ok((Box::new(Ollama::new(config)), notice))
 }
 
 /// The `external` provider for the command from `--external-command`, else `VELME_EXTERNAL_COMMAND` (R-CLI-13; the
