@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use velme_builtins::execution::{Error, Failure, Interrupt, Limits, Spent};
-use velme_builtins::limits::{MAX_LIST_SIZE, MAX_MEMORY, MIB};
+use velme_builtins::limits::{MAX_GOAL_CALLS, MAX_LIST_SIZE, MAX_MEMORY, MIB};
 use velme_builtins::{Function, Number, TEXT_BLOCK_BYTES, Value, range_length};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use wasmparser::{Parser, Payload};
@@ -96,6 +96,11 @@ const MEMORY_RESERVATION_BYTES: u64 = memory_limit(MAX_MEMORY, 0, 0);
 
 /// How often the ticker moves the epoch on (`runtime/31` §6).
 const EPOCH_TICK: Duration = Duration::from_millis(10);
+
+/// Compiled and linked modules a sandbox keeps in memory, the least recently used dropped first: twice the leaves one
+/// run can call (`max_goal_calls`), so a run never compiles a module twice, while a process that loads many, a fuzz run
+/// or a long test, stays near 100 MB at some 400 KB a module. Dropping one only means compiling it again.
+pub(crate) const MAX_LINKED: usize = 2 * MAX_GOAL_CALLS as usize;
 
 /// Why a module was not loaded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -387,7 +392,39 @@ pub struct Sandbox {
     cache: Option<Cache>,
     /// What each module loaded so far was compiled and linked to, by BLAKE3 of its bytes: code only, never a goal's
     /// signature or data, which two goals with the same bytes need not share.
-    linked: Mutex<HashMap<[u8; 32], InstancePre<Host>>>,
+    linked: Mutex<Linked>,
+}
+
+/// The modules kept in memory, by BLAKE3 of their bytes, each with when it was last used; at most [`MAX_LINKED`].
+#[derive(Default)]
+struct Linked {
+    modules: HashMap<[u8; 32], (InstancePre<Host>, u64)>,
+    clock: u64,
+}
+
+impl Linked {
+    /// The module `key`, if it is kept, marked as just used.
+    fn get(&mut self, key: &[u8; 32]) -> Option<InstancePre<Host>> {
+        self.clock += 1;
+        let (pre, used) = self.modules.get_mut(key)?;
+        *used = self.clock;
+        Some(pre.clone())
+    }
+
+    /// Keeps `pre` as the module `key`, or what another thread kept first, dropping the least recently used if full.
+    fn keep(&mut self, key: [u8; 32], pre: InstancePre<Host>) -> InstancePre<Host> {
+        if let Some(kept) = self.get(&key) {
+            return kept;
+        }
+        if self.modules.len() >= MAX_LINKED {
+            let oldest = self.modules.iter().min_by_key(|(_, (_, used))| *used).map(|(k, _)| *k);
+            if let Some(oldest) = oldest {
+                self.modules.remove(&oldest);
+            }
+        }
+        self.modules.insert(key, (pre.clone(), self.clock));
+        pre
+    }
 }
 
 impl std::fmt::Debug for Sandbox {
@@ -424,8 +461,25 @@ impl Sandbox {
             engine,
             linker,
             cache,
-            linked: Mutex::new(HashMap::new()),
+            linked: Mutex::new(Linked::default()),
         })
+    }
+
+    /// How many compiled modules are kept in memory, for the test of [`MAX_LINKED`].
+    #[cfg(test)]
+    pub(crate) fn linked(&self) -> usize {
+        self.linked.lock().unwrap_or_else(PoisonError::into_inner).modules.len()
+    }
+
+    /// Whether the module `bytes` is kept in memory, without marking it used, for the test of which one is dropped.
+    #[cfg(test)]
+    pub(crate) fn is_kept(&self, bytes: &[u8]) -> bool {
+        let key = blake3::hash(bytes);
+        self.linked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .modules
+            .contains_key(key.as_bytes())
     }
 
     /// The disk cache, for the tests of what it reads.
@@ -456,12 +510,7 @@ impl Sandbox {
     /// only then compiled.
     pub(crate) fn load_bytes(&self, bytes: &[u8], like: &Module) -> Result<Program, LoadError> {
         let key = *blake3::hash(bytes).as_bytes();
-        let known = self
-            .linked
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&key)
-            .cloned();
+        let known = self.linked.lock().unwrap_or_else(PoisonError::into_inner).get(&key);
         let pre = match known {
             Some(pre) => pre,
             None => {
@@ -470,7 +519,7 @@ impl Sandbox {
                 let compiled = self.compiled(bytes)?;
                 let pre = self.linker.instantiate_pre(&compiled).map_err(internal)?;
                 let mut linked = self.linked.lock().unwrap_or_else(PoisonError::into_inner);
-                linked.entry(key).or_insert(pre).clone()
+                linked.keep(key, pre)
             }
         };
         Ok(Program {

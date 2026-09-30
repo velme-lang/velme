@@ -3,7 +3,7 @@ name = "velme-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
-description = "Fuzz targets for the Velme parser and IR validator (R-SYN-19, R-IR-18, delivery/51)"
+description = "Fuzz targets for the Velme parser, the IR validator and the two backends (R-SYN-19, R-IR-18, R-SBX-15, delivery/51)"
 
 [package.metadata]
 cargo-fuzz = true
@@ -13,7 +13,9 @@ libfuzzer-sys = "0.4"
 velme-diagnostics = { path = "../crates/velme-diagnostics" }
 velme-syntax = { path = "../crates/velme-syntax" }
 velme-ir = { path = "../crates/velme-ir" }
+velme-runtime = { path = "../crates/velme-runtime" }
 velme-sema = { path = "../crates/velme-sema" }
+velme-test-support = { path = "../crates/velme-test-support" }
 
 # Not a member of the main workspace: cargo-fuzz needs nightly and its own build.
 [workspace]
@@ -28,6 +30,13 @@ bench = false
 [[bin]]
 name = "validate"
 path = "fuzz_targets/validate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "differential"
+path = "fuzz_targets/differential.rs"
 test = false
 doc = false
 bench = false

@@ -21,28 +21,7 @@ use crate::ty::{Ty, Types};
 use crate::validate::{FEATURES, validate};
 use crate::{EmitError, emit};
 
-/// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or one file.
-pub(super) const EXAMPLES: [(&str, &str); 7] = [
-    ("examples/beginner/add.velme", "tests/fixtures/run/add.json"),
-    ("examples/beginner/hello.velme", "tests/fixtures/run/hello.ir"),
-    ("examples/beginner/find_badge.velme", "tests/fixtures/run/find_badge.ir"),
-    (
-        "examples/beginner/double_then_add_one.velme",
-        "tests/fixtures/run/double_then_add_one.ir",
-    ),
-    (
-        "examples/intermediate/player_summary.velme",
-        "tests/fixtures/run/player_summary.ir",
-    ),
-    (
-        "examples/games/level_summary.velme",
-        "tests/fixtures/run/level_summary.ir",
-    ),
-    (
-        "examples/professional/order_total.velme",
-        "tests/fixtures/run/order_total.ir",
-    ),
-];
+pub(super) use velme_test_support::differential::EXAMPLES;
 
 /// The `.json` files of `dir`, or `dir` itself if it is one, in name order.
 pub(super) fn documents(dir: &Path) -> Vec<PathBuf> {

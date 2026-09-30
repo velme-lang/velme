@@ -7,6 +7,7 @@
 
 pub mod backend;
 pub mod differential;
+pub mod generate;
 pub mod schema;
 
 use std::path::{Path, PathBuf};

@@ -1474,6 +1474,7 @@ dependencies = [
 name = "velme-runtime"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
  "async-trait",
  "insta",
  "proptest",
@@ -1541,6 +1542,7 @@ dependencies = [
 name = "velme-test-support"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
  "async-trait",
  "serde_json",
  "velme-builtins",

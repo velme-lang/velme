@@ -23,6 +23,7 @@ velme-synth.workspace = true
 velme-wasm.workspace = true
 
 [dev-dependencies]
+arbitrary.workspace = true
 async-trait.workspace = true
 insta.workspace = true
 proptest.workspace = true

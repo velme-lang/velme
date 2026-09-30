@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use velme_test_support::backend::{Config, Server};
+use velme_test_support::differential::EXAMPLES;
 use velme_test_support::repo;
 
 /// Set to rewrite the committed fixtures, then review the diff.
@@ -18,30 +19,6 @@ const BLESS: &str = "VELME_BLESS_FIXTURES";
 
 /// Held while the committed fixtures are rewritten, so tests running in parallel can't race on the same files (R-QA-09).
 static FIXTURES_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or the one file
-/// `tests/fixtures/run/add.json` for `add`.
-const EXAMPLES: [(&str, &str); 7] = [
-    ("examples/beginner/add.velme", "tests/fixtures/run/add.json"),
-    ("examples/beginner/hello.velme", "tests/fixtures/run/hello.ir"),
-    ("examples/beginner/find_badge.velme", "tests/fixtures/run/find_badge.ir"),
-    (
-        "examples/beginner/double_then_add_one.velme",
-        "tests/fixtures/run/double_then_add_one.ir",
-    ),
-    (
-        "examples/intermediate/player_summary.velme",
-        "tests/fixtures/run/player_summary.ir",
-    ),
-    (
-        "examples/games/level_summary.velme",
-        "tests/fixtures/run/level_summary.ir",
-    ),
-    (
-        "examples/professional/order_total.velme",
-        "tests/fixtures/run/order_total.ir",
-    ),
-];
 
 const FIXTURES: &str = "tests/fixtures/synth";
 

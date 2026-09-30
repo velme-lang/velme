@@ -22,10 +22,10 @@ use crate::cache::Refused;
 use crate::cache::Unusable;
 use crate::code::{Assembly, Func, G_FUEL, G_REASON, V, mem};
 use crate::runtime::{self, Rt};
-use crate::sandbox::{BYTE_INSTRUCTIONS, MEMORY_MOVES, SUM_ITEM_INSTRUCTIONS, memory_limit};
+use crate::sandbox::{BYTE_INSTRUCTIONS, MAX_LINKED, MEMORY_MOVES, SUM_ITEM_INSTRUCTIONS, memory_limit};
 use crate::tests::{
     EVERYTHING, EXAMPLES, binary, builtin, collection, document, documents, everything, field, input, item, local,
-    number,
+    number, unary,
 };
 use crate::{
     Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Module, Program, Run, Sandbox, UNIT_INSTRUCTIONS,
@@ -389,6 +389,50 @@ fn modules_with_the_same_bytes_keep_their_own_signatures() {
     assert_eq!(run(&list, &numbers), Ok(numbers));
 }
 
+/// A sandbox keeps at most `MAX_LINKED` compiled modules, the least recently used dropped first, and a dropped one is
+/// compiled again and runs as before.
+#[test]
+fn the_modules_kept_in_memory_are_bounded() {
+    // `-x` wrapped `k` times in `abs` or `neg`, by the bits of `k`: different code for each `k`, all of it small.
+    let copies = |k: usize| {
+        let mut body = unary("neg", &input("x"));
+        for bit in 0..usize::BITS - k.leading_zeros() {
+            body = if k >> bit & 1 == 1 {
+                builtin("abs", &[&body])
+            } else {
+                unary("neg", &body)
+            };
+        }
+        goal("x: Number -> Number", "", &body)
+    };
+    let sandbox = sandbox();
+    let first = copies(1);
+    sandbox.load(&first).expect("loads");
+    // The rest from eight threads, to compile them sooner: `first` stays the least recently used either way.
+    std::thread::scope(|scope| {
+        for start in 0..8 {
+            let (sandbox, copies) = (&sandbox, &copies);
+            scope.spawn(move || {
+                for k in (2 + start..=MAX_LINKED + 1).step_by(8) {
+                    sandbox.load(&copies(k)).expect("loads");
+                }
+            });
+        }
+    });
+    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert!(!sandbox.is_kept(first.bytes()), "the least recently used is dropped");
+    let again = sandbox.load(&first).expect("loads again");
+    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert!(sandbox.is_kept(first.bytes()));
+    // One more: now some other module is the least recently used, and `first`, just loaded, stays.
+    let last = copies(MAX_LINKED + 2);
+    sandbox.load(&last).expect("loads");
+    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert!(sandbox.is_kept(first.bytes()) && sandbox.is_kept(last.bytes()));
+    let run = again.run(&[num(7)], Limits::SYSTEM, &unwatched());
+    assert_eq!(run.result, Ok(num(7)));
+}
+
 /// A run that failed in the host before `velme_run` says it never started, so the runtime may run the goal on the
 /// interpreter; one that started says so whatever its outcome (D-121).
 #[test]
@@ -445,11 +489,11 @@ fn ac_sbx_02_a_module_importing_wasi_is_refused_by_name_and_never_compiled() {
     refused(&sandbox, "wasi_snapshot_preview1", "fd_write");
     // Nothing was compiled: a compiled module is kept.
     assert_eq!(cached_files(&cache), Vec::<PathBuf>::new());
-    // A module the emitter made is compiled, and kept.
+    // A module the emitter made is compiled, and kept where there is a disk cache (Unix only, D-120).
     sandbox
         .load(&goal("x: Number -> Number", "", &input("x")))
         .expect("loads");
-    assert_eq!(cached_files(&cache).len(), 1);
+    assert_eq!(cached_files(&cache).len(), usize::from(cfg!(unix)));
 }
 
 #[test]
