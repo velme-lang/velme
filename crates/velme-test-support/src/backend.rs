@@ -1,11 +1,11 @@
 //! The test `external` backend (`compiler/22` §3.2, D-42, D-99, D-101): a tiny deterministic HTTP service that answers
-//! the protocol from hand-written IR and misbehaves on request, so the tests of the `external` provider and the
+//! the protocol from hand-written goal bodies and misbehaves on request, so the tests of the `external` provider and the
 //! unattended recording of the examples' replay fixtures need no live provider. It uses `std` networking on 127.0.0.1 and
 //! no async runtime, so it runs on every OS. Not a product: nothing here is reachable from `velme`.
 //!
 //! `GET /v1/describe` answers `{"backend", "backend_version"}`. `POST /v1/synthesize` for goal `G` answers with
-//! `DIR/G.json` (`DIR/G.N.json` when the request carries `N` earlier attempts, else `G.json`): a file holding IR is
-//! wrapped as `{"ir": …}`, any other file is sent as it is. A goal with no file is an `{"error"}` reply.
+//! `DIR/G.json` (`DIR/G.N.json` when the request carries `N` earlier attempts, else `G.json`): a file holding a body
+//! (an expression node, so it has a `kind`) is wrapped as `{"body": …}`, any other file is sent as it is. A goal with no file is an `{"error"}` reply.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -272,8 +272,8 @@ fn synthesize(config: &Config, goal: &str, earlier: usize) -> Value {
         return json!({"error": format!("no reply for goal {goal}")});
     };
     let doc: Value = serde_json::from_str(&text).expect("a JSON reply file");
-    if doc.get("ir_version").is_some() {
-        json!({"ir": doc})
+    if doc.get("kind").is_some() {
+        json!({"body": doc})
     } else {
         doc
     }

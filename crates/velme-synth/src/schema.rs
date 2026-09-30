@@ -1,4 +1,4 @@
-//! The reply schema (`compiler/22` R-SYNTH-10) and the one-line-per-node summary of it that the prompt carries
+//! The reply schema (`compiler/22` R-SYNTH-10, D-103) and the one-line-per-node summary of it that the prompt carries
 //! (R-SYNTH-35).
 
 use std::sync::LazyLock;
@@ -8,18 +8,42 @@ use serde_json::{Map, Value, json};
 /// The IR schema, generated once.
 static IR_SCHEMA: LazyLock<Value> = LazyLock::new(velme_ir::schema);
 
-/// The JSON Schema a reply must satisfy: one IR goal or one question object (R-SYNTH-10). The IR schema
-/// (`compiler/21` R-IR-20) becomes the `IrGoal` definition beside its own, so its `$ref`s keep resolving.
+/// The JSON Schema a reply must satisfy: `{"body": <expression>}` or one question object (R-SYNTH-10, D-103). Only the
+/// definitions an expression reaches are kept, so the model is shown nothing of the envelope Velme writes itself.
 pub fn reply_schema() -> Value {
-    let mut goal = IR_SCHEMA.clone();
-    let mut defs = match goal.as_object_mut().and_then(|root| root.remove("$defs")) {
-        Some(Value::Object(defs)) => defs,
+    let all = match IR_SCHEMA.get("$defs") {
+        Some(Value::Object(defs)) => defs.clone(),
         _ => Map::new(),
     };
-    if let Some(root) = goal.as_object_mut() {
-        root.remove("$schema");
+    let mut defs = Map::new();
+    let mut pending = vec!["Node".to_owned()];
+    while let Some(name) = pending.pop() {
+        if defs.contains_key(&name) {
+            continue;
+        }
+        if let Some(def) = all.get(&name) {
+            let mut def = def.clone();
+            if name == "Node" {
+                // A `call` node is valid only in the compiler's `calls` (R-IR-02): a body reads a call's result as a
+                // `local`, so the model is never offered it.
+                if let Some(Value::Array(variants)) = def.get_mut("oneOf") {
+                    variants.retain(|variant| !is_call(variant));
+                }
+            }
+            refs(&def, &mut pending);
+            defs.insert(name, def);
+        }
     }
-    defs.insert("IrGoal".to_owned(), goal);
+    defs.insert(
+        "Body".to_owned(),
+        json!({
+            "description": "The goal's body: one expression node.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {"body": {"$ref": "#/$defs/Node"}},
+            "required": ["body"],
+        }),
+    );
     defs.insert(
         "Question".to_owned(),
         json!({
@@ -34,8 +58,31 @@ pub fn reply_schema() -> Value {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "SynthReply",
         "$defs": defs,
-        "oneOf": [{"$ref": "#/$defs/IrGoal"}, {"$ref": "#/$defs/Question"}],
+        "oneOf": [{"$ref": "#/$defs/Body"}, {"$ref": "#/$defs/Question"}],
     })
+}
+
+/// Whether the `Node` variant `variant` is the `call` node.
+fn is_call(variant: &Value) -> bool {
+    variant.pointer("/properties/kind/const").and_then(Value::as_str) == Some("call")
+}
+
+/// The names of the `$defs` that `schema` refers to.
+fn refs(schema: &Value, into: &mut Vec<String>) {
+    match schema {
+        Value::Object(map) => {
+            if let Some(name) = map
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(|r| r.strip_prefix("#/$defs/"))
+            {
+                into.push(name.to_owned());
+            }
+            map.values().for_each(|inner| refs(inner, into));
+        }
+        Value::Array(items) => items.iter().for_each(|inner| refs(inner, into)),
+        _ => {}
+    }
 }
 
 /// One line per IR node kind and one for the question object: the kind, its fields and what it means (R-SYNTH-35).
@@ -54,6 +101,7 @@ fn summary() -> Vec<String> {
         .unwrap_or_default();
     let mut lines: Vec<String> = variants
         .iter()
+        .filter(|variant| !is_call(variant))
         .filter_map(|variant| {
             let kind = variant.pointer("/properties/kind/const")?.as_str()?;
             let fields: Vec<&str> = variant

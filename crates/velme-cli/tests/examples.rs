@@ -1,6 +1,6 @@
 //! Every example builds, and rebuilds for free, on the `replay` provider (`compiler/22` R-SYNTH-43, D-94, D-99;
 //! AC-RDM-01, AC-RDM-08): the replay fixtures under `tests/fixtures/synth` are recorded, unattended, from the test
-//! `external` backend, an HTTP service, answering with the hand-written IR of `tests/fixtures/run`. A fixture that is out of date fails
+//! `external` backend, an HTTP service, answering with the bodies of the hand-written IR of `tests/fixtures/run`. A fixture that is out of date fails
 //! here; `VELME_BLESS_FIXTURES=1` rewrites them, and the diff is then reviewed.
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
@@ -113,16 +113,21 @@ fn project(example: &str, name: &str) -> (PathBuf, String) {
     (dir, file)
 }
 
-/// The goals' replies as the test backend reads them: `<Goal>.json` in one directory.
+/// The goals' replies as the test backend reads them: `<Goal>.json` in one directory, each the `body` of the hand-written
+/// IR, which the backend sends as `{"body": …}` (D-103).
 fn replies(ir: &str, name: &str) -> PathBuf {
     let dir = scratch(&format!("{name}-replies"));
     let source = repo(ir);
+    let write = |file: &std::ffi::OsStr, from: &Path| {
+        let goal: serde_json::Value = serde_json::from_str(&fs::read_to_string(from).expect("IR")).expect("IR JSON");
+        fs::write(dir.join(file), goal["body"].to_string()).expect("body written");
+    };
     if source.is_dir() {
         for entry in fs::read_dir(&source).expect("IR directory").filter_map(Result::ok) {
-            fs::copy(entry.path(), dir.join(entry.file_name())).expect("IR copied");
+            write(&entry.file_name(), &entry.path());
         }
     } else {
-        fs::copy(&source, dir.join("Add.json")).expect("IR copied");
+        write("Add.json".as_ref(), &source);
     }
     dir
 }

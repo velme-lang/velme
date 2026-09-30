@@ -4,7 +4,7 @@
 //! provider never reaches it (R-SYNTH-22).
 
 use velme_diagnostics::{Code, Diagnostic};
-use velme_ir::Invalid;
+use velme_ir::{Invalid, ParseError};
 
 use crate::request::{AttemptDiagnostic, AttemptFeedback};
 
@@ -39,9 +39,9 @@ pub struct Rejection {
 }
 
 impl Rejection {
-    /// A reply that isn't an IR goal or a question, or no reply at all: `VL0401` in Velme's own wording (R-SYNTH-10).
+    /// A reply that isn't a goal body or a question, or no reply at all: `VL0401` in Velme's own wording (R-SYNTH-10).
     pub(crate) fn not_a_reply(reply: &str, why: &str) -> Rejection {
-        let message = format!("The reply wasn't an IR goal or a question: {why}.");
+        let message = format!("The reply wasn't a goal body or a question: {why}.");
         Rejection {
             cause: Cause {
                 code: Code::IRSchemaInvalid,
@@ -56,6 +56,41 @@ impl Rejection {
                 message,
                 path: None,
                 detail: None,
+            }],
+        }
+    }
+
+    /// A reply that is JSON but breaks a rule of the JSON itself (`ParseError`: a repeated or reserved key, or nesting too
+    /// deep): the validator's `schema-1`, at the reply's own JSON path, which is under `/body` (R-SYNTH-10, D-103).
+    pub(crate) fn unparsable(reply: &str, error: &ParseError) -> Rejection {
+        let (pointer, detail) = match error {
+            ParseError::DuplicateKey { pointer } => (pointer.clone(), "this key appears twice".to_owned()),
+            ParseError::ReservedKey { pointer } => (pointer.clone(), "this key is reserved".to_owned()),
+            ParseError::TooDeep { pointer, limit } => (pointer.clone(), format!("it nests deeper than {limit} levels")),
+            ParseError::Json(_) => return Rejection::not_a_reply(reply, "wasn't JSON"),
+        };
+        let code = Code::IRSchemaInvalid;
+        let shown = safe_path(&pointer);
+        let at = if shown.is_empty() {
+            String::new()
+        } else {
+            format!(" at {shown}")
+        };
+        let line = format!("the reply {}{at}", rule_words("schema-1"));
+        Rejection {
+            cause: Cause {
+                code,
+                name: "schema/schema-1".to_owned(),
+            },
+            verbose: format!("{}: {line} (schema-1)", code.as_str()),
+            input: String::new(),
+            line,
+            reply: reply.to_owned(),
+            diagnostics: vec![AttemptDiagnostic {
+                code: code.as_str().to_owned(),
+                message: "The generated program wasn't in the right shape.".to_owned(),
+                path: Some(pointer),
+                detail: Some(detail),
             }],
         }
     }
@@ -111,9 +146,21 @@ impl Rejection {
             Code::CheckFailed | Code::VerificationFailed => {
                 "say in the plan what happens for that input, or narrow the check with `if … then …`"
             }
-            Code::IRSchemaInvalid | Code::IRInvalid => {
-                "the plan may need more than the listed builtins can do: simplify it or split the goal"
-            }
+            Code::IRSchemaInvalid | Code::IRInvalid => match self.cause.name.split_once('/') {
+                // A rule of the body's own content (`compiler/21` §6); a reply that wasn't a body at all has no rule.
+                Some((_, "names-11" | "types-6" | "types-7" | "types-25" | "types-26")) => {
+                    "the plan may need more than the listed builtins can do: simplify it or split the goal"
+                }
+                Some(("resources", _) | ("structure", "structure-1" | "structure-3")) => {
+                    "the plan may be too big for one goal: simplify it or split the goal"
+                }
+                Some(("schema", _)) | None => {
+                    "the AI helper's reply wasn't in a form Velme can use: build again, or try another model"
+                }
+                Some(_) => {
+                    "the AI helper's code didn't fit the goal: build again, or add an example that shows the result"
+                }
+            },
             Code::CapabilityDenied => "goals can't use it: take the need out of the plan",
             Code::ArithmeticError => "say in the plan what should happen in that case",
             _ => "make the plan do less work per input, or split the goal",
@@ -131,9 +178,10 @@ fn rule_words(rule: &str) -> &'static str {
         "structure-4" => "is written for another version of the IR",
         "structure-5" => "uses one name twice in the same place",
         "names-1" => "is for a different goal than the one asked for",
-        "names-2" | "names-3" | "names-5" | "names-6" | "types-3" => {
+        "names-2" | "names-3" | "names-5" | "types-3" => {
             "describes a record type the goal doesn't have, or describes one wrongly"
         }
+        "names-6" => "uses a record type the goal doesn't have",
         "names-4" => "calls a goal the program doesn't have",
         "names-7" | "names-8" => "uses a name that isn't defined there",
         "names-9" | "names-10" => "uses a field its record doesn't have",
@@ -161,9 +209,23 @@ fn rule_words(rule: &str) -> &'static str {
 /// A validator diagnostic as the next request carries it, in full: its code and message, the JSON path of its note, and
 /// what the note says after the path.
 fn feedback(diagnostic: &Diagnostic) -> AttemptDiagnostic {
+    // serde's own errors end with a line and column of the document Velme assembled, which mean nothing in the reply.
+    let without_position = |note: &str| -> String {
+        match note.rsplit_once(" at line ") {
+            Some((head, tail))
+                if tail
+                    .split_once(" column ")
+                    .is_some_and(|(l, c)| l.bytes().chain(c.bytes()).all(|b| b.is_ascii_digit())) =>
+            {
+                head.to_owned()
+            }
+            _ => note.to_owned(),
+        }
+    };
     let mut path = None;
     let mut detail = Vec::new();
-    for note in &diagnostic.notes {
+    for note in diagnostic.notes.iter().map(|n| without_position(n)) {
+        let note = &note;
         match note.strip_prefix("at `").and_then(|rest| rest.split_once('`')) {
             Some((at, rest)) if path.is_none() => {
                 path = Some(at.to_owned());
@@ -172,7 +234,7 @@ fn feedback(diagnostic: &Diagnostic) -> AttemptDiagnostic {
                     detail.push(rest.to_owned());
                 }
             }
-            _ => detail.push(note.clone()),
+            _ => detail.push(note.to_owned()),
         }
     }
     AttemptDiagnostic {

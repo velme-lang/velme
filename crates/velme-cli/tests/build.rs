@@ -9,8 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::{Value, json};
-use velme_builtins::BUILTINS_VERSION;
-use velme_ir::IR_VERSION;
 
 const SOURCE: &str = "language: velme/0.1
 
@@ -44,21 +42,20 @@ fn project(name: &str) -> PathBuf {
     dir
 }
 
-fn ir(goal: &str, op: &str, k: i64) -> String {
+/// A reply holding the body `n <op> k` (D-103).
+fn reply(op: &str, k: i64) -> String {
     let number = json!({"t": "Number"});
-    json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": {},
-           "inputs": [["n", number]], "output": number,
-           "body": {"kind": "binary", "op": op, "left": {"kind": "input", "name": "n"},
+    json!({"body": {"kind": "binary", "op": op, "left": {"kind": "input", "name": "n"},
                     "right": {"kind": "literal", "type": number, "value": k}}})
     .to_string()
 }
 
 fn double() -> String {
-    ir("Double", "mul", 2)
+    reply("mul", 2)
 }
 
 fn add_one() -> String {
-    ir("AddOne", "add", 1)
+    reply("add", 1)
 }
 
 /// Writes a script of replies, as JSON strings (`tooling/40` §5.2).

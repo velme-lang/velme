@@ -143,13 +143,15 @@ fn the_reply_schema_accepts_an_ir_goal_or_a_question() {
     assert_eq!(schema["$defs"]["Question"]["required"], json!(["question"]));
 }
 
-/// The schema summary has one line per IR node kind, plus the question object (R-SYNTH-35).
+/// The schema summary has one line per IR node kind a body may hold, which is every kind but `call`, plus the question
+/// object (R-SYNTH-35, D-103).
 #[test]
 fn the_schema_summary_has_a_line_per_node_kind() {
     let lines = schema_summary();
     let ir = velme_ir::schema();
     let kinds = ir["$defs"]["Node"]["oneOf"].as_array().expect("Node is a oneOf").len();
-    assert_eq!(lines.len(), kinds + 1);
+    assert_eq!(lines.len(), kinds - 1 + 1);
+    assert!(!lines.iter().any(|l| l.starts_with("- call ")));
     assert!(lines.iter().any(|l| l.starts_with("- literal {")));
     assert!(lines.last().is_some_and(|l| l.starts_with("- question")));
     // Nothing in the golden corpus is needed to read them.

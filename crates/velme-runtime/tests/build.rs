@@ -20,7 +20,7 @@ use velme_synth::{
     SynthProvider,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
-use velme_test_support::{PanicProvider, RecordingSleeper, install, mock_anthropic, program};
+use velme_test_support::{PanicProvider, RecordingSleeper, body_reply, install, mock_anthropic, program};
 
 const FILE: &str = "game.velme";
 
@@ -120,7 +120,7 @@ fn sum_alone() -> String {
 }
 
 fn replies(list: &[String]) -> Scripted {
-    Scripted::replies(list.iter().cloned())
+    Scripted::replies(list.iter().map(|ir| body_reply(ir)))
 }
 
 struct Built {
@@ -347,7 +347,7 @@ fn ac_synth_22_a_question_leaves_other_goals_building() {
     let dir = project("question");
     let script = Scripted::new([
         Step::Reply(r#"{"question": "Round up?"}"#.to_owned()),
-        Step::Reply(add_one()),
+        Step::Reply(body_reply(&add_one())),
     ]);
     let built = build_with(&dir, &source("Double it."), Some(&script), SynthOptions::default());
     assert_eq!(status(&built, "Double"), Status::Failed);
@@ -365,7 +365,7 @@ fn ac_synth_22_a_question_leaves_other_goals_building() {
 #[test]
 fn ac_synth_33_a_failed_child_blocks_its_ancestors() {
     let dir = project("blocked");
-    let script = Scripted::new([Step::Reply("not json".to_owned()), Step::Reply(add_one())]);
+    let script = Scripted::new([Step::Reply("not json".to_owned()), Step::Reply(body_reply(&add_one()))]);
     let options = SynthOptions {
         max_retries: 0,
         ..SynthOptions::default()
@@ -468,10 +468,12 @@ fn files_under(dir: &Path, found: &mut Vec<(PathBuf, String)>) {
 fn ac_synth_09_a_recorded_anthropic_build_leaks_no_key() {
     const SENTINEL: &str = "sk-ant-SENTINEL-KEY-0123456789";
     let dir = project("sentinel");
-    let server = MockServer::start(
-        [double(), add_one(), sum()]
-            .map(|reply| MockResponse::tool_call("write_goal", &serde_json::from_str::<Value>(&reply).expect("JSON"))),
-    );
+    let server = MockServer::start([double(), add_one(), sum()].map(|reply| {
+        MockResponse::tool_call(
+            "write_goal",
+            &serde_json::from_str::<Value>(&body_reply(&reply)).expect("JSON"),
+        )
+    }));
     let sleeper = RecordingSleeper::default();
     let anthropic = mock_anthropic(AnthropicConfig::new("claude-test"), &server, SENTINEL, &sleeper);
     let recorder = Recorder::new(Box::new(anthropic), dir.join("tests/fixtures/synth"));
@@ -529,8 +531,8 @@ fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
         ..SynthOptions::default()
     };
     let short =
-        |reply: String| velme_synth::compress(&serde_json::from_str::<Value>(&reply).expect("JSON")).to_string();
-    let scripted = replies(&[short(double()), short(add_one()), short(sum())]);
+        |ir: String| velme_synth::compress(&serde_json::from_str::<Value>(&body_reply(&ir)).expect("JSON")).to_string();
+    let scripted = Scripted::replies([short(double()), short(add_one()), short(sum())]);
     let recorder = Recorder::new(Box::new(scripted), &fixtures).with_options(&compact);
     let first = build_with(&recorded, &text, Some(&recorder), compact);
     assert_eq!(first.report.summary.calls, 3, "{:?}", first.report.goals);
@@ -664,7 +666,10 @@ fn ac_art_10_a_failed_rebuild_drops_the_parent_entry_and_run_asks_for_a_build() 
         Some(&full_script()),
         SynthOptions::default(),
     );
-    let script = Scripted::new([Step::Reply(double_off_at_three()), Step::Reply("nope".to_owned())]);
+    let script = Scripted::new([
+        Step::Reply(body_reply(&double_off_at_three())),
+        Step::Reply("nope".to_owned()),
+    ]);
     let options = SynthOptions {
         max_retries: 0,
         ..SynthOptions::default()
@@ -739,7 +744,10 @@ fn ac_art_10_only_the_rejected_goal_loses_its_entry_and_run_names_it() {
     );
     build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
     let text = text.replace("Double it.", "Twice.");
-    let script = Scripted::new([Step::Reply(double_off_at_three()), Step::Reply("nope".to_owned())]);
+    let script = Scripted::new([
+        Step::Reply(body_reply(&double_off_at_three())),
+        Step::Reply("nope".to_owned()),
+    ]);
     let options = SynthOptions {
         max_retries: 0,
         ..SynthOptions::default()
@@ -809,7 +817,7 @@ fn ac_synth_39_the_second_goal_gets_vl0404_without_a_request() {
     let dir = project("unavailable");
     let script = Scripted::new([
         Step::Error(ProviderError::Unavailable("down".to_owned())),
-        Step::Reply(add_one()),
+        Step::Reply(body_reply(&add_one())),
     ]);
     let built = build_with(&dir, &source("Double it."), Some(&script), SynthOptions::default());
     for goal in ["Double", "AddOne"] {

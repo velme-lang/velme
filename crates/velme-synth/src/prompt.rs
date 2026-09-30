@@ -15,8 +15,8 @@ use crate::schema::{reply_schema, schema_summary};
 
 /// A template's id: the task kind and the template's own version. Editing a template's text keeps its id and changes
 /// its bytes, which `prompt_version` hashes.
-const LEAF_ID: &str = "leaf-1";
-const COMPOSITE_ID: &str = "composite-1";
+const LEAF_ID: &str = "leaf-2";
+const COMPOSITE_ID: &str = "composite-2";
 
 const LEAF: &str = include_str!("../prompts/leaf.txt");
 const COMPOSITE: &str = include_str!("../prompts/composite.txt");
@@ -88,7 +88,7 @@ fn compute_version() -> String {
         "alias_table": compact::table(),
     });
     let hash = Fingerprint::of(&doc).map(|f| f.hex()).unwrap_or_default();
-    format!("prompt-1:{hash}")
+    format!("prompt-2:{hash}")
 }
 
 /// `request` rendered through its task kind's template with the default options.

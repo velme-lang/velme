@@ -6,11 +6,11 @@ use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use velme_builtins::{BUILTINS_VERSION, CATALOG, Shape, limits as caps};
 use velme_check::{GoalChecks, lower_check};
 use velme_diagnostics::{Diagnostic, Span};
-use velme_ir::{CheckScope, Fingerprint, IR_VERSION, Type, encode_value, ir_type};
+use velme_ir::{CheckScope, Fingerprint, IR_VERSION, Type, encode_value, ir_type, to_canonical_string};
 use velme_sema::hir::{self, GoalId, GoalKind, Program, Type as HirType, TypeId};
 
 use crate::schema::reply_schema;
@@ -186,7 +186,7 @@ pub struct SynthRequest {
     pub builtins: Vec<BuiltinSig>,
     /// Earlier attempts at this goal, oldest first.
     pub attempts: Vec<AttemptFeedback>,
-    /// The JSON Schema the reply must satisfy: an IR goal or a question (R-SYNTH-10).
+    /// The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103).
     pub output_schema: Value,
 }
 
@@ -198,6 +198,40 @@ pub fn request_schema() -> Value {
 }
 
 impl SynthRequest {
+    /// The IR goal a reply's `body` completes, as canonical JSON for the validator (D-103): the versions, the goal's name,
+    /// its `types`, `inputs` and `output` all come from the request, never from the reply. `calls` is left out: the
+    /// validator joins the compiler's in (`compiler/21` R-IR-02).
+    pub fn assemble(&self, body: &Value) -> Result<String, Diagnostic> {
+        let fail = |_| Diagnostic::internal_error();
+        let field = |param: &Param| serde_json::to_value(&param.ty).map(|ty| json!([param.name, ty]));
+        let types = self
+            .types
+            .iter()
+            .map(|record| {
+                let fields = record.fields.iter().map(field).collect::<Result<Vec<_>, _>>()?;
+                Ok((record.name.clone(), json!({ "fields": fields })))
+            })
+            .collect::<Result<serde_json::Map<String, Value>, serde_json::Error>>()
+            .map_err(fail)?;
+        let inputs = self
+            .signature
+            .params
+            .iter()
+            .map(field)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(fail)?;
+        let goal = json!({
+            "ir_version": self.ir_version,
+            "builtins_version": self.builtins_version,
+            "goal": self.goal,
+            "types": types,
+            "inputs": inputs,
+            "output": serde_json::to_value(&self.signature.output).map_err(fail)?,
+            "body": body,
+        });
+        to_canonical_string(&goal).map_err(|_| Diagnostic::internal_error())
+    }
+
     /// The BLAKE3 of the request's canonical JSON (`compiler/21` R-IR-21), written `b3:<hex>`: what a replay fixture
     /// keeps of an exchange instead of the request (R-SYNTH-43).
     pub fn hash(&self) -> Result<Fingerprint, Diagnostic> {

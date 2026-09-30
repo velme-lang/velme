@@ -5,9 +5,8 @@
 use std::future::Future;
 
 use serde_json::{Value, json};
-use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::Code;
-use velme_ir::{Fingerprint, IR_VERSION, contract_key};
+use velme_ir::{Fingerprint, contract_key};
 use velme_synth::{
     AttemptDiagnostic, AttemptFeedback, Outcome, ProviderError, ReplyFormat, RetryHistory, Scripted, Session, Sleeper,
     Step, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, compress, render_with, synthesize,
@@ -46,10 +45,9 @@ fn literal(n: i64) -> Value {
     json!({"kind": "literal", "type": number(), "value": n})
 }
 
-fn ir(body: &Value) -> String {
-    json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Double", "types": {},
-           "inputs": [["n", number()]], "output": number(), "body": body})
-    .to_string()
+/// A reply holding `body` (D-103).
+fn reply(body: &Value) -> String {
+    json!({ "body": body }).to_string()
 }
 
 fn double() -> Value {
@@ -58,24 +56,24 @@ fn double() -> Value {
 
 /// `n * 2`, except that it is 3 at `n` (which the check `result == n * 2` catches, the examples not).
 fn wrong_at(n: i64) -> String {
-    ir(&json!({"kind": "if",
+    reply(&json!({"kind": "if",
         "cond": {"kind": "binary", "op": "eq", "left": input(), "right": literal(n)},
         "then": literal(3), "else": double()}))
 }
 
 /// Fails the example `Double(2)` only.
 fn wrong_example_two() -> String {
-    ir(&literal(5))
+    reply(&literal(5))
 }
 
 /// Fails the example `Double(0)`, and passes `Double(2)`.
 fn wrong_example_zero() -> String {
-    ir(&json!({"kind": "binary", "op": "add", "left": input(), "right": literal(2)}))
+    reply(&json!({"kind": "binary", "op": "add", "left": input(), "right": literal(2)}))
 }
 
 /// A `call` node, which a candidate may not have (INV-6); the goal it names is the provider's text.
 fn call_to(goal: &str) -> String {
-    ir(&json!({"kind": "call", "binding": "x", "goal": goal, "goal_signature": "b3:00", "args": []}))
+    reply(&json!({"kind": "call", "binding": "x", "goal": goal, "goal_signature": "b3:00", "args": []}))
 }
 
 fn call_node() -> String {
@@ -83,7 +81,7 @@ fn call_node() -> String {
 }
 
 fn good() -> String {
-    ir(&double())
+    reply(&double())
 }
 
 struct Run {
@@ -145,6 +143,144 @@ fn ac_synth_04_a_call_node_is_refused_and_the_retry_cites_vl0402() {
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[1].attempts[0].diagnostics[0].code, "VL0402");
     assert_eq!(requests[1].attempts[0].reply, call_node());
+}
+
+/// Only `body` is read from a reply: the goal's name, versions, `inputs`, `output` and `types` come from the request, so
+/// a reply that spells any of them wrongly builds the same IR as one that leaves them out (AC-SYNTH-40, D-103).
+#[test]
+fn ac_synth_40_only_the_body_is_read_from_a_reply() {
+    let noisy = json!({
+        "body": double(), "goal": "Other", "ir_version": "9.9", "builtins_version": "9.9",
+        "inputs": [["a", {"t": "Record", "name": "Number"}]], "output": {"t": "Text"},
+        "types": {"Ghost": {"fields": []}},
+    })
+    .to_string();
+    let plain = run(SynthOptions::default(), vec![good()]);
+    let extra = run(SynthOptions::default(), vec![noisy]);
+    let (Outcome::Built(a), Outcome::Built(b)) = (&plain.outcome, &extra.outcome) else {
+        panic!("both build");
+    };
+    assert_eq!(a.ir, b.ir);
+    assert_eq!(a.ir.goal().goal, "Double");
+    assert_eq!(a.ir.goal().inputs.len(), 1);
+    assert!(a.ir.goal().types.is_empty());
+    // The same holds in the compact format: the body member is expanded alone, whatever else the reply holds.
+    let options = SynthOptions {
+        reply_format: ReplyFormat::Compact,
+        ..SynthOptions::default()
+    };
+    let mut compact = compress(&serde_json::from_str::<Value>(&good()).expect("json"));
+    compact["goal"] = json!("Other");
+    compact["extra"] = json!({"not": "an alias"});
+    let packed = run(options, vec![compact.to_string()]);
+    let Outcome::Built(c) = &packed.outcome else {
+        panic!("it builds")
+    };
+    assert_eq!(a.ir, c.ir);
+}
+
+/// A reply that is not JSON or holds no `body` is a failed attempt in Velme's words, and the help of `VL0403` follows the
+/// kind of rule that failed: the builtins hint only where a built-in is at fault (AC-SYNTH-41, D-103).
+#[test]
+fn ac_synth_41_the_help_follows_the_kind_of_failure() {
+    const FORM: &str = "the AI helper's reply wasn't in a form Velme can use: build again, or try another model";
+    const FIT: &str = "the AI helper's code didn't fit the goal: build again, or add an example that shows the result";
+    const BIG: &str = "the plan may be too big for one goal: simplify it or split the goal";
+    const BUILTINS: &str = "the plan may need more than the listed builtins can do: simplify it or split the goal";
+    let once = || SynthOptions {
+        max_retries: 0,
+        ..SynthOptions::default()
+    };
+    // The message, the first attempt's line and the help of the one attempt that `reply` is.
+    let outcome = |reply: String| {
+        let run = run(once(), vec![reply]);
+        let d = failure(&run);
+        let Outcome::Failed(failed) = &run.outcome else {
+            panic!("it fails")
+        };
+        (
+            d.message.clone(),
+            failed.attempts[0].clone(),
+            d.help.clone().expect("a help line"),
+        )
+    };
+    for (reply, words) in [
+        ("not json".to_owned(), "the reply wasn't JSON"),
+        (json!({"goal": "Double"}).to_string(), "the reply had no `body`"),
+    ] {
+        let (message, attempt, help) = outcome(reply);
+        assert!(message.contains(words), "{message}");
+        assert!(attempt.starts_with("attempt 1: VL0401: "), "{attempt}");
+        assert_eq!(help, FORM);
+    }
+    // A body that is not an expression fails the schema; one whose result is the wrong type fails a type rule.
+    let (_, attempt, help) = outcome(reply(&json!(5)));
+    assert!(attempt.starts_with("attempt 1: VL0401: "), "{attempt}");
+    assert_eq!(help, FORM);
+    let (_, _, help) = outcome(reply(&literal_text()));
+    assert_eq!(help, FIT);
+    // A body over the size limit is about size.
+    let huge = json!({"kind": "literal", "type": {"t": "Text"}, "value": "x".repeat(1_100_000)});
+    let (_, attempt, help) = outcome(reply(&huge));
+    assert!(attempt.contains("structure-1"), "{attempt}");
+    assert_eq!(help, BIG);
+    // A built-in that isn't there is the one case that is about what the builtins can do.
+    let unknown = reply(&json!({"kind": "builtin", "name": "read_file", "args": [input()]}));
+    let (message, _, help) = outcome(unknown);
+    assert!(message.contains("uses a built-in that doesn't exist"), "{message}");
+    assert_eq!(help, BUILTINS);
+}
+
+/// What a provider chose inside `body` never becomes a bug of ours: a number canonical JSON can't hold, a repeated key
+/// and a reply that is both a body and a question are each a failed attempt with `VL0401`, worded by Velme
+/// (AC-SYNTH-41, R-SYNTH-10, D-103).
+#[test]
+fn ac_synth_41_a_reply_body_that_cannot_be_read_is_a_failed_attempt() {
+    let once = || SynthOptions {
+        max_retries: 0,
+        ..SynthOptions::default()
+    };
+    let failed = |reply: &str| {
+        let run = self::run(once(), vec![reply.to_owned()]);
+        let Outcome::Failed(failure) = &run.outcome else {
+            panic!("it fails")
+        };
+        assert_eq!(
+            failure.diagnostic.code,
+            Code::SynthesisFailed,
+            "{}",
+            failure.diagnostic.message
+        );
+        (failure.diagnostic.message.clone(), failure.attempts[0].clone())
+    };
+    let (message, attempt) = failed(r#"{"body": {"kind": "literal", "type": {"t": "Number"}, "value": 1e99999}}"#);
+    assert!(message.contains("holds a number Velme can't read"), "{message}");
+    assert!(attempt.starts_with("attempt 1: VL0401: "), "{attempt}");
+    // A repeated key is `schema-1` at its path under `/body`, not "wasn't JSON".
+    let (message, attempt) = failed(r#"{"body": {"kind": "input", "name": "n", "name": "m"}}"#);
+    assert!(
+        message.contains("isn't valid JSON of the shape the IR needs at /body/name"),
+        "{message}"
+    );
+    assert!(attempt.contains("(schema-1)"), "{attempt}");
+    let (message, _) = failed(r#"{"body": {"kind": "input", "name": "n"}, "question": "Which way?"}"#);
+    assert!(message.contains("held both a body and a question"), "{message}");
+    // What the next request carries shows the repeated key's path and no position in a document the model never wrote.
+    let run = self::run(
+        SynthOptions {
+            max_retries: 1,
+            stop_on_repeat: false,
+            ..SynthOptions::default()
+        },
+        vec![r#"{"body": {"kind": "input"}}"#.to_owned(), good()],
+    );
+    let sent = &run.provider.requests()[1].attempts[0].diagnostics[0];
+    let text = format!("{sent:?}");
+    assert!(!text.contains("column"), "{text}");
+}
+
+fn literal_text() -> Value {
+    json!({"kind": "literal", "type": {"t": "Text"}, "value": "x"})
 }
 
 /// Two invalid replies with different causes, then a valid one: built after two retries, each retry carrying what was
@@ -330,7 +466,7 @@ fn ac_synth_26_a_compact_reply_expands_to_canonical_ir() {
             max_retries: 0,
             ..options
         },
-        vec![r#"{"zz": 1}"#.to_owned()],
+        vec![compress(&json!({"body": {"zz": 1}})).to_string()],
     );
     let d = failure(&bad);
     assert_eq!(d.code, Code::SynthesisFailed);
@@ -387,7 +523,7 @@ fn ac_synth_29_examples_left_out_of_the_prompt_still_run() {
         max_prompt_examples: 2,
         ..SynthOptions::default()
     };
-    let failing_third = ir(&json!({"kind": "if",
+    let failing_third = reply(&json!({"kind": "if",
         "cond": {"kind": "binary", "op": "eq", "left": input(), "right": literal(3)},
         "then": literal(0), "else": double()}));
     let run = run(options.clone(), vec![failing_third, good()]);
@@ -688,11 +824,7 @@ fn r_synth_31_a_validator_cause_is_its_rule_not_its_message() {
         vec!["{\"SENTINEL\": 1}".to_owned()],
     );
     let d = failure(&bad);
-    assert!(
-        d.message.contains("isn't valid JSON of the shape the IR needs"),
-        "{}",
-        d.message
-    );
+    assert!(d.message.contains("the reply had no `body`"), "{}", d.message);
     assert!(!format!("{d:?}").contains("SENTINEL"));
 }
 

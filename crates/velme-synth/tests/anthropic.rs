@@ -45,7 +45,7 @@ fn limits() -> SynthLimits {
 }
 
 fn goal_reply() -> Value {
-    json!({"goal": "Rank", "note": 1.5})
+    json!({"body": {"kind": "input", "name": "n"}, "note": 1.5})
 }
 
 /// A provider on a mock that answers with `responses`, and the mock and the sleeper to inspect afterwards.
@@ -73,7 +73,7 @@ fn a_request_forces_one_of_two_tools_and_the_tool_input_is_the_reply() {
     );
     let (request, _) = requests();
     let reply = complete(&provider, &request).expect("a reply");
-    assert_eq!(reply.reply_json, r#"{"goal":"Rank","note":1.5}"#);
+    assert_eq!(reply.reply_json, r#"{"body":{"kind":"input","name":"n"},"note":1.5}"#);
     assert_eq!(
         (
             reply.usage.input_tokens,
@@ -103,7 +103,11 @@ fn a_request_forces_one_of_two_tools_and_the_tool_input_is_the_reply() {
         goal["$defs"].get("Node").is_some(),
         "the IR definitions are beside the goal"
     );
-    assert!(goal["$defs"].get("IrGoal").is_none() && goal["$defs"].get("Question").is_none());
+    assert!(goal["$defs"].get("Body").is_none() && goal["$defs"].get("Question").is_none());
+    // The tool takes the body alone: no envelope, and no definition only the envelope needs (D-103).
+    assert_eq!(goal["required"], json!(["body"]));
+    assert_eq!(goal["properties"]["body"], json!({"$ref": "#/$defs/Node"}));
+    assert!(goal["$defs"].get("RecordType").is_none() && goal["$defs"].get("CallNode").is_none());
     assert_eq!(tools[1]["input_schema"]["required"], json!(["question"]));
     assert_eq!(body["messages"].as_array().expect("messages").len(), 1);
 }

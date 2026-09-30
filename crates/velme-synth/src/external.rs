@@ -554,17 +554,17 @@ impl SynthProvider for ExternalProvider {
 }
 
 impl External {
-    /// The reply document of a `synthesize` request: exactly one of `ir`, `question`, `pending` or `error` (R-SYNTH-28),
+    /// The reply document of a `synthesize` request: exactly one of `body`, `question`, `pending` or `error` (R-SYNTH-28),
     /// as the reply text the retry loop reads (R-SYNTH-10). Any other key is ignored (R-SYNTH-26). The token is taken out
-    /// of message texts; an `ir` that holds it is refused, never rewritten (D-102).
+    /// of message texts; a `body` that holds it is refused, never rewritten (D-102, D-103).
     fn read_reply(&self, mut doc: Map<String, Value>, tail: &str) -> Result<String, ProviderError> {
         let unknown = || {
             failed(
-                "its reply wasn't exactly one of `ir`, `question`, `pending` or `error`",
+                "its reply wasn't exactly one of `body`, `question`, `pending` or `error`",
                 tail,
             )
         };
-        let kinds: Vec<&str> = ["ir", "question", "pending", "error"]
+        let kinds: Vec<&str> = ["body", "question", "pending", "error"]
             .into_iter()
             .filter(|kind| doc.contains_key(*kind))
             .collect();
@@ -578,8 +578,8 @@ impl External {
                 .ok_or_else(|| failed("a reply text wasn't a string", tail))
         };
         match (kind, value) {
-            ("ir", ir @ Value::Object(_)) => {
-                let canonical = to_canonical_string(&ir).map_err(|_| unknown())?;
+            ("body", body @ Value::Object(_)) => {
+                let canonical = to_canonical_string(&serde_json::json!({ "body": body })).map_err(|_| unknown())?;
                 if self.holds_token(&canonical) {
                     return Err(failed("the reply contains your token", tail));
                 }
