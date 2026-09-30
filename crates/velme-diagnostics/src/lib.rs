@@ -164,7 +164,11 @@ pub struct Diagnostic {
     /// Extra detail; jargon goes here, not in `message` (R-CMP-14).
     pub notes: Vec<String>,
     /// A suggested fix.
-    pub help: Option<String>,
+    pub help: Option<Box<str>>,
+    /// The file this diagnostic is about when it has no place in the source file being compiled, such as `velme.toml` or
+    /// `velme.lock` (D-111); `None` when it is about that source file. Boxed so a `Diagnostic` stays small enough to return
+    /// in a `Result`.
+    pub file: Option<Box<String>>,
 }
 
 impl Diagnostic {
@@ -178,6 +182,7 @@ impl Diagnostic {
             labels: Vec::new(),
             notes: Vec::new(),
             help: None,
+            file: None,
         }
     }
 
@@ -211,7 +216,13 @@ impl Diagnostic {
 
     /// Sets the help line.
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
+        self.help = Some(help.into().into_boxed_str());
+        self
+    }
+
+    /// Names the file this diagnostic is about, when that is not the source file (D-111).
+    pub fn with_file(mut self, file: impl Into<String>) -> Self {
+        self.file = Some(Box::new(file.into()));
         self
     }
 

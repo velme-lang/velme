@@ -254,7 +254,8 @@ impl LockError {
 
     /// The failure, worded as in `reference/90`. It belongs to the project, not to a place in the source (D-72).
     pub fn diagnostic(&self) -> Diagnostic {
-        let diag = Diagnostic::new(self.code(), Span::default(), format!("I couldn't open `{LOCK_FILE}`."));
+        let diag = Diagnostic::new(self.code(), Span::default(), format!("I couldn't open `{LOCK_FILE}`."))
+            .with_file(LOCK_FILE);
         match self {
             Self::Missing => diag
                 .with_note("there is no lock in the project, so nothing says which artifacts are in use")

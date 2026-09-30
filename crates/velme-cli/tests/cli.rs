@@ -701,6 +701,18 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
     fs::create_dir_all(dir.join(".velme/tmp")).expect("tmp");
     fs::write(dir.join(".velme/tmp/left-over"), b"x").expect("a temporary file");
     fs::create_dir_all(dir.join("sub/deeper")).expect("subdirectory");
+    // Files touched in the last 10 minutes are a running build's, and stay (D-111).
+    let recent_stray = format!("b3-{}.json", "1".repeat(64));
+    fs::write(store.join(&recent_stray), b"{}").expect("a recent stray artifact");
+    fs::write(dir.join(".velme/tmp/recent"), b"x").expect("a recent temporary file");
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    for path in [store.join(&stray), dir.join(".velme/tmp/left-over")] {
+        fs::File::options()
+            .write(true)
+            .open(path)
+            .and_then(|f| f.set_modified(old))
+            .expect("an old file");
+    }
     let before = tree(&dir);
 
     let run = velme(&dir.join("sub/deeper"), &["gc"]);
@@ -714,7 +726,7 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
     assert_eq!(
         tree(&dir),
         expected,
-        "exactly the stray artifact and the temporary file"
+        "exactly the old stray artifact and the old temporary file"
     );
     for hex in &referenced {
         assert!(store.join(format!("b3-{hex}.json")).is_file());
@@ -723,6 +735,7 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
     let run = velme(&dir.join("sub"), &["gc", "--json"]);
     let envelope = parsed(&run);
     assert_eq!(envelope["summary"]["removed"], 0);
+    assert!(store.join(&recent_stray).is_file() && dir.join(".velme/tmp/recent").is_file());
     let run = velme(&dir.join("sub"), &["gc"]);
     assert_eq!(run.stdout, "Removed 0 unused files.\n");
 
@@ -752,7 +765,16 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
         (run.stdout.as_str(), run.code),
         ("There is no WASM module cache to remove.\n", 0)
     );
+    let envelope = parsed(&velme(&empty, &["cache", "clean", "--json"]));
+    assert_eq!(
+        (envelope["status"].as_str(), envelope["summary"]["removed"].as_u64()),
+        (Some("ok"), Some(0))
+    );
     let cache = empty.join("no-home/cache/velme/wasm");
+    fs::create_dir_all(&cache).expect("cache");
+    fs::write(cache.join("m.cwasm"), b"x").expect("module");
+    let envelope = parsed(&velme(&empty, &["cache", "clean", "--json"]));
+    assert_eq!(envelope["summary"]["removed"], 1, "a directory removed counts as 1");
     fs::create_dir_all(&cache).expect("cache");
     fs::write(cache.join("m.cwasm"), b"x").expect("module");
     let run = velme(&empty, &["cache", "clean"]);
@@ -762,6 +784,41 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
         empty.join("no-home/cache/velme").exists(),
         "only the wasm directory goes"
     );
+}
+
+/// A diagnostic with no place in a source file carries the file it is about in `file`, and the span `0,0,1,1` for "no place":
+/// `velme.toml`, the user-level config, `velme.lock`, and the empty string for a bad flag (D-111, R-CLI-15).
+#[test]
+fn ac_cli_12_a_diagnostic_with_no_place_names_the_file_it_is_about() {
+    let dir = copy("add", "ac_cli_12_no_place");
+    let no_place = |run: &Run, file: &str| {
+        let envelope = parsed(run);
+        let d = &envelope["diagnostics"][0];
+        assert_eq!(d["file"], file, "{envelope}");
+        assert_eq!(
+            d["span"],
+            serde_json::json!({"start": 0, "end": 0, "line": 1, "column": 1}),
+            "{envelope}"
+        );
+    };
+    write_project_config(&dir, "[synthesis\n");
+    no_place(&velme(&dir, &["check", ADD, "--json"]), "velme.toml");
+    write_project_config(&dir, "");
+    let user = write_user_config(&dir, "[synthesis]\nmodel = \"x\"\n");
+    let run = velme(&dir, &["check", ADD, "--json"]);
+    let shown = parsed(&run)["diagnostics"][0]["file"]
+        .as_str()
+        .expect("a file")
+        .to_owned();
+    assert!(shown.ends_with("config.toml"), "{shown}");
+    assert_eq!(shown, user.to_string_lossy().replace('\\', "/"));
+    no_place(&run, &shown);
+    fs::remove_file(&user).expect("user config removed");
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    let run = velme(&dir, &["gc", "--json"]);
+    no_place(&run, "velme.lock");
+    // A bad command line is about no file, even with one on it.
+    no_place(&velme(&dir, &["check", ADD, "--frobnicate", "--json"]), "");
 }
 
 /// `gc` and `cache clean` never delete through a link (R-CLI-23, R-CLI-24).

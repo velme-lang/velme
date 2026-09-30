@@ -548,3 +548,42 @@ fn stores_and_loads_ir_at_the_depth_limit() {
         "{error}"
     );
 }
+
+/// `collect` deletes an unreferenced store or temporary file only once it is old enough, and only when it is named as the
+/// store names its files, in lowercase hex (R-CLI-23, D-111). `now` and the age are injected, so no test waits or reads a
+/// clock.
+#[test]
+fn collect_keeps_recent_files_and_names_that_are_not_lowercase_hex() {
+    use std::time::{Duration, SystemTime};
+    let (store, id, _) = stored("collect_age");
+    let root = project("collect_age_root");
+    let store_dir = root.join(VELME_DIR).join(ARTIFACTS_DIR);
+    let tmp_dir = root.join(VELME_DIR).join(TMP_DIR);
+    fs::create_dir_all(&store_dir).expect("store");
+    fs::create_dir_all(&tmp_dir).expect("tmp");
+    let store_files = Store::new(&root);
+    let stray = store_dir.join(format!("b3-{}.json", "0".repeat(64)));
+    let upper = store_dir.join(format!("b3-{}.json", "A".repeat(64)));
+    let temp = tmp_dir.join("left-over");
+    for path in [&stray, &upper, &temp] {
+        fs::write(path, b"{}").expect("file");
+    }
+    let age = Duration::from_secs(600);
+    let now = SystemTime::now();
+    // Just written: nothing is old enough. A `now` in the past makes the files "from the future", also kept.
+    assert_eq!(store_files.collect(&[], now, age).expect("collected"), 0);
+    assert_eq!(
+        store_files
+            .collect(&[], now - Duration::from_secs(3600), age)
+            .expect("collected"),
+        0
+    );
+    assert!(stray.is_file() && upper.is_file() && temp.is_file());
+    // Ten minutes and a second on: the stray and the temporary file go; the upper-case name was never a store file.
+    let later = now + age + Duration::from_secs(1);
+    assert_eq!(store_files.collect(&[], later, age).expect("collected"), 2);
+    assert!(!stray.exists() && !temp.exists() && upper.is_file());
+    // A referenced artifact stays however old.
+    assert_eq!(store.collect(&[id], later, Duration::ZERO).expect("collected"), 0);
+    assert!(store.path(id).is_file());
+}

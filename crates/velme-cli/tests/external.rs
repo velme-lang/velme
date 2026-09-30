@@ -315,6 +315,30 @@ fn a_pending_answer_exits_2_and_the_next_build_asks_again() {
     let text = shown(&first);
     assert!(text.contains("VL0408") && text.contains("ticket 42"), "{text}");
     assert!(!dir.join("velme.lock").exists());
+    // The same build under `--json` reports the goal `pending` in an envelope that validates (AC-CLI-12).
+    let json = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "external",
+            "--external-url",
+            server.url(),
+            "--json",
+        ],
+        &[],
+    );
+    let envelope: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    velme_test_support::schema::assert_cli_envelope(&envelope);
+    assert!(
+        envelope["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .any(|r| r["status"] == "pending"),
+        "{envelope}"
+    );
     fs::write(replies.join("Double.json"), good).expect("answer");
     let second = build(&dir, server.url(), &[]);
     assert_eq!(second.code, 0, "{}", shown(&second));

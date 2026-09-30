@@ -44,7 +44,7 @@ fn mock(model: &str, responses: impl IntoIterator<Item = MockResponse>) -> (Olla
     let server = MockServer::start(responses);
     let sleeper = RecordingSleeper::default();
     let mut config = OllamaConfig::new(model);
-    config.url = server.url().to_owned();
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     let backend = Ollama::new(config).with_sleeper(Arc::new(sleeper.clone()));
     (backend, server, sleeper)
 }
@@ -111,17 +111,20 @@ fn a_model_name_is_normalised_before_it_is_looked_up() {
     let (bare, _server, _) = mock("llama3", [tags()]);
     assert_eq!(identify(&bare).expect("identity").model, "llama3:latest@sha256:latest");
     let (missing, _server, _) = mock("llama3:70b", [tags()]);
-    assert_eq!(identify(&missing), Err(ProviderError::NotConfigured));
+    assert_eq!(
+        identify(&missing),
+        Err(ProviderError::ModelMissing("llama3:70b".to_owned()))
+    );
 }
 
 /// An unreachable server is `Unavailable` after the transport waits; a model it lacks, in the list or at chat time, is
-/// `NotConfigured`; a list that is not one is `Unavailable` (AC-SYNTH-13, R-SYNTH-24).
+/// `ModelMissing`; a list that is not one is `Unavailable` (AC-SYNTH-13, R-SYNTH-24).
 #[test]
 fn ac_synth_13_an_unreachable_server_is_unavailable_and_a_missing_model_is_not_configured() {
     let server = MockServer::start([]);
     let sleeper = RecordingSleeper::default();
     let mut config = OllamaConfig::new("llama3");
-    config.url = server.url().to_owned();
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     let backend = Ollama::new(config).with_sleeper(Arc::new(sleeper.clone()));
     drop(server);
     let error = identify(&backend).expect_err("nothing there");
@@ -129,7 +132,10 @@ fn ac_synth_13_an_unreachable_server_is_unavailable_and_a_missing_model_is_not_c
     assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
 
     let (backend, _server, _) = mock("llama3", [MockResponse::ollama_tags(&[])]);
-    assert_eq!(identify(&backend), Err(ProviderError::NotConfigured));
+    assert_eq!(
+        identify(&backend),
+        Err(ProviderError::ModelMissing("llama3".to_owned()))
+    );
 
     let (backend, _server, _) = mock(
         "llama3",
@@ -142,7 +148,17 @@ fn ac_synth_13_an_unreachable_server_is_unavailable_and_a_missing_model_is_not_c
     let provider = backend.open(&identity).expect("a provider");
     assert_eq!(
         block_on(provider.complete(&request(), &limits())),
-        Err(ProviderError::NotConfigured)
+        Err(ProviderError::ModelMissing("llama3".to_owned()))
+    );
+
+    // A missing retry model is the one named, not the primary (D-111).
+    let mut config = OllamaConfig::new("llama3");
+    config.retry_model = Some("other".to_owned());
+    let server = MockServer::start([MockResponse::ollama_tags(&[("llama3:latest", DIGEST)])]);
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
+    assert_eq!(
+        identify(&Ollama::new(config)),
+        Err(ProviderError::ModelMissing("other".to_owned()))
     );
 
     for body in [

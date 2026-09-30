@@ -34,6 +34,11 @@ fn ac_cli_12_every_json_snapshot_validates_against_the_schema() {
             continue;
         }
         let Ok(value) = serde_json::from_str::<Value>(body) else {
+            assert!(
+                !body.contains("velme-cli/1"),
+                "{} looks like an envelope but isn't JSON",
+                path.display()
+            );
             continue;
         };
         if value.get("format").and_then(Value::as_str) != Some("velme-cli/1") {
@@ -71,6 +76,38 @@ fn the_schema_rejects_a_malformed_envelope() {
         "results": [{"goal": "G", "status": "failed", "diagnostics": [{"code": "V1", "severity": "error", "message": "m",
         "file": "f", "span": {"start": 0, "end": 0, "line": 1, "column": 1}, "labels": [], "notes": []}]}]});
     assert!(bad(failing));
+}
+
+/// An artifact object without a manifest `format`, or without its `ir`, fails the schema (D-111).
+#[test]
+fn the_schema_rejects_an_artifact_missing_its_format_or_ir() {
+    let schema: Value =
+        serde_json::from_str(&fs::read_to_string(repo("docs/schemas/velme-cli-1.schema.json")).expect("schema"))
+            .expect("JSON");
+    let hash = format!("b3:{}", "0".repeat(64));
+    let artifact = serde_json::json!({"artifact": hash, "ir": {"goal": "G"}, "manifest": {
+        "format": "velme-artifact/1", "goal": "G", "kind": "leaf", "signature": hash, "contract_key": hash,
+        "synthesis_key": hash, "language_version": "velme/0.1", "compiler_version": "0", "ir_version": "1",
+        "builtins_version": "1", "provider": "scripted", "children": [],
+        "verification": {"examples": 0, "generated_inputs": 0, "input_set": hash, "max_fuel_observed": 0}}});
+    let envelope = |artifact: &Value| {
+        serde_json::json!({"format": "velme-cli/1", "status": "ok", "notices": [], "diagnostics": [],
+            "results": [{"goal": "G", "status": "ok", "diagnostics": [], "artifact": artifact}]})
+    };
+    assert!(violations(&schema, &envelope(&artifact)).is_empty());
+    let mut no_format = artifact.clone();
+    no_format["manifest"]
+        .as_object_mut()
+        .expect("manifest")
+        .remove("format");
+    assert!(!violations(&schema, &envelope(&no_format)).is_empty());
+    let mut no_ir = artifact.clone();
+    no_ir.as_object_mut().expect("artifact").remove("ir");
+    assert!(!violations(&schema, &envelope(&no_ir)).is_empty());
+    // The enums are closed: a status this schema does not list is refused.
+    let mut wrong = envelope(&artifact);
+    wrong["results"][0]["status"] = serde_json::json!("done");
+    assert!(!violations(&schema, &wrong).is_empty(), "the status enum is closed");
 }
 
 /// A failing check under `--json` validates against the schema and carries the human message's text (AC-CLI-05, R-CLI-08).

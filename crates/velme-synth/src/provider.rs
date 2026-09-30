@@ -123,6 +123,9 @@ pub struct Usage {
 pub enum ProviderError {
     /// No provider, model or key is configured, or the model isn't there (`VL0405`).
     NotConfigured,
+    /// The Ollama server lacks the model named, as the user wrote it (`VL0405`, with the model in its words, so a missing
+    /// `retry_model` is not reported as the primary). Replay fixtures and scripts spell it `not_configured`.
+    ModelMissing(String),
     /// The provider rejected the API key that is set (`VL0405`, its own wording).
     KeyRejected,
     /// An external backend rejected the bearer token that is sent, with `401` or `403` (`VL0405`, its own wording).
@@ -168,7 +171,7 @@ impl ProviderError {
     /// The variant's name as replay fixtures and scripts spell it (R-SYNTH-43): `refused`, `pending`, …
     pub fn variant(&self) -> &'static str {
         match self {
-            ProviderError::NotConfigured => "not_configured",
+            ProviderError::NotConfigured | ProviderError::ModelMissing(_) => "not_configured",
             ProviderError::KeyRejected => "key_rejected",
             ProviderError::TokenRejected { sent: true } => "token_rejected",
             ProviderError::TokenRejected { sent: false } => "token_required",

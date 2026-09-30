@@ -7,7 +7,7 @@ use velme_syntax::SourceFile;
 use velme_synth::{
     Anthropic, AnthropicConfig, ApiKey, DEFAULT_MAX_OUTPUT_TOKENS, External, ExternalConfig, ExternalToken,
     ExternalUrl, KeyError, OLLAMA_DEFAULT_MAX_OUTPUT_TOKENS, OLLAMA_URL, Ollama, OllamaConfig, Replay, SynthBackend,
-    SynthOptions, TOKEN_VARIABLE, has_certificate,
+    SynthOptions, TOKEN_VARIABLE, has_certificate, normalize_model,
 };
 
 use crate::config::Settings;
@@ -223,7 +223,7 @@ pub struct BuildFlags<'a> {
 }
 
 /// Rewords the `VL0405` of `goal` in `diagnostics` for the setup that produced it: `unusable` when the provider couldn't
-/// be used, else the missing Ollama model or unknown Anthropic model (`compiler/22` R-SYNTH-24, R-SYNTH-07).
+/// be used, else the unknown Anthropic model (`compiler/22` R-SYNTH-07); a missing Ollama model says so itself (R-SYNTH-24).
 pub fn reword_not_configured(
     diagnostics: &mut [Diagnostic],
     provider: &str,
@@ -231,19 +231,12 @@ pub fn reword_not_configured(
     unusable: Option<&Diagnostic>,
     goal: &str,
 ) {
-    let (message, help): (String, Option<String>) = if let Some(why) = unusable {
+    let (message, help): (String, Option<Box<str>>) = if let Some(why) = unusable {
         (why.message.clone(), why.help.clone())
-    } else if provider == "ollama" {
-        (
-            format!("The Ollama server doesn't have the model `{model}`."),
-            Some(format!(
-                "run `ollama pull {model}`, or choose another model with `--model`"
-            )),
-        )
     } else if provider == "anthropic" {
         (
             format!("The Anthropic API doesn't know the model `{model}`."),
-            Some("choose another model with `--model`, or set `VELME_MODEL`".to_owned()),
+            Some("choose another model with `--model`, or set `VELME_MODEL`".into()),
         )
     } else {
         return;
@@ -275,9 +268,17 @@ pub fn model_name(flag: Option<&str>, settings: &Settings) -> String {
 
 /// `VL0405` if `allowed_models` is set and `model` is not in it (`tooling/40` R-CLI-26, D-105): before any contact, and never
 /// swapped for an allowed one.
-fn allowed(model: &str, settings: &Settings) -> Result<(), Diagnostic> {
+fn allowed(model: &str, settings: &Settings, ollama: bool) -> Result<(), Diagnostic> {
+    // Ollama names a model without a tag `:latest`, so both sides are normalized for it (R-SYNTH-24).
+    let same = |listed: &str| {
+        if ollama {
+            normalize_model(listed.trim()) == normalize_model(model)
+        } else {
+            listed.trim() == model
+        }
+    };
     match &settings.user.allowed_models {
-        Some(list) if !list.iter().any(|m| m.trim() == model) => Err(not_configured(
+        Some(list) if !list.iter().any(|m| same(m)) => Err(not_configured(
             format!("The model `{model}` isn't in your allowed models."),
             &format!(
                 "you allow {}; pick one with `--model` or `VELME_MODEL`",
@@ -290,13 +291,13 @@ fn allowed(model: &str, settings: &Settings) -> Result<(), Diagnostic> {
 
 /// The models a build would ask for, each in the allowed ones if there is a list: the model, and the project's `retry_model`
 /// (R-CLI-26).
-fn check_models(model: &str, settings: &Settings) -> Result<(), Diagnostic> {
-    allowed(model, settings)?;
+fn check_models(model: &str, settings: &Settings, ollama: bool) -> Result<(), Diagnostic> {
+    allowed(model, settings, ollama)?;
     settings
         .project
         .retry_model
         .as_deref()
-        .map_or(Ok(()), |retry| allowed(retry.trim(), settings))
+        .map_or(Ok(()), |retry| allowed(retry.trim(), settings, ollama))
 }
 
 /// Why the environment holds no API key to send (`tooling/40` §5.2, R-SEC-05): none is set, or the one that is set can't
@@ -331,7 +332,7 @@ pub fn anthropic(flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, D
             )
         }));
     }
-    check_models(&model, settings)?;
+    check_models(&model, settings, false)?;
     let config = AnthropicConfig {
         retry_model: settings.project.retry_model.clone(),
         prompt_cache: settings.project.prompt_cache.unwrap_or(true),
@@ -355,22 +356,22 @@ pub fn ollama(flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, Diag
             "pass `--model NAME`, or set `VELME_MODEL`, to a model the server has",
         ));
     }
-    check_models(&model, settings)?;
+    check_models(&model, settings, true)?;
     let url = first_set([
         flags.ollama_url.map(str::to_owned),
         std::env::var("VELME_OLLAMA_URL").ok(),
         settings.user.ollama_url.clone(),
     ])
     .unwrap_or_else(|| OLLAMA_URL.to_owned());
-    let url = url.trim().to_owned();
-    parse_url(&url, "Ollama")?;
+    let url = parse_url(url.trim(), "Ollama")?;
     let notice = format!(
-        "Sending your plans, types, checks and examples to the Ollama server at {url}, model {model}, to write the code."
+        "Sending your plans, types, checks and examples to the Ollama server at {}, model {model}, to write the code.",
+        url.host()
     );
     let config = OllamaConfig {
         retry_model: settings.project.retry_model.clone(),
         options: options.clone(),
-        url,
+        url: Some(url),
         ..OllamaConfig::new(model)
     };
     Ok((Box::new(Ollama::new(config)), notice))

@@ -125,7 +125,10 @@ because it is a public contract it gets an architect review. The golden suite is
 `velme-cli`, each validated against the schema (AC-CLI-12), so the schema and the real output cannot drift apart (D-108).
 **R-CLI-27** A `results[]` entry describes the goal that was asked for. When that goal calls others, the entry may also
 hold `calls[]`: one `{binding, goal, status}` per child call, in source order (D-9), with `status` as above. Child results
-and traces are not repeated there; the human output lists the same calls (§3.3). Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the
+and traces are not repeated there; the human output lists the same calls (§3.3). The enum values (`goalStatus`, `severity`, `kind`, the trace `version`) are closed within `velme-cli/1`: a new value needs
+`velme-cli/2` (D-111). A diagnostic with no place in a source file carries in `file` the file it is about (`velme.toml`,
+the user config path, `velme.lock`, or the empty string when there is none) and the span `0,0,1,1`, documented in the
+schema as "no place" (D-111). Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the
 trace schema; a breaking change ships as `velme-cli/2` (`delivery/52` R-REL-08).
 
 ### 3.3 Sample output (F-2)
@@ -224,7 +227,7 @@ execution failure (`3`). `pending` (`VL0408`) keeps exit code `2` — no new exi
 language = "velme/0.1"          # default when the file has no header (language/10)
 
 [synthesis]
-provider = "anthropic"          # anthropic | ollama | external | replay
+provider = "anthropic"          # anthropic | ollama | external | replay (`scripted` is flag-only, D-111)
 model = "…"                     # required for anthropic and ollama; no built-in default constant
 max_retries = 3                 # 0..=3 (compiler/22 R-SYNTH-11); external defaults to 0 (R-SYNTH-30)
 timeout_secs = 60               # per provider request
@@ -247,7 +250,7 @@ calls = 128
 depth = 32
 
 [artifacts]
-dir = ".velme/artifacts"        # not available yet: any value is VL0902 "isn't available yet" (a path outside the project is VL0902 too, R-CLI-18)
+# dir = ".velme/artifacts"      # not available yet: any value is VL0902 "isn't available yet" (a path outside the project is VL0902 too, R-CLI-18)
 ```
 
 The user-level config is a separate file, read once per command (R-CLI-25). It is not a layer of defaults: it holds the
@@ -302,12 +305,14 @@ envelope, exit `64` (D-108).
 **R-CLI-22** `velme artifact FILE --goal G` loads the goal's artifact with the same checks and the same codes as `run`
 (`runtime/32` R-ART-10, R-ART-16): a missing lock entry or a changed one is `VL0702`, a missing file `VL0701`, a damaged
 one `VL0703`; it never shows a stale artifact. On success it prints the artifact's hash, then the manifest's fields one
-`name: value` per line, then the IR as pretty JSON. With `--json` the goal's `result` is `{"artifact": <hash>, "manifest":
-{…}, "ir": {…}}` (D-107).
+`name: value` per line, then the IR as pretty JSON. With `--json` the goal result carries `{"artifact": <hash>, "manifest":
+{…}, "ir": {…}}` under a sibling key `artifact`; `result` is only ever a goal's value (D-107, D-111).
 **R-CLI-23** `velme gc` takes no file. Its project root is the directory of the nearest `velme.toml` upward from the
 current directory, else the current directory itself. It refuses (`VL0901`) when there is no readable `velme.lock`. It
 deletes only artifact files under `.velme/artifacts/` that no lock entry names, plus leftover temp files under
-`.velme/tmp/`, never the lock, the log or anything else, and prints how many files it removed (D-108).
+`.velme/tmp/`, never the lock, the log or anything else, and prints how many files it removed (D-108). It skips store and temp files modified in the last 10 minutes, so it is safe
+beside a running build (D-111). `summary.removed` is a file count for `gc` and `0` or `1` (the directory removed) for
+`cache clean`.
 **R-CLI-24** `velme cache clean` deletes the user-level WASM module cache directory if it exists and exits `0` when it
 does not, so the command ships before the cache does (M7, D-48) and needs no other change then (D-108).
 **R-CLI-28** `--color auto` decides for each output stream by that stream's own state: stdout is coloured when it is a TTY,

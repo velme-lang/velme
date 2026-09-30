@@ -102,10 +102,15 @@ fn project(root: &Path, flag: Option<&str>) -> Result<ProjectConfig, Diagnostic>
         Some(flag) => (PathBuf::from(flag), crate::display_path(flag), false),
         None => (root.join(PROJECT_FILE), PROJECT_FILE.to_owned(), true),
     };
-    match read(&path, &shown, optional)? {
-        Some(text) => ProjectConfig::parse(&text, &shown),
-        None => Ok(ProjectConfig::default()),
-    }
+    // A problem in the file has no place in the source file; it is about this one (D-111).
+    read(&path, &shown, optional)
+        .and_then(|text| {
+            text.map_or_else(
+                || Ok(ProjectConfig::default()),
+                |text| ProjectConfig::parse(&text, &shown),
+            )
+        })
+        .map_err(|d| d.with_file(shown))
 }
 
 /// The user-level settings, from the file at `path` if there is one (R-CLI-25).
@@ -114,10 +119,9 @@ fn user(path: Option<PathBuf>) -> Result<UserConfig, Diagnostic> {
         return Ok(UserConfig::default());
     };
     let shown = crate::display_path(&path.to_string_lossy());
-    match read(&path, &shown, true)? {
-        Some(text) => UserConfig::parse(&text, &shown),
-        None => Ok(UserConfig::default()),
-    }
+    read(&path, &shown, true)
+        .and_then(|text| text.map_or_else(|| Ok(UserConfig::default()), |text| UserConfig::parse(&text, &shown)))
+        .map_err(|d| d.with_file(shown))
 }
 
 /// Both config files of a command on the project at `root`, each validated; every file that is wrong is reported, the

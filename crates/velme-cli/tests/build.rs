@@ -287,6 +287,8 @@ fn build_json_carries_notices_statuses_and_summary() {
     assert_eq!(out.code, 2);
     assert_eq!(out.stderr, "");
     let envelope: Value = serde_json::from_str(&out.stdout).expect("JSON");
+    // The notices, the summary and the `failed`, `ok` and `blocked` statuses all validate (AC-CLI-12).
+    velme_test_support::schema::assert_cli_envelope(&envelope);
     assert_eq!(envelope["status"], "failed");
     assert_eq!(envelope["notices"].as_array().map(Vec::len), Some(1));
     let statuses: Vec<(String, String)> = envelope["results"]

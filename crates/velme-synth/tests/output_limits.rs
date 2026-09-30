@@ -60,7 +60,7 @@ fn run(provider: &dyn velme_synth::SynthProvider, options: SynthOptions) -> Outc
 fn ollama(server: &MockServer) -> (Box<dyn velme_synth::SynthProvider>, RecordingSleeper) {
     let sleeper = RecordingSleeper::default();
     let mut config = OllamaConfig::new("m");
-    config.url = server.url().to_owned();
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     let backend = Ollama::new(config).with_sleeper(Arc::new(sleeper.clone()));
     let identity = block_on(backend.identify()).expect("identity");
     (backend.open(&identity).expect("a provider"), sleeper)

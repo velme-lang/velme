@@ -121,12 +121,12 @@ impl ProjectConfig {
                 &mut s,
                 "synthesis",
                 "provider",
+                // `scripted` is flag-only: a test double a project file may not name (D-111).
                 &[
                     ("anthropic", "anthropic"),
                     ("ollama", "ollama"),
                     ("external", "external"),
                     ("replay", "replay"),
-                    ("scripted", "scripted"),
                 ],
             )?
             .map(str::to_owned);
@@ -538,6 +538,10 @@ mod tests {
         assert_eq!(
             wrong("[synthesis]\nmodel = 4\n"),
             "`synthesis.model` in `velme.toml` should be a non-empty string, but got 4."
+        );
+        assert_eq!(
+            wrong("[synthesis]\nprovider = \"scripted\"\n"),
+            "`synthesis.provider` in `velme.toml` should be one of anthropic or ollama or external or replay, but got \"scripted\"."
         );
         assert_eq!(
             wrong("[synthesis]\nreply_format = \"xml\"\n"),

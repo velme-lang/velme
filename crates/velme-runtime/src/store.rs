@@ -5,6 +5,7 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 use velme_builtins::limits::MIB;
@@ -26,6 +27,9 @@ pub const ARTIFACTS_DIR: &str = "artifacts";
 /// Where artifacts are written before they are placed, inside [`VELME_DIR`]: beside the store, so on the same file
 /// system, and never in it, so a crash mid-write leaves nothing under [`ARTIFACTS_DIR`] (R-ART-09).
 pub const TMP_DIR: &str = "tmp";
+
+/// How old a store or temporary file must be for `velme gc` to delete it (D-111).
+pub const GC_MIN_AGE: Duration = Duration::from_secs(10 * 60);
 
 /// An artifact file's name is this prefix, the artifact's hex digits and [`ARTIFACT_EXTENSION`].
 const ARTIFACT_PREFIX: &str = "b3-";
@@ -148,10 +152,11 @@ impl Store {
     }
 
     /// Deletes the artifact files no address in `keep` names, and every file left in the temporary directory, and says how
-    /// many it removed (`tooling/40` R-CLI-23, `runtime/32` R-ART-12). Only regular files named as the store names them are
-    /// touched, so a link, a directory or anything else in there stays, and a `.velme` directory that is itself a link is
-    /// refused.
-    pub fn collect(&self, keep: &[Fingerprint]) -> io::Result<usize> {
+    /// many it removed (`tooling/40` R-CLI-23, `runtime/32` R-ART-12). Only regular files named as the store names them, in
+    /// lowercase hex, are touched, so a link, a directory or anything else in there stays, and a `.velme` directory that is
+    /// itself a link is refused. A file modified less than `min_age` before `now` stays too, so this is safe beside a
+    /// running build (D-111); `now` and `min_age` are the caller's, so a test needs no clock.
+    pub fn collect(&self, keep: &[Fingerprint], now: SystemTime, min_age: Duration) -> io::Result<usize> {
         refuse_links(&[&self.velme, &self.dir, &self.tmp])?;
         let keep: Vec<String> = keep.iter().map(|id| id.hex().to_string()).collect();
         let mut removed = 0;
@@ -166,13 +171,25 @@ impl Store {
                 if !entry.file_type()?.is_file() {
                     continue;
                 }
+                // A file from the future counts as recent.
+                let old = entry
+                    .metadata()?
+                    .modified()
+                    .ok()
+                    .and_then(|modified| now.duration_since(modified).ok())
+                    .is_some_and(|age| age >= min_age);
+                if !old {
+                    continue;
+                }
                 let name = entry.file_name().into_string().ok();
                 let doomed = if artifacts {
                     let hex = name
                         .as_deref()
                         .and_then(|n| n.strip_prefix(ARTIFACT_PREFIX)?.strip_suffix(ARTIFACT_EXTENSION));
                     hex.is_some_and(|hex| {
-                        hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()) && !keep.iter().any(|k| k == hex)
+                        hex.len() == 64
+                            && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                            && !keep.iter().any(|k| k == hex)
                     })
                 } else {
                     true

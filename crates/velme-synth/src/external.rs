@@ -5,16 +5,12 @@
 //! (`tooling/41` R-SEC-13).
 
 use std::fmt;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serde_json::{Map, Value};
-use ureq::config::Config as UreqConfig;
-use ureq::http::Uri;
-use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
-use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
+use ureq::unversioned::transport::DefaultConnector;
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::attempt::{clean_line, clean_name, clean_tail};
@@ -22,6 +18,7 @@ use crate::http::{agent_config_trusting, transport_error};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{REQUEST_VERSION, SynthRequest};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
+use crate::url::{ExternalUrl, LocalResolver};
 
 /// The most a service may send for one reply (R-SYNTH-28).
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
@@ -41,121 +38,6 @@ const MIN_TOKEN_CHARS: usize = 16;
 
 /// The environment variable that holds the bearer token (`tooling/40` §5.2).
 pub const TOKEN_VARIABLE: &str = "VELME_EXTERNAL_TOKEN";
-
-/// Why a URL can't be used for the `external` backend (`compiler/22` R-SYNTH-29, `VL0902`). The text names the problem, never
-/// the URL, which may have been mistyped with a secret in it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UrlError {
-    /// Not a URL of the form `scheme://host[:port][/path]`.
-    Unparsable,
-    /// A scheme other than `http` or `https`.
-    Scheme,
-    /// The URL carries a user name or password.
-    Userinfo,
-    /// Plain `http` to a host that isn't this machine.
-    Insecure,
-}
-
-impl fmt::Display for UrlError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            UrlError::Unparsable => "it isn't a URL of the form scheme://host[:port][/path]",
-            UrlError::Scheme => "its scheme isn't http or https",
-            UrlError::Userinfo => "it holds a user name or password",
-            UrlError::Insecure => "plain http is allowed only for localhost, 127.0.0.0/8 and [::1]",
-        })
-    }
-}
-
-/// The base URL of an `external` service, checked (R-SYNTH-29): `https`, or `http` for this machine only, with no user
-/// information, query or fragment.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExternalUrl {
-    /// The URL without a trailing slash.
-    text: String,
-    /// The host as written, brackets included for an IPv6 address.
-    host: String,
-    loopback: bool,
-}
-
-impl ExternalUrl {
-    /// `text` checked, or why it can't be used. Nothing is contacted.
-    pub fn parse(text: &str) -> Result<Self, UrlError> {
-        let text = text.trim();
-        if text.chars().any(|c| c.is_control() || c.is_whitespace()) || !text.is_ascii() {
-            return Err(UrlError::Unparsable);
-        }
-        let (scheme, rest) = text.split_once("://").ok_or(UrlError::Unparsable)?;
-        let secure = match scheme.to_ascii_lowercase().as_str() {
-            "https" => true,
-            "http" => false,
-            s if !s.is_empty()
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.')) =>
-            {
-                return Err(UrlError::Scheme);
-            }
-            _ => return Err(UrlError::Unparsable),
-        };
-        let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-        let (authority, path) = rest.split_at(end);
-        if authority.contains('@') {
-            return Err(UrlError::Userinfo);
-        }
-        if !path_is_valid(path) {
-            return Err(UrlError::Unparsable);
-        }
-        let (host, port) = match authority.strip_prefix('[') {
-            Some(v6) => {
-                let (inside, after) = v6.split_once(']').ok_or(UrlError::Unparsable)?;
-                if inside.parse::<Ipv6Addr>().is_err() || !(after.is_empty() || after.starts_with(':')) {
-                    return Err(UrlError::Unparsable);
-                }
-                (format!("[{inside}]"), after.strip_prefix(':'))
-            }
-            None => match authority.split_once(':') {
-                Some((host, port)) => (host.to_owned(), Some(port)),
-                None => (authority.to_owned(), None),
-            },
-        };
-        if let Some(port) = port
-            && (port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) || port.parse::<u16>().is_err())
-        {
-            return Err(UrlError::Unparsable);
-        }
-        let bare = host.trim_start_matches('[').trim_end_matches(']');
-        let name_ok = !bare.is_empty()
-            && (host.starts_with('[')
-                || bare
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-')));
-        if !name_ok || bare.starts_with(['.', '-']) || bare.ends_with('-') || bare.contains("..") {
-            return Err(UrlError::Unparsable);
-        }
-        let loopback = bare.eq_ignore_ascii_case("localhost")
-            || bare.parse::<Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
-            || bare.parse::<Ipv6Addr>().is_ok_and(|ip| ip == Ipv6Addr::LOCALHOST);
-        if !secure && !loopback {
-            return Err(UrlError::Insecure);
-        }
-        Ok(ExternalUrl {
-            text: format!("{scheme}://{authority}{}", path.trim_end_matches('/')),
-            host,
-            loopback,
-        })
-    }
-
-    /// The host, for the R-SEC-12 notice: a name, or an address in brackets. Its characters are checked, so it needs no
-    /// escaping.
-    pub fn host(&self) -> &str {
-        &self.host
-    }
-
-    /// The URL of the endpoint `path`, which starts with `/`.
-    fn endpoint(&self, path: &str) -> String {
-        format!("{}{path}", self.text)
-    }
-}
 
 /// A bearer token (`tooling/41` R-SEC-05, R-SEC-06). Its `Debug` and `Display` print `***`; the text leaves it only into the
 /// `Authorization` header of a request to the configured URL.
@@ -246,62 +128,6 @@ pub fn has_certificate(pem: &[u8]) -> bool {
     !certificates(pem).is_empty()
 }
 
-/// Whether `path` is made only of RFC 3986 `pchar`s and `/`: unreserved characters, percent-escapes, sub-delimiters, `:` and
-/// `@`. A character such as `"`, `<`, `{` or `\` is refused here, before any contact, and not as a bad URI at send time.
-fn path_is_valid(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    let mut at = 0;
-    while let Some(&b) = bytes.get(at) {
-        let plain = b.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@/".contains(&b);
-        if b == b'%' {
-            let escape = bytes.get(at + 1..at + 3);
-            if !escape.is_some_and(|hex| hex.iter().all(u8::is_ascii_hexdigit)) {
-                return false;
-            }
-            at += 3;
-        } else if plain {
-            at += 1;
-        } else {
-            return false;
-        }
-    }
-    true
-}
-
-/// The addresses `localhost` stands for, without asking DNS: 127.0.0.1 and `::1` (R-SYNTH-29). A resolver, an `/etc/hosts`
-/// entry or a search domain can't send a request meant for this machine somewhere else.
-fn localhost_addrs(port: u16) -> [SocketAddr; 2] {
-    [
-        SocketAddr::new(Ipv4Addr::LOCALHOST.into(), port),
-        SocketAddr::new(Ipv6Addr::LOCALHOST.into(), port),
-    ]
-}
-
-/// Resolves `localhost` to [`localhost_addrs`] and every other host as usual.
-#[derive(Debug)]
-struct LocalResolver;
-
-impl Resolver for LocalResolver {
-    fn resolve(
-        &self,
-        uri: &Uri,
-        config: &UreqConfig,
-        timeout: NextTimeout,
-    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
-        if uri.host().is_some_and(|host| host.eq_ignore_ascii_case("localhost")) {
-            let port = uri
-                .port_u16()
-                .unwrap_or(if uri.scheme_str() == Some("https") { 443 } else { 80 });
-            let mut found = self.empty();
-            for addr in localhost_addrs(port) {
-                found.push(addr);
-            }
-            return Ok(found);
-        }
-        DefaultResolver::default().resolve(uri, config, timeout)
-    }
-}
-
 /// What is asked of the service.
 enum Call<'a> {
     /// `GET /v1/describe` (R-SYNTH-26).
@@ -320,7 +146,7 @@ pub struct External {
 impl fmt::Debug for External {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("External")
-            .field("host", &self.config.url.host)
+            .field("host", &self.config.url.host())
             .finish_non_exhaustive()
     }
 }
@@ -385,7 +211,7 @@ impl External {
         }
         let roots = self.config.ca_pem.as_deref().map(certificates).unwrap_or_default();
         let agent = ureq::Agent::with_parts(
-            agent_config_trusting(self.config.timeout, self.config.url.loopback, &roots),
+            agent_config_trusting(self.config.timeout, self.config.url.is_loopback(), &roots),
             DefaultConnector::default(),
             LocalResolver,
         );
@@ -620,7 +446,9 @@ impl External {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExternalToken, ExternalUrl, TokenMalformed, UrlError, localhost_addrs};
+    use super::{ExternalToken, TokenMalformed};
+    use crate::url::localhost_addrs;
+    use crate::url::{ExternalUrl, UrlError};
 
     /// Plain `http` only for this machine; every other host needs `https`; userinfo, other schemes, queries and junk are
     /// refused before any contact (R-SYNTH-29, D-101).

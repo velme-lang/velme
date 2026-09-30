@@ -13,7 +13,7 @@ pub(crate) const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The host part of `url`: `127.0.0.1` for `http://127.0.0.1:11434/x`; empty for text that is not a URL.
-#[cfg(any(feature = "test-endpoint", feature = "provider-ollama", test))]
+#[cfg(any(feature = "test-endpoint", test))]
 pub(crate) fn host_of(url: &str) -> &str {
     let rest = url.split_once("://").map_or("", |(_, rest)| rest);
     let authority = rest.split('/').next().unwrap_or("");
@@ -22,12 +22,6 @@ pub(crate) fn host_of(url: &str) -> &str {
         Some(v6) => v6.split(']').next().unwrap_or(""),
         None => authority.split(':').next().unwrap_or(""),
     }
-}
-
-/// Whether `url` names this machine.
-#[cfg(any(feature = "provider-ollama", test))]
-pub(crate) fn is_loopback(url: &str) -> bool {
-    matches!(host_of(url), "127.0.0.1" | "localhost" | "::1")
 }
 
 /// The settings of an agent that gives up after `timeout`, follows no redirect and reads a non-2xx status as a response,
@@ -71,7 +65,7 @@ pub(crate) fn agent_config_trusting(
 }
 
 /// [`agent_config`] as an agent.
-#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+#[cfg(feature = "provider-anthropic")]
 pub(crate) fn agent(timeout: Duration, direct: bool) -> ureq::Agent {
     agent_config(timeout, direct).into()
 }
@@ -112,7 +106,7 @@ pub(crate) fn transport_error(error: ureq::Error) -> ProviderError {
 
 #[cfg(test)]
 mod tests {
-    use super::{connect_phase_timeout, host_of, is_loopback, root_set};
+    use super::{connect_phase_timeout, host_of, root_set};
     use crate::provider::ProviderError;
 
     /// Only a timeout after the request was sent is a `Timeout` (R-SYNTH-12, D-110).
@@ -140,14 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn the_host_of_a_url_is_found_and_only_this_machine_is_loopback() {
+    fn the_host_of_a_url_is_found() {
         assert_eq!(host_of("http://127.0.0.1:11434/api"), "127.0.0.1");
         assert_eq!(host_of("http://user@example.com:80"), "example.com");
         assert_eq!(host_of("http://[::1]:8080/x"), "::1");
         assert_eq!(host_of("not a url"), "");
-        assert!(is_loopback("http://localhost:1"));
-        assert!(is_loopback("http://[::1]:1"));
-        assert!(!is_loopback("http://127.0.0.1.evil.example/"));
-        assert!(!is_loopback("http://evil.example/127.0.0.1"));
     }
 }

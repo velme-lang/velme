@@ -579,7 +579,7 @@ const DIGEST_B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 fn ollama(server: &MockServer, model: &str) -> Ollama {
     let mut config = OllamaConfig::new(model);
-    config.url = server.url().to_owned();
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     Ollama::new(config).with_sleeper(Arc::new(RecordingSleeper::default()))
 }
 
