@@ -100,6 +100,14 @@ impl std::fmt::Debug for Ollama {
     }
 }
 
+/// `first` for attempt 0 of a goal, `retry` (when there is one) for the rest (R-SYNTH-39).
+fn for_attempt<'a>(first: &'a str, retry: Option<&'a str>, attempt: u32) -> &'a str {
+    match (retry, attempt) {
+        (Some(retry), 1..) => retry,
+        _ => first,
+    }
+}
+
 impl Ollama {
     /// The backend for `config`.
     pub fn new(config: OllamaConfig) -> Self {
@@ -126,10 +134,7 @@ impl Ollama {
 
     /// The model for attempt `attempt` of a goal: `model` for attempt 0, `retry_model` for the rest (R-SYNTH-39).
     fn model_for(&self, attempt: u32) -> &str {
-        match (&self.retry_model, attempt) {
-            (Some(retry), 1..) => retry,
-            _ => &self.model,
-        }
+        for_attempt(&self.model, self.retry_model.as_deref(), attempt)
     }
 
     /// The URL of the endpoint `path`, which starts with `/`.
@@ -142,10 +147,7 @@ impl Ollama {
 
     /// The model for attempt `attempt` as the user wrote it.
     fn shown_for(&self, attempt: u32) -> &str {
-        match (&self.shown.1, attempt) {
-            (Some(retry), 1..) => retry,
-            _ => &self.shown.0,
-        }
+        for_attempt(&self.shown.0, self.shown.1.as_deref(), attempt)
     }
 
     /// Whether the server is on this machine, in any spelling of its address, and so reached without a proxy (D-111).

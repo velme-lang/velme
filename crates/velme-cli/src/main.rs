@@ -572,9 +572,7 @@ fn run(cli: &Cli, traced: bool) -> u8 {
     }
     // Input and lock problems are both reported, so the exit code follows R-CLI-16's precedence.
     let registry = registry(project, program, id);
-    let options = cli
-        .jobs
-        .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
+    let options = run_options(cli);
     let (executed, result) = match (inputs, registry) {
         (Ok(inputs), Ok(registry)) => {
             let executed = run_goal(program, id, text, &registry, inputs, options);
@@ -624,12 +622,7 @@ fn run(cli: &Cli, traced: bool) -> u8 {
         ..Outcome::default()
     };
     if let Some(built) = built {
-        outcome
-            .progress
-            .insert_str(0, &format!("{}\n", built.progress.trim_end()));
-        outcome.notices = built.notices;
-        outcome.summary = built.summary;
-        outcome.diagnostics = built.diagnostics;
+        outcome.merge_built(built);
     }
     finish(&analyzed, &outcome, cli)
 }
@@ -713,9 +706,7 @@ fn test(cli: &Cli) -> u8 {
     if let Some(built) = built.as_ref().filter(|b| build_stopped(b)) {
         return finish(&analyzed, built, cli);
     }
-    let options = cli
-        .jobs
-        .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
+    let options = run_options(cli);
     let mut outcome = Outcome::with(Vec::new());
     for id in ids {
         let Some(g) = program.goals.get(id.0) else { continue };
@@ -729,12 +720,7 @@ fn test(cli: &Cli) -> u8 {
         outcome.results.push(GoalResult::new(&g.name, tested.map(|_| None)));
     }
     if let Some(built) = built {
-        outcome
-            .progress
-            .insert_str(0, &format!("{}\n", built.progress.trim_end()));
-        outcome.notices = built.notices;
-        outcome.summary = built.summary;
-        outcome.diagnostics = built.diagnostics;
+        outcome.merge_built(built);
     }
     finish(&analyzed, &outcome, cli)
 }
@@ -894,24 +880,33 @@ fn shown_artifact(locked: &LockedGoal) -> Option<String> {
     Some(format!("{}\n{}\n", render::escape(&out), render::escape_json(&ir)))
 }
 
+/// The project's lock, or an empty one when it has none.
+fn read_lock(project: &Project, program: &Program) -> Result<Lock, Vec<Diagnostic>> {
+    Ok(Lock::read(&project.root)
+        .map_err(|e| vec![e.diagnostic()])?
+        .unwrap_or_else(|| Lock::new(program.language_version.clone())))
+}
+
+/// The execution options `--jobs` asks for.
+fn run_options(cli: &Cli) -> Options {
+    cli.jobs
+        .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs))
+}
+
 /// The locked artifact of goal `id` of the file of `project` (R-ART-10, R-ART-16): never synthesized here.
 fn locked_goal(project: &Project, program: &Program, id: GoalId) -> Result<LockedGoal, Vec<Diagnostic>> {
     let goal = program
         .goals
         .get(id.0)
         .ok_or_else(|| vec![Diagnostic::internal_error()])?;
-    let lock = Lock::read(&project.root)
-        .map_err(|e| vec![e.diagnostic()])?
-        .unwrap_or_else(|| Lock::new(program.language_version.clone()));
+    let lock = read_lock(project, program)?;
     load(program, id, &project.file, &lock, &Store::new(&project.root))
         .map_err(|e| vec![e.diagnostic(&goal.name, goal.span)])
 }
 
 /// The locked artifacts of goal `id` and of every goal it calls (R-ART-10, R-ART-16): never synthesized here.
 fn registry(project: &Project, program: &Program, id: GoalId) -> Result<Registry, Vec<Diagnostic>> {
-    let lock = Lock::read(&project.root)
-        .map_err(|e| vec![e.diagnostic()])?
-        .unwrap_or_else(|| Lock::new(program.language_version.clone()));
+    let lock = read_lock(project, program)?;
     Registry::load(program, id, &project.file, &lock, &Store::new(&project.root))
 }
 
@@ -931,6 +926,14 @@ fn pretty(value: &Value) -> String {
 }
 
 impl Outcome {
+    /// Puts what `--build` did in front of this outcome.
+    fn merge_built(&mut self, built: Outcome) {
+        self.progress.insert_str(0, &format!("{}\n", built.progress.trim_end()));
+        self.notices = built.notices;
+        self.summary = built.summary;
+        self.diagnostics = built.diagnostics;
+    }
+
     /// The outcome of analysis alone: its progress lines.
     fn file(analyzed: &Analyzed) -> Self {
         Outcome {

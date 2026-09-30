@@ -402,13 +402,10 @@ pub fn check_flags(name: &str, flags: &BuildFlags) -> Result<(), Diagnostic> {
     {
         return Err(unknown_provider(name));
     }
-    fn given(url: Option<&str>) -> Option<&str> {
-        url.filter(|url| !url.trim().is_empty())
-    }
-    given(flags.external_url)
-        .map(|url| parse_url(url, "external"))
-        .transpose()?;
-    given(flags.ollama_url)
+    // A blank flag is already a usage error in `args` (D-111), so a URL given here is never blank.
+    flags.external_url.map(|url| parse_url(url, "external")).transpose()?;
+    flags
+        .ollama_url
         .map(|url| parse_url(url, "Ollama"))
         .transpose()
         .map(|_| ())
