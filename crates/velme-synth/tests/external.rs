@@ -177,15 +177,15 @@ fn an_error_reply_is_cleaned_and_bounded() {
     assert!(reason.chars().count() < 340, "{}", reason.chars().count());
 }
 
-/// An `ir` reply is the IR object; a `question` reply is the question object; `pending` keeps its text; an `error` reply
+/// A `body` reply is the body under `body`; a `question` reply is the question object; `pending` keeps its text; an `error` reply
 /// and a reply of no known kind are backend failures (R-SYNTH-27, R-SYNTH-28, R-SYNTH-41).
 #[test]
 fn a_reply_is_one_of_four_kinds() {
-    let ir = json!({"ir_version": "0.1", "goal": "FindBadge", "note": 1.50});
-    let (_server, backend) = replying("kind-ir", &ir.to_string());
+    let body = json!({"kind": "literal", "type": {"t": "Number"}, "value": 1.50});
+    let (_server, backend) = replying("kind-body", &json!({"body": body, "note": 1.50}).to_string());
     assert_eq!(
-        complete(&backend, &request()).expect("an ir reply"),
-        r#"{"goal":"FindBadge","ir_version":"0.1","note":1.5}"#
+        complete(&backend, &request()).expect("a body reply"),
+        r#"{"body":{"kind":"literal","type":{"t":"Number"},"value":1.5}}"#
     );
     let (_server, backend) = replying("kind-question", r#"{"question": "Which way?"}"#);
     assert_eq!(
@@ -201,9 +201,9 @@ fn a_reply_is_one_of_four_kinds() {
     assert!(failure(complete(&backend, &request())).contains("no idea"));
     for (name, reply) in [
         ("kind-empty", "{}"),
-        ("kind-two", r#"{"ir": {}, "question": "?"}"#),
+        ("kind-two", r#"{"body": {}, "question": "?"}"#),
         ("kind-unknown", r#"{"result": 1}"#),
-        ("kind-ir-string", r#"{"ir": "text"}"#),
+        ("kind-body-string", r#"{"body": "text"}"#),
         ("kind-pending-number", r#"{"pending": 7}"#),
         ("kind-array", "[1]"),
     ] {
@@ -437,11 +437,11 @@ fn the_token_is_taken_out_of_everything_the_service_says() {
         assert!(!shown.contains(token), "{name}: {shown}");
         assert!(shown.contains("***"), "{name}: {shown}");
     }
-    // An `ir` is never rewritten: one that holds the token, in either spelling, is refused (D-102).
+    // A `body` is never rewritten: one that holds the token, in either spelling, is refused (D-102).
     let odd = "a/b\"c-0123456789abc";
     for (spelling, token) in [("plain", token), ("escaped", odd)] {
-        let ir = json!({"ir": {"goal": "FindBadge", "ir_version": "0.1", "note": format!("x {token} y")}});
-        let server = MockServer::start([MockResponse::ok(ir.to_string())]);
+        let body = json!({"body": {"kind": "literal", "type": {"t": "Text"}, "value": format!("x {token} y")}});
+        let server = MockServer::start([MockResponse::ok(body.to_string())]);
         let (backend, _) = at(server.url(), Some(token), PATIENT);
         let shown = failure(complete(&backend, &request()));
         assert!(
@@ -522,7 +522,7 @@ fn a_reply_may_carry_extra_keys() {
         complete(&backend, &request()).expect("a question"),
         r#"{"question":"Which way?"}"#
     );
-    let (_server, backend) = replying("extra-ir", r#"{"trace_id": 7, "pending": "ticket 42"}"#);
+    let (_server, backend) = replying("extra-key", r#"{"trace_id": 7, "pending": "ticket 42"}"#);
     assert_eq!(
         complete(&backend, &request()),
         Err(ProviderError::Pending("ticket 42".to_owned()))

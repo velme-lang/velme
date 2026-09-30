@@ -9,8 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::json;
-use velme_builtins::BUILTINS_VERSION;
-use velme_ir::IR_VERSION;
 use velme_test_support::backend::{Config, Mode, On, Server};
 
 const SOURCE: &str = "language: velme/0.1
@@ -29,17 +27,14 @@ struct Out {
     code: i32,
 }
 
-/// A project with `SOURCE`, and a directory of backend replies holding a good `Double`.
+/// A project with `SOURCE`, and a directory of backend replies holding a good `Double` body.
 fn project(name: &str) -> (PathBuf, PathBuf) {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli-external").join(name);
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("replies")).expect("project directory");
     fs::write(dir.join("game.velme"), SOURCE).expect("source");
-    let number = json!({"t": "Number"});
-    let double = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Double", "types": {},
-        "inputs": [["n", number]], "output": number,
-        "body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
-                 "right": {"kind": "literal", "type": number, "value": 2}}});
+    let double = json!({"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
+                        "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}});
     fs::write(dir.join("replies/Double.json"), double.to_string()).expect("reply");
     let replies = dir.join("replies");
     (dir, replies)

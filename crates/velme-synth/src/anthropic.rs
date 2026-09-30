@@ -24,7 +24,7 @@ const BASE_URL: &str = "https://api.anthropic.com";
 /// The API version header value.
 const API_VERSION: &str = "2023-06-01";
 
-/// The tool whose input is an IR goal, and the one whose input is a question (R-SYNTH-44).
+/// The tool whose input is a goal's body, and the one whose input is a question (R-SYNTH-44).
 const WRITE_GOAL: &str = "write_goal";
 const ASK_QUESTION: &str = "ask_question";
 
@@ -277,7 +277,7 @@ impl Anthropic {
     }
 }
 
-/// The two tools of R-SYNTH-44. `write_goal` takes the IR goal schema, `ask_question` the question object; the reply
+/// The two tools of R-SYNTH-44. `write_goal` takes the body object (D-103), `ask_question` the question object; the reply
 /// schema's shared definitions move under the goal's, where its `$ref`s resolve. A compact reply (R-SYNTH-36) is not
 /// in the schema's names, so its tool is left unconstrained and the validator alone decides.
 fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderError> {
@@ -288,7 +288,7 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
         .and_then(Value::as_object)
         .cloned()
         .ok_or_else(bad)?;
-    let goal = defs.remove("IrGoal").ok_or_else(bad)?;
+    let goal = defs.remove("Body").ok_or_else(bad)?;
     let question = defs.remove("Question").ok_or_else(bad)?;
     let goal = match (format, goal) {
         (ReplyFormat::IrJson, Value::Object(mut goal)) => {
@@ -300,7 +300,7 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
     Ok(json!([
         {
             "name": WRITE_GOAL,
-            "description": "Return the finished goal as IR JSON.",
+            "description": "Return the goal's body as IR JSON: {\"body\": <expression>}.",
             "input_schema": goal,
         },
         {

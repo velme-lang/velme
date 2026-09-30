@@ -37,7 +37,7 @@ pub trait SynthBackend: Send + Sync {
     fn open(&self, identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError>;
 }
 
-/// A source of candidate IR: an LLM, an external service, or a test double. One [`SynthProvider::complete`] call is
+/// A source of candidate goal bodies: an LLM, an external service, or a test double. One [`SynthProvider::complete`] call is
 /// one provider call, whatever happens inside it (`compiler/22` R-SYNTH-21, D-92).
 #[async_trait]
 pub trait SynthProvider: Send + Sync {
@@ -88,7 +88,7 @@ impl SynthLimits {
 /// A provider's answer: one reply document, exactly as received (R-SYNTH-10).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SynthReply {
-    /// The reply document: an IR goal or a question, not yet read or validated.
+    /// The reply document: `{"body": <expression>}` or a question, not yet read or validated (D-103).
     pub reply_json: String,
     /// Tokens used.
     pub usage: Usage,

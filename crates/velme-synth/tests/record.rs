@@ -174,7 +174,7 @@ fn a_goals_fixture_is_overwritten_by_the_next_recording() {
 fn record_from_anthropic(name: &str) -> (PathBuf, Vec<velme_test_support::mock::MockRequest>) {
     let dir = dir(name);
     let server = MockServer::start([
-        MockResponse::tool_call("write_goal", &json!({"goal": "Rank"})),
+        MockResponse::tool_call("write_goal", &json!({"body": {"kind": "input", "name": "n"}})),
         MockResponse::ok(
             json!({"stop_reason": "refusal", "content": [{"type": "text", "text": format!("no {KEY}")}], "usage": {}})
                 .to_string(),

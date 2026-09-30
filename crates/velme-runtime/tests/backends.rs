@@ -80,6 +80,11 @@ fn ir(goal: &str, body: &Value) -> Value {
            "inputs": [["n", number()]], "output": number(), "body": body})
 }
 
+/// The reply that carries `ir`'s body alone (D-103).
+fn reply(ir: &Value) -> Value {
+    json!({ "body": ir["body"] })
+}
+
 /// A `call` node, which no candidate may hold (INV-6).
 fn call_node() -> Value {
     json!({"kind": "call", "binding": "d", "goal": "AddOne", "goal_signature": "b3:00", "args": [input()]})
@@ -105,12 +110,18 @@ fn sum() -> Value {
     ir("Sum", &binary("add", json!({"kind": "local", "name": "d"}), literal(1)))
 }
 
-/// A directory of the backend's replies, one file per goal.
+/// A directory of the backend's replies, one file per goal: hand-written IR is written as its body, which the backend
+/// sends as `{"body": …}`; any other document is written as it is.
 fn replies(name: &str, files: &[(&str, &Value)]) -> PathBuf {
     let dir = scratch(name).join("replies");
     fs::create_dir_all(&dir).expect("replies directory");
     for (file, value) in files {
-        fs::write(dir.join(file), value.to_string()).expect("reply file");
+        let doc = if value.get("ir_version").is_some() {
+            &value["body"]
+        } else {
+            value
+        };
+        fs::write(dir.join(file), doc.to_string()).expect("reply file");
     }
     dir
 }
@@ -407,7 +418,7 @@ fn ac_synth_17_a_retry_carries_the_earlier_reply_and_its_diagnostics() {
     let attempts = second["attempts"].as_array().expect("attempts");
     assert_eq!(attempts.len(), 1);
     let first: Value = serde_json::from_str(attempts[0]["reply"].as_str().expect("a reply text")).expect("JSON");
-    assert_eq!(first, triple());
+    assert_eq!(first, reply(&triple()));
     assert!(!attempts[0]["diagnostics"].as_array().expect("diagnostics").is_empty());
 
     let project = scratch("no-retry");
@@ -444,7 +455,7 @@ fn ac_synth_19_a_cached_build_never_contacts_the_service_and_describe_runs_once(
 #[test]
 fn ac_synth_01_a_lock_entry_or_a_store_hit_makes_zero_provider_calls() {
     let project = scratch("zero");
-    let script = Scripted::replies([double().to_string()]);
+    let script = Scripted::replies([reply(&double()).to_string()]);
     let first = build_with(&project, ONE, &script, no_retries());
     assert_eq!((first.report.summary.calls, script.remaining()), (1, 0));
     let locked = build_with(&project, ONE, &PanicProvider, no_retries());
@@ -499,7 +510,7 @@ fn ac_synth_31_a_pending_reply_is_vl0408_and_the_next_build_asks_again() {
         "AddOne's artifact only"
     );
     // The backend now has an answer for the same request.
-    fs::write(files.join("Double.json"), double().to_string()).expect("reply");
+    fs::write(files.join("Double.json"), double()["body"].to_string()).expect("reply");
     let second = build_with(&project, text, &backend, options);
     assert_eq!(status(&second, "Double"), Status::Built(Source::Synthesized));
     assert!(lock_has(&project, "Double"));
@@ -571,8 +582,8 @@ fn ollama(server: &MockServer, model: &str) -> Ollama {
     Ollama::new(config).with_sleeper(Arc::new(RecordingSleeper::default()))
 }
 
-fn chat(reply: &Value) -> MockResponse {
-    MockResponse::ollama_chat(reply)
+fn chat(ir: &Value) -> MockResponse {
+    MockResponse::ollama_chat(&reply(ir))
 }
 
 /// An accepted artifact of an Ollama build records `"provider": "ollama"` and `<model>@<digest>`; changing the digest
@@ -683,7 +694,7 @@ fn ac_sec_02_synthesized_ir_that_reaches_outside_its_scope_is_rejected() {
     ];
     for (i, reply) in hostile.iter().enumerate() {
         let project = scratch(&format!("sec02-{i}"));
-        let script = Scripted::replies([reply.to_string()]);
+        let script = Scripted::replies([self::reply(reply).to_string()]);
         let built = build_with(&project, ONE, &script, no_retries());
         assert_eq!(status(&built, "Double"), Status::Failed, "{i}");
         assert!(
@@ -715,7 +726,11 @@ goal Double(n: Number) -> Number:
         "Double",
         &json!({"kind": "builtin", "name": "http_get", "args": [literal(1)]}),
     );
-    let script = Scripted::replies([read.to_string(), fetch.to_string(), double().to_string()]);
+    let script = Scripted::replies([
+        reply(&read).to_string(),
+        reply(&fetch).to_string(),
+        reply(&double()).to_string(),
+    ]);
     let options = SynthOptions {
         max_retries: 2,
         stop_on_repeat: false,

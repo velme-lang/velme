@@ -65,6 +65,14 @@ pub fn valid_ir(program: &Program, ir: &str) -> ValidIr {
     validate(ir, &request).unwrap_or_else(|d| panic!("IR doesn't validate: {d:#?}"))
 }
 
+/// What a synthesis provider replies with for hand-written IR: its `body` alone, as `{"body": …}` (`compiler/22`
+/// R-SYNTH-10, D-103).
+pub fn body_reply(ir: &str) -> String {
+    let goal: serde_json::Value = from_json_str(ir).unwrap_or_else(|e| panic!("IR doesn't parse: {e}"));
+    let body = goal.get("body").unwrap_or_else(|| panic!("IR has no body"));
+    serde_json::json!({ "body": body }).to_string()
+}
+
 /// The backend a fixture's manifest names: hand-written IR comes from the `external` backend (`runtime/32` R-ART-21).
 pub const FIXTURE_BACKEND: &str = "velme-test-support";
 

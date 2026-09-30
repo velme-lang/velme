@@ -44,7 +44,7 @@ diagnostic's data.
 | VL0306 | DuplicateBinding | calls/graph | two bindings share a name, or a binding shadows an input | `{name}` is already used in this goal. | — |
 | VL0307 | GoalHasNoBody | calls/graph | goal has neither `plan` nor `result` binding (D-4) | `{goal}` needs a `plan:` that says what it should do. | — |
 | VL0308 | InvalidBudget | calls/graph | `budget` line has an unknown key or unit, a bad (including any `.`, D-78) or repeated value, or a value above the system cap (D-8, `language/12` R-GOAL-20) | `budget` can only make limits smaller — `{key}` can be at most `{cap}`. | — |
-| VL0401 | IRSchemaInvalid | IR/synthesis | IR JSON fails the schema | The generated program wasn't in the right shape. | A007 |
+| VL0401 | IRSchemaInvalid | IR/synthesis | the reply is not a `{"body"}` document, or the body fails the IR schema (D-103) | The generated program wasn't in the right shape. | A007 |
 | VL0402 | IRInvalid | IR/synthesis | IR schema-valid but fails validation (names, types, capabilities, `Call`) | The generated program broke a rule: {rule}. | A007 |
 | VL0403 | SynthesisFailed | IR/synthesis | no accepted IR after max retries, or `max_calls_per_build` reached; states the cause (`compiler/22` R-SYNTH-31) | Velme couldn't build `{goal}`: {cause} ({count} of {tries} tries). | A008 |
 | VL0404 | ProviderUnavailable | IR/synthesis | provider unreachable, rate-limited, or `--offline` | Velme couldn't reach the AI helper to build `{goal}`. | — |

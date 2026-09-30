@@ -2,14 +2,14 @@
 //! with what Velme found, up to `max_retries` times. One goal at a time (R-SYNTH-01, D-93).
 
 use velme_diagnostics::{Code, Diagnostic, Span};
-use velme_ir::{Fingerprint, Origin, Request, ValidIr, calls, from_json_str, to_canonical_string, validate_detailed};
+use velme_ir::{Fingerprint, Origin, Request, ValidIr, calls, from_json_str, validate_detailed};
 use velme_sema::hir::{GoalId, Program};
 
 use crate::attempt::{Rejection, clean_line, clean_text, summary};
 use crate::compact;
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
 use crate::provider::{ProviderError, SynthLimits, SynthProvider, Usage};
-use crate::request::{AttemptFeedback, build_request};
+use crate::request::{AttemptFeedback, SynthRequest, build_request};
 use crate::verify::{ChildRunner, Verdict, Verified, verify};
 
 /// What one build's synthesis has done so far: the calls made and the tokens used, and the error that put the provider
@@ -191,9 +191,10 @@ async fn run(
             },
         };
         session.usage = add(session.usage, reply.usage);
-        let rejection = match read(&reply.reply_json, format) {
+        let rejection = match read(&reply.reply_json, format, &base) {
             Reply::Question(question) => return Err(Failure::of(question_diagnostic(name, span, &question))),
             Reply::Bad(rejection) => rejection,
+            Reply::Internal => return Err(internal()),
             Reply::Candidate(text) => {
                 let request = Request {
                     program: task.program,
@@ -426,19 +427,32 @@ fn question_diagnostic(name: &str, span: Span, question: &str) -> Diagnostic {
 /// What a reply document is.
 enum Reply {
     Question(String),
+    /// The IR goal the reply's body completes, ready to validate (D-103).
     Candidate(String),
     Bad(Rejection),
+    /// The goal couldn't be assembled: a bug of ours.
+    Internal,
 }
 
-/// Reads a reply document (R-SYNTH-10): a question, IR to validate, or nothing usable.
-fn read(reply: &str, format: ReplyFormat) -> Reply {
-    let Ok(value) = from_json_str::<serde_json::Value>(reply) else {
-        // The validator words a document that isn't JSON at stage 1.
-        return Reply::Candidate(reply.to_owned());
+/// Reads a reply document (R-SYNTH-10, D-103): a question, a body to complete into IR and validate, or nothing usable.
+/// Only `body` is read from it; whatever else it holds is not.
+fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
+    let value = match from_json_str::<serde_json::Value>(reply) {
+        Ok(value) => value,
+        Err(error) => return Reply::Bad(Rejection::unparsable(reply, &error)),
     };
+    // The reply's own member names: a compact reply spells `body` with its alias (R-SYNTH-36).
+    let body_key = match format {
+        ReplyFormat::IrJson => Some("body"),
+        ReplyFormat::Compact => compact::table().keys.get("body").map(String::as_str),
+    };
+    let body = body_key.and_then(|key| value.get(key));
     if let Some(map) = value.as_object()
         && map.contains_key("question")
     {
+        if body.is_some() {
+            return Reply::Bad(Rejection::not_a_reply(reply, "held both a body and a question"));
+        }
         return match (
             map.len(),
             map.get("question").and_then(|q| q.as_str()).and_then(clean_text),
@@ -450,15 +464,30 @@ fn read(reply: &str, format: ReplyFormat) -> Reply {
             )),
         };
     }
-    if format == ReplyFormat::IrJson {
-        return Reply::Candidate(reply.to_owned());
+    let Some(body) = body else {
+        return Reply::Bad(Rejection::not_a_reply(reply, "had no `body`"));
+    };
+    let body = if format == ReplyFormat::IrJson {
+        body.clone()
+    } else {
+        match compact::expand(body) {
+            Ok(expanded) => expanded,
+            Err(_) => {
+                return Reply::Bad(Rejection::not_a_reply(
+                    reply,
+                    "used a short name that is not in the table",
+                ));
+            }
+        }
+    };
+    // A body the provider chose can hold what canonical JSON refuses, such as a number out of range: a failed attempt,
+    // not a bug of ours.
+    if velme_ir::to_canonical_string(&body).is_err() {
+        return Reply::Bad(Rejection::not_a_reply(reply, "holds a number Velme can't read"));
     }
-    match compact::expand(&value).ok().and_then(|v| to_canonical_string(&v).ok()) {
-        Some(text) => Reply::Candidate(text),
-        None => Reply::Bad(Rejection::not_a_reply(
-            reply,
-            "used a short name that is not in the table",
-        )),
+    match request.assemble(&body) {
+        Ok(text) => Reply::Candidate(text),
+        Err(_) => Reply::Internal,
     }
 }
 
