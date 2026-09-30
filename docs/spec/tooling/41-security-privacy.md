@@ -62,8 +62,12 @@ Pre-1.0 target (not a v0.1 gate): `cargo-vet` (or `cargo-crev`) audits for the W
 `velme.toml`, flags, or files in the project directory.
 **R-SEC-06** Keys are held in a redacting wrapper type whose `Debug`/`Display` print `***`; they never enter
 artifacts, manifests, traces, diagnostics, logs, `--json` output, replay fixtures or panic messages.
-**R-SEC-07** Recording replay fixtures (`compiler/22`) strips request headers; fixture files contain only the prompt
-body and the response body. A fixture-scrub test fails the gate if a key-shaped string appears in `tests/fixtures`.
+**R-SEC-07** Recording replay fixtures (`compiler/22` R-SYNTH-43) strips request headers; fixture files contain only
+a hash of each request, the reply body and usage — never the prompt body (D-94). A fixture-scrub test fails the gate
+if a key-shaped string appears in `tests/fixtures`.
+**R-SEC-13** The `external` backend's environment is the user's minus every variable whose name ends in `_API_KEY`
+(ASCII case-insensitive), not only the ones Velme reads, so no provider key reaches the command (`compiler/22`
+R-SYNTH-29, T-10, D-98).
 
 ## 5. Learner privacy (D-37)
 
@@ -78,12 +82,13 @@ per synthesis attempt to `.velme/synth-log.jsonl` unconditionally, since that lo
 diagnosis and Coach (Future) read from — it never leaves the machine either way (R-SEC-08).
 **R-SEC-10** Before any hosted, classroom or child-directed product ships, a consent and retention policy (COPPA,
 GDPR-K) must be approved after legal review (D-37); not a v0.1 CLI concern beyond R-SEC-08/09/12.
-**R-SEC-12** Every `velme build` that makes at least one live provider request prints one line to stderr before the
-first request, naming the provider and what is sent ("Sending your plans, types, checks and examples to Anthropic to
-write the code."). For `ollama` it names the model and server; for `external` it names the command. When a project's
-requested model or limits were clamped to a user-level ceiling (D-50), the notice also names what the project
-requested and which ceiling applied. `--json` puts it in the output's `notices` array instead. Builds served entirely
-from the cache print nothing.
+**R-SEC-12** Every `velme build` that contacts a provider prints one line to stderr before the first contact of any kind
+— the identity step (`compiler/22` R-SYNTH-25) included — naming the provider and what is sent ("Sending your plans,
+types, checks and examples to Anthropic to write the code."). For `ollama` it names the model and server; for `external`
+it names the command. When a project's requested model or limits were clamped to a user-level ceiling (D-50), the notice
+also names what the project requested and which ceiling applied. `scripted` and `replay` print, where they would first
+make contact, a version saying nothing is sent. `--json` puts it in the output's `notices` array instead. A build that
+would contact no provider prints nothing (D-92).
 
 ## 6. Security baseline before first public release
 

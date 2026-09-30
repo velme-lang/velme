@@ -99,13 +99,15 @@ example ×50.
 
 **Read:** `compiler/22` (all), `tooling/41` §threat model + secrets, `compiler/21` §validation, `tooling/40` §5.
 **Slices:** M5a `SynthProvider` trait, `SynthRequest` + its JSON Schema, `scripted` + `replay` providers, prompt
-template v1 · M5b retry loop with diagnostics feedback, verification pipeline, test-input generation,
-`VL0403` cause summary and question replies (`VL0407`, R-SYNTH-31..33, D-43), token-cost options (R-SYNTH-34..40, D-44) · M5c Anthropic
-provider (config, key from env, structured output, timeouts), recorded replay fixtures for every `examples/` goal ·
-M5d `ollama` provider (digest resolution, mock-server tests) and `external` backend (protocol, command sourcing,
-env scrubbing, `VL0406`, pending replies `VL0408`) with a small test backend in `velme-test-support` (D-41, D-42, D-45).
-**Exit:** all `AC-SYNTH-*` green on scripted/replay; AC-ART-01/02/03/09/10, AC-CMP-05/06/08, AC-SEC-09, AC-QA-02,
-AC-REL-03/05 green; one opt-in live run per example recorded as fixtures; AC-RDM-01 and AC-RDM-08 green on replay.
+template v1 · M5b retry loop with diagnostics feedback, verification pipeline, test-input generation, `VL0403` cause
+summary and question replies (`VL0407`, R-SYNTH-31..33, D-43), token-cost options (R-SYNTH-34..40, D-44) · M5c Anthropic
+provider (config, key from env, structured output, timeouts), the fixture recorder (R-SYNTH-43); recording fixtures from
+live Anthropic is an attended user step, not part of the slice (D-99) · M5d `ollama` provider (digest resolution,
+mock-server tests) and `external` backend (protocol, command sourcing, env scrubbing, `VL0406`, pending replies
+`VL0408`) with a small test backend in `velme-test-support` (D-41, D-42, D-45), and replay fixtures for every
+`examples/` goal recorded unattended through that backend (D-99).
+**Exit:** all `AC-SYNTH-*` green on scripted/replay; AC-ART-01/02/03/09/10, AC-CMP-05/06/08, AC-SEC-02/03/05/06/09,
+AC-QA-02, AC-REL-03/05 green; fixtures for every example; AC-RDM-01 and AC-RDM-08 green on replay.
 **User verifies:** with an API key, `velme build examples/beginner/add.velme` synthesizes and verifies; without one,
 `VL0405` explains how to configure it. Running `velme build` twice makes 0 provider calls the second time; editing one
 leaf's plan re-synthesizes only that leaf. With Ollama running, `velme build --provider ollama --model <model> …` does

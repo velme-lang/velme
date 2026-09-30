@@ -270,6 +270,8 @@ and run.
 | `VELME_MODEL` | model id override |
 | `VELME_EXTERNAL_COMMAND` | the `external` backend's command line (R-CLI-13) |
 | `VELME_LIVE_LLM=1` | enables live-provider tests (`delivery/51`, D-13); ignored by the CLI itself |
+| `VELME_SYNTH_RECORD=1` | with a live provider, records every exchange as replay fixtures in `replay_dir` (`compiler/22` R-SYNTH-43) |
+| `VELME_SYNTH_SCRIPT` | path of the `scripted` provider's script file: a JSON array of entries, each a reply document or `{"error": "<variant>"}`, consumed in order across the build. Read, and `--provider scripted` accepted, only by a `velme-cli` built with the `test-provider` Cargo feature, which release builds leave off; elsewhere `scripted` is an unknown provider (`VL0902`) (D-94) |
 | `NO_COLOR` | disables colour |
 
 **R-CLI-12** API keys are accepted only from the environment — never from `velme.toml`, flags or files in the project
