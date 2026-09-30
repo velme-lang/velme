@@ -127,6 +127,29 @@ impl Store {
         Ok(id)
     }
 
+    /// The stored artifacts whose manifest says they were built under `key`, by address (`compiler/22` R-SYNTH-02 step
+    /// 2). What a manifest claims decides nothing: the caller loads the artifact like any other (R-ART-10). A file that
+    /// isn't a readable artifact is not a candidate.
+    pub fn find_by_synthesis_key(&self, key: Fingerprint) -> Vec<Fingerprint> {
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = entries
+            .filter_map(Result::ok)
+            .filter_map(|e| e.file_name().into_string().ok())
+            .collect();
+        names.sort();
+        names
+            .iter()
+            .filter_map(|name| {
+                let hex = name.strip_prefix(ARTIFACT_PREFIX)?.strip_suffix(ARTIFACT_EXTENSION)?;
+                let id: Fingerprint = format!("b3:{hex}").parse().ok()?;
+                let artifact = self.get(id).ok()?;
+                (artifact.manifest.synthesis_key == key).then_some(id)
+            })
+            .collect()
+    }
+
     /// Reads the artifact `id`, checking that its bytes still hash to `id` and are the canonical JSON the store writes
     /// (R-ART-10). The IR in it is not validated and the manifest not cross-checked here: [`load`](crate::load) does
     /// both before trusting it.

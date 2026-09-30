@@ -9,7 +9,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+velme-builtins.workspace = true
+velme-check.workspace = true
 velme-diagnostics.workspace = true
+velme-interp.workspace = true
 velme-ir.workspace = true
 velme-runtime.workspace = true
 velme-sema.workspace = true

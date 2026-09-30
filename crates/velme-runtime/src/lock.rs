@@ -180,6 +180,12 @@ impl Lock {
             .and_then(|i| self.entries.get(i))
     }
 
+    /// Drops the entries of `file` whose goal is no longer declared: `declared` are the names it still has (R-ART-15).
+    pub fn retain_declared(&mut self, file: &str, declared: &[&str]) {
+        self.entries
+            .retain(|e| e.file != file || declared.contains(&e.name.as_str()));
+    }
+
     /// Pins `entry`, replacing the goal's earlier entry if it has one.
     pub fn insert(&mut self, entry: Entry) {
         match self.entries.binary_search_by(|e| key(e).cmp(&key(&entry))) {

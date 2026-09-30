@@ -15,7 +15,9 @@ use velme_ir::{
 use velme_runtime::{ArtifactFormat, Child, Entry, Lock, Manifest, Store, Verification};
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
-use velme_synth::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, SynthRequest};
+use velme_synth::{
+    ChildRunner, Identity, ProviderError, Sleeper, SynthBackend, SynthLimits, SynthProvider, SynthReply, SynthRequest,
+};
 
 /// `path`, relative to the repository root.
 pub fn repo(path: &str) -> PathBuf {
@@ -181,5 +183,82 @@ impl SynthProvider for PanicProvider {
 
     async fn complete(&self, _request: &SynthRequest, _limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         panic!("a provider was called")
+    }
+}
+
+/// A sleeper that returns at once and remembers what it was asked to wait: the injected clock of `compiler/22` R-SYNTH-12,
+/// so tests of transport retries take no wall time.
+#[derive(Debug, Clone, Default)]
+pub struct RecordingSleeper {
+    waits: std::sync::Arc<std::sync::Mutex<Vec<std::time::Duration>>>,
+}
+
+impl RecordingSleeper {
+    /// The waits asked for so far, in order.
+    pub fn waits(&self) -> Vec<std::time::Duration> {
+        self.waits.lock().expect("waits").clone()
+    }
+}
+
+#[async_trait]
+impl Sleeper for RecordingSleeper {
+    async fn sleep(&self, duration: std::time::Duration) {
+        self.waits.lock().expect("waits").push(duration);
+    }
+}
+
+/// A runner for candidate goals without calls: it runs the body on the reference interpreter, as the scheduler does for
+/// a leaf. `stop_after` makes the `n`th run fail with the watchdog's `VL0603`, for tests of `compiler/22` R-SYNTH-14.
+#[derive(Debug, Clone, Default)]
+pub struct LeafRunner {
+    /// The 1-based run that is stopped by the watchdog, if any.
+    pub stop_at: Option<usize>,
+    runs: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl LeafRunner {
+    /// A runner that never times out.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A runner whose `n`th run (from 1) is stopped by the watchdog.
+    pub fn timing_out_at(n: usize) -> Self {
+        LeafRunner {
+            stop_at: Some(n),
+            ..Self::default()
+        }
+    }
+}
+
+impl ChildRunner for LeafRunner {
+    fn run(
+        &self,
+        candidate: &ValidIr,
+        inputs: Vec<velme_builtins::Value>,
+    ) -> Result<velme_check::Invocation, Vec<velme_diagnostics::Diagnostic>> {
+        let n = self.runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        if self.stop_at == Some(n) {
+            return Err(vec![velme_diagnostics::Diagnostic::new(
+                velme_diagnostics::Code::Timeout,
+                Default::default(),
+                "It took too long.",
+            )]);
+        }
+        let budget = velme_interp::Budget::new(velme_interp::Limits {
+            fuel: 1_000_000,
+            memory: 1 << 20,
+        });
+        let (value, spent) = velme_interp::run_measured(candidate, inputs.clone(), Vec::new(), budget);
+        match value {
+            Ok(result) => Ok(velme_check::Invocation {
+                inputs,
+                bindings: Vec::new(),
+                result,
+                fuel: spent.fuel,
+                memory: spent.memory,
+            }),
+            Err(failure) => Err(vec![failure.diagnostic(&candidate.goal().goal, Default::default())]),
+        }
     }
 }

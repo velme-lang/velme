@@ -119,6 +119,8 @@ pub enum ProviderError {
     BackendFailed(String),
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),
+    /// A bug in Velme itself, such as a request that has no hash (`VL0607`); never a verdict on the candidate.
+    Internal(String),
 }
 
 impl ProviderError {
@@ -133,6 +135,7 @@ impl ProviderError {
             ProviderError::Malformed(_) => "malformed",
             ProviderError::BackendFailed(_) => "backend_failed",
             ProviderError::Pending(_) => "pending",
+            ProviderError::Internal(_) => "internal",
         }
     }
 
@@ -148,6 +151,7 @@ impl ProviderError {
             "malformed" => ProviderError::Malformed(String::new()),
             "backend_failed" => ProviderError::BackendFailed(String::new()),
             "pending" => ProviderError::Pending(text.unwrap_or_default().to_owned()),
+            "internal" => ProviderError::Internal(String::new()),
             _ => return None,
         })
     }

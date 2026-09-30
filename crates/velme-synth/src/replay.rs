@@ -181,7 +181,7 @@ impl SynthProvider for ReplayProvider {
             .ok_or_else(|| fail("the build asked for more attempts than were recorded"))?;
         let sent = request
             .hash()
-            .map_err(|_| ProviderError::Malformed("internal error: the request has no hash".to_owned()))?;
+            .map_err(|_| ProviderError::Internal("the request has no hash".to_owned()))?;
         if sent != exchange.request {
             return Err(fail("the request differs from the one recorded"));
         }

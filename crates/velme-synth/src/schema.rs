@@ -1,7 +1,6 @@
 //! The reply schema (`compiler/22` R-SYNTH-10) and the one-line-per-node summary of it that the prompt carries
 //! (R-SYNTH-35).
 
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use serde_json::{Map, Value, json};
@@ -44,12 +43,6 @@ pub fn reply_schema() -> Value {
 pub fn schema_summary() -> &'static [String] {
     static SUMMARY: LazyLock<Vec<String>> = LazyLock::new(summary);
     &SUMMARY
-}
-
-/// The compact alias table of `reply_format = "compact"` (R-SYNTH-36), part of `prompt_version` (D-97). Empty until the
-/// compact format exists (M5b).
-pub fn alias_table() -> BTreeMap<&'static str, &'static str> {
-    BTreeMap::new()
 }
 
 fn summary() -> Vec<String> {

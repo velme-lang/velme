@@ -61,7 +61,8 @@ pub struct SynthRequest { pub request_version: String, pub ir_version: String, p
                           pub output_schema: serde_json::Value }             // reply schema: IR goal or question (R-SYNTH-10)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
 pub enum  ProviderError { NotConfigured, Unavailable(String), RateLimited { retry_after: Option<Duration> },
-                          Refused(String), Timeout, Malformed(String), BackendFailed(String), Pending(String) }
+                          Refused(String), Timeout, Malformed(String), BackendFailed(String), Pending(String),
+                          Internal(String) }
 ```
 
 `SynthRequest` is the structured form of the §4 table. LLM providers render it into a prompt with the versioned
@@ -100,7 +101,7 @@ or environment variable (D-98).
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5) with `VL0401`, in Velme's own
 wording, never the provider's text (R-SYNTH-22, D-93); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
-not retried (R-SYNTH-41).
+not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
 **R-SYNTH-45** After one goal ends with `VL0404`, the build contacts the provider no more: every later goal that
 reaches R-SYNTH-02 step 3 ends with `VL0404` without a request (D-93).
 **R-SYNTH-24** `ollama` resolves the configured model's digest from the server's `/api/tags` **on the first lock miss in

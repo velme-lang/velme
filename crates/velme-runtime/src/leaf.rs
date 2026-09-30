@@ -33,7 +33,17 @@ pub fn run_leaf(
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    run_body(program, goal, source, locked, inputs, Vec::new(), Progress::default()).result
+    run_body(
+        program,
+        goal,
+        source,
+        locked,
+        inputs,
+        Vec::new(),
+        Progress::default(),
+        true,
+    )
+    .result
 }
 
 /// The limits of one invocation of `goal`: its effective `max_fuel` and `max_memory` (R-RUN-16).
@@ -82,6 +92,9 @@ impl Body {
 
 /// Runs the body of `goal` on `inputs` and, for a goal with calls, on `bindings`, one value per call in block order,
 /// then its checks on the invocation (`runtime/30` §4 steps 6–7), `progress` being how far the invocation already is.
+/// Without `checked` the checks are left to the caller: verification judges an example before the checks
+/// (`compiler/22` §6).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_body(
     program: &Program,
     goal: GoalId,
@@ -90,7 +103,19 @@ pub(crate) fn run_body(
     inputs: Vec<Value>,
     bindings: Vec<Value>,
     progress: Progress,
+    checked: bool,
 ) -> Body {
+    if !checked {
+        return match invoke(program, goal, locked, inputs, bindings, progress) {
+            Ok(invocation) => Body {
+                fuel: invocation.fuel,
+                memory: invocation.memory,
+                result: Ok(invocation.result),
+                checks: Vec::new(),
+            },
+            Err(stopped) => Body::failed(stopped.0, stopped.1),
+        };
+    }
     let checks = match GoalChecks::new(program, goal, source) {
         Ok(checks) => checks.watched(progress.interrupt.clone()),
         Err(diagnostic) => return Body::failed(diagnostic, progress.spent),

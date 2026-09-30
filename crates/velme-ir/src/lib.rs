@@ -13,7 +13,7 @@ pub use fingerprint::{
     Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, execution_id, signature, synthesis_key,
 };
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, from_json_str_within, to_canonical_string};
-pub use lower::{calls, ir_type};
+pub use lower::{calls, ir_type, wired_goal};
 pub use mapping::{
     DecodeError, DecodeProblem, OutputTooBig, SHOWN_CHARS, SHOWN_ITEMS, SHOWN_TOTAL, decode_str, decode_value,
     display_value, encode_value, json_kind,
@@ -22,7 +22,7 @@ pub use node::{
     BinaryOperator, Call, CallNode, Goal, ItemShape, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type,
     UnaryOperator,
 };
-pub use validate::{CheckScope, Origin, Request, Trusted, TrustedExpr, ValidIr, validate};
+pub use validate::{CheckScope, Invalid, Origin, Request, Trusted, TrustedExpr, ValidIr, validate, validate_detailed};
 
 /// The IR version this crate reads and writes (`compiler/21` R-IR-22).
 pub const IR_VERSION: &str = "0.1";
