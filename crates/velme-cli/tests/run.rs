@@ -217,8 +217,9 @@ fn ac_rdm_06_a_broken_fixture_shows_the_failed_check_with_its_values() {
     insta::assert_snapshot!(run.stderr);
 }
 
-/// `velme check` reads the store only to validate locked IR and writes nothing (`tooling/40` §2). No provider exists
-/// before M5a, so the panicking-provider half of the criterion arrives with the `SynthProvider` trait.
+/// `velme check` reads the store only to validate locked IR and writes nothing (`tooling/40` §2). The CLI builds no
+/// provider until `velme build` exists (M5b), and `velme-check` has no dependency on `velme-synth` (AC-CMP-01), so
+/// `check` cannot reach one. `velme_test_support::PanicProvider` is the panicking provider the build tests pass in.
 #[test]
 fn ac_cmp_02_check_reads_the_store_only_to_validate_locked_ir() {
     let project = copy("add", "ac_cmp_02");
@@ -838,9 +839,9 @@ fn ac_run_10_explain_matches_the_golden_text() {
     );
 }
 
-/// `velme explain` is byte-identical across runs, needs no lock and no artifact, and changes nothing. No provider
-/// exists to be called before M5a, so the panicking-provider half of the criterion arrives with that trait
-/// (AC-CLI-07, AC-CMP-02).
+/// `velme explain` is byte-identical across runs, needs no lock and no artifact, and changes nothing. It takes a
+/// program and a goal and nothing else (`velme_runtime::explain`), and the CLI builds no provider before `velme build`
+/// (M5b), so it cannot call one (AC-CLI-07, AC-CMP-02).
 #[test]
 fn ac_cli_07_explain_is_byte_identical_and_writes_nothing() {
     let project = copy("player_summary", "ac_cli_07");

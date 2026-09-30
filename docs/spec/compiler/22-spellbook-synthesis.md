@@ -77,13 +77,13 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 | `anthropic` | hosted LLM (D-14) | Messages API, temperature 0; output through two tools, `write_goal` (input: the IR goal schema) and `ask_question` (input: the question object), with the model forced to call one (R-SYNTH-44) |
 | `ollama` | local LLM (D-41) | Ollama chat API at the configured URL, `format` set to the IR JSON Schema, temperature 0, no streaming; no API key |
 | `external` | human- or tool-written IR (D-42) | runs the user's command and speaks the §3.2 protocol over stdin/stdout; no network of its own |
-| `replay` | integration tests, golden builds, CI | reads `<replay_dir>/<synthesis-key>.json` (R-SYNTH-43); missing fixture → `VL0404` naming the key; `VELME_SYNTH_RECORD=1` with a live provider writes fixtures |
+| `replay` | integration tests, golden builds, CI | reads `<replay_dir>/b3-<hex>.json`, named from the synthesis key as store files are (R-SYNTH-43); missing fixture → `VL0404` naming the key; `VELME_SYNTH_RECORD=1` with a live provider writes fixtures |
 | `scripted` | unit tests of the retry loop and pipeline | a queue of replies/errors: in memory from library tests, or from the script file in `VELME_SYNTH_SCRIPT` in a `velme-cli` built with the `test-provider` feature, never in release builds (`tooling/40` §5.2) |
 
 **R-SYNTH-06** Live-provider tests run only with `VELME_LIVE_LLM=1` and are never part of the default gate (D-13).
 **R-SYNTH-43** Replay fixtures (D-94). `<replay_dir>/replay.json` holds `provider`, `model_version` and
 `input_version` of the recorded build; `replay` reports them from the identity step (R-SYNTH-25), so the replayed
-build computes the same keys and writes byte-identical manifests. `<synthesis-key>.json` holds one entry per exchange
+build computes the same keys and writes byte-identical manifests. `b3-<hex>.json`, named from the synthesis key as store files are, holds one entry per exchange
 of that goal, in order: `request`, the BLAKE3 of the canonical JSON (21 R-IR-21) of the `SynthRequest` sent; then
 either `reply`, the reply JSON, or `error`, the `ProviderError` variant (`refused`, `malformed`, `backend_failed`,
 `pending`; `pending` with its R-SYNTH-41-cleaned text); and `usage`. No prompt body, header or key is stored, so plan
@@ -169,8 +169,8 @@ because `{child}` {reason}.", with the child's failure code as a note. `VL04xx` 
 ## 4. Prompt contract
 
 The prompt is rendered from `SynthRequest` (§3) with a versioned template in `crates/velme-synth/prompts/`, one file
-per task kind (`leaf`, `composite`), each holding its retry-turn text too. `prompt_version` = the task kind's template
-id + BLAKE3 of the template bytes, the compact alias table (R-SYNTH-36) and the schema summary lines (R-SYNTH-35), so
+per task kind (`leaf`, `composite`), each holding its retry-turn text too. `prompt_version` is one value covering every template: their
+ids + BLAKE3 of all the template bytes (an edit to one re-keys every goal), the compact alias table (R-SYNTH-36) and the schema summary lines (R-SYNTH-35), so
 an edit to any of them changes synthesis keys (D-11, D-97). Both LLM providers share the templates. The table below is also the content of `SynthRequest`; the external protocol (§3.2)
 sends the same fields as structured JSON.
 

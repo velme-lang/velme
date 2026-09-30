@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 
+use async_trait::async_trait;
+
 use velme_ir::{
     CallNode, Fingerprint, Goal, Origin, Request, Synthesis, ValidIr, calls, contract_key, from_json_str, signature,
     synthesis_key, validate,
@@ -13,6 +15,7 @@ use velme_ir::{
 use velme_runtime::{ArtifactFormat, Child, Entry, Lock, Manifest, Store, Verification};
 use velme_sema::hir::{GoalId, Program};
 use velme_sema::{SourceFile, analyze};
+use velme_synth::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, SynthRequest};
 
 /// `path`, relative to the repository root.
 pub fn repo(path: &str) -> PathBuf {
@@ -144,4 +147,39 @@ pub fn install_artifact(
     });
     lock.write(project).expect("lock written");
     artifact
+}
+
+/// A backend and provider that panic on any use: passed where no provider may be contacted, so the test fails if one
+/// is (`compiler/20` AC-CMP-02, `compiler/22` AC-SYNTH-01).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PanicProvider;
+
+#[async_trait]
+impl SynthBackend for PanicProvider {
+    async fn identify(&self) -> Result<Identity, ProviderError> {
+        panic!("the identity step contacted a provider")
+    }
+
+    fn open(&self, _identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError> {
+        panic!("a provider was built")
+    }
+}
+
+#[async_trait]
+impl SynthProvider for PanicProvider {
+    fn id(&self) -> &str {
+        panic!("a provider was asked its id")
+    }
+
+    fn model(&self) -> &str {
+        panic!("a provider was asked its model")
+    }
+
+    fn input_version(&self) -> &str {
+        panic!("a provider was asked its input version")
+    }
+
+    async fn complete(&self, _request: &SynthRequest, _limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
+        panic!("a provider was called")
+    }
 }

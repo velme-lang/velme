@@ -13,6 +13,8 @@ velme-diagnostics.workspace = true
 velme-ir.workspace = true
 velme-runtime.workspace = true
 velme-sema.workspace = true
+velme-synth.workspace = true
+async-trait.workspace = true
 
 [lints]
 workspace = true

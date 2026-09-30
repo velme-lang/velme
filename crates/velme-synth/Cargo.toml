@@ -8,5 +8,22 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[dependencies]
+async-trait.workspace = true
+schemars.workspace = true
+serde.workspace = true
+# Number text is kept exactly, never read through `f64` (CC-DET-03); reply and request documents carry IR numbers.
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+velme-builtins.workspace = true
+velme-check.workspace = true
+velme-diagnostics.workspace = true
+velme-ir.workspace = true
+velme-sema.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+tokio.workspace = true
+velme-test-support.workspace = true
+
 [lints]
 workspace = true

@@ -19,10 +19,13 @@ velme-sema = { path = "crates/velme-sema", version = "0.1.0" }
 velme-ir = { path = "crates/velme-ir", version = "0.1.0" }
 velme-interp = { path = "crates/velme-interp", version = "0.1.0" }
 velme-check = { path = "crates/velme-check", version = "0.1.0" }
+velme-synth = { path = "crates/velme-synth", version = "0.1.0" }
 velme-runtime = { path = "crates/velme-runtime", version = "0.1.0" }
 velme-test-support = { path = "crates/velme-test-support", version = "0.1.0" }
 
 anyhow = "1"
+# The `SynthProvider` trait is used as a trait object (`compiler/22` §3.1, R-SYNTH-04).
+async-trait = "0.1"
 ariadne = { version = "0.6", default-features = false }
 # Every fingerprint and artifact address is BLAKE3 over canonical JSON (D-21, `runtime/32` §2).
 blake3 = "1"
