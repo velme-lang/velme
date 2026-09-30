@@ -7,8 +7,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 use velme_diagnostics::Code;
 use velme_synth::{
-    ExternalMessage, REQUEST_VERSION, SynthRequest, TaskKind, build_request, reply_schema, request_schema,
-    schema_summary,
+    REQUEST_VERSION, SynthRequest, TaskKind, build_request, reply_schema, request_schema, schema_summary,
 };
 use velme_test_support::{goal_id, program, read, repo};
 
@@ -110,15 +109,11 @@ fn the_committed_request_schema_matches_the_generated_one() {
         "{} is stale: regenerate it with `VELME_BLESS=1 cargo test -p velme-synth --test request` and review the diff",
         path.display()
     );
-    let message = ExternalMessage::synthesize(request("FindBadge"));
-    let text = velme_ir::to_canonical_string(&message).expect("canonical");
-    let back: ExternalMessage = velme_ir::from_json_str(&text).expect("parses");
-    assert_eq!(back, message);
-    let describe = serde_json::to_value(ExternalMessage::describe()).expect("serializes");
-    assert_eq!(
-        describe,
-        json!({"kind": "describe", "request_version": REQUEST_VERSION})
-    );
+    let request = request("FindBadge");
+    let text = velme_ir::to_canonical_string(&request).expect("canonical");
+    let back: SynthRequest = velme_ir::from_json_str(&text).expect("parses");
+    assert_eq!(back, request);
+    assert_eq!(request.request_version, REQUEST_VERSION);
 }
 
 /// The reply is one IR goal or one question object (R-SYNTH-10), and every `$ref` in the schema resolves.

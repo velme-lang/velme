@@ -1,19 +1,23 @@
-//! The `external` provider against the test backend (`compiler/22` §3.2, R-SYNTH-26..29, R-SYNTH-41, D-42, D-45, D-98):
-//! real child processes, with the backend's own misbehaviour on request. Only the two timeout tests wait on the clock.
+//! The `external` provider against the test backend and a mock server (`compiler/22` §3.2, R-SYNTH-26..29, R-SYNTH-41, D-42,
+//! D-45, D-98, D-101): a real HTTP service on 127.0.0.1, with the backend's own misbehaviour on request. No wall-clock wait
+//! but the timeout tests, which use a short timeout and an injected sleeper.
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
 use velme_synth::{
-    External, ExternalCommand, ExternalConfig, ExternalMessage, Identity, ProviderError, REQUEST_VERSION, SynthBackend,
+    External, ExternalConfig, ExternalToken, ExternalUrl, Identity, ProviderError, REQUEST_VERSION, SynthBackend,
     SynthLimits, SynthRequest, build_request,
 };
-use velme_test_support::{backend_words, goal_id, program, repo};
+use velme_test_support::backend::{Config, Mode, On, Server};
+use velme_test_support::mock::{MockResponse, MockServer};
+use velme_test_support::{RecordingSleeper, goal_id, program, repo};
 
 const SOURCE: &str = "language: velme/0.1
 
@@ -54,22 +58,29 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// The backend run in `root` with `args` and a timeout of `timeout`.
-fn external(root: &Path, args: &[&str], timeout: Duration) -> External {
-    let command = ExternalCommand::resolve(&backend_words(args), root).expect("a command");
-    let mut config = ExternalConfig::new(command, root);
-    config.timeout = timeout;
-    External::new(config)
-}
-
 const PATIENT: Duration = Duration::from_secs(30);
 
+/// The backend at `url`, with a timeout of `timeout` and a sleeper that never waits.
+fn at(url: &str, token: Option<&str>, timeout: Duration) -> (External, RecordingSleeper) {
+    let mut config = ExternalConfig::new(ExternalUrl::parse(url).expect("a URL"));
+    config.token = token.map(|t| ExternalToken::parse(t).expect("a token").expect("one"));
+    config.timeout = timeout;
+    let sleeper = RecordingSleeper::default();
+    (External::new(config).with_sleeper(Arc::new(sleeper.clone())), sleeper)
+}
+
+/// The test backend for `config`, and a client of it.
+fn serving(config: Config) -> (Server, External) {
+    let server = Server::start(config);
+    let (backend, _) = at(server.url(), None, PATIENT);
+    (server, backend)
+}
+
 /// A backend that answers `reply` (a JSON text) to every `FindBadge`, from a directory holding that one file.
-fn replying(name: &str, reply: &str) -> (External, PathBuf) {
+fn replying(name: &str, reply: &str) -> (Server, External) {
     let dir = scratch(name);
     fs::write(dir.join("FindBadge.json"), reply).expect("reply file");
-    let backend = external(&dir, &["--dir", dir.to_str().expect("utf-8")], PATIENT);
-    (backend, dir)
+    serving(Config::replying(dir))
 }
 
 fn complete(backend: &External, request: &SynthRequest) -> Result<String, ProviderError> {
@@ -85,8 +96,8 @@ fn complete(backend: &External, request: &SynthRequest) -> Result<String, Provid
 
 fn failure(result: Result<String, ProviderError>) -> String {
     match result.expect_err("a failure") {
-        ProviderError::BackendFailed { reason, stderr } if stderr.is_empty() => reason,
-        ProviderError::BackendFailed { reason, stderr } => format!("{reason}\n{stderr}"),
+        ProviderError::BackendFailed { reason, body } if body.is_empty() => reason,
+        ProviderError::BackendFailed { reason, body } => format!("{reason}\n{body}"),
         other => panic!("not a backend failure: {other:?}"),
     }
 }
@@ -95,8 +106,7 @@ fn failure(result: Result<String, ProviderError>) -> String {
 /// (R-SYNTH-25, R-SYNTH-26).
 #[test]
 fn describe_gives_the_backend_name_and_version() {
-    let dir = scratch("describe");
-    let backend = external(&dir, &["--describe", "  my   backend ", "v  2"], PATIENT);
+    let (_server, backend) = serving(Config::default().describing("  my   backend ", "v  2"));
     let identity = block_on(backend.identify()).expect("identity");
     assert_eq!(identity.provider, "external");
     assert_eq!(identity.backend.as_deref(), Some("my backend"));
@@ -108,7 +118,6 @@ fn describe_gives_the_backend_name_and_version() {
 /// reply with anything else in it, is a backend failure (R-SYNTH-26, D-98).
 #[test]
 fn a_describe_reply_that_breaks_the_rules_is_a_backend_failure() {
-    let dir = scratch("describe-bad");
     for (name, version) in [
         ("", "v"),
         ("n", ""),
@@ -122,31 +131,33 @@ fn a_describe_reply_that_breaks_the_rules_is_a_backend_failure() {
         (&"n".repeat(129), "v"),
         ("n", &"v".repeat(129)),
     ] {
-        let backend = external(&dir, &["--describe", name, version], PATIENT);
+        let (_server, backend) = serving(Config::default().describing(name, version));
         let error = block_on(backend.identify()).expect_err("not a description");
         assert!(
             matches!(&error, ProviderError::BackendFailed { .. }),
             "{name:?} {version:?}: {error:?}"
         );
     }
-    let edge = external(&dir, &["--describe", &"n".repeat(128), &"v".repeat(128)], PATIENT);
+    let (_server, edge) = serving(Config::default().describing(&"n".repeat(128), &"v".repeat(128)));
     assert!(block_on(edge.identify()).is_ok(), "128 characters are allowed");
     // A `synthesize`-shaped answer, garbage and a wrong-typed field.
-    let (backend, _) = replying("describe-shape", "{}");
-    let garbage = external(&dir, &["--mode", "garbage", "--on", "describe"], PATIENT);
-    for backend in [garbage, backend] {
-        let error = block_on(backend.identify());
-        if let Err(error) = error {
-            assert!(matches!(error, ProviderError::BackendFailed { .. }), "{error:?}");
-        }
+    for body in ["{}", "not json", r#"{"backend": 1, "backend_version": "v"}"#, "[1]"] {
+        let server = MockServer::start([MockResponse::ok(body)]);
+        let (backend, _) = at(server.url(), None, PATIENT);
+        let error = block_on(backend.identify()).expect_err("not a description");
+        assert!(
+            matches!(error, ProviderError::BackendFailed { .. }),
+            "{body}: {error:?}"
+        );
     }
 }
 
 /// A `describe` reply may carry keys Velme doesn't know; only the two fields matter (R-SYNTH-26).
 #[test]
 fn unknown_describe_keys_are_ignored() {
-    let dir = scratch("describe-extra");
-    let backend = external(&dir, &["--describe", "queue", "v1", "--describe-extra"], PATIENT);
+    let mut config = Config::default().describing("queue", "v1");
+    config.describe_extra = true;
+    let (_server, backend) = serving(config);
     let identity = block_on(backend.identify()).expect("identity");
     assert_eq!(identity.backend.as_deref(), Some("queue"));
 }
@@ -155,12 +166,12 @@ fn unknown_describe_keys_are_ignored() {
 #[test]
 fn an_error_reply_is_cleaned_and_bounded() {
     let text = format!("bad\u{1b}[31m\n\tthing {}", "x".repeat(1000));
-    let (backend, _) = replying("error-text", &json!({"error": text}).to_string());
+    let (_server, backend) = replying("error-text", &json!({"error": text}).to_string());
     let error = complete(&backend, &request()).expect_err("a failure");
-    let ProviderError::BackendFailed { reason, stderr } = error else {
+    let ProviderError::BackendFailed { reason, body } = error else {
         panic!("not a backend failure");
     };
-    assert!(stderr.is_empty());
+    assert!(!body.contains(['\u{1b}', '\n', '\t']));
     assert!(reason.starts_with("it reported an error: bad thing xxx"), "{reason}");
     assert!(!reason.contains(['\u{1b}', '\n', '\t']));
     assert!(reason.chars().count() < 340, "{}", reason.chars().count());
@@ -171,22 +182,22 @@ fn an_error_reply_is_cleaned_and_bounded() {
 #[test]
 fn a_reply_is_one_of_four_kinds() {
     let ir = json!({"ir_version": "0.1", "goal": "FindBadge", "note": 1.50});
-    let (backend, _) = replying("kind-ir", &ir.to_string());
+    let (_server, backend) = replying("kind-ir", &ir.to_string());
     assert_eq!(
         complete(&backend, &request()).expect("an ir reply"),
         r#"{"goal":"FindBadge","ir_version":"0.1","note":1.5}"#
     );
-    let (backend, _) = replying("kind-question", r#"{"question": "Which way?"}"#);
+    let (_server, backend) = replying("kind-question", r#"{"question": "Which way?"}"#);
     assert_eq!(
         complete(&backend, &request()).expect("a question"),
         r#"{"question":"Which way?"}"#
     );
-    let (backend, _) = replying("kind-pending", r#"{"pending": "ticket 42"}"#);
+    let (_server, backend) = replying("kind-pending", r#"{"pending": "ticket 42"}"#);
     assert_eq!(
         complete(&backend, &request()),
         Err(ProviderError::Pending("ticket 42".to_owned()))
     );
-    let (backend, _) = replying("kind-error", r#"{"error": "no idea"}"#);
+    let (_server, backend) = replying("kind-error", r#"{"error": "no idea"}"#);
     assert!(failure(complete(&backend, &request())).contains("no idea"));
     for (name, reply) in [
         ("kind-empty", "{}"),
@@ -196,154 +207,194 @@ fn a_reply_is_one_of_four_kinds() {
         ("kind-pending-number", r#"{"pending": 7}"#),
         ("kind-array", "[1]"),
     ] {
-        let (backend, _) = replying(name, reply);
+        let (_server, backend) = replying(name, reply);
         let text = failure(complete(&backend, &request()));
         assert!(!text.is_empty(), "{name}");
     }
 }
 
-/// A non-zero exit is a failure whose notes hold the last words of stderr, cleaned; so are stdout that isn't JSON and
-/// stdout past 2 MiB (AC-SYNTH-16, R-SYNTH-28).
+/// A reply that isn't JSON, one past 2 MiB and a server error that outlives the transport retries are backend failures
+/// whose notes hold the last words of the reply body, cleaned; nothing is asked twice but a server error (AC-SYNTH-16,
+/// R-SYNTH-28).
 #[test]
-fn an_exit_garbage_and_a_flood_are_backend_failures_with_the_tail_of_stderr() {
+fn ac_synth_16_garbage_a_flood_and_a_server_error_are_backend_failures_with_the_tail_of_the_body() {
     let dir = scratch("failures");
-    let exited = failure(complete(&external(&dir, &["--mode", "exit"], PATIENT), &request()));
-    assert_eq!(exited, "it exited with status 3\nbackend exploded : it is a test");
-    let garbage = failure(complete(&external(&dir, &["--mode", "garbage"], PATIENT), &request()));
-    assert!(garbage.starts_with("its output wasn't one JSON object"), "{garbage}");
-    // Every failure carries the tail of stderr, not only a non-zero exit (R-SYNTH-28).
+    let garbage = Config::replying(&dir).misbehaving(Mode::Garbage, On::Both);
+    let (_server, backend) = serving(garbage);
+    let text = failure(complete(&backend, &request()));
+    assert!(text.starts_with("its reply wasn't one JSON object"), "{text}");
+    assert!(text.ends_with("this is not JSON"), "{text}");
+    let described = block_on(backend.identify());
     assert!(
-        garbage.ends_with("garbage mode: printing what is not JSON"),
-        "{garbage}"
-    );
-    let described = block_on(external(&dir, &["--mode", "garbage", "--on", "describe"], PATIENT).identify());
-    assert!(
-        matches!(&described, Err(ProviderError::BackendFailed { stderr, .. }) if stderr.contains("garbage mode")),
+        matches!(&described, Err(ProviderError::BackendFailed { body, .. }) if body.contains("not JSON")),
         "{described:?}"
     );
-    let flood = failure(complete(&external(&dir, &["--mode", "huge"], PATIENT), &request()));
+    let (_server, flood) = serving(Config::replying(&dir).misbehaving(Mode::Huge, On::Synthesize));
+    let flood = failure(complete(&flood, &request()));
     assert!(flood.starts_with("it wrote more than 2 MiB"), "{flood}");
+
+    // A `5xx` is retried as a transport failure, then it is the backend failing, with its body as the notes.
+    let server = Server::start(Config::replying(&dir).misbehaving(Mode::Status(500), On::Synthesize));
+    let (backend, sleeper) = at(server.url(), None, PATIENT);
+    let text = failure(complete(&backend, &request()));
+    assert_eq!(text, "it answered with status 500\n{\"note\":\"a test failure\"}");
+    assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
+
+    // Any other status is the backend's answer and is not asked again.
+    let mock = MockServer::start([MockResponse::status(404, "no such thing\u{1b}[31m here")]);
+    let (backend, sleeper) = at(mock.url(), None, PATIENT);
+    assert_eq!(
+        failure(complete(&backend, &request())),
+        "it answered with status 404\nno such thing here"
+    );
+    assert!(sleeper.waits().is_empty());
+    assert_eq!(mock.requests().len(), 1);
 }
 
-/// A backend that outlives the timeout is a failure, `describe` included, and the whole process group is killed
-/// (R-SYNTH-28, D-98).
+/// A body past 2 MiB is a failure however small the rest of the reply is (R-SYNTH-28).
 #[test]
-fn a_backend_that_outlives_the_timeout_is_stopped_with_its_whole_group() {
+fn an_oversized_body_is_a_backend_failure() {
+    let flood = format!(r#"{{"question": "{}"}}"#, "x".repeat(3 * 1024 * 1024));
+    let server = MockServer::start([MockResponse::ok(flood)]);
+    let (backend, _) = at(server.url(), None, PATIENT);
+    let text = failure(complete(&backend, &request()));
+    assert!(text.starts_with("it wrote more than 2 MiB"), "{text}");
+}
+
+/// A request that outlives the timeout is `Timeout`, `describe` included, after the transport retries, and the wait is not
+/// the backend's to hold up (R-SYNTH-28, D-98, D-101).
+#[test]
+fn a_backend_that_outlives_the_timeout_is_a_timeout() {
     let dir = scratch("timeout");
-    let quick = Duration::from_millis(400);
-    let started = Instant::now();
-    let text = failure(complete(&external(&dir, &["--mode", "hang"], quick), &request()));
-    assert!(text.starts_with("it took longer than"), "{text}");
-    let described = block_on(external(&dir, &["--mode", "hang", "--on", "describe"], quick).identify());
-    assert!(
-        matches!(described, Err(ProviderError::BackendFailed { .. })),
-        "{described:?}"
-    );
-    assert!(
-        started.elapsed() < Duration::from_secs(20),
-        "the hang was not waited out"
-    );
-    #[cfg(unix)]
-    {
-        let pidfile = dir.join("pid");
-        let group = external(
-            &dir,
-            &["--mode", "hang-group", "--pidfile", pidfile.to_str().expect("utf-8")],
-            quick,
-        );
-        failure(complete(&group, &request()));
-        let pid = fs::read_to_string(&pidfile).expect("the grandchild's pid");
-        assert!(gone(&pid), "the grandchild {pid} is still running");
-    }
+    let quick = Duration::from_millis(300);
+    let server = Server::start(Config::replying(&dir).misbehaving(Mode::Hang, On::Both));
+    let (backend, sleeper) = at(server.url(), None, quick);
+    assert_eq!(complete(&backend, &request()), Err(ProviderError::Timeout));
+    assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
+    assert!(matches!(block_on(backend.identify()), Err(ProviderError::Timeout)));
 }
 
-/// Whether the process `pid` is gone. Signal 0 asks only whether it exists; a killed one is reaped by init, so it is
-/// given a moment.
-#[cfg(unix)]
-fn gone(pid: &str) -> bool {
-    let alive = || {
-        std::process::Command::new("kill")
-            .args(["-0", pid.trim()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+/// A service that isn't there is `Unavailable` after the transport retries, `describe` included (R-SYNTH-12, D-101).
+#[test]
+fn a_service_that_is_not_there_is_unavailable() {
+    let gone = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        format!("http://{}", listener.local_addr().expect("an address"))
     };
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while alive() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    !alive()
+    let (backend, sleeper) = at(&gone, None, PATIENT);
+    assert!(matches!(
+        complete(&backend, &request()),
+        Err(ProviderError::Unavailable(_))
+    ));
+    assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
+    assert!(matches!(
+        block_on(backend.identify()),
+        Err(ProviderError::Unavailable(_))
+    ));
 }
 
-/// A backend that replies and exits but leaves a child holding its stdout open is not a hang: the reply is accepted at
-/// once, no timeout is reported, and the child is killed with the group (R-SYNTH-28).
-#[cfg(unix)]
+/// A redirect is never followed, and so nothing, the token included, goes to where it points (`tooling/41` R-SEC-13, D-101).
 #[test]
-fn a_reply_is_accepted_when_a_leftover_child_holds_the_pipe_and_the_child_is_killed() {
-    let dir = scratch("sleeper");
-    fs::write(dir.join("FindBadge.json"), r#"{"question":"Which badge?"}"#).expect("reply file");
-    let pidfile = dir.join("pid");
-    let backend = external(
-        &dir,
-        &[
-            "--dir",
-            dir.to_str().expect("utf-8"),
-            "--sleeper",
-            "--pidfile",
-            pidfile.to_str().expect("utf-8"),
-        ],
-        PATIENT,
+fn a_redirect_is_not_followed() {
+    let dir = scratch("redirect");
+    let log = dir.join("log.txt");
+    let server = Server::start(
+        Config::replying(&dir)
+            .logging(&log)
+            .misbehaving(Mode::Redirect, On::Both),
     );
-    let started = Instant::now();
-    let reply = complete(&backend, &request()).expect("the reply is accepted");
-    assert!(reply.contains("Which badge?"), "{reply}");
-    assert!(
-        started.elapsed() < Duration::from_secs(10),
-        "the sleeper was waited for"
-    );
-    let pid = fs::read_to_string(&pidfile).expect("the sleeper's pid");
-    assert!(gone(&pid), "the sleeper {pid} is still running");
-}
-
-/// A command that can't be started is a backend failure, not a panic.
-#[test]
-fn a_command_that_cannot_start_is_a_backend_failure() {
-    let dir = scratch("nostart");
-    let missing = dir.join("no-such-program");
-    let command = ExternalCommand::resolve(&[missing.to_string_lossy().into_owned()], &dir).expect("absolute");
-    let backend = External::new(ExternalConfig::new(command, &dir));
-    assert_eq!(failure(complete(&backend, &request())), "it couldn't be started");
+    let (backend, _) = at(server.url(), Some("tok-redirect"), PATIENT);
+    let text = failure(complete(&backend, &request()));
+    assert!(text.contains("redirect"), "{text}");
     assert!(matches!(
         block_on(backend.identify()),
         Err(ProviderError::BackendFailed { .. })
     ));
+    assert_eq!(
+        fs::read_to_string(&log).expect("log"),
+        "synthesize FindBadge\ndescribe\n",
+        "the redirect target was asked"
+    );
+    // Another host that the redirect names gets nothing.
+    let elsewhere = MockServer::start([MockResponse::ok(r#"{"question": "followed"}"#)]);
+    let target = format!("{}/v1/synthesize", elsewhere.url());
+    let mock = MockServer::start([MockResponse::status(307, "").header("location", &target)]);
+    let (backend, _) = at(mock.url(), Some("tok-redirect"), PATIENT);
+    assert!(failure(complete(&backend, &request())).contains("redirect"));
+    assert!(elsewhere.requests().is_empty(), "the redirect was followed");
 }
 
-/// The `synthesize` message for a golden goal is the snapshot, parses back through the committed types of the request
-/// schema, and holds no file path, environment value or key (AC-SYNTH-14, R-SYNTH-26).
+/// The token is sent as a bearer token to the configured URL on every request, and a `401` or `403` is `TokenRejected`,
+/// never retried; a service that echoes the token in a failure doesn't get it into the notes (R-SEC-13, D-101).
 #[test]
-fn ac_synth_14_the_synthesize_message_is_the_snapshot_and_holds_nothing_local() {
+fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
+    let (_server, plain) = serving(Config::default().wanting_token("tok-123"));
+    assert!(matches!(
+        block_on(plain.identify()),
+        Err(ProviderError::TokenRejected { sent: false })
+    ));
+    let server = Server::start(Config::default().wanting_token("tok-123"));
+    let (wrong, sleeper) = at(server.url(), Some("tok-999"), PATIENT);
+    assert!(matches!(
+        block_on(wrong.identify()),
+        Err(ProviderError::TokenRejected { sent: true })
+    ));
+    assert!(sleeper.waits().is_empty(), "a rejection is not retried");
+    let (right, _) = at(server.url(), Some("tok-123"), PATIENT);
+    assert!(block_on(right.identify()).is_ok());
+
+    for status in [401, 403] {
+        let mock = MockServer::start([
+            MockResponse::status(status, "denied"),
+            MockResponse::status(status, "denied"),
+        ]);
+        let (backend, _) = at(mock.url(), Some("tok-123"), PATIENT);
+        assert!(matches!(
+            block_on(backend.identify()),
+            Err(ProviderError::TokenRejected { sent: true })
+        ));
+        assert!(matches!(
+            complete(&backend, &request()),
+            Err(ProviderError::TokenRejected { sent: true })
+        ));
+        let sent = mock.requests();
+        assert_eq!(sent[0].headers["authorization"], "Bearer tok-123");
+        assert_eq!(sent[0].method, "GET");
+        assert_eq!(sent[0].path, "/v1/describe");
+        assert_eq!(sent[1].method, "POST");
+        assert_eq!(sent[1].path, "/v1/synthesize");
+        assert_eq!(sent[1].headers["authorization"], "Bearer tok-123");
+    }
+    // Without a token there is no header at all.
+    let mock = MockServer::start([MockResponse::ok(r#"{"backend": "b", "backend_version": "v"}"#)]);
+    let (backend, _) = at(mock.url(), None, PATIENT);
+    block_on(backend.identify()).expect("identity");
+    assert!(!mock.requests()[0].headers.contains_key("authorization"));
+
+    // A service that echoes the token back doesn't get it into a diagnostic.
+    let mock = MockServer::start([MockResponse::status(400, "bad request; you sent tok-123 and more")]);
+    let (backend, _) = at(mock.url(), Some("tok-123"), PATIENT);
+    let text = failure(complete(&backend, &request()));
+    assert!(text.contains("you sent *** and more"), "{text}");
+    assert!(!text.contains("tok-123"));
+}
+
+/// The `synthesize` request body is the canonical request itself: it is the snapshot, parses back through the committed
+/// types of the request schema, and holds no file path, environment value or key (AC-SYNTH-14, R-SYNTH-26).
+#[test]
+fn ac_synth_14_the_synthesize_body_is_the_snapshot_and_holds_nothing_local() {
     let dir = scratch("message");
-    let capture = dir.join("stdin.json");
-    let backend = external(
-        &dir,
-        &[
-            "--dir",
-            dir.to_str().expect("utf-8"),
-            "--capture",
-            capture.to_str().expect("utf-8"),
-        ],
-        PATIENT,
-    );
-    // The backend has no reply for the goal, so this is an `error`; the message it received is what is checked.
+    let capture = dir.join("body.json");
+    let (_server, backend) = serving(Config::replying(&dir).capturing(&capture));
+    // The backend has no reply for the goal, so this is an `error`; the body it received is what is checked.
     let _ = complete(&backend, &request());
-    let text = fs::read_to_string(&capture).expect("the message the backend received");
-    let message: ExternalMessage = velme_ir::from_json_str(&text).expect("the committed message types accept it");
-    assert_eq!(message, ExternalMessage::synthesize(request()));
-    let mut shown = serde_json::to_value(&message).expect("serializes");
-    assert_eq!(shown["kind"], "synthesize");
+    let text = fs::read_to_string(&capture).expect("the body the backend received");
+    let body: SynthRequest = velme_ir::from_json_str(&text).expect("the committed request types accept it");
+    assert_eq!(body, request());
+    assert_eq!(text, velme_ir::to_canonical_string(&request()).expect("canonical"));
+    let mut shown = serde_json::to_value(&body).expect("serializes");
     assert_eq!(shown["request_version"], REQUEST_VERSION);
-    shown["request"]["output_schema"] = json!("<reply schema>");
+    shown["output_schema"] = json!("<reply schema>");
     insta::assert_snapshot!(
         "external_synthesize_message",
         serde_json::to_string_pretty(&shown).expect("prints")
@@ -362,6 +413,73 @@ fn ac_synth_14_the_synthesize_message_is_the_snapshot_and_holds_nothing_local() 
             .filter(|v| v.len() > 3),
     );
     for value in forbidden {
-        assert!(!text.contains(&value), "the message holds {value}");
+        assert!(!text.contains(&value), "the body holds {value}");
     }
+}
+
+/// Nothing the service says can carry the token into a `ProviderError`: the `{"error"}` reason, the pending and question
+/// text, the describe fields and the IR, in any spelling, and a token cut by the start of the 4 KiB tail (R-SEC-13, D-101).
+#[test]
+fn the_token_is_taken_out_of_everything_the_service_says() {
+    let token = "tok-1234abcd";
+    let text = |result: Result<String, ProviderError>| format!("{result:?}");
+    for (name, reply) in [
+        ("error", json!({"error": format!("bad token {token}")})),
+        ("pending", json!({"pending": format!("ticket {token}")})),
+        ("question", json!({"question": format!("is it {token}?")})),
+        ("ir", json!({"ir": {"goal": token, "ir_version": "0.1"}})),
+    ] {
+        let server = MockServer::start([MockResponse::ok(reply.to_string())]);
+        let (backend, _) = at(server.url(), Some(token), PATIENT);
+        let shown = text(complete(&backend, &request()));
+        assert!(!shown.contains(token), "{name}: {shown}");
+        assert!(shown.contains("***"), "{name}: {shown}");
+    }
+    // Describe: the name and the version, which become the identity and the manifest.
+    let server = MockServer::start([MockResponse::ok(
+        json!({"backend": token, "backend_version": token}).to_string(),
+    )]);
+    let (backend, _) = at(server.url(), Some(token), PATIENT);
+    let identity = block_on(backend.identify()).expect("identity");
+    assert!(!format!("{identity:?}").contains(token), "{identity:?}");
+    // A token that JSON spells with an escape is found too.
+    let odd = "a/b\"c";
+    let server = MockServer::start([MockResponse::ok(json!({"error": format!("x {odd} y")}).to_string())]);
+    let (backend, _) = at(server.url(), Some(odd), PATIENT);
+    let shown = text(complete(&backend, &request()));
+    assert!(!shown.contains(odd) && !shown.contains("a\\/b"), "{shown}");
+
+    // The token straddles the cut of the 4 KiB tail: redacting comes first, so no half of it is left.
+    let body = format!("{}{token}{}", "x".repeat(100), "y".repeat(4096 - 4));
+    let server = MockServer::start([MockResponse::status(400, body)]);
+    let (backend, _) = at(server.url(), Some(token), PATIENT);
+    let shown = failure(complete(&backend, &request()));
+    assert!(!shown.contains("1234abcd") && !shown.contains(token), "{shown}");
+    assert!(shown.contains("***"), "{shown}");
+}
+
+/// A body that stalls after the headers were sent is a `Timeout`, not an unavailable service (R-SYNTH-28).
+#[test]
+fn a_body_that_stalls_is_a_timeout() {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let url = format!("http://{}", listener.local_addr().expect("an address"));
+    let thread = std::thread::spawn(move || {
+        // Three tries, each answered with headers and the first byte of a longer body, then silence.
+        let mut held = Vec::new();
+        for stream in listener.incoming().take(3) {
+            let mut stream = stream.expect("a connection");
+            let mut buf = [0_u8; 4096];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 100\r\n\r\n{")
+                .expect("headers");
+            held.push(stream);
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    });
+    let (backend, sleeper) = at(&url, None, Duration::from_millis(300));
+    assert_eq!(complete(&backend, &request()), Err(ProviderError::Timeout));
+    assert_eq!(sleeper.waits().len(), 2);
+    thread.join().expect("the server thread");
 }

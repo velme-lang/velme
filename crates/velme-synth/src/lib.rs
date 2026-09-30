@@ -7,10 +7,15 @@
 mod anthropic;
 mod attempt;
 mod compact;
+#[cfg(feature = "provider-external")]
 mod external;
 pub mod fsio;
 mod generate;
-#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+#[cfg(any(
+    feature = "provider-anthropic",
+    feature = "provider-ollama",
+    feature = "provider-external"
+))]
 mod http;
 #[cfg(feature = "provider-ollama")]
 mod ollama;
@@ -30,7 +35,8 @@ mod verify;
 pub use anthropic::{Anthropic, AnthropicConfig, ApiKey, KeyError};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
-pub use external::{CommandError, External, ExternalCommand, ExternalConfig, is_api_key_variable};
+#[cfg(feature = "provider-external")]
+pub use external::{External, ExternalConfig, ExternalToken, ExternalUrl, TOKEN_VARIABLE, TokenMalformed, UrlError};
 pub use generate::{TestInput, TestInputs, test_inputs};
 #[cfg(feature = "provider-ollama")]
 pub use ollama::{DEFAULT_URL as OLLAMA_URL, Ollama, OllamaConfig, normalize_model};
@@ -40,8 +46,8 @@ pub use provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProv
 pub use record::Recorder;
 pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path, read_replay_identity};
 pub use request::{
-    AttemptDiagnostic, AttemptFeedback, Budget, BuiltinSig, CheckItem, Example, ExternalMessage, LocalBinding, Param,
-    REQUEST_VERSION, RecordType, Signature, SynthRequest, TaskKind, build_request, builtins, request_schema,
+    AttemptDiagnostic, AttemptFeedback, Budget, BuiltinSig, CheckItem, Example, LocalBinding, Param, REQUEST_VERSION,
+    RecordType, Signature, SynthRequest, TaskKind, build_request, builtins, request_schema,
 };
 pub use schema::{reply_schema, schema_summary};
 pub use scripted::{ScriptError, Scripted, Step};

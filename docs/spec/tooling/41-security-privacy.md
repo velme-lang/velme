@@ -44,10 +44,10 @@ source, an RFC, and appear in the artifact manifest. `effects` is reserved (D-24
 | T-7 | Secret leakage | API key in trace, artifact, crash log | §4 | R-SEC-05..07 |
 | T-8 | Learner data leaves the machine | child's plan + examples sent to a provider | §5; only prompt contents go to the chosen provider; no telemetry | R-SEC-08..10, R-SEC-12, D-37 |
 | T-9 | Untrusted input JSON | 1 GB input, deep nesting | input size/depth caps before decoding; typed decode (D-23) | `tooling/40` R-CLI-07, `runtime/30` |
-| T-10 | Build runs an attacker's program | a cloned repo's config names `./evil.sh` as the external backend | the command comes only from a flag, env var or user-level config; it gets no API keys; its output is untrusted IR | D-42, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-13 |
+| T-10 | Build sends the user's plans to an attacker's server | a cloned repo's `velme.toml` names its own server as the external backend, so the user's plans, checks and token would go there | the URL comes only from a flag, env var or user-level config, never the project; plain `http` only to this machine, `https` elsewhere, no user information in the URL, redirects never followed; the token goes to that URL alone; the reply is untrusted IR | D-42, D-101, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-13 |
 | T-11 | Native code loaded from project files | a cloned repo ships a crafted `.cwasm` under `.velme/` hoping it gets deserialized instead of compiled from validated IR | the compiled-module cache lives in a user-level directory, never the project; `Module::deserialize` only reads from there | D-48, `runtime/31` R-SBX-13/14 |
 | T-12 | Tampered but structurally valid artifact/lock pair | an edited `.velme/artifacts/*.json` committed in a PR with a lock entry recomputed to match, so the hash check alone would pass | every load cross-checks the manifest against the lock entry and current source, and `build`/`velme test --locked` re-run the goal's examples and generated inputs before trusting a stored artifact | D-46, `runtime/32` R-ART-10/14 |
-| T-13 | Terminal escape injection | external backend stderr or a synthesized value contains `\x1b]52;c;…\x07` (clipboard write) or a Unicode bidi override | every string Velme didn't produce is escaped (control/ANSI/OSC/bidi) before human-mode display | D-47, `tooling/40` §3.5 |
+| T-13 | Terminal escape injection | external backend reply body or a synthesized value contains `\x1b]52;c;…\x07` (clipboard write) or a Unicode bidi override | every string Velme didn't produce is escaped (control/ANSI/OSC/bidi) before human-mode display | D-47, `tooling/40` §3.5 |
 | T-14 | Cloned project runs up the user's API bill | a project's `velme.toml` requests an expensive model with a high `max_calls_per_build`, and a learner builds it without reading it | user-level config sets ceilings (`allowed_models`, `max_calls_per_build`, `max_retries`, `max_output_tokens`) that a project's settings can only tighten, never loosen; the build notice names what the project requested | D-50, `compiler/22` R-SYNTH-27..29, `tooling/40` R-CLI-11 |
 
 **R-SEC-11** Any change that adds a host function, relaxes a validator rule or raises a system cap is an
@@ -65,16 +65,17 @@ artifacts, manifests, traces, diagnostics, logs, `--json` output, replay fixture
 **R-SEC-07** Recording replay fixtures (`compiler/22` R-SYNTH-43) strips request headers; fixture files contain only
 a hash of each request, the reply body and usage — never the prompt body (D-94). A fixture-scrub test fails the gate
 if a key-shaped string appears in `tests/fixtures`.
-**R-SEC-13** The `external` backend's environment is the user's minus every variable whose name ends in `_API_KEY`
-(ASCII case-insensitive), not only the ones Velme reads, so no provider key reaches the command (`compiler/22`
-R-SYNTH-29, T-10, D-98).
+**R-SEC-13** The `external` backend's bearer token comes only from `VELME_EXTERNAL_TOKEN` and is sent only as the
+`Authorization` header of requests to the configured URL: never to another host (redirects are not followed), never in a
+URL, and never logged, echoed, put in a diagnostic, fixture, `replay.json`, `.velme/synth-log.jsonl` or `--json` output
+and a service that echoes it in a reply gets it replaced by `***` before anything is stored or shown (`compiler/22` R-SYNTH-29, T-10, D-101). No `*_API_KEY` variable is read for it or sent to it.
 
 ## 5. Learner privacy (D-37)
 
 **R-SEC-08** The CLI sends data to exactly one place: the synthesis provider the user configured, only during
 synthesis, and only the prompt contents defined in `compiler/22` (signature, schemas, plan, checks, examples).
 Inputs passed to `run` are never sent. With `ollama` that place is the configured server (the local machine by
-default); with `external` it is the user's own command.
+default); with `external` it is the user's own service at the URL they configured.
 **R-SEC-09** No telemetry, analytics or crash report leaves the machine in the open-source distribution. Local
 telemetry (timings, cache hits) is written only under `.velme/` and only with `-v`/`--json` or when the user opts in.
 This governs what is *displayed or aggregated*, not what is logged: `compiler/22` R-SYNTH-23 still appends one line
@@ -85,7 +86,7 @@ GDPR-K) must be approved after legal review (D-37); not a v0.1 CLI concern beyon
 **R-SEC-12** Every `velme build` that contacts a provider prints one line to stderr before the first contact of any kind
 — the identity step (`compiler/22` R-SYNTH-25) included — naming the provider and what is sent ("Sending your plans,
 types, checks and examples to Anthropic to write the code."). For `ollama` it names the model and server; for `external`
-it names the command. When a project's requested model or limits were clamped to a user-level ceiling (D-50), the notice
+it names the host of the URL. When a project's requested model or limits were clamped to a user-level ceiling (D-50), the notice
 also names what the project requested and which ceiling applied. `scripted` and `replay` print, where they would first
 make contact, a version saying nothing is sent. `--json` puts it in the output's `notices` array instead. A build that
 would contact no provider prints nothing (D-92).

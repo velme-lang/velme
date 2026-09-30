@@ -103,15 +103,17 @@ template v1 · M5b retry loop with diagnostics feedback, verification pipeline, 
 summary and question replies (`VL0407`, R-SYNTH-31..33, D-43), token-cost options (R-SYNTH-34..40, D-44) · M5c Anthropic
 provider (config, key from env, structured output, timeouts), the fixture recorder (R-SYNTH-43); recording fixtures from
 live Anthropic is an attended user step, not part of the slice (D-99) · M5d `ollama` provider (digest resolution,
-mock-server tests) and `external` backend (protocol, command sourcing, env scrubbing, `VL0406`, pending replies
-`VL0408`) with a small test backend in `velme-test-support` (D-41, D-42, D-45), and replay fixtures for every
-`examples/` goal recorded unattended through that backend (D-99).
+mock-server tests) and `external` backend (a standalone HTTP service at a user-configured URL: protocol, URL rules,
+bearer token, transport, `VL0406`, pending replies `VL0408`; D-101) with a small HTTP test backend in
+`velme-test-support` (D-41, D-42, D-45), and replay fixtures for every `examples/` goal recorded unattended through that
+backend (D-99).
 **Exit:** all `AC-SYNTH-*` except AC-SYNTH-08 (an M6 exit, with `--locked` and `--offline`) green on scripted/replay; AC-ART-01/02/03/09/10, AC-CMP-05/06/08, AC-SEC-02/03/05/06/09,
 AC-QA-02, AC-REL-03/05 green; fixtures for every example; AC-RDM-01 and AC-RDM-08 green on replay.
 **User verifies:** with an API key, `velme build examples/beginner/add.velme` synthesizes and verifies; without one,
 `VL0405` explains how to configure it. Running `velme build` twice makes 0 provider calls the second time; editing one
 leaf's plan re-synthesizes only that leaf. With Ollama running, `velme build --provider ollama --model <model> …` does
-the same with no key; `velme build --provider external --external-command "<backend>" …` builds from a backend's IR.
+the same with no key; with a service running (for example `velme-test-backend --dir <replies>`), `velme build --provider external
+--external-url http://127.0.0.1:<port> …` builds from a backend's IR.
 
 ### M6 — CLI completion: locked/offline, artifact, config
 

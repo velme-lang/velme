@@ -60,7 +60,7 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
-                     velme build FILE [--provider NAME] [--model ID] [--external-command CMD] [-v] [--json]\n       \
+                     velme build FILE [--provider NAME] [--model ID] [--external-url URL] [-v] [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
@@ -91,7 +91,7 @@ enum Command {
         json: bool,
         provider: Option<String>,
         model: Option<String>,
-        external_command: Option<String>,
+        external_url: Option<String>,
         verbose: bool,
     },
     Run {
@@ -132,12 +132,12 @@ fn parse_args(args: &[String]) -> Option<Command> {
         return (!json && rest.next().is_none()).then_some(Command::Version);
     }
     let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
-    let (mut provider, mut model, mut external_command, mut verbose) = (None, None, None, false);
+    let (mut provider, mut model, mut external_url, mut verbose) = (None, None, None, false);
     while let Some(arg) = rest.next() {
         match arg {
             "--provider" if provider.is_none() => provider = Some(rest.next()?.to_owned()),
             "--model" if model.is_none() => model = Some(rest.next()?.to_owned()),
-            "--external-command" if external_command.is_none() => external_command = Some(rest.next()?.to_owned()),
+            "--external-url" if external_url.is_none() => external_url = Some(rest.next()?.to_owned()),
             "-v" | "--verbose" => verbose = true,
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
@@ -159,11 +159,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
             json,
             provider,
             model,
-            external_command,
+            external_url,
             verbose,
         });
     }
-    if provider.is_some() || model.is_some() || external_command.is_some() || verbose {
+    if provider.is_some() || model.is_some() || external_url.is_some() || verbose {
         return None;
     }
     match command {
@@ -253,13 +253,13 @@ fn command(args: &[String]) -> u8 {
             json,
             provider,
             model,
-            external_command,
+            external_url,
             verbose,
         }) => {
             let flags = BuildFlags {
                 provider: provider.as_deref(),
                 model: model.as_deref(),
-                external_command: external_command.as_deref(),
+                external_url: external_url.as_deref(),
                 verbose,
             };
             build_command(&file, json, &flags)
@@ -455,7 +455,7 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
         if json && !line.is_empty() {
             notices.push(line.to_owned());
         } else if !line.is_empty() {
-            // The line names the user's command and model, text Velme didn't produce (`tooling/41` R-SEC-12, D-47).
+            // The line names the user's external host and model, text Velme didn't produce (`tooling/41` R-SEC-12, D-47).
             print_err(&format!("{}\n", render::escape(line)));
         }
     };

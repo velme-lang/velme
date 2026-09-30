@@ -1,6 +1,6 @@
 //! The synthesis request (`compiler/22` §3.1, §4): the structured form of what a provider is asked, built from the
-//! typed HIR of one goal alone (`compiler/20` R-CMP-06). Its JSON form is the `synthesize` message of the external
-//! protocol (§3.2) and is described by the committed `velme-synth-request` schema.
+//! typed HIR of one goal alone (`compiler/20` R-CMP-06). Its JSON form is the body of the `synthesize` request of the
+//! external protocol (§3.2) and is described by the committed `velme-synth-request` schema.
 
 use std::collections::BTreeMap;
 
@@ -153,8 +153,8 @@ pub struct AttemptFeedback {
     pub diagnostics: Vec<AttemptDiagnostic>,
 }
 
-/// Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the `request` of the external
-/// `synthesize` message.
+/// Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the body of the external
+/// `synthesize` request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SynthRequest {
@@ -190,45 +190,11 @@ pub struct SynthRequest {
     pub output_schema: Value,
 }
 
-/// A message to an `external` backend (`compiler/22` §3.2): the document written to its stdin.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum ExternalMessage {
-    /// Asks the backend to name itself; answered once per build (R-SYNTH-26).
-    Describe {
-        /// [`REQUEST_VERSION`].
-        request_version: String,
-    },
-    /// Asks for one candidate.
-    Synthesize {
-        /// [`REQUEST_VERSION`].
-        request_version: String,
-        /// The request.
-        request: Box<SynthRequest>,
-    },
-}
-
-impl ExternalMessage {
-    /// The `describe` message.
-    pub fn describe() -> Self {
-        ExternalMessage::Describe {
-            request_version: REQUEST_VERSION.to_owned(),
-        }
-    }
-
-    /// The `synthesize` message for `request`.
-    pub fn synthesize(request: SynthRequest) -> Self {
-        ExternalMessage::Synthesize {
-            request_version: REQUEST_VERSION.to_owned(),
-            request: Box::new(request),
-        }
-    }
-}
-
-/// The JSON Schema of [`ExternalMessage`] at [`REQUEST_VERSION`] (`compiler/22` §3.2), generated from the Rust types
+/// The JSON Schema of [`SynthRequest`] at [`REQUEST_VERSION`], the body of an `external` `synthesize` request
+/// (`compiler/22` §3.2), generated from the Rust types
 /// like the IR schema (`compiler/21` R-IR-20). The committed copy is `crates/velme-synth/schema/synth-request-0.1.json`.
 pub fn request_schema() -> Value {
-    schemars::schema_for!(ExternalMessage).to_value()
+    schemars::schema_for!(SynthRequest).to_value()
 }
 
 impl SynthRequest {

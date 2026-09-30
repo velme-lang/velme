@@ -56,7 +56,8 @@ fn ac_qa_02_the_gate_removes_keys_and_provider_settings_from_every_step() {
         .collect();
     for name in [
         "VELME_MODEL",
-        "VELME_EXTERNAL_COMMAND",
+        "VELME_EXTERNAL_URL",
+        "VELME_EXTERNAL_TOKEN",
         "VELME_SYNTH_RECORD",
         "VELME_SYNTH_SCRIPT",
         "VELME_LIVE_LLM",

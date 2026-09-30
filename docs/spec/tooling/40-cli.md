@@ -58,7 +58,7 @@ spelling suggestion.
 | `--color auto\|always\|never` | `auto` | ANSI colour; `auto` disables when stdout is not a TTY or `NO_COLOR` is set |
 | `--provider NAME` | `velme.toml` → `anthropic` | synthesis provider: `anthropic`, `ollama`, `external`, `replay`, `scripted` (test builds only) |
 | `--model ID` | `VELME_MODEL` / `velme.toml` | model id for `anthropic` / `ollama`; never a code constant (D-14); clamped to any `allowed_models` ceiling (D-50) |
-| `--external-command CMD` | `VELME_EXTERNAL_COMMAND` / user config | the `external` backend's command line (`compiler/22` §3.2); see R-CLI-13 |
+| `--external-url URL` | `VELME_EXTERNAL_URL` / user config | the base URL of the `external` backend's service (`compiler/22` §3.2, D-101); see R-CLI-13 |
 | `--locked` | off | see R-CLI-04 |
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14) |
@@ -175,7 +175,7 @@ end with "The answer is <binding>."
 **R-CLI-09** Every user-visible message string is composed by the library that detects the problem, starting from
 the code's template in `reference/90` §2 (CC-CONST, D-74); the CLI never composes its own error prose.
 **R-CLI-17** In human mode, every string Velme did not itself produce is escaped before display (D-47): external
-backend stderr and `{"error"}` reasons (`VL0406`), `{"question"}`/`{"pending"}` text, values computed by synthesized
+the backend's response-body tail and `{"error"}` reasons (`VL0406`), `{"question"}`/`{"pending"}` text, values computed by synthesized
 IR shown in `Got:` lines, trace text, and input echoes. C0/C1 control characters (other than the newline and tab a
 layout expects), ESC/ANSI/OSC sequences, and Unicode bidi controls (U+061C, U+200E, U+200F, U+202A–U+202E,
 U+2066–U+2069) render as visible escapes such as `\u{1b}`, so no such byte reaches the terminal. `--json` writes the
@@ -217,7 +217,7 @@ max_output_tokens = 8192        # LLM providers only
 max_calls_per_build = 50        # hard stop across the whole build (compiler/22 R-SYNTH-21)
 replay_dir = "tests/fixtures/synth"   # replay provider only; relative, inside the project root (R-CLI-18)
 ollama_url = "http://127.0.0.1:11434" # ollama provider only
-external_timeout_secs = 30      # external provider only; the command itself is never set here (R-CLI-13)
+external_timeout_secs = 30      # external provider only (fixed at 30 until the M6 config reads it); the URL itself is never set here (R-CLI-13)
 # token cost, LLM providers only (compiler/22 §4.1, D-44)
 prompt_cache = true             # anthropic: cache the fixed prompt prefix (R-SYNTH-34)
 schema_in_prompt = "summary"    # summary | full (R-SYNTH-35)
@@ -242,7 +242,7 @@ ceilings that every project's `[synthesis]` values are clamped to (tighten only,
 
 ```toml
 [synthesis]
-external_command = ["/usr/local/bin/impl", "--queue", "velme"]  # R-CLI-13
+external_url = "https://backend.example.com/velme"  # R-CLI-13
 allowed_models = ["claude-…", "llama3.1"]  # optional; a project's `model` outside it is clamped to the first entry
 max_calls_per_build = 20        # ceiling; a project's own value is clamped down to this, never raised
 max_retries = 1                 # ceiling
@@ -252,12 +252,12 @@ max_output_tokens = 4096        # ceiling
 **R-CLI-11** Unknown keys are an error (`VL0902`), not ignored. Precedence for a setting's value: flag > environment >
 project `velme.toml` > user-level config > built-in defaults. System caps (`runtime/30`) and the user-level ceilings
 above (D-50) are not a layer in that order: they clamp the resolved value afterward and can only tighten it.
-**R-CLI-13** The `external` command is read only from `--external-command`, `VELME_EXTERNAL_COMMAND`, or
-`external_command` in the user-level config — never from a project's `velme.toml` (`tooling/41` T-10); an
-`external_command` key there is an unknown key (`VL0902`). It is an argument list (as in the example above);
-`--external-command` and `VELME_EXTERNAL_COMMAND` are split into arguments shell-words style (quoting only — no
-globbing, and no variable or `~` expansion). `compiler/22` R-SYNTH-29 defines how the resulting program is resolved
-and run.
+**R-CLI-13** The `external` backend's base URL is read only from `--external-url`, `VELME_EXTERNAL_URL`, or `external_url`
+in the user-level config (which comes with M6) — never from a project's `velme.toml` (`tooling/41` T-10); an
+`external_url` key there is an unknown key (`VL0902`). A URL that is not `https` or plain `http` to `localhost`,
+127.0.0.0/8 or `[::1]`, that has another scheme or user information, or that does not parse is `VL0902` before any
+contact; with no URL the provider is not configured (`VL0405`). The optional bearer token is read only from
+`VELME_EXTERNAL_TOKEN` (§5.2). `compiler/22` R-SYNTH-29 defines how the URL and token are used.
 **R-CLI-18** `[artifacts] dir` and `[synthesis] replay_dir` must be relative paths that stay inside the project root
 (no leading `/`, no `..` component); an absolute path or one that escapes the project is `VL0902`.
 
@@ -268,7 +268,8 @@ and run.
 | `VELME_API_KEY` | provider API key (preferred); read only at request time |
 | `ANTHROPIC_API_KEY` | fallback for the `anthropic` provider |
 | `VELME_MODEL` | model id override |
-| `VELME_EXTERNAL_COMMAND` | the `external` backend's command line (R-CLI-13) |
+| `VELME_EXTERNAL_URL` | the `external` backend's base URL (R-CLI-13) |
+| `VELME_EXTERNAL_TOKEN` | optional bearer token for the `external` backend, sent as `Authorization: Bearer` to the configured URL only; never logged or recorded (`tooling/41` R-SEC-13) |
 | `VELME_LIVE_LLM=1` | enables live-provider tests (`delivery/51`, D-13); ignored by the CLI itself |
 | `VELME_SYNTH_RECORD=1` | with a live provider, records every exchange as replay fixtures in `replay_dir` (`compiler/22` R-SYNTH-43) |
 | `VELME_SYNTH_SCRIPT` | path of the `scripted` provider's script file: a JSON array of entries, each a reply document or `{"error": "<variant>"}`, consumed in order across the build. Read, and `--provider scripted` accepted, only by a `velme-cli` built with the `test-provider` Cargo feature, which release builds leave off; elsewhere `scripted` is an unknown provider (`VL0902`) (D-94) |
@@ -295,7 +296,7 @@ name to set.
 | AC-CLI-11 | `--build --locked` exits 64 as a usage error and neither builds nor runs anything. |
 | AC-CLI-12 | Every `--json` fixture in the golden suite validates against `docs/schemas/velme-cli-1.schema.json`. |
 | AC-CLI-13 | `velme run --locked` with a stale entry for the goal and a bad `--input` exits with the usage-error code (`64`), not the lock-staleness code (`4`) — R-CLI-16 precedence. |
-| AC-CLI-14 | An external backend whose stderr contains `\x1b]52;c;…\x07` and a U+202E override renders both visibly (e.g. `\u{1b}`) in human mode and the terminal receives no raw ESC byte; `--json` carries the raw text unescaped beyond normal JSON escaping. |
+| AC-CLI-14 | An external backend whose response body contains `\x1b]52;c;…\x07` and a U+202E override renders both visibly (e.g. `\u{1b}`) in human mode and the terminal receives no raw ESC byte; `--json` carries the raw text unescaped beyond normal JSON escaping. |
 | AC-CLI-15 | `[artifacts] dir = "/etc"` and `replay_dir = "../outside"` each fail with `VL0902`. |
 | AC-CLI-16 | Building the same project on a Windows-style and a Linux-style path layout produces byte-identical `velme.lock` `file` fields, using `/` on both. |
 | AC-CLI-17 | A user-level `max_calls_per_build` ceiling below a project's `[synthesis] max_calls_per_build` makes the build stop at the ceiling, and the R-SEC-12 notice names both values. |
