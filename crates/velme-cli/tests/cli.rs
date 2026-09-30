@@ -41,7 +41,7 @@ fn velme_env(dir: &Path, args: &[&str], envs: &[(&str, &str)], stdin: &[u8]) -> 
         .env("XDG_CONFIG_HOME", &home)
         .env("XDG_CACHE_HOME", home.join("cache"))
         .env("APPDATA", &home)
-        .env("LOCALAPPDATA", &home)
+        .env("LOCALAPPDATA", home.join("cache"))
         .envs(envs.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
