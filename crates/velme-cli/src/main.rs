@@ -174,7 +174,7 @@ fn usage_error(bad: &Bad) -> u8 {
             None => return EXIT_INTERNAL,
         }
     } else {
-        let color = stream_colors(Color::Auto, false, std::io::stderr().is_terminal(), no_color()).1;
+        let color = stream_colors(bad.color, false, std::io::stderr().is_terminal(), no_color()).1;
         print_err(&format!("{USAGE}\n\n"));
         print_err(&render::render_human(
             std::slice::from_ref(&bad.diagnostic),

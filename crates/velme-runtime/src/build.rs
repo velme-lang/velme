@@ -256,11 +256,14 @@ impl<'a> Build<'a> {
             && self.lock != before
             && let Err(error) = self.lock.write(self.input.project)
         {
-            diagnostics.push(Diagnostic::new(
-                Code::FileError,
-                Span::default(),
-                format!("I couldn't write `velme.lock`: {error}."),
-            ));
+            diagnostics.push(
+                Diagnostic::new(
+                    Code::FileError,
+                    Span::default(),
+                    format!("I couldn't write `velme.lock`: {error}."),
+                )
+                .with_file(crate::lock::LOCK_FILE),
+            );
         }
         self.summary.calls = self.session.calls();
         self.summary.usage = self.session.usage();
@@ -563,6 +566,10 @@ impl<'a> Build<'a> {
                     }
                     Verdict::Watchdog(d) => return fail(retarget(d, span)),
                     Verdict::Internal => return fail(Diagnostic::internal_error()),
+                }
+                // A locked build writes nothing, not even a modification time (D-111).
+                if self.input.mode != Mode::Locked {
+                    self.store.touch(artifact);
                 }
                 self.pin(id, name, signature, contract, artifact, pinned);
                 self.built.insert(id, locked);

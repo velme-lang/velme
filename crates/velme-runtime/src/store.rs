@@ -100,7 +100,10 @@ impl Store {
         let path = self.path(id);
         refuse_links(&[&self.velme, &self.dir, &self.tmp]).map_err(StoreError::Io)?;
         let replace = match read_file(&path, MAX_ARTIFACT_BYTES) {
-            Ok(Some(old)) if old == bytes.as_bytes() => return Ok(id),
+            Ok(Some(old)) if old == bytes.as_bytes() => {
+                self.touch(id);
+                return Ok(id);
+            }
             // A regular file with other bytes, or too many: not this artifact.
             Ok(_) => true,
             Err(e) if e.kind() == io::ErrorKind::NotFound => false,
@@ -201,6 +204,18 @@ impl Store {
             }
         }
         Ok(removed)
+    }
+
+    /// Marks the artifact `id` as used just now, so `velme gc`'s age guard keeps one a running build reuses (D-111). Only a
+    /// regular file is touched, and a failure is ignored: the guard is a courtesy, not a promise.
+    pub fn touch(&self, id: Fingerprint) {
+        let path = self.path(id);
+        if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_file()) {
+            let _ = fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|f| f.set_modified(SystemTime::now()));
+        }
     }
 
     /// Reads the artifact `id`, checking that its bytes still hash to `id` and are the canonical JSON the store writes

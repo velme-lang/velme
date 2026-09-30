@@ -25,9 +25,11 @@ pub fn render_human(diagnostics: &[Diagnostic], path: &str, text: Option<&str>, 
     let mut out = String::new();
     let quoted = text.map(Quoted::new);
     for diag in diagnostics.iter().take(MAX_SHOWN) {
-        match &quoted {
-            Some(quoted) => out.push_str(&report(diag, &path, quoted, color)),
-            None => out.push_str(&plain(diag, &path)),
+        // A diagnostic about another file, such as `velme.toml`, quotes no source and names that file (D-111).
+        match (&quoted, &diag.file) {
+            (_, Some(file)) => out.push_str(&plain(diag, &escape(file), color)),
+            (Some(quoted), None) => out.push_str(&report(diag, &path, quoted, color)),
+            (None, None) => out.push_str(&plain(diag, &path, color)),
         }
     }
     if let Some(rest) = diagnostics.len().checked_sub(MAX_SHOWN).filter(|&rest| rest > 0) {
@@ -98,17 +100,26 @@ fn report(diag: &Diagnostic, path: &str, quoted: &Quoted<'_>, color: bool) -> St
     {
         Ok(()) => String::from_utf8_lossy(&buf).into_owned(),
         // Writing into a `Vec` only fails if ariadne can't place a span; the message still has to reach the learner.
-        Err(_) => plain(diag, path),
+        Err(_) => plain(diag, path, color),
     }
 }
 
 /// A diagnostic without source lines, for a file that couldn't be read. `path` is already escaped.
-fn plain(diag: &Diagnostic, path: &str) -> String {
+fn plain(diag: &Diagnostic, path: &str, color: bool) -> String {
     let kind = match diag.severity {
         Severity::Error => "Error",
         Severity::Warning => "Warning",
     };
-    let mut out = format!("{kind}: {}\n   ╭─[ {path} ]\n", headline(diag));
+    let kind = match (color, diag.severity) {
+        (false, _) => kind.to_owned(),
+        (true, Severity::Error) => format!("\u{1b}[31m{kind}\u{1b}[0m"),
+        (true, Severity::Warning) => format!("\u{1b}[33m{kind}\u{1b}[0m"),
+    };
+    let mut out = format!("{kind}: {}\n", headline(diag));
+    // A diagnostic about no file has no header line to name one (D-111).
+    if !path.is_empty() {
+        let _ = writeln!(out, "   ╭─[ {path} ]");
+    }
     for note in &diag.notes {
         let _ = writeln!(out, "   │ Note: {}", escape(note));
     }
