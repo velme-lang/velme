@@ -238,7 +238,11 @@ impl EntryError {
                 Diagnostic::new(
                     self.code(),
                     span,
-                    format!("`{goal}` changed since it was last built — run `velme build`."),
+                    if matches!(causes.as_slice(), [Cause::NotLocked]) {
+                        format!("`{goal}` has no verified build in `velme.lock` — run `velme build`.")
+                    } else {
+                        format!("`{goal}` changed since it was last built — run `velme build`.")
+                    },
                 ),
                 |diag, cause| diag.with_note(cause.to_string()),
             ),

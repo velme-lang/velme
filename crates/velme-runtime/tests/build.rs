@@ -653,11 +653,10 @@ fn ac_art_10_a_planted_store_hit_with_wrong_behaviour_is_rejected() {
     assert_eq!(lock.entry(FILE, "Double").expect("entry").artifact, good);
 }
 
-/// A parent that could not be rebuilt after its child changed keeps its old lock entry (AC-SYNTH-03), and the next build
-/// finds it stale by checking it against the current child, with no provider: the manifest records no child artifacts,
-/// so a goal with calls is checked again on every build (R-ART-22).
+/// A parent that could not be rebuilt after its child changed loses its lock entry (AC-SYNTH-03, R-ART-22, D-100), so
+/// `velme run` finds it missing and asks for a build, and the next build, with no provider, says the same.
 #[test]
-fn ac_synth_03_a_failed_rebuild_leaves_the_lock_and_the_next_build_notices() {
+fn ac_art_10_a_failed_rebuild_drops_the_parent_entry_and_run_asks_for_a_build() {
     let dir = project("stale-parent");
     build_with(
         &dir,
@@ -665,24 +664,142 @@ fn ac_synth_03_a_failed_rebuild_leaves_the_lock_and_the_next_build_notices() {
         Some(&full_script()),
         SynthOptions::default(),
     );
-    let sum_entry = Lock::read(&dir)
-        .expect("lock")
-        .expect("a lock")
-        .entry(FILE, "Sum")
-        .expect("entry")
-        .clone();
     let script = Scripted::new([Step::Reply(double_off_at_three()), Step::Reply("nope".to_owned())]);
     let options = SynthOptions {
         max_retries: 0,
         ..SynthOptions::default()
     };
-    let second = build_with(&dir, &source("Twice."), Some(&script), options);
+    let text = source("Twice.");
+    let second = build_with(&dir, &text, Some(&script), options);
     assert_eq!(diagnostics(&second, "Sum")[0].code, Code::SynthesisFailed);
     let lock = Lock::read(&dir).expect("lock").expect("a lock");
-    assert_eq!(lock.entry(FILE, "Sum"), Some(&sum_entry));
-    let third = build_with(&dir, &source("Twice."), None, SynthOptions::default());
+    assert_eq!(lock.entry(FILE, "Sum"), None);
+    assert!(lock.entry(FILE, "Double").is_some());
+    let program = program(&text);
+    let id = program
+        .goals
+        .iter()
+        .position(|g| g.name == "Sum")
+        .map(velme_sema::hir::GoalId)
+        .expect("Sum");
+    let Err(error) = velme_runtime::Registry::load(&program, id, FILE, &lock, &velme_runtime::Store::new(&dir)) else {
+        panic!("a goal without an entry must not load");
+    };
+    assert_eq!(error[0].code, Code::LockStale);
+    let third = build_with(&dir, &text, None, SynthOptions::default());
     assert_eq!(status(&third, "Sum"), Status::Failed);
     assert_eq!(diagnostics(&third, "Sum")[0].code, Code::ProviderUnavailable);
+}
+
+/// A leaf that is a lock hit is checked again on every build with no provider call, and one that no longer passes is
+/// synthesized in the ordinary way (R-ART-22, D-100).
+#[test]
+fn ac_art_10_a_locked_leaf_is_verified_again_and_a_failing_one_is_synthesized() {
+    let dir = project("leaf-reverify");
+    let text = source("Double it.");
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let store = velme_runtime::Store::new(&dir);
+    let lock = Lock::read(&dir).expect("lock").expect("a lock");
+    let good = lock.entry(FILE, "Double").expect("entry").artifact;
+    // The stored file is replaced by a wrong artifact and the lock is pointed at it, keys unchanged.
+    let mut planted = serde_json::to_value(store.get(good).expect("artifact")).expect("value");
+    planted["ir"]["body"]["right"] = literal(3);
+    let bytes = velme_ir::to_canonical_string(&planted).expect("canonical");
+    let id = velme_ir::Fingerprint::of_bytes(bytes.as_bytes());
+    fs::remove_file(store.path(good)).expect("original removed");
+    fs::write(store.path(id), &bytes).expect("planted");
+    let mut edited = lock.clone();
+    let mut entry = lock.entry(FILE, "Double").expect("entry").clone();
+    entry.artifact = id;
+    edited.insert(entry);
+    edited.write(&dir).expect("lock written");
+    let script = replies(&[double()]);
+    let built = build_with(&dir, &text, Some(&script), SynthOptions::default());
+    assert_eq!(status(&built, "Double"), Status::Built(Source::Synthesized));
+    assert_eq!(script.calls(), 1);
+    let double = built.report.goals.iter().find(|g| g.goal == "Double").expect("goal");
+    assert!(
+        double
+            .notes
+            .iter()
+            .any(|n| n.starts_with("the locked version of `Double` was checked again, and no longer passes: ")),
+        "{:?}",
+        double.notes
+    );
+}
+
+/// Three levels: `Double` changes, `Sum` fails to verify and to rebuild, `Top` is blocked. `Sum` loses its entry, `Top`
+/// keeps its own, and running `Top` fails naming `Sum` (R-ART-22, D-100).
+#[test]
+fn ac_art_10_only_the_rejected_goal_loses_its_entry_and_run_names_it() {
+    let dir = project("three-levels");
+    let text = format!(
+        "{}\ngoal Top(n: Number) -> Number:\n    call:\n        result = Sum(n)\n",
+        source("Double it.")
+    );
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let text = text.replace("Double it.", "Twice.");
+    let script = Scripted::new([Step::Reply(double_off_at_three()), Step::Reply("nope".to_owned())]);
+    let options = SynthOptions {
+        max_retries: 0,
+        ..SynthOptions::default()
+    };
+    let built = build_with(&dir, &text, Some(&script), options);
+    assert_eq!(status(&built, "Sum"), Status::Failed);
+    assert_eq!(status(&built, "Top"), Status::Blocked);
+    let lock = Lock::read(&dir).expect("lock").expect("a lock");
+    assert!(lock.entry(FILE, "Sum").is_none());
+    assert!(lock.entry(FILE, "Top").is_some());
+    let program = program(&text);
+    let id = program
+        .goals
+        .iter()
+        .position(|g| g.name == "Top")
+        .map(velme_sema::hir::GoalId)
+        .expect("Top");
+    let Err(error) = velme_runtime::Registry::load(&program, id, FILE, &lock, &velme_runtime::Store::new(&dir)) else {
+        panic!("Top must not load");
+    };
+    assert!(
+        error.iter().any(|d| d.message.contains("`Sum` has no verified build")),
+        "{error:?}"
+    );
+}
+
+/// A watchdog stop while a locked goal is checked again fails the goal with `VL0603` and keeps its entry: the lock never
+/// depends on timing (INV-3, D-100).
+#[test]
+fn ac_art_10_a_watchdog_stop_on_a_lock_hit_keeps_the_entry() {
+    #[derive(Debug)]
+    struct Jumping(AtomicU64);
+    impl Clock for Jumping {
+        fn now(&self) -> Duration {
+            Duration::from_secs(self.0.fetch_add(1000, Ordering::SeqCst))
+        }
+    }
+    let dir = project("watchdog-lock-hit");
+    let text = source("Double it.");
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let before = Lock::read(&dir).expect("lock").expect("a lock");
+    let program = program(&text);
+    let mut contacts = 0;
+    let input = BuildInput {
+        program: &program,
+        source: &text,
+        project: &dir,
+        file: FILE,
+        backend: None,
+        options: SynthOptions::default(),
+        run: Options {
+            clock: Arc::new(Jumping(AtomicU64::new(0))),
+            ..Options::default()
+        },
+    };
+    let report = build(&input, &mut || contacts += 1);
+    let double = report.goals.iter().find(|g| g.goal == "Double").expect("goal");
+    assert_eq!(double.diagnostics[0].code, Code::Timeout);
+    let after = Lock::read(&dir).expect("lock").expect("a lock");
+    assert_eq!(after.entry(FILE, "Double"), before.entry(FILE, "Double"));
 }
 
 /// After one `VL0404` the provider is not called again: the next goal that needs it ends the same way with no request

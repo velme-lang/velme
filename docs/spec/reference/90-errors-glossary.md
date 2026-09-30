@@ -64,7 +64,7 @@ diagnostic's data.
 | VL0606 | SizeLimitExceeded | runtime | list size or output size cap exceeded | `{goal}` made a list or answer that's too big. | A010 |
 | VL0607 | InternalError | any | invariant violated inside Velme (a bug) | Something went wrong inside Velme. Please report it: {report_url}. | — |
 | VL0701 | ArtifactUnavailable | artifacts | referenced artifact missing from store | The built version of `{goal}` is missing — run `velme build`. | A013 |
-| VL0702 | LockStale | artifacts | lock entry missing or fingerprint mismatch under `--locked` | `{goal}` changed since it was last built — run `velme build`. | — |
+| VL0702 | LockStale | artifacts | lock entry missing or fingerprint mismatch under `--locked` | `{goal}` changed since it was last built — run `velme build`. A goal with no entry: `{goal}` has no verified build in `velme.lock` — run `velme build`. | — |
 | VL0703 | ArtifactCorrupt | artifacts | artifact bytes don't match their hash, are longer than any artifact, or aren't the canonical JSON the store writes (`runtime/32` R-ART-10) | The built version of `{goal}` was changed or damaged. | — |
 | VL0801 | CapabilityDenied | capabilities | IR or module requests an ungranted capability/host function | `{goal}` tried to use `{capability}`, which goals aren't allowed to use. | A014 |
 | VL0901 | FileError | CLI/IO | source/config/input file unreadable, or on a path that isn't UTF-8; `velme.lock` unreadable, malformed, of another format or not a regular file; a stored artifact that isn't a regular file, or a `.velme` directory that is a symbolic link (`runtime/32` R-ART-09); a replay fixture or `replay.json` that is a link, not a regular file, too large or unreadable (`compiler/22` R-SYNTH-43) | I couldn't open `{path}`. | — |
