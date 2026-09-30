@@ -166,17 +166,18 @@ impl External {
         External { config }
     }
 
-    /// Runs the command for one `message` and reads its one JSON document (R-SYNTH-28).
-    fn exchange(&self, message: &ExternalMessage) -> Result<Map<String, Value>, ProviderError> {
+    /// Runs the command for one `message` and reads its one JSON document, with the cleaned tail of its stderr, which every
+    /// failure that follows carries (R-SYNTH-28).
+    fn exchange(&self, message: &ExternalMessage) -> Result<(Map<String, Value>, String), ProviderError> {
         let input = to_canonical_string(message)
             .map_err(|_| ProviderError::Internal("the message could not be written".to_owned()))?;
-        let stdout = run(&self.config, input.into_bytes())?;
-        let text = String::from_utf8(stdout).map_err(|_| failed("its output wasn't text", ""))?;
+        let (stdout, tail) = run(&self.config, input.into_bytes())?;
+        let text = String::from_utf8(stdout).map_err(|_| failed("its output wasn't text", &tail))?;
         match from_json_str_within::<Value>(&text, MAX_JSON_DEPTH + ENVELOPE_DEPTH) {
-            Ok(Value::Object(doc)) => Ok(doc),
+            Ok(Value::Object(doc)) => Ok((doc, tail)),
             _ => Err(failed(
                 "its output wasn't one JSON object, or nested too deeply or repeated a key",
-                "",
+                &tail,
             )),
         }
     }
@@ -194,7 +195,7 @@ fn failed(reason: &str, stderr: &str) -> ProviderError {
 impl SynthBackend for External {
     /// Sends `describe` (R-SYNTH-26): the backend's name and version, each 1..=128 cleaned characters.
     async fn identify(&self) -> Result<Identity, ProviderError> {
-        let doc = self.exchange(&ExternalMessage::describe())?;
+        let (doc, tail) = self.exchange(&ExternalMessage::describe())?;
         let text = |key: &str| {
             doc.get(key)
                 .and_then(Value::as_str)
@@ -203,7 +204,7 @@ impl SynthBackend for External {
         let (Some(backend), Some(version)) = (text("backend"), text("backend_version")) else {
             return Err(failed(
                 "its `describe` reply wasn't a `backend` and a `backend_version` of 1 to 128 characters each, with no control or invisible characters",
-                "",
+                &tail,
             ));
         };
         Ok(Identity {
@@ -249,8 +250,8 @@ impl SynthProvider for ExternalProvider {
     /// One `synthesize` message (R-SYNTH-26): one provider call, with no transport retry (R-SYNTH-28).
     async fn complete(&self, request: &SynthRequest, _limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         let started = Instant::now();
-        let doc = self.backend.exchange(&ExternalMessage::synthesize(request.clone()))?;
-        let reply = read_reply(doc)?;
+        let (doc, tail) = self.backend.exchange(&ExternalMessage::synthesize(request.clone()))?;
+        let reply = read_reply(doc, &tail)?;
         Ok(SynthReply {
             reply_json: reply,
             usage: Usage::default(),
@@ -261,11 +262,11 @@ impl SynthProvider for ExternalProvider {
 
 /// The reply document of a `synthesize` message: exactly one of `ir`, `question`, `pending` or `error` (R-SYNTH-28),
 /// as the reply text the retry loop reads (R-SYNTH-10).
-fn read_reply(doc: Map<String, Value>) -> Result<String, ProviderError> {
+fn read_reply(doc: Map<String, Value>, tail: &str) -> Result<String, ProviderError> {
     let unknown = || {
         failed(
             "its reply wasn't exactly one of `ir`, `question`, `pending` or `error`",
-            "",
+            tail,
         )
     };
     let mut entries = doc.into_iter();
@@ -276,7 +277,7 @@ fn read_reply(doc: Map<String, Value>) -> Result<String, ProviderError> {
         value
             .as_str()
             .map(str::to_owned)
-            .ok_or_else(|| failed("a reply text wasn't a string", ""))
+            .ok_or_else(|| failed("a reply text wasn't a string", tail))
     };
     match (kind.as_str(), value) {
         ("ir", ir @ Value::Object(_)) => to_canonical_string(&ir).map_err(|_| unknown()),
@@ -287,7 +288,7 @@ fn read_reply(doc: Map<String, Value>) -> Result<String, ProviderError> {
         ("pending", pending) => Err(ProviderError::Pending(text(pending)?)),
         ("error", reason) => Err(failed(
             &format!("it reported an error: {}", clean_line(&text(reason)?)),
-            "",
+            tail,
         )),
         _ => Err(unknown()),
     }
@@ -309,10 +310,10 @@ enum Event {
     Stdin(bool),
 }
 
-/// Runs the command with `input` on its stdin and returns its stdout (R-SYNTH-28): a failure of any kind is a
+/// Runs the command with `input` on its stdin and returns its stdout and the cleaned tail of its stderr (R-SYNTH-28): a failure of any kind is a
 /// `BackendFailed` with the tail of stderr. However it ends, success included, the whole process group is killed and the
 /// command reaped, so nothing it started outlives the message.
-fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<Vec<u8>, ProviderError> {
+fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<(Vec<u8>, String), ProviderError> {
     let command = &config.command;
     let mut process = Command::new(&command.program);
     process
@@ -398,8 +399,12 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<Vec<u8>, ProviderError
             heard.cut = Some(format!("it took longer than {:?}", config.timeout));
             break;
         }
-        if let Ok(event) = rx.recv_timeout(left.min(POLL)) {
-            heard.hear(event);
+        match rx.recv_timeout(left.min(POLL)) {
+            Ok(event) => heard.hear(event),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            // Every pipe thread is done, so nothing more arrives and the wait returns at once: sleep, not spin, until
+            // the exit or the deadline.
+            Err(mpsc::RecvTimeoutError::Disconnected) => std::thread::sleep(left.min(POLL)),
         }
     }
     // Every path ends the same way: the whole group is killed, a leader that left it is killed on its own (it is still
@@ -433,7 +438,10 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<Vec<u8>, ProviderError
     if heard.stdin != Some(true) {
         return Err(failed("it closed its input before reading the message", &tail));
     }
-    heard.stdout.ok_or_else(|| failed("its output couldn't be read", &tail))
+    heard
+        .stdout
+        .map(|out| (out, tail.clone()))
+        .ok_or_else(|| failed("its output couldn't be read", &tail))
 }
 
 /// What the supervisor has heard from the pipe threads, and why it cut the command short, if it did.

@@ -298,19 +298,38 @@ impl<'a> Build<'a> {
         result
     }
 
-    /// The note of a goal that was checked again and no longer passes, naming the children that changed (R-SYNTH-46).
-    fn recheck_note(&self, id: GoalId, line: &str) -> String {
+    /// The children of `id` that changed in this build, quoted and named (R-SYNTH-46).
+    fn changed_children(&self, id: GoalId) -> Vec<String> {
         let program = self.input.program;
-        let name = program.goals.get(id.0).map_or("", |g| g.name.as_str());
-        let changed: Vec<String> = target_calls(program, id)
+        target_calls(program, id)
             .filter(|c| self.touched.contains(c))
             .filter_map(|c| program.goals.get(c.0).map(|g| format!("`{}`", g.name)))
-            .collect();
+            .collect()
+    }
+
+    /// The note of a goal that was checked again and no longer passes, naming the children that changed (R-SYNTH-46).
+    fn recheck_note(&self, id: GoalId, line: &str) -> String {
+        let name = self.input.program.goals.get(id.0).map_or("", |g| g.name.as_str());
+        let changed = self.changed_children(id);
         if changed.is_empty() {
             format!("`{name}` was checked again against the goals it calls, and no longer passes: {line}")
         } else {
             format!(
                 "`{name}` was checked again because {} changed, and no longer passes: {line}",
+                changed.join(" and ")
+            )
+        }
+    }
+
+    /// The note of a stored version of a goal that doesn't pass, naming the children that changed (R-SYNTH-46).
+    fn stored_note(&self, id: GoalId, line: &str) -> String {
+        let name = self.input.program.goals.get(id.0).map_or("", |g| g.name.as_str());
+        let changed = self.changed_children(id);
+        if changed.is_empty() {
+            format!("a stored version of `{name}` didn't pass: {line}")
+        } else {
+            format!(
+                "a stored version of `{name}` didn't pass after {} changed: {line}",
                 changed.join(" and ")
             )
         }
@@ -448,7 +467,7 @@ impl<'a> Build<'a> {
                 match self.verify(id, &locked.ir) {
                     Verdict::Accepted(_) => {}
                     Verdict::Rejected(rejection) => {
-                        notes.push(self.recheck_note(id, &rejection.line));
+                        notes.push(self.stored_note(id, &rejection.line));
                         feedback.push(previous(&locked.ir, &rejection));
                         continue;
                     }
@@ -458,7 +477,8 @@ impl<'a> Build<'a> {
                 self.pin(id, name, signature, contract, artifact, pinned);
                 self.built.insert(id, locked);
                 self.summary.store_hits += 1;
-                return done(name, Status::Built(Source::Store), notes);
+                // The stored versions that failed before this one are of no interest once one is taken.
+                return done(name, Status::Built(Source::Store), Vec::new());
             }
         }
         // Step 3: after one `VL0404` the provider is contacted no more, so every goal that gets this far ends with it and

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use velme_ir::{Fingerprint, from_json_str};
 
 use crate::fsio::{read_file, refuse_links};
+use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
 
@@ -42,6 +43,35 @@ pub struct ReplayIdentity {
     /// An external backend's name (R-ART-21), so a replayed build writes the same manifests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<String>,
+    /// `retry_history` when it wasn't the default `latest`: it changes the bytes of every retry request, which the
+    /// fixtures are keyed on (R-SYNTH-43).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_history: Option<RetryHistory>,
+    /// `reply_format` when it wasn't the default `ir-json`: it changes how the recorded replies are read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_format: Option<ReplyFormat>,
+}
+
+impl ReplayIdentity {
+    /// Puts the settings that shaped the recorded requests and replies into `options`, over whatever they were: a
+    /// replay must ask and read as the recording did, or its requests match no fixture (R-SYNTH-43).
+    pub fn apply(&self, options: &mut SynthOptions) {
+        options.retry_history = self.retry_history.unwrap_or_default();
+        options.reply_format = self.reply_format.unwrap_or_default();
+    }
+}
+
+/// The recorded build's identity, read from `<dir>/replay.json` like the artifact store reads its files: bounded, and
+/// never through a link (`runtime/32` R-ART-10). `None` if there is no such file. Both the `replay` provider and the
+/// CLI, which sets the settings a replay follows, read it here.
+pub fn read_replay_identity(dir: &Path) -> Result<Option<ReplayIdentity>, ProviderError> {
+    let path = dir.join(IDENTITY_FILE);
+    let Some(text) = read_text(&path)? else {
+        return Ok(None);
+    };
+    from_json_str(&text)
+        .map(Some)
+        .map_err(|_| ProviderError::Unavailable(format!("{IDENTITY_FILE} isn't a replay identity; {RE_RECORD}")))
 }
 
 /// Token counts as a fixture keeps them.
@@ -157,14 +187,11 @@ impl Replay {
 impl SynthBackend for Replay {
     /// Reads `replay.json` (R-SYNTH-25). Contacts nothing else.
     async fn identify(&self) -> Result<Identity, ProviderError> {
-        let path = self.dir.join(IDENTITY_FILE);
-        let text = read_text(&path)?.ok_or_else(|| {
+        let identity = read_replay_identity(&self.dir)?.ok_or_else(|| {
             ProviderError::Unavailable(format!(
                 "there is no {IDENTITY_FILE} in the replay directory; {RE_RECORD}"
             ))
         })?;
-        let identity: ReplayIdentity = from_json_str(&text)
-            .map_err(|_| ProviderError::Unavailable(format!("{IDENTITY_FILE} isn't a replay identity; {RE_RECORD}")))?;
         Ok(Identity {
             provider: identity.provider,
             model: identity.model_version,

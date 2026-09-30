@@ -56,6 +56,7 @@ human and JSON rendering.
 |---|---|
 | Format | `cargo fmt --all --check` |
 | Lint | `cargo clippy --workspace --all-targets --features velme-cli/test-provider -- -D warnings` |
+| Lint, default features | `cargo clippy -p velme-cli --all-targets -- -D warnings` (what `cargo install` builds; `test-provider` off) |
 | Tests (unit, golden, property, integration, examples) | `cargo test --workspace --all-targets --features velme-cli/test-provider` (nextest optional; D-94), also the macOS and Windows CI jobs |
 | Docs build | `cargo doc --workspace --no-deps` with `-D warnings` |
 | Dependencies | `cargo deny check` (advisories, licenses, bans, sources) |

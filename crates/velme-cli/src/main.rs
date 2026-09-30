@@ -436,7 +436,7 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
 fn backend(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, Diagnostic> {
     let (backend, notice) = provider(name, project, flags, options)?;
     if name != "replay" && std::env::var("VELME_SYNTH_RECORD").is_ok_and(|v| v == "1") {
-        let recorder = velme_synth::Recorder::new(backend, project.root.join(REPLAY_DIR));
+        let recorder = velme_synth::Recorder::new(backend, project.root.join(REPLAY_DIR)).with_options(options);
         return Ok((Box::new(recorder), notice));
     }
     Ok((backend, notice))
@@ -468,7 +468,7 @@ fn provider(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOp
                 "Nothing is sent: the scripted provider answers from its script.".to_owned(),
             ))
         }
-        "anthropic" => anthropic(flags.model, options),
+        "anthropic" => synth::anthropic(flags.model, options),
         "ollama" => synth::ollama(flags.model, options),
         "external" => synth::external(flags.external_command, project),
         _ => Err(Diagnostic::new(
@@ -480,46 +480,11 @@ fn provider(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOp
     }
 }
 
-/// The `anthropic` provider, if the key and the model it needs are set (`tooling/40` §5.2, R-CLI-12): the model comes
-/// from `--model`, else `VELME_MODEL`; the key only from the environment (`tooling/41` R-SEC-05), and it is read again
-/// at each request, never held here.
-fn anthropic(flag: Option<&str>, options: &SynthOptions) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
-    let not_configured = |message: &str, help: &str| {
-        Diagnostic::new(Code::ProviderNotConfigured, Span::default(), message).with_help(help)
-    };
-    match velme_synth::ApiKey::lookup() {
-        Ok(_) => {}
-        Err(velme_synth::KeyError::Malformed(variable)) => {
-            return Err(not_configured(
-                &format!("The API key in `{variable}` can't be used."),
-                &format!("a key is visible ASCII with no spaces: fix `{variable}`, or unset it"),
-            ));
-        }
-        Err(velme_synth::KeyError::Missing) => {
-            return Err(not_configured(
-                "The Anthropic provider needs an API key, and there isn't one.",
-                "set `VELME_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment; Velme reads a key from nowhere else",
-            ));
-        }
-    }
-    let model = flag
-        .map(str::to_owned)
-        .or_else(|| std::env::var("VELME_MODEL").ok())
-        .filter(|m| !m.trim().is_empty());
-    let Some(model) = model else {
-        return Err(not_configured(
-            "The Anthropic provider needs a model, and there isn't one.",
-            "pass `--model ID`, or set `VELME_MODEL`, to the model id to use",
-        ));
-    };
-    let config = velme_synth::AnthropicConfig {
-        options: options.clone(),
-        ..velme_synth::AnthropicConfig::new(model)
-    };
-    Ok((
-        Box::new(velme_synth::Anthropic::new(config)),
-        "Sending your plans, types, checks and examples to Anthropic to write the code.".to_owned(),
-    ))
+/// Whether `d` is the library's own `VL0405` for a provider that isn't set up, not a rejected key (R-SYNTH-07).
+fn is_generic_not_configured(d: &Diagnostic, goal: &str) -> bool {
+    d.code == Code::ProviderNotConfigured
+        && d.message
+            == velme_synth::provider_diagnostic(&velme_synth::ProviderError::NotConfigured, "", goal, d.span).message
 }
 
 /// The provider that can't be used: every goal that needs it is `VL0405` (`tooling/40` R-CLI-12).
@@ -543,22 +508,30 @@ impl SynthBackend for NotConfigured {
 const REPLAY_DIR: &str = "tests/fixtures/synth";
 
 /// The `[synthesis]` settings of a build with provider `name`: `external` defaults to no retries, since a deterministic
-/// backend gives the same answer again (`compiler/22` R-SYNTH-30). A replay follows the provider it replays, so a replayed
-/// external build asks for what the recorded one did.
+/// backend gives the same answer again (`compiler/22` R-SYNTH-30). A replay follows the build it replays: the provider
+/// it recorded, so a replayed external build asks for what the recorded one did, and the settings that shaped its
+/// requests and replies (R-SYNTH-43).
 fn synth_options(name: &str, project: &Project) -> SynthOptions {
-    let recorded = || {
-        let text = std::fs::read_to_string(project.root.join(REPLAY_DIR).join(velme_synth::IDENTITY_FILE)).ok()?;
-        velme_ir::from_json_str::<velme_synth::ReplayIdentity>(&text).ok()
+    let recorded = if name == "replay" {
+        velme_synth::read_replay_identity(&project.root.join(REPLAY_DIR))
+            .ok()
+            .flatten()
+    } else {
+        None
     };
-    let external = name == "external" || (name == "replay" && recorded().is_some_and(|r| r.provider == "external"));
-    SynthOptions {
+    let external = name == "external" || recorded.as_ref().is_some_and(|r| r.provider == "external");
+    let mut options = SynthOptions {
         max_retries: if external {
             0
         } else {
             SynthOptions::default().max_retries
         },
         ..SynthOptions::default()
+    };
+    if let Some(recorded) = &recorded {
+        recorded.apply(&mut options);
     }
+    options
 }
 
 /// The flags of `velme build` that choose and set up the provider (`tooling/40` §2.1).
@@ -597,7 +570,16 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
             print_err(&format!("{}\n", render::escape(line)));
         }
     };
+    // Why a request would end with `VL0405` in the words of the setup: a provider that couldn't be built, or an Anthropic
+    // one built with no usable key, which still answers from the store and sends nothing (R-SYNTH-02).
+    let key_problem = if name == "anthropic" {
+        synth::key_problem()
+    } else {
+        None
+    };
+    let unusable = chosen.as_ref().err().or(key_problem.as_ref());
     let (backend, notice): (&dyn SynthBackend, &str) = match &chosen {
+        Ok((backend, _)) if key_problem.is_some() => (backend.as_ref(), ""),
         Ok((backend, notice)) => (backend.as_ref(), notice.as_str()),
         Err(_) => (&NotConfigured, ""),
     };
@@ -622,7 +604,7 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
         };
         outcome.progress.push_str(&format!("{}  {line}\n", goal.goal));
         let mut diagnostics = goal.diagnostics.clone();
-        if let Err(why) = &chosen {
+        if let Some(why) = unusable {
             for d in diagnostics.iter_mut().filter(|d| d.code == Code::ProviderNotConfigured) {
                 d.message.clone_from(&why.message);
                 d.help.clone_from(&why.help);
@@ -635,6 +617,16 @@ fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
                 d.help = Some(format!(
                     "run `ollama pull {model}`, or choose another model with `--model`"
                 ));
+            }
+        } else if name == "anthropic" {
+            // The API doesn't know the model; a rejected key has its own words and stays as it is (R-SYNTH-07).
+            let model = model_name(flags.model);
+            for d in diagnostics
+                .iter_mut()
+                .filter(|d| is_generic_not_configured(d, &goal.goal))
+            {
+                d.message = format!("The Anthropic API doesn't know the model `{model}`.");
+                d.help = Some("choose another model with `--model`, or set `VELME_MODEL`".to_owned());
             }
         }
         // The checked-again note stays; only the per-attempt lines wait for `-v` (R-SYNTH-13, R-SYNTH-46).
@@ -1117,6 +1109,18 @@ mod tests {
     #[test]
     fn version_line_is_snapshotted() {
         insta::assert_snapshot!(version_line(), @"velme 0.1.0");
+    }
+
+    /// Only the library's own "no provider is set up" `VL0405` (an unknown model) is reworded for the Anthropic provider;
+    /// a rejected key keeps its words (R-SYNTH-07).
+    #[test]
+    fn only_the_generic_not_configured_diagnostic_is_reworded() {
+        use velme_synth::{ProviderError, provider_diagnostic};
+        let generic = provider_diagnostic(&ProviderError::NotConfigured, "", "Double", Default::default());
+        let rejected = provider_diagnostic(&ProviderError::KeyRejected, "", "Double", Default::default());
+        assert!(is_generic_not_configured(&generic, "Double"));
+        assert!(!is_generic_not_configured(&rejected, "Double"));
+        assert!(!is_generic_not_configured(&generic, "Other"));
     }
 
     #[test]

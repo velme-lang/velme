@@ -48,6 +48,8 @@ fn identity() -> ReplayIdentity {
         model_version: "claude-test".to_owned(),
         input_version: "prompt-1:abc".to_owned(),
         backend: None,
+        retry_history: None,
+        reply_format: None,
     }
 }
 

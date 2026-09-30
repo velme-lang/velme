@@ -50,3 +50,5 @@ jobs:
           msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
           rustup toolchain install "$msrv" --profile minimal
           cargo +"$msrv" check --workspace --all-targets --locked --features velme-cli/test-provider
+          # What `cargo install` builds: the default features, without the test provider.
+          cargo +"$msrv" check -p velme-cli --locked

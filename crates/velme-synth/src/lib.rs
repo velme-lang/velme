@@ -38,7 +38,7 @@ pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, Synt
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 pub use record::Recorder;
-pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path};
+pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path, read_replay_identity};
 pub use request::{
     AttemptDiagnostic, AttemptFeedback, Budget, BuiltinSig, CheckItem, Example, ExternalMessage, LocalBinding, Param,
     REQUEST_VERSION, RecordType, Signature, SynthRequest, TaskKind, build_request, builtins, request_schema,
