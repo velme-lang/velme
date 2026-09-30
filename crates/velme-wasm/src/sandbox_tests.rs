@@ -28,8 +28,8 @@ use crate::tests::{
     number, unary,
 };
 use crate::{
-    Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Module, Program, Run, Sandbox, UNIT_INSTRUCTIONS,
-    backstop_fuel, emit,
+    Backstop, CacheDir, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Module, Program, Run, Sandbox,
+    UNIT_INSTRUCTIONS, backstop_fuel, emit,
 };
 
 /// A watchdog that never stops the run.
@@ -39,6 +39,11 @@ fn unwatched() -> Interrupt {
 
 fn sandbox() -> Sandbox {
     Sandbox::new(None).expect("a sandbox")
+}
+
+/// `dir` as the cache of a project that is this crate's directory, which no scratch directory is inside (T-11).
+fn cache_dir(dir: &Path) -> CacheDir {
+    CacheDir::new(dir.to_path_buf(), Path::new(env!("CARGO_MANIFEST_DIR"))).expect("outside the project")
 }
 
 /// A goal `G` of the given signature, written as `x: Number, y: Number -> Number`, with `body`; `types` are the
@@ -485,7 +490,7 @@ fn refused(sandbox: &Sandbox, module: &str, name: &str) {
 fn ac_sbx_02_a_module_importing_wasi_is_refused_by_name_and_never_compiled() {
     let scratch = Scratch::new("whitelist");
     let cache = scratch.0.join("wasm");
-    let sandbox = Sandbox::new(Some(cache.clone())).expect("a sandbox");
+    let sandbox = Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
     refused(&sandbox, "wasi_snapshot_preview1", "fd_write");
     // Nothing was compiled: a compiled module is kept.
     assert_eq!(cached_files(&cache), Vec::<PathBuf>::new());
@@ -1336,7 +1341,7 @@ fn ac_sbx_08_the_watchdog_is_asked_at_every_tick_until_it_stops_the_module() {
 fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
     let scratch = Scratch::new("cache");
     let cache = scratch.0.join("velme").join("wasm");
-    let sandbox = Sandbox::new(Some(cache.clone())).expect("a sandbox");
+    let sandbox = Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
     let module = squares();
     let once = |sandbox: &Sandbox| {
         sandbox
@@ -1345,7 +1350,7 @@ fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
             .run(&[num(100)], Limits::SYSTEM, &unwatched())
     };
     // The next run is another process, with a sandbox of its own: one sandbox compiles a module once.
-    let next = || Sandbox::new(Some(cache.clone())).expect("a sandbox");
+    let next = || Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
     let first = once(&sandbox);
     assert_eq!(first.result, Ok(num(328_350)));
     let files = cached_files(&cache);
@@ -1405,7 +1410,7 @@ fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
 fn ac_sbx_07_there_is_no_disk_cache_off_unix() {
     let scratch = Scratch::new("cache");
     let cache = scratch.0.join("velme").join("wasm");
-    let sandbox = Sandbox::new(Some(cache.clone())).expect("a sandbox");
+    let sandbox = Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
     let run = sandbox
         .load(&squares())
         .expect("loads")
@@ -1422,7 +1427,7 @@ fn ac_sbx_09_a_cwasm_under_the_project_is_never_read() {
     let scratch = Scratch::new("planted");
     let user = scratch.0.join("user-cache").join("velme").join("wasm");
     let project = scratch.0.join("project");
-    let sandbox = Sandbox::new(Some(user.clone())).expect("a sandbox");
+    let sandbox = Sandbox::new(Some(cache_dir(&user))).expect("a sandbox");
     let module = squares();
     let cache = sandbox.cache().expect("a cache");
     let name = cache.path(module.bytes());
@@ -1495,7 +1500,7 @@ fn r_sbx_20_a_cache_that_is_not_the_users_alone_is_not_used() {
 
     // A file in the cache that is a symbolic link, to a planted module under the very name the cache uses.
     let user = scratch.0.join("user");
-    let sandbox = Sandbox::new(Some(user.clone())).expect("a sandbox");
+    let sandbox = Sandbox::new(Some(cache_dir(&user))).expect("a sandbox");
     let cache = sandbox.cache().expect("a cache");
     let planted = scratch.0.join("planted.cwasm");
     std::fs::write(&planted, b"not a module").expect("plants");
@@ -1523,7 +1528,7 @@ fn r_sbx_20_a_cache_that_is_not_the_users_alone_is_not_used() {
     std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o700)).expect("closes");
     let link = scratch.0.join("link");
     symlink(&target, &link).expect("links");
-    let linked = Sandbox::new(Some(link.clone())).expect("a sandbox");
+    let linked = Sandbox::new(Some(cache_dir(&link))).expect("a sandbox");
     let through = linked.cache().expect("a cache");
     let name = path.file_name().expect("a name");
     assert_eq!(
@@ -1538,7 +1543,7 @@ fn r_sbx_20_a_cache_that_is_not_the_users_alone_is_not_used() {
         let dir = scratch.0.join(format!("open-{open:o}"));
         std::fs::create_dir_all(&dir).expect("a directory");
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(open)).expect("opens");
-        let opened = Sandbox::new(Some(dir.clone())).expect("a sandbox");
+        let opened = Sandbox::new(Some(cache_dir(&dir))).expect("a sandbox");
         let cache = opened.cache().expect("a cache");
         assert_eq!(cache.read(&dir.join(name)), Err(Refused::Unusable(Unusable::Open)));
         assert_eq!(runs(&opened), expected);
@@ -1550,6 +1555,54 @@ fn r_sbx_20_a_cache_that_is_not_the_users_alone_is_not_used() {
                 .is_some_and(|note| note.contains(&dir.display().to_string()))
         );
     }
+}
+
+/// T-11: a cache directory is checked to lie outside the project when it is given, and again each time it is opened,
+/// before and after it is made. One whose path is moved into the project in between, by a symbolic link where a
+/// directory was missing, is not made, read or written there, and turns the disk cache off; the goal still runs.
+#[cfg(unix)]
+#[test]
+fn t_11_a_cache_directory_moved_into_the_project_is_not_used() {
+    use std::os::unix::fs::symlink;
+    let scratch = Scratch::new("moved");
+    let project = scratch.0.join("project");
+    std::fs::create_dir_all(&project).expect("a project");
+    let dir = scratch.0.join("later").join("velme").join("wasm");
+    let checked = CacheDir::new(dir.clone(), &project).expect("outside the project, for now");
+    assert_eq!(checked.path(), dir);
+    symlink(&project, scratch.0.join("later")).expect("links");
+    let inside = Unusable::Misplaced(crate::Misplaced::Inside);
+    assert_eq!(checked.unmade(), Err(inside));
+    let sandbox = Sandbox::new(Some(checked.clone())).expect("a sandbox");
+    let run = sandbox.load(&squares()).expect("loads");
+    assert_eq!(
+        run.run(&[num(100)], Limits::SYSTEM, &unwatched()).result,
+        Ok(num(328_350))
+    );
+    assert!(
+        sandbox
+            .cache_off()
+            .is_some_and(|note| note.contains("it is inside the project")),
+        "{:?}",
+        sandbox.cache_off()
+    );
+    assert_eq!(std::fs::read_dir(&project).expect("the project").count(), 0);
+    // Made already, as by a swap between the checks: refused on the resolved whole path.
+    std::fs::create_dir_all(&dir).expect("made through the link");
+    assert_eq!(checked.made(), Err(inside));
+    // The checks when it is given: a relative path, a `.` or `..` component, a path inside the project, and a link to
+    // nowhere, which making the directory would follow.
+    use crate::Misplaced::{Dots, Inside, Relative, Unresolved};
+    let new = |dir: PathBuf| CacheDir::new(dir, &project).map(|_| ());
+    assert_eq!(new(PathBuf::from("velme/wasm")), Err(Relative));
+    assert_eq!(new(scratch.0.join("nope/../later/velme/wasm")), Err(Dots));
+    assert_eq!(new(scratch.0.join("other/./wasm")), Err(Dots));
+    assert_eq!(new(scratch.0.join("later/wasm")), Err(Inside));
+    assert_eq!(new(project.join(".velme")), Err(Inside));
+    symlink(project.join("missing"), scratch.0.join("dangling")).expect("links");
+    assert_eq!(new(scratch.0.join("dangling/velme/wasm")), Err(Unresolved));
+    assert_eq!(new(scratch.0.join("other/velme/wasm")), Ok(()));
+    assert!(!scratch.0.join("nope").exists() && !scratch.0.join("other").exists());
 }
 
 /// R-SBX-20's owner rule, which a test run by one user cannot set up on disk: what `fstat` of the open handle says

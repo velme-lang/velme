@@ -27,6 +27,7 @@ mod tests;
 
 use velme_ir::ValidIr;
 
+pub use cache::{CacheDir, Misplaced};
 pub use sandbox::{
     Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Program, Run, Sandbox, UNIT_INSTRUCTIONS,
     WasmtimeFuel, backstop_fuel,

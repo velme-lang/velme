@@ -39,8 +39,8 @@ impl Platform {
 }
 
 /// The user-level config file (R-CLI-25): `$XDG_CONFIG_HOME/velme/config.toml`, else `~/.config/velme/config.toml` on Unix
-/// and macOS, and `%APPDATA%\velme\config.toml` on Windows. `get` reads the environment; a variable that is empty, or on
-/// Unix not an absolute path (`HOME` too), is not set (the XDG rule). `None` when the home can't be found.
+/// and macOS, and `%APPDATA%\velme\config.toml` on Windows. `get` reads the environment; a variable that is empty or not
+/// an absolute path (`HOME` and `APPDATA` too) is not set (the XDG rule). `None` when the home can't be found.
 pub fn user_config_path(get: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Option<PathBuf> {
     Some(under_base(get, platform, ("APPDATA", "XDG_CONFIG_HOME", ".config"))?.join("config.toml"))
 }
@@ -61,7 +61,7 @@ fn under_base(
 ) -> Option<PathBuf> {
     let set = |name: &str| get(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     let base = match platform {
-        Platform::Windows => set(windows)?,
+        Platform::Windows => set(windows).filter(|p| p.is_absolute())?,
         Platform::Unix => match set(xdg).filter(|p| p.is_absolute()) {
             Some(xdg) => xdg,
             None => set("HOME").filter(|p| p.is_absolute())?.join(dot_dir),
@@ -187,17 +187,21 @@ mod tests {
             path(&[("XDG_CONFIG_HOME", ""), ("HOME", h)], Platform::Unix),
             Some(PathBuf::from(h).join(".config/velme/config.toml"))
         );
+        // `%APPDATA%` and `%LOCALAPPDATA%` count only when absolute too (T-11), which is `C:\...` on a Windows host.
+        let (roaming, local) = if cfg!(windows) {
+            ("C:\\Users\\a\\AppData\\Roaming", "C:\\Users\\a\\AppData\\Local")
+        } else {
+            ("/Users/a/AppData/Roaming", "/Users/a/AppData/Local")
+        };
         assert_eq!(
-            path(
-                &[("APPDATA", "C:\\Users\\a\\AppData\\Roaming"), ("HOME", "/h")],
-                Platform::Windows
-            ),
-            Some(
-                PathBuf::from("C:\\Users\\a\\AppData\\Roaming")
-                    .join("velme")
-                    .join("config.toml")
-            )
+            path(&[("APPDATA", roaming), ("HOME", h)], Platform::Windows),
+            Some(PathBuf::from(roaming).join("velme").join("config.toml"))
         );
+        assert_eq!(
+            path(&[("APPDATA", "AppData\\Roaming"), ("HOME", h)], Platform::Windows),
+            None
+        );
+        assert_eq!(path(&[("APPDATA", "")], Platform::Windows), None);
         assert_eq!(path(&[], Platform::Unix), None);
         let cache = |vars: &[(&str, &str)], platform| wasm_cache_path(&env(vars), platform);
         assert_eq!(
@@ -209,6 +213,11 @@ mod tests {
             Some(PathBuf::from(h).join(".cache/velme/wasm"))
         );
         assert_eq!(path(&[("XDG_CONFIG_HOME", x)], Platform::Windows), None);
+        assert_eq!(
+            cache(&[("LOCALAPPDATA", local)], Platform::Windows),
+            Some(PathBuf::from(local).join("velme").join("wasm"))
+        );
+        assert_eq!(cache(&[("LOCALAPPDATA", "rel")], Platform::Windows), None);
         // A relative `HOME` is not set either, so neither file is looked for under the current directory (T-11).
         assert_eq!(path(&[("HOME", "rel")], Platform::Unix), None);
         assert_eq!(

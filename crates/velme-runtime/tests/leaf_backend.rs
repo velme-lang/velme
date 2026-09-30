@@ -379,9 +379,10 @@ fn r_sbx_02_a_declined_leaf_is_vl0607_under_wasm_and_the_interpreters_under_auto
 #[test]
 fn r_sbx_20_a_refused_cache_directory_is_a_note_and_changes_nothing() {
     let (project, program) = installed("r_sbx_20");
-    let file = project.join("not-a-directory");
+    // Outside the project, as T-11 has it: the sandbox refuses it, not the runtime.
+    let file = project.with_extension("not-a-directory");
     fs::write(&file, "").expect("a file");
-    let wasm = Arc::new(Wasm::new(Some(file)));
+    let wasm = Arc::new(Wasm::for_project(Some(file), &project));
     let interp = run(&project, &program, "Main", vec![num(4)], on(&Backend::Interp, 1));
     let other = run(
         &project,
