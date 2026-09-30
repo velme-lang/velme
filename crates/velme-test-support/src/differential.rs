@@ -1,7 +1,7 @@
 //! The differential harness (`runtime/31` R-SBX-15, `delivery/51` §2, D-118): a leaf goal body run on the interpreter
 //! and on WASM through the runtime's seam, which must give the same value or the same full diagnostic (code, message
 //! and notes), and the same fuel and memory, with no run near a quarter of its Wasmtime fuel backstop. The corpus is
-//! the golden IR and the examples; a typed valid-IR generator hands its own goals to [`differential`].
+//! the golden IR, the examples and the goals of [`crate::generate`].
 
 use std::sync::Arc;
 
@@ -14,7 +14,8 @@ use velme_sema::hir::{GoalId, Program};
 
 use crate::{example_cases, goal_id, program, read, repo, valid_ir};
 
-/// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or one file.
+/// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or one file. The
+/// one list, which every suite that runs the examples' IR reads.
 pub const EXAMPLES: [(&str, &str); 7] = [
     ("examples/beginner/add.velme", "tests/fixtures/run/add.json"),
     ("examples/beginner/hello.velme", "tests/fixtures/run/hello.ir"),
@@ -167,15 +168,17 @@ pub fn compare(
 
 /// [`compare`] at the system limits, then with one unit of fuel and one byte of memory less than that run spent,
 /// so each deterministic limit stops both backends at the same point with the same figures (INV-3, D-118): the run
-/// one unit of fuel short fails with `VL0601`, the one a byte of memory short with `VL0604`.
+/// one unit of fuel short fails with `VL0601`, the one a byte of memory short with `VL0604`. The outcome within the
+/// system limits, if all agree.
 pub fn differential(
     wasm: &Arc<Wasm>,
     program: &Program,
     goal: GoalId,
     ir: &ValidIr,
     inputs: &[Value],
-) -> Result<(), String> {
-    let (_, spent) = compare(wasm, program, goal, ir, inputs, Limits::SYSTEM)?;
+) -> Result<Outcome, String> {
+    let outcome = compare(wasm, program, goal, ir, inputs, Limits::SYSTEM)?;
+    let spent = outcome.1;
     let short = [
         spent
             .fuel
@@ -197,5 +200,5 @@ pub fn differential(
             other => return Err(format!("within {limits:?}: expected {code:?}, got {other:?}")),
         }
     }
-    Ok(())
+    Ok(outcome)
 }

@@ -11,6 +11,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 use velme_runtime::{ARTIFACTS_DIR, LOCK_FILE, VELME_DIR};
+use velme_test_support::differential::EXAMPLES;
 use velme_test_support::{goal_id, install, program, read, repo};
 
 /// Set to rewrite the committed fixture projects from their hand-written IR, then review the diff.
@@ -21,15 +22,14 @@ const BLESS: &str = "VELME_BLESS_FIXTURES";
 const FIXTURES: [&str; 2] = ["add", "add_broken"];
 
 /// The fixture projects made from an example of the launch demos, with the IR of each of its goals in
-/// `tests/fixtures/run/<name>.ir/<Goal>.json`: the example's path by fixture name.
-const EXAMPLES: [(&str, &str); 6] = [
-    ("hello", "examples/beginner/hello.velme"),
-    ("find_badge", "examples/beginner/find_badge.velme"),
-    ("double_then_add_one", "examples/beginner/double_then_add_one.velme"),
-    ("player_summary", "examples/intermediate/player_summary.velme"),
-    ("level_summary", "examples/games/level_summary.velme"),
-    ("order_total", "examples/professional/order_total.velme"),
-];
+/// `tests/fixtures/run/<name>.ir/<Goal>.json`: each fixture's name and its example's path, from the one list of
+/// examples.
+fn examples() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EXAMPLES.iter().filter_map(|(example, ir)| {
+        let name = ir.strip_prefix("tests/fixtures/run/")?.strip_suffix(".ir")?;
+        Some((name, *example))
+    })
+}
 
 /// The project configuration file (`tooling/40` §5.1); the binary's own constant isn't reachable from a test.
 const CONFIG_FILE: &str = "velme.toml";
@@ -182,11 +182,11 @@ fn fixture_projects_are_the_installers_output() {
     let projects = FIXTURES
         .iter()
         .map(|name| (*name, made(name), 1))
-        .chain(EXAMPLES.iter().map(|(name, example)| {
+        .chain(examples().map(|(name, example)| {
             let goals = fs::read_dir(repo(&format!("tests/fixtures/run/{name}.ir")))
                 .expect("IR")
                 .count();
-            (*name, made_example(name, example), goals)
+            (name, made_example(name, example), goals)
         }));
     for (name, project, goals) in projects {
         let committed = repo(&format!("tests/fixtures/run/{name}"));

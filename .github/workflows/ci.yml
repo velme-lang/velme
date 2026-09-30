@@ -52,3 +52,30 @@ jobs:
           cargo +"$msrv" check --workspace --all-targets --locked --features velme-cli/test-provider
           # What `cargo install` builds: the default features, without the test provider.
           cargo +"$msrv" check -p velme-cli --locked
+
+  # AC-QA-06, D-118: each fuzz target for 60 s on a pinned nightly (cargo-fuzz needs one). `ac_qa_06_*` fails if
+  # FUZZ_TARGETS leaves out a `[[bin]]` of fuzz/Cargo.toml.
+  fuzz:
+    name: fuzz smoke (linux)
+    runs-on: ubuntu-latest
+    env:
+      NIGHTLY: nightly-2026-09-24
+      FUZZ_TARGETS: parse validate differential
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install "$NIGHTLY" --profile minimal
+      # The fuzz crate is outside the workspace; start it from the gated lock, so it builds the same versions (and
+      # before the cache, which keys on it).
+      - run: cp Cargo.lock fuzz/Cargo.lock
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-fuzz
+      - run: |
+          for target in $FUZZ_TARGETS; do
+            # `differential` peaks near 860 MB before ASan's overhead; libFuzzer's default cap is 2048 MB.
+            rss=2048; [ "$target" = differential ] && rss=4096
+            cargo +"$NIGHTLY" fuzz run "$target" -- -max_total_time=60 -rss_limit_mb="$rss"
+          done

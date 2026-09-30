@@ -224,7 +224,7 @@ fn ac_sbx_01_every_golden_and_example_leaf_is_the_same_on_both_backends() {
     for leaf in corpus() {
         leaves += 1;
         for inputs in &leaf.cases {
-            differential(&wasm, &leaf.program, leaf.goal, &leaf.ir, inputs)
+            let _ = differential(&wasm, &leaf.program, leaf.goal, &leaf.ir, inputs)
                 .unwrap_or_else(|e| panic!("{} on {inputs:?}:\n{e}", leaf.name));
             cases += 1;
         }
