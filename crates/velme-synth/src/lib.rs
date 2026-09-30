@@ -1,12 +1,18 @@
 //! Velme `synth` crate: see `compiler/20` §2 for its responsibility. Spellbook (`compiler/22`): the provider-neutral
-//! interface, the synthesis request, the prompt, and the providers (`anthropic`, and `scripted` and `replay`, which need no network) and the fixture recorder.
+//! interface, the synthesis request, the prompt, and the providers (`anthropic`, `ollama`, `external`, and `scripted` and
+//! `replay`, which need no network) and the fixture recorder.
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "provider-anthropic")]
 mod anthropic;
 mod attempt;
 mod compact;
+mod external;
 mod generate;
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+mod http;
+#[cfg(feature = "provider-ollama")]
+mod ollama;
 mod options;
 mod prompt;
 mod provider;
@@ -23,7 +29,10 @@ mod verify;
 pub use anthropic::{Anthropic, AnthropicConfig, ApiKey};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
+pub use external::{CommandError, External, ExternalCommand, ExternalConfig, is_api_key_variable};
 pub use generate::{TestInput, TestInputs, test_inputs};
+#[cfg(feature = "provider-ollama")]
+pub use ollama::{DEFAULT_URL as OLLAMA_URL, Ollama, OllamaConfig, normalize_model};
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};

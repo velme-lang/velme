@@ -36,6 +36,34 @@ const COMPILER: &str = "compiler";
 /// The provider id of an external backend, whose identity step can fail before its own name is known.
 const EXTERNAL: &str = "external";
 
+/// What a manifest records of who wrote the artifact (`runtime/32` R-ART-07, R-ART-21).
+struct Provenance<'a> {
+    provider: &'a str,
+    prompt_version: Option<String>,
+    model_version: Option<String>,
+    backend: Option<String>,
+}
+
+impl Provenance<'_> {
+    /// An artifact the compiler wrote.
+    const COMPILER: Provenance<'static> = Provenance {
+        provider: COMPILER,
+        prompt_version: None,
+        model_version: None,
+        backend: None,
+    };
+
+    /// An artifact a provider wrote, under `identity`.
+    fn of(identity: &Identity) -> Provenance<'_> {
+        Provenance {
+            provider: &identity.provider,
+            prompt_version: Some(identity.input_version.clone()),
+            model_version: Some(identity.model.clone()),
+            backend: identity.backend.clone(),
+        }
+    }
+}
+
 /// What a build works on.
 pub struct BuildInput<'a> {
     /// The checked program.
@@ -338,7 +366,7 @@ impl<'a> Build<'a> {
             provider: COMPILER,
             model: "",
         };
-        match self.store_artifact(id, name, span, ir, verified, &synthesis, COMPILER, None, None) {
+        match self.store_artifact(id, name, span, ir, verified, &synthesis, Provenance::COMPILER) {
             Ok(()) => done(name, Status::Built(Source::Compiler), Vec::new()),
             Err(d) => outcome(name, Status::Failed, vec![d]),
         }
@@ -476,9 +504,7 @@ impl<'a> Build<'a> {
                     built.ir,
                     built.verified,
                     &synthesis,
-                    &identity.provider,
-                    Some(identity.input_version.clone()),
-                    Some(identity.model.clone()),
+                    Provenance::of(&identity),
                 );
                 match stored {
                     Ok(()) => {
@@ -505,9 +531,7 @@ impl<'a> Build<'a> {
         ir: ValidIr,
         verified: Verified,
         synthesis: &Synthesis<'_>,
-        provider: &str,
-        prompt_version: Option<String>,
-        model_version: Option<String>,
+        provenance: Provenance<'_>,
     ) -> Result<(), Diagnostic> {
         let program = self.input.program;
         let (Ok(contract), Ok(sig)) = (contract_key(program, id), signature(program, id)) else {
@@ -515,9 +539,10 @@ impl<'a> Build<'a> {
         };
         let key = synthesis_key(contract, synthesis)?;
         let mut manifest = manifest(program, id, &ir, key)?;
-        manifest.provider = provider.to_owned();
-        manifest.prompt_version = prompt_version;
-        manifest.model_version = model_version;
+        manifest.provider = provenance.provider.to_owned();
+        manifest.prompt_version = provenance.prompt_version;
+        manifest.model_version = provenance.model_version;
+        manifest.backend = provenance.backend;
         manifest.verification = Verification {
             examples: verified.examples,
             generated_inputs: verified.generated_inputs,

@@ -1,0 +1,268 @@
+---
+source: crates/velme-synth/tests/external.rs
+expression: "serde_json::to_string_pretty(&shown).expect(\"prints\")"
+---
+{
+  "kind": "synthesize",
+  "request": {
+    "attempts": [],
+    "budget": {
+      "max_call_depth": 32,
+      "max_fuel": 10000000,
+      "max_goal_calls": 128,
+      "max_list_size": 10000,
+      "max_memory": 67108864,
+      "max_output_bytes": 1048576
+    },
+    "builtins": [
+      {
+        "name": "length",
+        "signatures": [
+          "(List<T>) -> Number",
+          "(Text) -> Number"
+        ]
+      },
+      {
+        "name": "is_empty",
+        "signatures": [
+          "(T?) -> Boolean",
+          "(List<T>) -> Boolean",
+          "(Text) -> Boolean"
+        ]
+      },
+      {
+        "name": "maximum",
+        "signatures": [
+          "(List<Number>) -> Number?"
+        ]
+      },
+      {
+        "name": "minimum",
+        "signatures": [
+          "(List<Number>) -> Number?"
+        ]
+      },
+      {
+        "name": "sum",
+        "signatures": [
+          "(List<Number>) -> Number"
+        ]
+      },
+      {
+        "name": "contains",
+        "signatures": [
+          "(List<T>, T) -> Boolean"
+        ]
+      },
+      {
+        "name": "abs",
+        "signatures": [
+          "(Number) -> Number"
+        ]
+      },
+      {
+        "name": "floor",
+        "signatures": [
+          "(Number) -> Number"
+        ]
+      },
+      {
+        "name": "ceil",
+        "signatures": [
+          "(Number) -> Number"
+        ]
+      },
+      {
+        "name": "round",
+        "signatures": [
+          "(Number) -> Number"
+        ]
+      },
+      {
+        "name": "clamp",
+        "signatures": [
+          "(Number, Number, Number) -> Number"
+        ]
+      },
+      {
+        "name": "concat",
+        "signatures": [
+          "(Text, Text) -> Text"
+        ]
+      },
+      {
+        "name": "to_text",
+        "signatures": [
+          "(Number) -> Text"
+        ]
+      },
+      {
+        "name": "range",
+        "signatures": [
+          "(Number) -> List<Number>"
+        ]
+      },
+      {
+        "name": "random",
+        "signatures": [
+          "(Number, Number) -> Number"
+        ]
+      },
+      {
+        "name": "map",
+        "signatures": [
+          "(List<T>, (T) -> U) -> List<U> (write as a `map` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "filter",
+        "signatures": [
+          "(List<T>, (T) -> Boolean) -> List<T> (write as a `filter` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "find",
+        "signatures": [
+          "(List<T>, (T) -> Boolean) -> T? (write as a `find` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "reduce",
+        "signatures": [
+          "(List<T>, U, (U, T) -> U) -> U (write as a `reduce` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "sort_by",
+        "signatures": [
+          "(List<T>, (T) -> Number, Boolean) -> List<T> (write as a `sort_by` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "all",
+        "signatures": [
+          "(List<T>, (T) -> Boolean) -> Boolean (write as a `all` node, not a builtin call)"
+        ]
+      },
+      {
+        "name": "any",
+        "signatures": [
+          "(List<T>, (T) -> Boolean) -> Boolean (write as a `any` node, not a builtin call)"
+        ]
+      }
+    ],
+    "builtins_version": "0.1",
+    "checks": [
+      {
+        "ir": {
+          "kind": "binary",
+          "left": {
+            "kind": "binary",
+            "left": {
+              "kind": "binary",
+              "left": {
+                "kind": "local",
+                "name": "result"
+              },
+              "op": "eq",
+              "right": {
+                "kind": "literal",
+                "type": {
+                  "t": "Text"
+                },
+                "value": "Gold"
+              }
+            },
+            "op": "or",
+            "right": {
+              "kind": "binary",
+              "left": {
+                "kind": "local",
+                "name": "result"
+              },
+              "op": "eq",
+              "right": {
+                "kind": "literal",
+                "type": {
+                  "t": "Text"
+                },
+                "value": "Silver"
+              }
+            }
+          },
+          "op": "or",
+          "right": {
+            "kind": "binary",
+            "left": {
+              "kind": "local",
+              "name": "result"
+            },
+            "op": "eq",
+            "right": {
+              "kind": "literal",
+              "type": {
+                "t": "Text"
+              },
+              "value": "Bronze"
+            }
+          }
+        },
+        "source": "result == \"Gold\" or result == \"Silver\" or result == \"Bronze\""
+      }
+    ],
+    "examples": [
+      {
+        "args": [
+          {
+            "name": "Lina",
+            "score": 820
+          }
+        ],
+        "expected": "Silver",
+        "source": "FindBadge(Player(name: \"Lina\", score: 820)) == \"Silver\""
+      }
+    ],
+    "goal": "FindBadge",
+    "ir_version": "0.1",
+    "locals": [],
+    "output_schema": "<reply schema>",
+    "plan": "Give the player Gold for a score of at least 1000,\nSilver for a score of at least 500, Bronze otherwise. SECRET-PLAN-TEXT",
+    "request_version": "0.1",
+    "signature": {
+      "name": "FindBadge",
+      "output": {
+        "t": "Text"
+      },
+      "params": [
+        {
+          "name": "player",
+          "type": {
+            "name": "Player",
+            "t": "Record"
+          }
+        }
+      ]
+    },
+    "task": "leaf",
+    "types": [
+      {
+        "fields": [
+          {
+            "name": "name",
+            "type": {
+              "t": "Text"
+            }
+          },
+          {
+            "name": "score",
+            "type": {
+              "t": "Number"
+            }
+          }
+        ],
+        "name": "Player"
+      }
+    ]
+  },
+  "request_version": "0.1"
+}

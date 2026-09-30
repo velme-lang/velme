@@ -167,6 +167,13 @@ fn safe_path(path: &str) -> String {
 /// `text` as an untrusted line (R-SYNTH-33): control characters, newlines and ANSI escapes become spaces, whitespace
 /// runs collapse to one, and the ends are trimmed. `None` unless what is left is 1..=280 Unicode scalar values.
 pub(crate) fn clean_text(text: &str) -> Option<String> {
+    let collapsed = collapse(text);
+    let length = collapsed.chars().count();
+    (1..=MAX_TEXT_CHARS).contains(&length).then_some(collapsed)
+}
+
+/// `text` with escape sequences and control characters replaced by spaces and whitespace runs collapsed, in any length.
+fn collapse(text: &str) -> String {
     let mut spaced = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -205,15 +212,25 @@ pub(crate) fn clean_text(text: &str) -> Option<String> {
             spaced.push(c);
         }
     }
-    let collapsed = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
-    let length = collapsed.chars().count();
-    (1..=MAX_TEXT_CHARS).contains(&length).then_some(collapsed)
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `text` cleaned as in [`clean_text`], but `None` unless it is 1..=`max` Unicode scalar values (R-SYNTH-26).
+pub(crate) fn clean_name(text: &str, max: usize) -> Option<String> {
+    let collapsed = collapse(text);
+    (1..=max).contains(&collapsed.chars().count()).then_some(collapsed)
+}
+
+/// The last `max` bytes of a backend's error output, cleaned as one line (R-SYNTH-28); a character cut by the start is
+/// shown as U+FFFD.
+pub(crate) fn clean_tail(bytes: &[u8], max: usize) -> String {
+    let tail = bytes.get(bytes.len().saturating_sub(max)..).unwrap_or_default();
+    collapse(&String::from_utf8_lossy(tail))
 }
 
 /// `text` as one untrusted line for a message (R-SYNTH-33's cleaning), cut to 280 scalar values instead of refused.
 pub(crate) fn clean_line(text: &str) -> String {
-    let collapsed: String = text.split(|c: char| c.is_control()).collect::<Vec<_>>().join(" ");
-    let collapsed = collapsed.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = collapse(text);
     if collapsed.chars().count() > MAX_TEXT_CHARS {
         let cut: String = collapsed.chars().take(MAX_TEXT_CHARS).collect();
         format!("{cut}…")

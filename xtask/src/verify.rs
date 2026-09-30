@@ -74,16 +74,56 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
     Ok(steps)
 }
 
+/// The provider settings the gate never lets into a step, so the default suite runs as it does with no key, no provider and
+/// no live tests (`delivery/51` AC-QA-02, D-13); every variable ending in `_API_KEY` goes too.
+const PROVIDER_ENV: [&str; 5] = [
+    "VELME_MODEL",
+    "VELME_EXTERNAL_COMMAND",
+    "VELME_SYNTH_RECORD",
+    "VELME_SYNTH_SCRIPT",
+    "VELME_LIVE_LLM",
+];
+
+/// Removes from `command`'s environment everything a provider could be reached with, and points the user-level config
+/// (`$XDG_CONFIG_HOME`, `%APPDATA%`, and `HOME` for the platform equivalent) at `home`, an empty directory, so a step never
+/// reads the developer's own settings (AC-QA-02). The toolchain keeps the homes it had.
+pub fn scrub_provider_env(command: &mut Command, home: &Path) {
+    let old_home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    for (var, dir) in [("CARGO_HOME", ".cargo"), ("RUSTUP_HOME", ".rustup")] {
+        if std::env::var_os(var).is_none()
+            && let Some(old) = &old_home
+        {
+            command.env(var, old.join(dir));
+        }
+    }
+    command
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("APPDATA", home);
+    for name in PROVIDER_ENV {
+        command.env_remove(name);
+    }
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().to_ascii_uppercase().ends_with("_API_KEY") {
+            command.env_remove(name);
+        }
+    }
+}
+
 /// Runs every step (a failure does not stop the rest) and returns the names of the steps that failed.
 pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<&'static str> {
     let mut failed = Vec::new();
+    let home = std::env::temp_dir().join(format!("velme-gate-home-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&home);
     for step in steps {
         println!("==> {}", step.name);
-        let status = Command::new(&step.program)
+        let mut command = Command::new(&step.program);
+        command
             .args(&step.args)
             .envs(step.envs.iter().copied())
-            .current_dir(root)
-            .status();
+            .current_dir(root);
+        scrub_provider_env(&mut command, &home);
+        let status = command.status();
         if !status.is_ok_and(|s| s.success()) {
             failed.push(step.name);
         }

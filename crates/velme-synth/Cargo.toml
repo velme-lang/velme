@@ -10,8 +10,10 @@ authors.workspace = true
 
 [features]
 # The `anthropic` provider and its HTTP client (R-SYNTH-04); the CLI turns it on.
-default = ["provider-anthropic"]
+default = ["provider-anthropic", "provider-ollama"]
 provider-anthropic = ["dep:ureq"]
+# The `ollama` provider, which shares the HTTP client (R-SYNTH-04).
+provider-ollama = ["dep:ureq"]
 # `Anthropic::with_test_endpoint`, for `velme-test-support` only (R-SYNTH-44, D-98); never in a release build.
 test-endpoint = ["provider-anthropic"]
 
@@ -27,6 +29,10 @@ velme-diagnostics.workspace = true
 velme-ir.workspace = true
 velme-sema.workspace = true
 ureq = { workspace = true, optional = true }
+
+[target.'cfg(unix)'.dependencies]
+# Signals the external command's process group on a timeout: a safe wrapper, already in the lock through `insta`.
+rustix = { version = "1", default-features = false, features = ["process"] }
 
 [dev-dependencies]
 insta.workspace = true

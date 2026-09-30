@@ -41,6 +41,7 @@ impl SynthBackend for Recorder {
             provider: identity.provider.clone(),
             model_version: identity.model.clone(),
             input_version: identity.input_version.clone(),
+            backend: identity.backend.clone(),
         };
         let text = to_canonical_string(&recorded)
             .map_err(|_| ProviderError::Internal("the replay identity could not be written".to_owned()))?;
@@ -80,14 +81,18 @@ impl SynthProvider for Recording {
         self.inner.input_version()
     }
 
+    fn backend(&self) -> &str {
+        self.inner.backend()
+    }
+
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         let result = self.inner.complete(request, limits).await;
         // Only what reached the provider's reply is an exchange: a transport failure is not (R-SYNTH-43).
         let (reply, error, text, usage) = match &result {
             Ok(reply) => (Some(reply.reply_json.clone()), None, None, reply.usage.into()),
-            Err(e @ (ProviderError::Refused(_) | ProviderError::Malformed(_) | ProviderError::BackendFailed(_))) => {
-                (None, Some(e.variant()), None, FixtureUsage::default())
-            }
+            Err(
+                e @ (ProviderError::Refused(_) | ProviderError::Malformed(_) | ProviderError::BackendFailed { .. }),
+            ) => (None, Some(e.variant()), None, FixtureUsage::default()),
             Err(ProviderError::Pending(text)) => {
                 (None, Some("pending"), Some(clean_line(text)), FixtureUsage::default())
             }

@@ -1,4 +1,5 @@
-//! Velme test support (`delivery/51`): helpers shared by the test suites of several crates. A dev-dependency only.
+//! Velme test support (`delivery/51`): helpers shared by the test suites of several crates, and the test `external` backend.
+//! A dev-dependency only.
 #![forbid(unsafe_code)]
 // A helper here fails the test that called it, so it panics on bad input like a test body does (CC-ERR-01 covers
 // non-test code only).
@@ -276,6 +277,64 @@ pub fn mock_anthropic(
         .with_test_endpoint(server.url(), velme_synth::ApiKey::new(key))
 }
 
+/// The path of the `velme-test-backend` binary (`compiler/22` §3.2, D-99), built beside the running test binary if a plain
+/// `cargo test` hasn't already: an integration test has no `CARGO_BIN_EXE_` for another package's binary.
+pub fn backend_binary() -> PathBuf {
+    static BINARY: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    BINARY
+        .get_or_init(|| {
+            let exe = std::env::current_exe().expect("the test binary's path");
+            let profile = exe
+                .ancestors()
+                .find(|dir| dir.file_name().is_some_and(|n| n == "deps"))
+                .and_then(Path::parent)
+                .expect("a test binary under target/<profile>/deps")
+                .to_path_buf();
+            let binary = profile.join(format!("velme-test-backend{}", std::env::consts::EXE_SUFFIX));
+            // It needs only its own source: a binary newer than that is used as it is, which spares every test process a
+            // cargo run.
+            let source = repo("crates/velme-test-support/src/bin/velme-test-backend.rs");
+            let built = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+            if built(&binary) >= built(&source) && built(&binary).is_some() {
+                return binary;
+            }
+            let mut build = std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+            build
+                .args([
+                    "build",
+                    "--quiet",
+                    "-p",
+                    "velme-test-support",
+                    "--bin",
+                    "velme-test-backend",
+                ])
+                .current_dir(repo(""));
+            if profile.file_name().is_some_and(|n| n == "release") {
+                build.arg("--release");
+            }
+            assert!(build.status().expect("cargo runs").success(), "the test backend builds");
+            assert!(binary.is_file(), "the test backend is at {}", binary.display());
+            binary
+        })
+        .clone()
+}
+
+/// The command line that runs the test backend with `args`, as words for [`velme_synth::ExternalCommand::resolve`].
+pub fn backend_words(args: &[&str]) -> Vec<String> {
+    let mut words = vec![backend_binary().to_string_lossy().into_owned()];
+    words.extend(args.iter().map(|a| (*a).to_owned()));
+    words
+}
+
+/// [`backend_words`] as one `--external-command` text: every word in single quotes (`tooling/40` R-CLI-13).
+pub fn backend_command(args: &[&str]) -> String {
+    backend_words(args)
+        .iter()
+        .map(|w| format!("'{w}'"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// A local HTTP server that plays back canned responses, for the tests of the `anthropic` provider: no network.
 pub mod mock {
     use std::collections::{BTreeMap, VecDeque};
@@ -325,6 +384,30 @@ pub mod mock {
         pub fn header(mut self, name: &str, value: &str) -> Self {
             self.headers.push((name.to_owned(), value.to_owned()));
             self
+        }
+
+        /// An Ollama `/api/tags` response listing `models`, each a name and a digest.
+        pub fn ollama_tags(models: &[(&str, &str)]) -> Self {
+            let models: Vec<Value> = models
+                .iter()
+                .map(|(name, digest)| json!({"name": name, "model": name, "digest": digest, "size": 1}))
+                .collect();
+            Self::ok(json!({ "models": models }).to_string())
+        }
+
+        /// An Ollama `/api/chat` response whose message content is the text of `reply`.
+        pub fn ollama_chat(reply: &Value) -> Self {
+            Self::ok(
+                json!({
+                    "model": "test",
+                    "message": {"role": "assistant", "content": reply.to_string()},
+                    "done": true,
+                    "done_reason": "stop",
+                    "prompt_eval_count": 13,
+                    "eval_count": 9,
+                })
+                .to_string(),
+            )
         }
 
         /// A Messages API response in which the model called `tool` with `input`.
@@ -465,7 +548,8 @@ pub mod mock {
             .filter_map(|line| line.split_once(':'))
             .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
             .collect();
-        let length: usize = headers.get("content-length")?.parse().ok()?;
+        // A GET has no body, and so no length.
+        let length: usize = headers.get("content-length").map_or(Some(0), |v| v.parse().ok())?;
         while data.len() < end + length {
             let n = stream.read(&mut chunk).ok().filter(|n| *n > 0)?;
             data.extend_from_slice(&chunk[..n]);

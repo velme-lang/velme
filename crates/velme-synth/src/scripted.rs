@@ -141,6 +141,7 @@ impl SynthBackend for Scripted {
             provider: "scripted".to_owned(),
             model: "scripted".to_owned(),
             input_version: self.input_version.clone(),
+            backend: None,
         })
     }
 

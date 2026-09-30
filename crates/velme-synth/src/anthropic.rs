@@ -11,20 +11,15 @@ use async_trait::async_trait;
 use serde_json::{Map, Value, json};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
+use crate::http::{agent, read_body, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
-use crate::transport::{Sleeper, StdSleeper, with_transport_retries};
+use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
 
 /// Where the Messages API is, unless a test says otherwise (D-98).
 const BASE_URL: &str = "https://api.anthropic.com";
-
-/// The most a response body may hold: far above `max_output_tokens` of text, far below a memory problem.
-/// The levels the response envelope adds around a tool input: message, `content`, block, `input`.
-const ENVELOPE_DEPTH: usize = 8;
-
-const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
 
 /// The API version header value.
 const API_VERSION: &str = "2023-06-01";
@@ -174,11 +169,8 @@ impl Anthropic {
     #[must_use]
     pub fn with_test_endpoint(mut self, base_url: impl Into<String>, key: ApiKey) -> Self {
         let base_url = base_url.into();
-        let host = base_url
-            .split_once("://")
-            .map_or("", |(_, rest)| rest.split(['/', ':']).next().unwrap_or(""));
         assert!(
-            matches!(host, "127.0.0.1" | "localhost"),
+            matches!(crate::http::host_of(&base_url), "127.0.0.1" | "localhost"),
             "the test endpoint must be a loopback address"
         );
         self.base_url = base_url;
@@ -228,15 +220,8 @@ impl Anthropic {
 
     /// One HTTP exchange: the response body of a success, or the error the status or the transport means.
     fn send(&self, key: &ApiKey, body: &str, timeout: Duration) -> Result<String, ProviderError> {
-        let mut config = ureq::Agent::config_builder()
-            .timeout_global(Some(timeout))
-            .http_status_as_error(false)
-            .max_redirects(0);
-        if matches!(self.key, KeySource::Fixed(_)) {
-            // A mock server on this machine is never reached through a proxy from the test's environment.
-            config = config.proxy(None);
-        }
-        let agent: ureq::Agent = config.build().into();
+        // A mock server on this machine is never reached through a proxy from the test's environment.
+        let agent = agent(timeout, matches!(self.key, KeySource::Fixed(_)));
         let url = format!("{}/v1/messages", self.base_url.trim_end_matches('/'));
         let mut response = agent
             .post(&url)
@@ -253,17 +238,7 @@ impl Anthropic {
             .and_then(|v| v.trim().parse::<u64>().ok())
             .map(Duration::from_secs);
         match status {
-            200..=299 => response
-                .body_mut()
-                .with_config()
-                .limit(MAX_BODY_BYTES)
-                .read_to_string()
-                .map_err(|error| match error {
-                    ureq::Error::BodyExceedsLimit(_) => {
-                        ProviderError::Malformed("the response was too large".to_owned())
-                    }
-                    other => transport_error(other),
-                }),
+            200..=299 => read_body(&mut response),
             401 | 403 | 404 => Err(ProviderError::NotConfigured),
             429 => Err(ProviderError::RateLimited { retry_after }),
             300..=399 | 408 | 500..=599 => Err(ProviderError::Unavailable(format!(
@@ -273,17 +248,6 @@ impl Anthropic {
                 "the provider rejected the request with status {status}"
             ))),
         }
-    }
-}
-
-/// What a failed HTTP exchange means. The text is fixed: a transport error's own wording may hold the address.
-fn transport_error(error: ureq::Error) -> ProviderError {
-    match error {
-        ureq::Error::Timeout(_) => ProviderError::Timeout,
-        ureq::Error::Io(e) if e.kind() == std::io::ErrorKind::TimedOut => ProviderError::Timeout,
-        // A header that can't be built, such as a key with a control character, is never a network failure.
-        ureq::Error::Http(_) | ureq::Error::BadUri(_) => ProviderError::NotConfigured,
-        _ => ProviderError::Unavailable("Velme couldn't connect to the provider".to_owned()),
     }
 }
 
@@ -371,6 +335,7 @@ impl SynthBackend for Anthropic {
             provider: "anthropic".to_owned(),
             model: self.model.clone(),
             input_version: self.input_version.clone(),
+            backend: None,
         })
     }
 

@@ -136,6 +136,17 @@ fn shown(d: &velme_diagnostics::Diagnostic) -> String {
     format!("{} | {} | {:?} | {:?}", d.code.as_str(), d.message, d.notes, d.help)
 }
 
+/// A reply with a `call` node fails validation, and the retry turn cites `VL0402` (AC-SYNTH-04, INV-6).
+#[test]
+fn ac_synth_04_a_call_node_is_refused_and_the_retry_cites_vl0402() {
+    let run = run(SynthOptions::default(), vec![call_node(), good()]);
+    assert!(matches!(run.outcome, Outcome::Built(_)));
+    let requests = run.provider.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].attempts[0].diagnostics[0].code, "VL0402");
+    assert_eq!(requests[1].attempts[0].reply, call_node());
+}
+
 /// Two invalid replies with different causes, then a valid one: built after two retries, each retry carrying what was
 /// found before (AC-SYNTH-02, AC-SYNTH-04).
 #[test]
