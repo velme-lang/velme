@@ -110,7 +110,7 @@ fn describe_gives_the_backend_name_and_version() {
     let identity = block_on(backend.identify()).expect("identity");
     assert_eq!(identity.provider, "external");
     assert_eq!(identity.backend.as_deref(), Some("my backend"));
-    assert_eq!(identity.model, "v 2");
+    assert_eq!(identity.model, "my backend@v 2");
     assert_eq!(identity.input_version, REQUEST_VERSION);
 }
 
@@ -303,7 +303,7 @@ fn a_redirect_is_not_followed() {
             .logging(&log)
             .misbehaving(Mode::Redirect, On::Both),
     );
-    let (backend, _) = at(server.url(), Some("tok-redirect"), PATIENT);
+    let (backend, _) = at(server.url(), Some("tok-redirect-0123456"), PATIENT);
     let text = failure(complete(&backend, &request()));
     assert!(text.contains("redirect"), "{text}");
     assert!(matches!(
@@ -319,7 +319,7 @@ fn a_redirect_is_not_followed() {
     let elsewhere = MockServer::start([MockResponse::ok(r#"{"question": "followed"}"#)]);
     let target = format!("{}/v1/synthesize", elsewhere.url());
     let mock = MockServer::start([MockResponse::status(307, "").header("location", &target)]);
-    let (backend, _) = at(mock.url(), Some("tok-redirect"), PATIENT);
+    let (backend, _) = at(mock.url(), Some("tok-redirect-0123456"), PATIENT);
     assert!(failure(complete(&backend, &request())).contains("redirect"));
     assert!(elsewhere.requests().is_empty(), "the redirect was followed");
 }
@@ -328,19 +328,19 @@ fn a_redirect_is_not_followed() {
 /// never retried; a service that echoes the token in a failure doesn't get it into the notes (R-SEC-13, D-101).
 #[test]
 fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
-    let (_server, plain) = serving(Config::default().wanting_token("tok-123"));
+    let (_server, plain) = serving(Config::default().wanting_token("tok-123-0123456789"));
     assert!(matches!(
         block_on(plain.identify()),
         Err(ProviderError::TokenRejected { sent: false })
     ));
-    let server = Server::start(Config::default().wanting_token("tok-123"));
-    let (wrong, sleeper) = at(server.url(), Some("tok-999"), PATIENT);
+    let server = Server::start(Config::default().wanting_token("tok-123-0123456789"));
+    let (wrong, sleeper) = at(server.url(), Some("tok-999-0123456789"), PATIENT);
     assert!(matches!(
         block_on(wrong.identify()),
         Err(ProviderError::TokenRejected { sent: true })
     ));
     assert!(sleeper.waits().is_empty(), "a rejection is not retried");
-    let (right, _) = at(server.url(), Some("tok-123"), PATIENT);
+    let (right, _) = at(server.url(), Some("tok-123-0123456789"), PATIENT);
     assert!(block_on(right.identify()).is_ok());
 
     for status in [401, 403] {
@@ -348,7 +348,7 @@ fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
             MockResponse::status(status, "denied"),
             MockResponse::status(status, "denied"),
         ]);
-        let (backend, _) = at(mock.url(), Some("tok-123"), PATIENT);
+        let (backend, _) = at(mock.url(), Some("tok-123-0123456789"), PATIENT);
         assert!(matches!(
             block_on(backend.identify()),
             Err(ProviderError::TokenRejected { sent: true })
@@ -358,12 +358,12 @@ fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
             Err(ProviderError::TokenRejected { sent: true })
         ));
         let sent = mock.requests();
-        assert_eq!(sent[0].headers["authorization"], "Bearer tok-123");
+        assert_eq!(sent[0].headers["authorization"], "Bearer tok-123-0123456789");
         assert_eq!(sent[0].method, "GET");
         assert_eq!(sent[0].path, "/v1/describe");
         assert_eq!(sent[1].method, "POST");
         assert_eq!(sent[1].path, "/v1/synthesize");
-        assert_eq!(sent[1].headers["authorization"], "Bearer tok-123");
+        assert_eq!(sent[1].headers["authorization"], "Bearer tok-123-0123456789");
     }
     // Without a token there is no header at all.
     let mock = MockServer::start([MockResponse::ok(r#"{"backend": "b", "backend_version": "v"}"#)]);
@@ -372,11 +372,14 @@ fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
     assert!(!mock.requests()[0].headers.contains_key("authorization"));
 
     // A service that echoes the token back doesn't get it into a diagnostic.
-    let mock = MockServer::start([MockResponse::status(400, "bad request; you sent tok-123 and more")]);
-    let (backend, _) = at(mock.url(), Some("tok-123"), PATIENT);
+    let mock = MockServer::start([MockResponse::status(
+        400,
+        "bad request; you sent tok-123-0123456789 and more",
+    )]);
+    let (backend, _) = at(mock.url(), Some("tok-123-0123456789"), PATIENT);
     let text = failure(complete(&backend, &request()));
     assert!(text.contains("you sent *** and more"), "{text}");
-    assert!(!text.contains("tok-123"));
+    assert!(!text.contains("tok-123-0123456789"));
 }
 
 /// The `synthesize` request body is the canonical request itself: it is the snapshot, parses back through the committed
@@ -421,19 +424,31 @@ fn ac_synth_14_the_synthesize_body_is_the_snapshot_and_holds_nothing_local() {
 /// text, the describe fields and the IR, in any spelling, and a token cut by the start of the 4 KiB tail (R-SEC-13, D-101).
 #[test]
 fn the_token_is_taken_out_of_everything_the_service_says() {
-    let token = "tok-1234abcd";
+    let token = "tok-123-01234567894abcd";
     let text = |result: Result<String, ProviderError>| format!("{result:?}");
     for (name, reply) in [
         ("error", json!({"error": format!("bad token {token}")})),
         ("pending", json!({"pending": format!("ticket {token}")})),
         ("question", json!({"question": format!("is it {token}?")})),
-        ("ir", json!({"ir": {"goal": token, "ir_version": "0.1"}})),
     ] {
         let server = MockServer::start([MockResponse::ok(reply.to_string())]);
         let (backend, _) = at(server.url(), Some(token), PATIENT);
         let shown = text(complete(&backend, &request()));
         assert!(!shown.contains(token), "{name}: {shown}");
         assert!(shown.contains("***"), "{name}: {shown}");
+    }
+    // An `ir` is never rewritten: one that holds the token, in either spelling, is refused (D-102).
+    let odd = "a/b\"c-0123456789abc";
+    for (spelling, token) in [("plain", token), ("escaped", odd)] {
+        let ir = json!({"ir": {"goal": "FindBadge", "ir_version": "0.1", "note": format!("x {token} y")}});
+        let server = MockServer::start([MockResponse::ok(ir.to_string())]);
+        let (backend, _) = at(server.url(), Some(token), PATIENT);
+        let shown = failure(complete(&backend, &request()));
+        assert!(
+            shown.starts_with("the reply contains your token"),
+            "{spelling}: {shown}"
+        );
+        assert!(!shown.contains(token), "{spelling}: {shown}");
     }
     // Describe: the name and the version, which become the identity and the manifest.
     let server = MockServer::start([MockResponse::ok(
@@ -443,7 +458,6 @@ fn the_token_is_taken_out_of_everything_the_service_says() {
     let identity = block_on(backend.identify()).expect("identity");
     assert!(!format!("{identity:?}").contains(token), "{identity:?}");
     // A token that JSON spells with an escape is found too.
-    let odd = "a/b\"c";
     let server = MockServer::start([MockResponse::ok(json!({"error": format!("x {odd} y")}).to_string())]);
     let (backend, _) = at(server.url(), Some(odd), PATIENT);
     let shown = text(complete(&backend, &request()));
@@ -454,7 +468,10 @@ fn the_token_is_taken_out_of_everything_the_service_says() {
     let server = MockServer::start([MockResponse::status(400, body)]);
     let (backend, _) = at(server.url(), Some(token), PATIENT);
     let shown = failure(complete(&backend, &request()));
-    assert!(!shown.contains("1234abcd") && !shown.contains(token), "{shown}");
+    assert!(
+        !shown.contains("1234abcd-0123456") && !shown.contains("abcd-0123456") && !shown.contains(token),
+        "{shown}"
+    );
     assert!(shown.contains("***"), "{shown}");
 }
 
@@ -482,4 +499,42 @@ fn a_body_that_stalls_is_a_timeout() {
     assert_eq!(complete(&backend, &request()), Err(ProviderError::Timeout));
     assert_eq!(sleeper.waits().len(), 2);
     thread.join().expect("the server thread");
+}
+
+/// The identity's model is `<backend>@<backend_version>`, like Ollama's `<model>@<digest>` (R-SYNTH-26, D-102).
+#[test]
+fn the_model_is_the_backend_at_its_version() {
+    let (_server, backend) = serving(Config::default().describing("queue", "v7"));
+    let identity = block_on(backend.identify()).expect("identity");
+    assert_eq!(identity.model, "queue@v7");
+    assert_eq!(identity.backend.as_deref(), Some("queue"));
+}
+
+/// A reply with exactly one of the four kinds is read whatever other keys it has; none, or two, is a failure
+/// (R-SYNTH-26, R-SYNTH-28, D-102).
+#[test]
+fn a_reply_may_carry_extra_keys() {
+    let (_server, backend) = replying(
+        "extra-keys",
+        r#"{"question": "Which way?", "trace_id": "t-1", "meta": {"a": 1}}"#,
+    );
+    assert_eq!(
+        complete(&backend, &request()).expect("a question"),
+        r#"{"question":"Which way?"}"#
+    );
+    let (_server, backend) = replying("extra-ir", r#"{"trace_id": 7, "pending": "ticket 42"}"#);
+    assert_eq!(
+        complete(&backend, &request()),
+        Err(ProviderError::Pending("ticket 42".to_owned()))
+    );
+    for (name, reply) in [
+        ("extra-none", r#"{"trace_id": "t-1"}"#),
+        ("extra-two", r#"{"question": "?", "pending": "p", "trace_id": "t"}"#),
+    ] {
+        let (_server, backend) = replying(name, reply);
+        assert!(
+            failure(complete(&backend, &request())).contains("exactly one"),
+            "{name}"
+        );
+    }
 }

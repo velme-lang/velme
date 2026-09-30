@@ -27,9 +27,9 @@ pub(crate) fn is_loopback(url: &str) -> bool {
     matches!(host_of(url), "127.0.0.1" | "localhost" | "::1")
 }
 
-/// An agent that gives up after `timeout`, follows no redirect and reads a non-2xx status as a response, not an error.
-/// A server on this machine is never reached through a proxy from the environment.
-pub(crate) fn agent(timeout: Duration, direct: bool) -> ureq::Agent {
+/// The settings of an agent that gives up after `timeout`, follows no redirect and reads a non-2xx status as a response,
+/// not an error. A server on this machine is never reached through a proxy from the environment.
+pub(crate) fn agent_config(timeout: Duration, direct: bool) -> ureq::config::Config {
     let mut config = ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
         .http_status_as_error(false)
@@ -37,7 +37,13 @@ pub(crate) fn agent(timeout: Duration, direct: bool) -> ureq::Agent {
     if direct {
         config = config.proxy(None);
     }
-    config.build().into()
+    config.build()
+}
+
+/// [`agent_config`] as an agent.
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+pub(crate) fn agent(timeout: Duration, direct: bool) -> ureq::Agent {
+    agent_config(timeout, direct).into()
 }
 
 /// The body of a success response, at most [`MAX_BODY_BYTES`].

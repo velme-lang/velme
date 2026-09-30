@@ -67,8 +67,8 @@ a hash of each request, the reply body and usage — never the prompt body (D-94
 if a key-shaped string appears in `tests/fixtures`.
 **R-SEC-13** The `external` backend's bearer token comes only from `VELME_EXTERNAL_TOKEN` and is sent only as the
 `Authorization` header of requests to the configured URL: never to another host (redirects are not followed), never in a
-URL, and never logged, echoed, put in a diagnostic, fixture, `replay.json`, `.velme/synth-log.jsonl` or `--json` output
-and a service that echoes it in a reply gets it replaced by `***` before anything is stored or shown (`compiler/22` R-SYNTH-29, T-10, D-101). No `*_API_KEY` variable is read for it or sent to it.
+URL, and never logged, echoed, put in a diagnostic, fixture, `replay.json`, `.velme/synth-log.jsonl` or `--json` output;
+a service that echoes it in a message text gets it replaced by `***` before anything is stored or shown; a reply whose `ir` holds it is refused, never rewritten, and a token shorter than 16 characters is not accepted (D-102, `compiler/22` R-SYNTH-29, T-10, D-101). No `*_API_KEY` variable is read for it or sent to it.
 
 ## 5. Learner privacy (D-37)
 
