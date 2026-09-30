@@ -47,6 +47,8 @@ tokio = { version = "1", default-features = false, features = ["rt"] }
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 # The bundled CA roots as certificates, so `external_ca_file` can be added to them (D-105); the same list ureq trusts.
 webpki-root-certs = "1.0.9"
+wasm-encoder = { version = "0.258", default-features = false, features = ["std"] }
+wasmparser = { version = "0.258", default-features = false, features = ["std", "validate", "features"] }
 toml = { version = "1", default-features = false, features = ["std", "serde", "parse", "display"] }
 
 # CC-ERR-01, CC-STY-03. `unsafe_code` is forbidden per crate (`#![forbid(unsafe_code)]`), not here, because

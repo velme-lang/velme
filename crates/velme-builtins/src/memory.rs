@@ -17,10 +17,13 @@ pub const OPTIONAL_BYTES: u64 = 8;
 /// Bytes of a `Text`, and of a `List` or record, before their contents.
 pub const HEADER_BYTES: u64 = 16;
 
+/// Bytes of a slot of the WASM ABI, which a `Text`'s bytes are rounded up to (`runtime/31` §3).
+pub const SLOT_BYTES: u64 = 8;
+
 /// The bytes of a `Text` of `bytes` bytes: 16 + ⌈bytes/8⌉ · 8, the 8-byte slots of the WASM ABI.
 pub fn text_bytes(bytes: usize) -> u64 {
-    let slots = u64::try_from(bytes.div_ceil(8)).unwrap_or(u64::MAX);
-    HEADER_BYTES.saturating_add(slots.saturating_mul(8))
+    let slots = u64::try_from(bytes).unwrap_or(u64::MAX).div_ceil(SLOT_BYTES);
+    HEADER_BYTES.saturating_add(slots.saturating_mul(SLOT_BYTES))
 }
 
 /// The bytes of `range(length)`: a list of `length` numbers.

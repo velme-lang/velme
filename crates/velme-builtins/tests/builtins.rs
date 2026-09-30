@@ -617,6 +617,24 @@ proptest! {
         prop_assert_eq!(Number::parse(&x.to_string()), Some(x));
     }
 
+    // D-113: one pair of bits per value, read back exactly.
+    #[test]
+    fn number_bits_round_trip(x in number()) {
+        let (lo, hi) = x.to_bits();
+        prop_assert_eq!(Number::from_bits(lo, hi), Ok(x));
+    }
+
+    // D-113: whatever bits are read, they are a number's own bits or they are rejected.
+    #[test]
+    fn number_bits_are_canonical_or_rejected(lo in any::<u64>(), hi in any::<u64>(), scale in 0u64..40) {
+        for hi in [hi, hi & 0x8000_0000_FFFF_FFFF | scale << 32] {
+            match Number::from_bits(lo, hi) {
+                Ok(x) => prop_assert_eq!(x.to_bits(), (lo, hi)),
+                Err(error) => prop_assert_eq!(error.code(), Code::InternalError),
+            }
+        }
+    }
+
     #[test]
     fn number_add_and_sub_follow_r_typ_04(a in number(), b in number()) {
         let (negative, p, e) = exact_sum(a, b);
@@ -712,4 +730,30 @@ fn call_results_carry_their_bytes_and_memory_is_checked_before_fuel() {
         Err(Error::ListTooLong { .. })
     ));
     assert_eq!(Error::OutOfMemory.code(), Code::MemoryLimitExceeded);
+}
+
+/// The layout of a `Number` slot and the forms `from_bits` refuses (`runtime/31` §3, R-SBX-04, D-113).
+#[test]
+fn number_bits_layout_and_rejected_forms() {
+    const SIGN: u64 = 1 << 63;
+    assert_eq!(num("0").to_bits(), (0, 0));
+    assert_eq!(num("1").to_bits(), (1, 0));
+    assert_eq!(num("-1").to_bits(), (1, SIGN));
+    assert_eq!(num("2.5").to_bits(), (25, 1 << 32));
+    assert_eq!(num("-0.001").to_bits(), (1, SIGN | 3 << 32));
+    // 2^64 sets the first bit of the high half; 2^96 - 1 is the largest coefficient.
+    assert_eq!(num("18446744073709551616").to_bits(), (0, 1));
+    assert_eq!(num("79228162514264337593543950335").to_bits(), (u64::MAX, 0xFFFF_FFFF));
+    assert_eq!(num("0.0000000000000000000000000001").to_bits(), (1, 28 << 32));
+    for (lo, hi, why) in [
+        (0, SIGN, "-0"),
+        (0, 1 << 32, "0 with a scale"),
+        (10, 1 << 32, "1.0, a trailing fractional zero"),
+        (1, 29 << 32, "a scale above 28"),
+        (1, 1 << 40, "a bit between the scale and the sign"),
+        (1, 1 << 62, "a bit between the scale and the sign"),
+    ] {
+        assert_eq!(Number::from_bits(lo, hi), Err(Error::Internal), "{why}");
+    }
+    assert_eq!(Error::Internal.code(), Code::InternalError);
 }

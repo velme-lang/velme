@@ -254,7 +254,43 @@ impl Number {
             None
         }
     }
+
+    /// `self` as the two `i64` of a WASM `Number` slot, `(lo, hi)` (`runtime/31` §3, D-113): `lo` is magnitude bits
+    /// 0..63; `hi` holds magnitude bits 64..95 in bits 0..31, the scale in bits 32..39 and the sign in bit 63. A
+    /// value has one representation, so it has one pair of bits.
+    pub fn to_bits(self) -> (u64, u64) {
+        let magnitude = self.magnitude();
+        // The low 64 bits, then the 32 above them: the magnitude is below 2^96.
+        let lo = magnitude as u64;
+        let hi = (magnitude >> 64) as u64 | u64::from(self.scale) << SCALE_SHIFT;
+        (lo, if self.is_negative() { hi | SIGN_BIT } else { hi })
+    }
+
+    /// The number whose [`Number::to_bits`] are `(lo, hi)`. Anything else is not a `Number` slot, and `VL0607` (D-113):
+    /// a bit set outside the three fields, a scale above 28, `-0`, or a coefficient with trailing fractional zeros.
+    pub fn from_bits(lo: u64, hi: u64) -> Result<Number, Error> {
+        let negative = hi & SIGN_BIT != 0;
+        let scale = (hi >> SCALE_SHIFT) & 0xFF;
+        let high = hi & 0xFFFF_FFFF;
+        if hi & !(SIGN_BIT | 0xFF << SCALE_SHIFT | 0xFFFF_FFFF) != 0 {
+            return Err(Error::Internal);
+        }
+        let scale = u32::try_from(scale).map_err(|_| Error::Internal)?;
+        let number = Number::new(negative, u128::from(high) << 64 | u128::from(lo), scale).ok_or(Error::Internal)?;
+        // `new` normalizes, so bits that aren't the canonical ones come back different.
+        if number.to_bits() == (lo, hi) {
+            Ok(number)
+        } else {
+            Err(Error::Internal)
+        }
+    }
 }
+
+/// Where the scale starts in the `hi` half of a `Number` slot (D-113).
+const SCALE_SHIFT: u32 = 32;
+
+/// The sign in the `hi` half of a `Number` slot (D-113).
+const SIGN_BIT: u64 = 1 << 63;
 
 impl From<i64> for Number {
     fn from(n: i64) -> Number {

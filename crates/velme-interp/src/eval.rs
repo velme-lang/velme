@@ -166,8 +166,11 @@ impl<'ir> Evaluator<'ir> {
 
     /// Charges the `bytes` of a value just created (§7.1).
     fn allocate(&mut self, bytes: u64) -> Result<(), Failure> {
-        self.memory = self.memory.saturating_add(bytes);
-        if self.memory > self.max_memory {
+        // A total past `u64::MAX` is past every limit, `u64::MAX` too: the WASM meter counts down from the limit and
+        // fails there as well (`runtime/31` R-SBX-05).
+        let total = self.memory.checked_add(bytes);
+        self.memory = total.unwrap_or(u64::MAX);
+        if total.is_none_or(|total| total > self.max_memory) {
             return Err(self.out_of_memory());
         }
         Ok(())
