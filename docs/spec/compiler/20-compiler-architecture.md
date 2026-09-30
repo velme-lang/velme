@@ -22,7 +22,7 @@ public compiler API that the CLI, a future LSP and the playground share. Syntax 
 | `velme-ir` | IR types, JSON Schema (schemars), canonical JSON, validator, lowering HIR → IR for compiler-owned parts | `sema`, `builtins`, `diagnostics` |
 | `velme-check` | lowering of `check`/`examples` to IR predicates; check and example evaluation on the interpreter, failure reports (D-80) | `ir`, `interp`, `sema`, `builtins`, `diagnostics` |
 | `velme-interp` | reference interpreter for IR (fuel-metered, pure) | `ir`, `builtins`, `diagnostics` |
-| `velme-synth` | Spellbook: `SynthProvider` trait, providers, prompt builder, retry loop, verification pipeline, test-input generator | `ir`, `check`, `interp`, `sema`, `diagnostics` |
+| `velme-synth` | Spellbook: `SynthProvider` trait, providers, prompt builder, retry loop, verification pipeline, test-input generator | `ir`, `check`, `interp`, `sema`, `builtins` (the catalog for `SynthRequest.builtins`, D-98), `diagnostics` |
 | `velme-wasm` | IR → core WASM emitter, Wasmtime sandbox host (M7) | `ir`, `builtins`, `diagnostics` |
 | `velme-runtime` | VibeVM: goal registry, call planner, scheduler, budgets, trace, artifact store, lockfile | `ir`, `check`, `interp`, `wasm`, `synth`, `sema` (its API takes `hir::Program`, §6, D-80), `builtins` (budget caps, D-77), `diagnostics` |
 | `velme-cli` | binary `velme`: argument parsing, config, rendering, exit codes | any of the above |
@@ -160,7 +160,8 @@ pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                     
 **R-CMP-20** `build` lives in `velme-runtime`, which owns lock/store staleness and the `compiler/22` R-SYNTH-02 lookup
 order, calling `velme-synth` only for goals that need synthesis (D-54). `velme-synth` exposes a `ChildRunner` trait
 that `velme-runtime` implements and passes into synthesis, so verification (`compiler/22` R-SYNTH-14) can run a
-composite goal's real, already-accepted children without `velme-synth` depending on the artifact store.
+composite goal's real, already-accepted children without `velme-synth` depending on the artifact store. The runner
+takes the whole candidate goal and runs it through `velme-runtime`'s scheduler, never one callback per child (D-98).
 
 ## 7. Acceptance criteria
 
