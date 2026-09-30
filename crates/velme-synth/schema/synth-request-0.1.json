@@ -1,0 +1,556 @@
+{
+  "$defs": {
+    "AttemptDiagnostic": {
+      "additionalProperties": false,
+      "description": "A diagnostic shown to the provider on a retry (`compiler/22` R-SYNTH-11).",
+      "properties": {
+        "code": {
+          "description": "The `VLnnnn` code.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "For a check or example failure: the input, the assertion and the actual values.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Velme's message.",
+          "type": "string"
+        },
+        "path": {
+          "description": "The JSON path of the fault in the reply, if it has one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "AttemptFeedback": {
+      "additionalProperties": false,
+      "description": "An earlier attempt at the same goal: the reply and why it was refused (`compiler/22` §5).",
+      "properties": {
+        "diagnostics": {
+          "description": "What Velme found wrong with it, most important first (R-SYNTH-31).",
+          "items": {
+            "$ref": "#/$defs/AttemptDiagnostic"
+          },
+          "type": "array"
+        },
+        "reply": {
+          "description": "The reply document as received.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply",
+        "diagnostics"
+      ],
+      "type": "object"
+    },
+    "Budget": {
+      "additionalProperties": false,
+      "description": "The effective budget of the goal's own invocation and the static caps (`runtime/30` §7).",
+      "properties": {
+        "max_call_depth": {
+          "description": "Call depth below the goal.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_fuel": {
+          "description": "Fuel for the invocation.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_goal_calls": {
+          "description": "Goal invocations in the goal's subtree.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_list_size": {
+          "description": "Items in any one list.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_memory": {
+          "description": "Bytes the invocation may allocate.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "description": "Bytes of the goal's output as JSON.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_fuel",
+        "max_memory",
+        "max_goal_calls",
+        "max_call_depth",
+        "max_list_size",
+        "max_output_bytes"
+      ],
+      "type": "object"
+    },
+    "BuiltinSig": {
+      "additionalProperties": false,
+      "description": "One built-in a candidate may call (`language/14`), as the signatures of the catalog.",
+      "properties": {
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "One line per way of calling it: `(List<T>, T) -> Boolean`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "type": "object"
+    },
+    "CheckItem": {
+      "additionalProperties": false,
+      "description": "One `check` item: as written, and lowered to IR (`language/13` R-CHK-11), which is what runs.",
+      "properties": {
+        "ir": {
+          "description": "Its lowered form: an IR expression node."
+        },
+        "source": {
+          "description": "The item's source text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "ir"
+      ],
+      "type": "object"
+    },
+    "Example": {
+      "additionalProperties": false,
+      "description": "One `examples:` item, with literal values (D-7, R-SYNTH-38).",
+      "properties": {
+        "args": {
+          "description": "One input value per parameter, as JSON (D-23).",
+          "items": true,
+          "type": "array"
+        },
+        "expected": {
+          "description": "The expected output, as JSON."
+        },
+        "source": {
+          "description": "The item's source text, `Double(2) == 4`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "args",
+        "expected"
+      ],
+      "type": "object"
+    },
+    "LocalBinding": {
+      "additionalProperties": false,
+      "description": "A call binding of a composite goal, `name: Type = Child(args)`: the child's signature and never its IR (D-5, D-11).",
+      "properties": {
+        "args": {
+          "description": "The arguments as written, one per child parameter.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "child": {
+          "$ref": "#/$defs/Signature",
+          "description": "The child's signature."
+        },
+        "name": {
+          "description": "The bound name.",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/Type",
+          "description": "The binding's type, the child's output."
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "child",
+        "args"
+      ],
+      "type": "object"
+    },
+    "Param": {
+      "additionalProperties": false,
+      "description": "A goal parameter or record field, `name: Type`.",
+      "properties": {
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/Type",
+          "description": "Its type."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "RecordType": {
+      "additionalProperties": false,
+      "description": "A record type and its fields.",
+      "properties": {
+        "fields": {
+          "description": "Its fields, in declaration order.",
+          "items": {
+            "$ref": "#/$defs/Param"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "Signature": {
+      "additionalProperties": false,
+      "description": "A goal's signature: `Name(params) -> Output`.",
+      "properties": {
+        "name": {
+          "description": "The goal's name.",
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/Type",
+          "description": "Its output type."
+        },
+        "params": {
+          "description": "Its parameters, in declaration order.",
+          "items": {
+            "$ref": "#/$defs/Param"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "params",
+        "output"
+      ],
+      "type": "object"
+    },
+    "SynthRequest": {
+      "additionalProperties": false,
+      "description": "Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the `request` of the external\n`synthesize` message.",
+      "properties": {
+        "attempts": {
+          "description": "Earlier attempts at this goal, oldest first.",
+          "items": {
+            "$ref": "#/$defs/AttemptFeedback"
+          },
+          "type": "array"
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget",
+          "description": "The effective budget."
+        },
+        "builtins": {
+          "description": "The builtins a candidate may use.",
+          "items": {
+            "$ref": "#/$defs/BuiltinSig"
+          },
+          "type": "array"
+        },
+        "builtins_version": {
+          "description": "The builtin catalog version the candidate must be written against (D-97).",
+          "type": "string"
+        },
+        "checks": {
+          "description": "The `check` items.",
+          "items": {
+            "$ref": "#/$defs/CheckItem"
+          },
+          "type": "array"
+        },
+        "examples": {
+          "description": "The `examples:` items, in source order.",
+          "items": {
+            "$ref": "#/$defs/Example"
+          },
+          "type": "array"
+        },
+        "goal": {
+          "description": "The goal's name.",
+          "type": "string"
+        },
+        "ir_version": {
+          "description": "The IR version the candidate must be written against (D-97).",
+          "type": "string"
+        },
+        "locals": {
+          "description": "The call bindings, for a composite goal.",
+          "items": {
+            "$ref": "#/$defs/LocalBinding"
+          },
+          "type": "array"
+        },
+        "output_schema": {
+          "description": "The JSON Schema the reply must satisfy: an IR goal or a question (R-SYNTH-10)."
+        },
+        "plan": {
+          "description": "The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).",
+          "type": "string"
+        },
+        "request_version": {
+          "description": "[`REQUEST_VERSION`].",
+          "type": "string"
+        },
+        "signature": {
+          "$ref": "#/$defs/Signature",
+          "description": "The goal's signature."
+        },
+        "task": {
+          "$ref": "#/$defs/TaskKind",
+          "description": "What to write."
+        },
+        "types": {
+          "description": "Every record type reachable from the signature and the bindings, by name.",
+          "items": {
+            "$ref": "#/$defs/RecordType"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_version",
+        "ir_version",
+        "builtins_version",
+        "task",
+        "goal",
+        "signature",
+        "types",
+        "locals",
+        "plan",
+        "checks",
+        "examples",
+        "budget",
+        "builtins",
+        "attempts",
+        "output_schema"
+      ],
+      "type": "object"
+    },
+    "TaskKind": {
+      "description": "What is synthesized (`compiler/22` §2).",
+      "oneOf": [
+        {
+          "const": "leaf",
+          "description": "The whole `body` of a goal with no `call` block.",
+          "type": "string"
+        },
+        {
+          "const": "composite",
+          "description": "The tail `body` over the inputs and call bindings (D-5).",
+          "type": "string"
+        }
+      ]
+    },
+    "Type": {
+      "description": "A value type (`compiler/21` §2.1).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Exact decimal number.",
+          "properties": {
+            "t": {
+              "const": "Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Text.",
+          "properties": {
+            "t": {
+              "const": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`true` or `false`.",
+          "properties": {
+            "t": {
+              "const": "Boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The type of `nothing`.",
+          "properties": {
+            "t": {
+              "const": "Nothing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`T?`: a value of `of`, or nothing.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The present type; never itself optional, since `T??` is `T?` (§2.1)."
+            },
+            "t": {
+              "const": "Optional",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`List<T>`.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The element type."
+            },
+            "t": {
+              "const": "List",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A record type named in the goal's `types`.",
+          "properties": {
+            "name": {
+              "description": "The record type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A message to an `external` backend (`compiler/22` §3.2): the document written to its stdin.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Asks the backend to name itself; answered once per build (R-SYNTH-26).",
+      "properties": {
+        "kind": {
+          "const": "describe",
+          "type": "string"
+        },
+        "request_version": {
+          "description": "[`REQUEST_VERSION`].",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "request_version"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Asks for one candidate.",
+      "properties": {
+        "kind": {
+          "const": "synthesize",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/SynthRequest",
+          "description": "The request."
+        },
+        "request_version": {
+          "description": "[`REQUEST_VERSION`].",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "request_version",
+        "request"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ExternalMessage"
+}

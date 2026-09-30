@@ -45,6 +45,7 @@ pub const ALLOWED: &[(&str, &[&str])] = &[
             "velme-check",
             "velme-interp",
             "velme-sema",
+            "velme-builtins",
             "velme-diagnostics",
         ],
     ),
