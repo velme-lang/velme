@@ -16,10 +16,11 @@ use velme_diagnostics::Code;
 use velme_ir::IR_VERSION;
 use velme_runtime::{BuildInput, BuildReport, Clock, Lock, Options, Source, Status, build};
 use velme_synth::{
-    Exchange, FixtureUsage, IDENTITY_FILE, Identity, ProviderError, Replay, ReplayIdentity, Scripted, Step,
-    SynthBackend, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, fixture_path,
+    AnthropicConfig, Identity, ProviderError, Recorder, Replay, Scripted, Step, SynthBackend, SynthOptions,
+    SynthProvider,
 };
-use velme_test_support::{PanicProvider, install, program};
+use velme_test_support::mock::{MockResponse, MockServer};
+use velme_test_support::{PanicProvider, RecordingSleeper, install, mock_anthropic, program};
 
 const FILE: &str = "game.velme";
 
@@ -448,72 +449,50 @@ fn a_store_that_cannot_be_written_is_a_diagnostic() {
     assert_eq!(status(&built, "Sum"), Status::Blocked);
 }
 
-/// Records what a scripted build exchanged as replay fixtures (`compiler/22` R-SYNTH-43), for the replay test below; the
-/// live recorder is a later slice's.
-struct Recorder {
-    inner: Scripted,
-    dir: PathBuf,
-}
-
-struct Recording {
-    inner: Box<dyn SynthProvider>,
-    dir: PathBuf,
-}
-
-#[async_trait]
-impl SynthBackend for Recorder {
-    async fn identify(&self) -> Result<Identity, ProviderError> {
-        let identity = self.inner.identify().await?;
-        fs::create_dir_all(&self.dir).expect("fixture directory");
-        let recorded = ReplayIdentity {
-            provider: identity.provider.clone(),
-            model_version: identity.model.clone(),
-            input_version: identity.input_version.clone(),
-        };
-        fs::write(
-            self.dir.join(IDENTITY_FILE),
-            serde_json::to_string(&recorded).expect("json"),
-        )
-        .expect("identity");
-        Ok(identity)
-    }
-
-    fn open(&self, identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError> {
-        Ok(Box::new(Recording {
-            inner: self.inner.open(identity)?,
-            dir: self.dir.clone(),
-        }))
+/// Every file under `dir`, with its text where it is text.
+fn files_under(dir: &Path, found: &mut Vec<(PathBuf, String)>) {
+    for entry in fs::read_dir(dir).expect("a directory").filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_dir() {
+            files_under(&path, found);
+        } else {
+            let text = String::from_utf8_lossy(&fs::read(&path).expect("a file")).into_owned();
+            found.push((path, text));
+        }
     }
 }
 
-#[async_trait]
-impl SynthProvider for Recording {
-    fn id(&self) -> &str {
-        self.inner.id()
+/// A recorded build through the `anthropic` provider with a sentinel key leaves the key in no lock, artifact, fixture or
+/// log, and not in the report either (AC-SYNTH-09, AC-SEC-05, R-SEC-06).
+#[test]
+fn ac_synth_09_a_recorded_anthropic_build_leaks_no_key() {
+    const SENTINEL: &str = "sk-ant-SENTINEL-KEY-0123456789";
+    let dir = project("sentinel");
+    let server = MockServer::start(
+        [double(), add_one(), sum()]
+            .map(|reply| MockResponse::tool_call("write_goal", &serde_json::from_str::<Value>(&reply).expect("JSON"))),
+    );
+    let sleeper = RecordingSleeper::default();
+    let anthropic = mock_anthropic(AnthropicConfig::new("claude-test"), &server, SENTINEL, &sleeper);
+    let recorder = Recorder::new(Box::new(anthropic), dir.join("tests/fixtures/synth"));
+    let built = build_with(&dir, &source("Double it."), Some(&recorder), SynthOptions::default());
+    assert_eq!(built.report.summary.calls, 3, "{:?}", built.report.goals);
+    assert_eq!(server.requests()[0].headers["x-api-key"], SENTINEL, "the key was sent");
+    let mut found = Vec::new();
+    files_under(&dir, &mut found);
+    assert!(
+        found.iter().any(|(p, _)| p.ends_with("replay.json")) && found.len() >= 6,
+        "{found:?}"
+    );
+    for (path, text) in &found {
+        assert!(
+            !text.contains(SENTINEL) && !text.contains("SENTINEL"),
+            "{}",
+            path.display()
+        );
     }
-    fn model(&self) -> &str {
-        self.inner.model()
-    }
-    fn input_version(&self) -> &str {
-        self.inner.input_version()
-    }
-    async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
-        let reply = self.inner.complete(request, limits).await?;
-        let path = fixture_path(&self.dir, limits.synthesis_key);
-        let mut all: Vec<Exchange> = fs::read_to_string(&path)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default();
-        all.push(Exchange {
-            request: request.hash().expect("a hash"),
-            reply: Some(reply.reply_json.clone()),
-            error: None,
-            text: None,
-            usage: FixtureUsage::default(),
-        });
-        fs::write(path, serde_json::to_string(&all).expect("json")).expect("fixture");
-        Ok(reply)
-    }
+    let shown = format!("{:?}", built.report);
+    assert!(!shown.contains("SENTINEL"), "{shown}");
 }
 
 /// A replayed build reproduces a recorded one byte for byte: the same artifacts and the same lock (AC-SYNTH-10).
@@ -522,10 +501,7 @@ fn ac_synth_10_replay_reproduces_a_recorded_build() {
     let text = source("Double it.");
     let fixtures = project("fixtures");
     let recorded = project("recorded");
-    let recorder = Recorder {
-        inner: replies(&[double(), add_one(), sum()]),
-        dir: fixtures.clone(),
-    };
+    let recorder = Recorder::new(Box::new(replies(&[double(), add_one(), sum()])), &fixtures);
     let first = build_with(&recorded, &text, Some(&recorder), SynthOptions::default());
     assert_eq!(first.report.summary.calls, 3, "{:?}", first.report.goals);
     let replayed = project("replayed");

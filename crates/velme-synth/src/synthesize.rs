@@ -172,7 +172,8 @@ async fn run(
         session.calls += 1;
         let mut request = base.clone();
         request.attempts = carried(&earlier, provider.id() == "external", options.retry_history);
-        let limits = SynthLimits::new(task.synthesis_key);
+        let mut limits = SynthLimits::new(task.synthesis_key);
+        limits.attempt = attempt;
         let reply = match provider.complete(&request, &limits).await {
             Ok(reply) => reply,
             Err(error) => match failed_call(session, error, provider.id(), name, span, &history) {

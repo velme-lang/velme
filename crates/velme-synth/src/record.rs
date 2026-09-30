@@ -1,0 +1,116 @@
+//! The fixture recorder (`compiler/22` R-SYNTH-43, D-94): wraps any backend and writes every exchange that reached the
+//! provider's reply as replay fixtures, so a `replay` build reproduces the recorded one byte for byte. A fixture holds
+//! request hashes, replies or error variants, and usage: no prompt body, header or key (`tooling/41` R-SEC-07).
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::{Mutex, PoisonError};
+
+use async_trait::async_trait;
+use velme_ir::{Fingerprint, to_canonical_string};
+
+use crate::attempt::clean_line;
+use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
+use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, fixture_path};
+use crate::request::SynthRequest;
+
+/// A backend that records what `inner` answers into `dir`.
+pub struct Recorder {
+    inner: Box<dyn SynthBackend>,
+    dir: PathBuf,
+}
+
+impl Recorder {
+    /// Records the exchanges of `inner` in the replay directory `dir`.
+    pub fn new(inner: Box<dyn SynthBackend>, dir: impl Into<PathBuf>) -> Self {
+        Recorder { inner, dir: dir.into() }
+    }
+}
+
+/// A fixture that can't be written is a Velme-side failure, never a verdict on a candidate.
+fn unwritable(_: std::io::Error) -> ProviderError {
+    ProviderError::Internal("a replay fixture could not be written".to_owned())
+}
+
+#[async_trait]
+impl SynthBackend for Recorder {
+    /// The inner identity, which `replay.json` then holds (R-SYNTH-43).
+    async fn identify(&self) -> Result<Identity, ProviderError> {
+        let identity = self.inner.identify().await?;
+        let recorded = ReplayIdentity {
+            provider: identity.provider.clone(),
+            model_version: identity.model.clone(),
+            input_version: identity.input_version.clone(),
+        };
+        let text = to_canonical_string(&recorded)
+            .map_err(|_| ProviderError::Internal("the replay identity could not be written".to_owned()))?;
+        std::fs::create_dir_all(&self.dir).map_err(unwritable)?;
+        std::fs::write(self.dir.join(IDENTITY_FILE), text).map_err(unwritable)?;
+        Ok(identity)
+    }
+
+    fn open(&self, identity: &Identity) -> Result<Box<dyn SynthProvider>, ProviderError> {
+        Ok(Box::new(Recording {
+            inner: self.inner.open(identity)?,
+            dir: self.dir.clone(),
+            seen: Mutex::default(),
+        }))
+    }
+}
+
+/// The provider a [`Recorder`] opens.
+struct Recording {
+    inner: Box<dyn SynthProvider>,
+    dir: PathBuf,
+    /// The exchanges of each goal so far, whose whole file is rewritten after each new one.
+    seen: Mutex<BTreeMap<Fingerprint, Vec<Exchange>>>,
+}
+
+#[async_trait]
+impl SynthProvider for Recording {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    fn model(&self) -> &str {
+        self.inner.model()
+    }
+
+    fn input_version(&self) -> &str {
+        self.inner.input_version()
+    }
+
+    async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
+        let result = self.inner.complete(request, limits).await;
+        // Only what reached the provider's reply is an exchange: a transport failure is not (R-SYNTH-43).
+        let (reply, error, text, usage) = match &result {
+            Ok(reply) => (Some(reply.reply_json.clone()), None, None, reply.usage.into()),
+            Err(e @ (ProviderError::Refused(_) | ProviderError::Malformed(_) | ProviderError::BackendFailed(_))) => {
+                (None, Some(e.variant()), None, FixtureUsage::default())
+            }
+            Err(ProviderError::Pending(text)) => {
+                (None, Some("pending"), Some(clean_line(text)), FixtureUsage::default())
+            }
+            Err(_) => return result,
+        };
+        let request = request
+            .hash()
+            .map_err(|_| ProviderError::Internal("the request has no hash".to_owned()))?;
+        let file = {
+            let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+            let all = seen.entry(limits.synthesis_key).or_default();
+            all.push(Exchange {
+                request,
+                reply,
+                error: error.map(str::to_owned),
+                text,
+                usage,
+            });
+            to_canonical_string(&*all)
+                .map_err(|_| ProviderError::Internal("a replay fixture could not be written".to_owned()))?
+        };
+        std::fs::create_dir_all(&self.dir).map_err(unwritable)?;
+        std::fs::write(fixture_path(&self.dir, limits.synthesis_key), file).map_err(unwritable)?;
+        result
+    }
+}

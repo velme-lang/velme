@@ -154,6 +154,9 @@ fn ac_synth_02_retry_turns_carry_the_previous_diagnostics() {
     assert_eq!(last.diagnostics[0].code, "VL0503");
     assert!(last.diagnostics[0].message.contains("gave 5"), "{last:?}");
     assert_eq!(run.session.calls(), 3);
+    // The loop's attempt counter reaches the provider, which `retry_model` keys on (R-SYNTH-39).
+    let attempts: Vec<u32> = run.provider.limits().iter().map(|l| l.attempt).collect();
+    assert_eq!(attempts, [0, 1, 2]);
 }
 
 /// Four invalid replies, no two in a row with the same cause: `VL0403`, and the reply text of the provider appears

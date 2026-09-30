@@ -16,8 +16,9 @@ velme-interp.workspace = true
 velme-ir.workspace = true
 velme-runtime.workspace = true
 velme-sema.workspace = true
-velme-synth.workspace = true
+velme-synth = { workspace = true, features = ["test-endpoint"] }
 async-trait.workspace = true
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
 
 [lints]
 workspace = true

@@ -1,13 +1,16 @@
 //! Velme `synth` crate: see `compiler/20` §2 for its responsibility. Spellbook (`compiler/22`): the provider-neutral
-//! interface, the synthesis request, the prompt, and the providers that need no network (`scripted`, `replay`).
+//! interface, the synthesis request, the prompt, and the providers (`anthropic`, and `scripted` and `replay`, which need no network) and the fixture recorder.
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "provider-anthropic")]
+mod anthropic;
 mod attempt;
 mod compact;
 mod generate;
 mod options;
 mod prompt;
 mod provider;
+mod record;
 mod replay;
 mod request;
 mod schema;
@@ -16,12 +19,15 @@ mod synthesize;
 mod transport;
 mod verify;
 
+#[cfg(feature = "provider-anthropic")]
+pub use anthropic::{Anthropic, AnthropicConfig, ApiKey};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 pub use generate::{TestInput, TestInputs, test_inputs};
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+pub use record::Recorder;
 pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path};
 pub use request::{
     AttemptDiagnostic, AttemptFeedback, Budget, BuiltinSig, CheckItem, Example, ExternalMessage, LocalBinding, Param,

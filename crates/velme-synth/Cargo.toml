@@ -8,6 +8,13 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# The `anthropic` provider and its HTTP client (R-SYNTH-04); the CLI turns it on.
+default = ["provider-anthropic"]
+provider-anthropic = ["dep:ureq"]
+# `Anthropic::with_test_endpoint`, for `velme-test-support` only (R-SYNTH-44, D-98); never in a release build.
+test-endpoint = ["provider-anthropic"]
+
 [dependencies]
 async-trait.workspace = true
 schemars.workspace = true
@@ -19,6 +26,7 @@ velme-check.workspace = true
 velme-diagnostics.workspace = true
 velme-ir.workspace = true
 velme-sema.workspace = true
+ureq = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta.workspace = true

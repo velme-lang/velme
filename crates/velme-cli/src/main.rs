@@ -58,7 +58,7 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
-                     velme build FILE [--provider NAME] [-v] [--json]\n       \
+                     velme build FILE [--provider NAME] [--model ID] [-v] [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
@@ -88,6 +88,7 @@ enum Command {
         file: String,
         json: bool,
         provider: Option<String>,
+        model: Option<String>,
         verbose: bool,
     },
     Run {
@@ -128,10 +129,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
         return (!json && rest.next().is_none()).then_some(Command::Version);
     }
     let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
-    let (mut provider, mut verbose) = (None, false);
+    let (mut provider, mut model, mut verbose) = (None, None, false);
     while let Some(arg) = rest.next() {
         match arg {
             "--provider" if provider.is_none() => provider = Some(rest.next()?.to_owned()),
+            "--model" if model.is_none() => model = Some(rest.next()?.to_owned()),
             "-v" | "--verbose" => verbose = true,
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
@@ -152,10 +154,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
             file,
             json,
             provider,
+            model,
             verbose,
         });
     }
-    if provider.is_some() || verbose {
+    if provider.is_some() || model.is_some() || verbose {
         return None;
     }
     match command {
@@ -244,8 +247,9 @@ fn command(args: &[String]) -> u8 {
             file,
             json,
             provider,
+            model,
             verbose,
-        }) => build_command(&file, json, provider.as_deref(), verbose),
+        }) => build_command(&file, json, provider.as_deref(), model.as_deref(), verbose),
         Some(Command::Run {
             file,
             json,
@@ -413,10 +417,21 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
     Ok(Some((locked, failed)))
 }
 
-/// The provider `name` names, or why there is none (`tooling/40` §2.1, R-CLI-12): `replay` reads the fixtures of the
-/// project's `tests/fixtures/synth`; `scripted` is there only in a build with the `test-provider` feature (D-94).
-/// `anthropic`, `ollama` and `external` come with their providers.
-fn backend(name: &str, project: &Project) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
+/// The provider `name` names, or why there is none (`tooling/40` §2.1, R-CLI-12), recorded as replay fixtures when
+/// `VELME_SYNTH_RECORD=1` says so (`compiler/22` R-SYNTH-43); the `replay` provider is never recorded onto itself.
+fn backend(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
+    let (backend, notice) = provider(name, project, model)?;
+    if name != "replay" && std::env::var("VELME_SYNTH_RECORD").is_ok_and(|v| v == "1") {
+        let recorder = velme_synth::Recorder::new(backend, project.root.join(REPLAY_DIR));
+        return Ok((Box::new(recorder), notice));
+    }
+    Ok((backend, notice))
+}
+
+/// The provider `name` names, and the notice that says what it sends (`tooling/41` R-SEC-12): `replay` reads the
+/// fixtures of the project's `tests/fixtures/synth`; `scripted` is there only in a build with the `test-provider`
+/// feature (D-94). `ollama` and `external` come with their providers.
+fn provider(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
     match name {
         "replay" => Ok((
             Box::new(Replay::new(project.root.join(REPLAY_DIR))),
@@ -439,7 +454,8 @@ fn backend(name: &str, project: &Project) -> Result<(Box<dyn SynthBackend>, Stri
                 "Nothing is sent: the scripted provider answers from its script.".to_owned(),
             ))
         }
-        "anthropic" | "ollama" | "external" => Err(Diagnostic::new(
+        "anthropic" => anthropic(model),
+        "ollama" | "external" => Err(Diagnostic::new(
             Code::ProviderNotConfigured,
             Span::default(),
             format!("The `{name}` provider isn't available in this version of Velme yet."),
@@ -452,6 +468,35 @@ fn backend(name: &str, project: &Project) -> Result<(Box<dyn SynthBackend>, Stri
         )
         .with_help("the providers are anthropic, ollama, external and replay")),
     }
+}
+
+/// The `anthropic` provider, if the key and the model it needs are set (`tooling/40` §5.2, R-CLI-12): the model comes
+/// from `--model`, else `VELME_MODEL`; the key only from the environment (`tooling/41` R-SEC-05), and it is read again
+/// at each request, never held here.
+fn anthropic(flag: Option<&str>) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
+    let not_configured = |message: &str, help: &str| {
+        Diagnostic::new(Code::ProviderNotConfigured, Span::default(), message).with_help(help)
+    };
+    if velme_synth::ApiKey::from_env().is_none() {
+        return Err(not_configured(
+            "The Anthropic provider needs an API key, and there isn't one.",
+            "set `VELME_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment; Velme reads a key from nowhere else",
+        ));
+    }
+    let model = flag
+        .map(str::to_owned)
+        .or_else(|| std::env::var("VELME_MODEL").ok())
+        .filter(|m| !m.trim().is_empty());
+    let Some(model) = model else {
+        return Err(not_configured(
+            "The Anthropic provider needs a model, and there isn't one.",
+            "pass `--model ID`, or set `VELME_MODEL`, to the model id to use",
+        ));
+    };
+    Ok((
+        Box::new(velme_synth::Anthropic::new(velme_synth::AnthropicConfig::new(model))),
+        "Sending your plans, types, checks and examples to Anthropic to write the code.".to_owned(),
+    ))
 }
 
 /// The provider that can't be used: every goal that needs it is `VL0405` (`tooling/40` R-CLI-12).
@@ -477,13 +522,13 @@ const REPLAY_DIR: &str = "tests/fixtures/synth";
 /// `velme build FILE`: checks the file, then gives every goal without a fresh lock entry a verified artifact and a lock
 /// entry (`tooling/40` §2, `runtime/32` R-ART-15). `provider` is `--provider`; with `verbose`, every attempt of a
 /// failed goal is listed (`compiler/22` R-SYNTH-13).
-fn build_command(arg: &str, json: bool, provider: Option<&str>, verbose: bool) -> u8 {
+fn build_command(arg: &str, json: bool, provider: Option<&str>, model: Option<&str>, verbose: bool) -> u8 {
     let analyzed = analyze(arg);
     let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
         return finish(&analyzed, &Outcome::file(&analyzed), json);
     };
     let name = provider.unwrap_or(DEFAULT_PROVIDER);
-    let chosen = backend(name, project);
+    let chosen = backend(name, project, model);
     // A provider that can't be used doesn't stop a build that needs none; a name or script that is wrong does.
     if let Err(diagnostic) = &chosen
         && diagnostic.code == Code::InvalidInput

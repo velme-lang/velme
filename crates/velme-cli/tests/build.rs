@@ -69,12 +69,22 @@ fn script(dir: &Path, replies: &[String]) -> PathBuf {
 }
 
 fn velme(dir: &Path, args: &[&str], script: Option<&Path>) -> Out {
+    velme_with(dir, args, script, &[])
+}
+
+/// `velme` with `envs` set. The user's own provider settings are removed first, so no test can reach a real provider.
+fn velme_with(dir: &Path, args: &[&str], script: Option<&Path>, envs: &[(&str, &str)]) -> Out {
     let mut command = Command::new(env!("CARGO_BIN_EXE_velme"));
     command
         .args(args)
         .current_dir(dir)
         .env_remove("NO_COLOR")
-        .env_remove("VELME_SYNTH_SCRIPT");
+        .env_remove("VELME_SYNTH_SCRIPT")
+        .env_remove("VELME_SYNTH_RECORD")
+        .env_remove("VELME_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("VELME_MODEL")
+        .envs(envs.iter().copied());
     if let Some(script) = script {
         command.env("VELME_SYNTH_SCRIPT", script);
     }
@@ -145,6 +155,105 @@ fn a_build_that_needs_a_provider_it_has_not_got_is_vl0405() {
     assert!(!dir.join("velme.lock").exists());
     let unknown = velme(&dir, &["build", "game.velme", "--provider", "nope"], None);
     assert_eq!(unknown.code, 64, "{}", unknown.stderr);
+}
+
+/// `--provider anthropic` without a key is `VL0405` naming the variable to set, with no notice and nothing written;
+/// with a key but no model it asks for the model. A sentinel key appears in no output stream, in either mode, and in
+/// no file the build wrote (AC-SEC-05, R-CLI-12, R-SEC-06).
+#[test]
+fn ac_sec_05_a_missing_key_or_model_is_vl0405_and_the_key_is_never_printed() {
+    const SENTINEL: &str = "sk-ant-SENTINEL-KEY-0123456789";
+    let dir = project("anthropic-config");
+    let no_key = velme(&dir, &["build", "game.velme", "--provider", "anthropic"], None);
+    assert_eq!(no_key.code, 2, "{}{}", no_key.stdout, no_key.stderr);
+    assert!(
+        no_key.stderr.contains("[VL0405]") && no_key.stderr.contains("VELME_API_KEY"),
+        "{}",
+        no_key.stderr
+    );
+    assert!(
+        !no_key.stderr.contains("Sending your plans"),
+        "nothing was contacted: {}",
+        no_key.stderr
+    );
+    for extra in [&[][..], &["--json"][..]] {
+        let mut args = vec!["build", "game.velme", "--provider", "anthropic"];
+        args.extend_from_slice(extra);
+        let no_model = velme_with(&dir, &args, None, &[("VELME_API_KEY", SENTINEL)]);
+        assert_eq!(no_model.code, 2, "{}{}", no_model.stdout, no_model.stderr);
+        assert!(
+            no_model.stderr.contains("[VL0405]") || no_model.stdout.contains("VL0405"),
+            "{}{}",
+            no_model.stdout,
+            no_model.stderr
+        );
+        assert!(no_model.stdout.contains("VELME_MODEL") || no_model.stderr.contains("VELME_MODEL"));
+        for text in [&no_model.stdout, &no_model.stderr] {
+            assert!(!text.contains(SENTINEL) && !text.contains("SENTINEL"), "{text}");
+        }
+    }
+    assert!(!dir.join("velme.lock").exists());
+    // `--model` counts as the model, so with a key the build gets as far as needing a script it doesn't have: the
+    // model complaint is gone (the provider isn't contacted: a cached-nothing build fails at the first request only
+    // with a real key, so this stops at the flag check by using no key).
+    let flag = velme(
+        &dir,
+        &["build", "game.velme", "--provider", "anthropic", "--model", "m"],
+        None,
+    );
+    assert!(
+        flag.stderr.contains("API key") && !flag.stderr.contains("needs a model"),
+        "{}",
+        flag.stderr
+    );
+}
+
+/// `VELME_SYNTH_RECORD=1` records a build's exchanges into the project's fixture directory, and a `replay` build of the
+/// same file from those fixtures writes the same lock and artifacts (AC-SYNTH-10, R-SYNTH-43, D-94).
+#[test]
+fn ac_synth_10_a_recorded_build_replays_to_the_same_lock_and_artifacts() {
+    let recorded = project("recorded");
+    let script = script(&recorded, &[double(), add_one()]);
+    let first = velme_with(
+        &recorded,
+        &["build", "game.velme", "--provider", "scripted"],
+        Some(&script),
+        &[("VELME_SYNTH_RECORD", "1")],
+    );
+    assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
+    let fixtures = recorded.join("tests/fixtures/synth");
+    assert!(fixtures.join("replay.json").is_file());
+    let names: Vec<String> = fs::read_dir(&fixtures)
+        .expect("fixtures")
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.iter().filter(|n| n.starts_with("b3-")).count(), 2, "{names:?}");
+    for name in &names {
+        let text = fs::read_to_string(fixtures.join(name)).expect("fixture");
+        assert!(!text.contains("Double it."), "no plan text in {name}: {text}");
+    }
+
+    let replayed = project("replayed");
+    let target = replayed.join("tests/fixtures/synth");
+    fs::create_dir_all(&target).expect("fixture directory");
+    for name in &names {
+        fs::copy(fixtures.join(name), target.join(name)).expect("copied");
+    }
+    let second = velme(&replayed, &["build", "game.velme", "--provider", "replay"], None);
+    assert_eq!(second.code, 0, "{}{}", second.stdout, second.stderr);
+    assert_eq!(
+        fs::read(replayed.join("velme.lock")).expect("lock"),
+        fs::read(recorded.join("velme.lock")).expect("lock")
+    );
+    assert_eq!(artifacts(&replayed), artifacts(&recorded));
+    for name in artifacts(&recorded) {
+        assert_eq!(
+            fs::read(replayed.join(".velme/artifacts").join(&name)).expect("artifact"),
+            fs::read(recorded.join(".velme/artifacts").join(&name)).expect("artifact"),
+            "{name}"
+        );
+    }
 }
 
 /// A question is `VL0407` with exit 2 and the question quoted; another goal still builds (AC-SYNTH-22).
