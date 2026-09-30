@@ -22,6 +22,7 @@ use velme_synth::{
 };
 
 use crate::artifact::{ArtifactFormat, Child, Manifest, Verification};
+use crate::backend::Backend;
 use crate::lock::{Entry, Lock};
 use crate::locked::{LockedGoal, load};
 use crate::registry::Registry;
@@ -96,7 +97,8 @@ pub struct BuildInput<'a> {
     pub backend: Option<&'a dyn SynthBackend>,
     /// The `[synthesis]` settings.
     pub options: SynthOptions,
-    /// How verification runs are scheduled and watched.
+    /// How verification runs are scheduled and watched. Their backend is always the interpreter, whatever this says
+    /// (`runtime/31` R-SBX-17, D-80).
     pub run: Options,
 }
 
@@ -192,6 +194,9 @@ pub fn build(input: &BuildInput<'_>, first_contact: &mut dyn FnMut()) -> BuildRe
 /// The state of one build.
 struct Build<'a> {
     input: &'a BuildInput<'a>,
+    /// The input's run options on the interpreter: verification, the `--locked` one too, never runs on WASM
+    /// (`runtime/31` R-SBX-17).
+    verification: Options,
     store: Store,
     lock: Lock,
     session: Session,
@@ -212,6 +217,10 @@ impl<'a> Build<'a> {
     fn new(input: &'a BuildInput<'a>, lock: Lock) -> Self {
         Build {
             input,
+            verification: Options {
+                backend: Backend::Interp,
+                ..input.run.clone()
+            },
             store: Store::new(input.project),
             lock,
             session: Session::new(input.options.clone()).with_wall_clock(Arc::clone(&input.run.wall_clock)),
@@ -854,7 +863,8 @@ impl ChildRunner for Runner<'_, '_> {
             },
         );
         let registry = Registry::of(goals);
-        invoke_registry(input.program, self.goal, input.source, &registry, &input.run, inputs)
+        let options = &self.build.verification;
+        invoke_registry(input.program, self.goal, input.source, &registry, options, inputs)
     }
 }
 

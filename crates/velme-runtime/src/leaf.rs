@@ -1,4 +1,5 @@
-//! Running a leaf goal from its locked artifact on the reference interpreter, with its checks (`runtime/30` §4 steps
+//! Running a leaf goal from its locked artifact on the reference interpreter or, for `run`, `test` and `trace`, on the
+//! backend of `--backend`, with its checks (`runtime/30` §4 steps
 //! 6–7) and, for `velme test`, its examples (`language/12` R-GOAL-22). A goal with calls runs its body the same way once
 //! the scheduler has run its calls ([`run_body`]).
 
@@ -13,6 +14,7 @@ use velme_synth::{ChildRunner, Verdict, verify};
 
 use std::sync::Arc;
 
+use crate::backend::{Backend, eval_leaf};
 use crate::build::invoke_registry;
 use crate::clock::Watchdog;
 use crate::locked::LockedGoal;
@@ -57,12 +59,13 @@ pub(crate) fn limits(goal: &Goal) -> Limits {
     }
 }
 
-/// What an invocation brings to its body: what it already spent evaluating its calls' arguments, and the run's
-/// watchdog, if it has one.
+/// What an invocation brings to its body: what it already spent evaluating its calls' arguments, the run's watchdog,
+/// if it has one, and the backend of a leaf's body.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Progress {
     pub(crate) spent: Spent,
     pub(crate) interrupt: Option<Interrupt>,
+    pub(crate) backend: Backend,
 }
 
 /// What running a body left, for the goal's trace event (`runtime/30` §8 `goal`, `check`).
@@ -278,11 +281,28 @@ fn invoke(
         .goals
         .get(goal.0)
         .ok_or_else(|| Box::new((Diagnostic::internal_error(), progress.spent)))?;
-    let budget = Budget::new(limits(target))
-        .after(progress.spent)
-        .watched(progress.interrupt);
-    let (value, spent) = velme_interp::run_measured(&locked.ir, inputs.clone(), bindings.clone(), budget);
-    let value = value.map_err(|failure| Box::new((failure.diagnostic(&target.name, target.span), spent)))?;
+    // A leaf's body is the backend's; a body with calls, after its arguments, is the interpreter's (R-SBX-17).
+    let (value, spent) = if target.kind == GoalKind::Leaf && bindings.is_empty() && progress.spent == Spent::default() {
+        let limits = limits(target);
+        eval_leaf(
+            &progress.backend,
+            target,
+            &locked.ir,
+            inputs.clone(),
+            limits,
+            progress.interrupt,
+        )
+    } else {
+        let budget = Budget::new(limits(target))
+            .after(progress.spent)
+            .watched(progress.interrupt);
+        let (value, spent) = velme_interp::run_measured(&locked.ir, inputs.clone(), bindings.clone(), budget);
+        (
+            value.map_err(|failure| failure.diagnostic(&target.name, target.span)),
+            spent,
+        )
+    };
+    let value = value.map_err(|diagnostic| Box::new((diagnostic, spent)))?;
     if encode_value(&value).is_err() {
         let diagnostic = Diagnostic::new(
             Code::SizeLimitExceeded,

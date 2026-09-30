@@ -24,15 +24,22 @@ modules.
 | Runtime | Wasmtime, embedded, no WASI | WASI components with explicit capabilities (Future, `effects`) |
 
 **R-SBX-01** WASM is never produced by an LLM (INV-1); only `velme-wasm` emits it, only from validated IR.
-**R-SBX-02** Backend selection: `--backend interp|wasm|auto`, a flag only, with no `velme.toml` key (D-117). The
-default is `interp` until the M7 gate passes, then `auto`. `auto` runs a leaf goal on WASM when the emitter accepts it
-and on the interpreter otherwise. `wasm` does the same, except that a leaf the emitter declines is `VL0607`, never a
-silent fallback. On a composite goal both run the leaves on WASM and the tail on the interpreter.
-**R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Checks, examples, call arguments, composite
-tails, build verification and `--locked` re-verification stay on the interpreter (D-80, D-117).
+**R-SBX-02** Backend selection: `--backend interp|wasm|auto`, a flag only, with no `velme.toml` key (D-117). The default
+is `interp` until the M7 gate passes, then `auto`; only the CLI's default flips, never the runtime's own (D-121). `auto`
+runs a leaf goal on WASM when the sandbox can load and start it, and on the interpreter on any failure before its module
+starts: the emitter declines it, or the sandbox can't be made, or can't compile, link or start the module. `--verbose`
+then notes "`G` ran on the interpreter: …" with the reason (D-121). A leaf whose module has started is never run again
+on the interpreter, whatever its outcome: a backstop firing is a backend bug (D-115). `wasm` does the same, except that
+a leaf the WASM backend can't run is `VL0607` (`VL0801` for an import the sandbox refuses), never a silent fallback. On
+a composite goal both run the leaves on WASM and the tail on the interpreter.
+**R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Under `velme test` the leaf body of each
+example and of each generated input runs on the selected backend, while the examples' expected-value expressions and
+every check evaluate on the interpreter (D-80); nothing from a test run is persisted. Call arguments, composite tails,
+build verification and `--locked` re-verification stay on the interpreter, whatever `--backend` says (D-80, D-117).
 **R-SBX-18** Output is byte-identical for all three values: stdout, the diagnostics on stderr, the exit code, `--json`,
-and `trace --json` with its fuel and memory figures, for a success and for every deterministic failure. Timings and
-`VL0603` are excluded. Neither `velme-cli/1` nor the trace has a `backend` field (D-117).
+and `trace --json` with its fuel and memory figures, for a success and for every deterministic failure, except a leaf
+the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607`. Timings and `VL0603` are excluded, and
+`--verbose` notes are outside this rule. Neither `velme-cli/1` nor the trace has a `backend` field (D-117, D-121).
 
 ## 3. Value layout (ABI)
 
@@ -195,7 +202,8 @@ value (canonical JSON), the full diagnostic of a failure (code, message and note
 used (cumulative bytes allocated, D-53). It also asserts that no run uses over 25 % of its Wasmtime fuel backstop
 (§6, D-115). Any difference fails the gate (`delivery/51`, D-118).
 **R-SBX-16** A new IR node kind or builtin is not released for the WASM backend until it passes the differential suite;
-until then the emitter declines the goal, `auto` uses the interpreter and an explicit `wasm` is `VL0607` (R-SBX-02).
+until then the emitter declines the goal and, as for any leaf the sandbox can't load and start, `auto` uses the
+interpreter and an explicit `wasm` is `VL0607` (R-SBX-02, D-121).
 
 ## 9. Future: Component Model
 

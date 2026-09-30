@@ -20,6 +20,7 @@ use velme_ir::Fingerprint;
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_synth::{SystemWallClock, WallClock};
 
+use crate::backend::Backend;
 use crate::clock::{Clock, SystemClock, Watchdog};
 use crate::leaf::{Body, Progress, limits, run_body};
 use crate::plan::waves;
@@ -43,6 +44,9 @@ pub struct Options {
     /// The calendar clock for the time of each synth-log line (`compiler/22` R-SYNTH-23), injectable so tests read the
     /// log exactly.
     pub wall_clock: Arc<dyn WallClock>,
+    /// What evaluates leaf goal bodies (`--backend`, `runtime/31` R-SBX-02): the interpreter unless `run`, `test` or
+    /// `trace` asks otherwise, since build verification is the interpreter's (R-SBX-17).
+    pub backend: Backend,
 }
 
 impl Default for Options {
@@ -53,6 +57,7 @@ impl Default for Options {
             clock: Arc::new(SystemClock::new()),
             max_wall_clock: Duration::from_millis(MAX_WALL_CLOCK_MS),
             wall_clock: Arc::new(SystemWallClock),
+            backend: Backend::Interp,
         }
     }
 }
@@ -307,6 +312,7 @@ struct Shared {
     peak: AtomicUsize,
     /// The goal whose own checks are not run (verification runs them, `compiler/22` §6).
     unchecked: Option<GoalId>,
+    backend: Backend,
 }
 
 /// Runs the goal `goal` of `program`, whose source is `source`, on `inputs`, with every locked artifact it needs in
@@ -376,6 +382,7 @@ fn run_goal_with(
         in_flight: AtomicUsize::new(0),
         peak: AtomicUsize::new(0),
         unchecked: unchecked.then_some(goal),
+        backend: options.backend.clone(),
     });
     let run = runtime.block_on(invocation(Arc::clone(&shared), goal, inputs));
     (run, shared.peak.load(Ordering::SeqCst))
@@ -560,6 +567,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
         let progress = Progress {
             spent,
             interrupt: Some(watchdog(&shared)),
+            backend: shared.backend.clone(),
         };
         let checked = shared.unchecked != Some(goal);
         let shared = Arc::clone(&shared);

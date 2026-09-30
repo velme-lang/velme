@@ -598,14 +598,14 @@ fn a_config_flag_supplies_settings_and_leaves_the_project_root_alone() {
 
 // ---- bad flags ----
 
-/// `--provider` on `check`, `--backend wasm` and an invalid flag value exit 64 with `VL0902`, inside the envelope under
-/// `--json`; `-q` drops progress lines and nothing else (AC-CLI-24, R-CLI-14, R-CLI-21, D-108).
+/// `--provider` on `check`, an unknown `--backend` value and an invalid flag value exit 64 with `VL0902`, inside the envelope under
+/// `--json`; `-q` drops progress lines and nothing else (AC-CLI-24, R-CLI-14, R-CLI-21, D-108, D-117).
 #[test]
 fn ac_cli_24_bad_flags_are_vl0902_in_the_envelope_and_quiet_drops_only_progress() {
     let dir = copy("add", "ac_cli_24");
     let bad: [&[&str]; 8] = [
         &["check", ADD, "--provider", "replay"],
-        &["run", ADD, "--goal", "Add", "--backend", "wasm"],
+        &["run", ADD, "--goal", "Add", "--backend", "native"],
         &["run", ADD, "--goal", "Add", "--jobs", "0"],
         &["check", ADD, "--color", "pink"],
         &["check", ADD, "--frobnicate"],
@@ -627,12 +627,10 @@ fn ac_cli_24_bad_flags_are_vl0902_in_the_envelope_and_quiet_drops_only_progress(
         assert_eq!(envelope["status"], "failed");
         assert_eq!(codes(&envelope), ["VL0902"], "{json_args:?}");
     }
-    let run = velme(&dir, &["run", ADD, "--goal", "Add", "--backend", "wasm", "--json"]);
-    assert!(
-        parsed(&run)["diagnostics"][0]["message"]
-            .as_str()
-            .expect("message")
-            .contains("isn't available yet")
+    let run = velme(&dir, &["run", ADD, "--goal", "Add", "--backend", "native", "--json"]);
+    assert_eq!(
+        parsed(&run)["diagnostics"][0]["message"],
+        "Input `--backend` should be interp, wasm or auto, but got `native`."
     );
 
     // `-q` drops the progress lines and keeps the result and the diagnostics.

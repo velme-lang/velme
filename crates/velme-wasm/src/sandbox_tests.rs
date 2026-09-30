@@ -369,6 +369,43 @@ fn a_list_of_nothing_is_read_back_as_its_length() {
     assert_eq!(run.result, Ok(Value::list(vec![Value::Nothing; 3])));
 }
 
+/// Two goals whose modules have the same bytes share what they were compiled to, never their signature: each program
+/// reads its own output type (R-SBX-03).
+#[test]
+fn modules_with_the_same_bytes_keep_their_own_signatures() {
+    let text = goal("t: Text -> Text", "", &input("t"));
+    let list = goal("xs: List<Number> -> List<Number>", "", &input("xs"));
+    assert_eq!(text.bytes(), list.bytes());
+    let sandbox = sandbox();
+    let text = sandbox.load(&text).expect("loads");
+    let list = sandbox.load(&list).expect("loads");
+    let numbers = Value::list(vec![num(1), num(2)]);
+    let run = |program: &Program, input: &Value| {
+        program
+            .run(std::slice::from_ref(input), Limits::SYSTEM, &unwatched())
+            .result
+    };
+    assert_eq!(run(&text, &Value::text("ab")), Ok(Value::text("ab")));
+    assert_eq!(run(&list, &numbers), Ok(numbers));
+}
+
+/// A run that failed in the host before `velme_run` says it never started, so the runtime may run the goal on the
+/// interpreter; one that started says so whatever its outcome (D-121).
+#[test]
+fn a_run_says_whether_the_module_started() {
+    let module = goal(
+        "x: Number, y: Number -> Number",
+        "",
+        &binary("div", &input("x"), &input("y")),
+    );
+    assert!(run(&module, &[num(1), num(2)], Limits::SYSTEM).started);
+    assert!(run(&module, &[num(1), num(0)], Limits::SYSTEM).started);
+    // Inputs that are not the goal's can't be written into its memory.
+    let unstarted = run(&module, &[Value::text("a"), num(0)], Limits::SYSTEM);
+    assert!(!unstarted.started);
+    assert_eq!(unstarted.result, internal());
+}
+
 // ---- the whitelist ----
 
 /// A module that imports the whitelist and then `module.name`.
@@ -1263,6 +1300,8 @@ fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
             .expect("loads")
             .run(&[num(100)], Limits::SYSTEM, &unwatched())
     };
+    // The next run is another process, with a sandbox of its own: one sandbox compiles a module once.
+    let next = || Sandbox::new(Some(cache.clone())).expect("a sandbox");
     let first = once(&sandbox);
     assert_eq!(first.result, Ok(num(328_350)));
     let files = cached_files(&cache);
@@ -1287,8 +1326,7 @@ fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
         .modified()
         .expect("a time");
     assert_eq!(once(&sandbox), first);
-    let another = Sandbox::new(Some(cache.clone())).expect("a sandbox");
-    assert_eq!(once(&another), first);
+    assert_eq!(once(&next()), first);
     assert_eq!(
         std::fs::metadata(&files[0])
             .expect("the file")
@@ -1298,12 +1336,12 @@ fn ac_sbx_07_deleting_the_cache_changes_nothing_and_the_file_comes_back() {
     );
 
     std::fs::remove_dir_all(&cache).expect("deletes");
-    assert_eq!(once(&sandbox), first);
+    assert_eq!(once(&next()), first);
     assert_eq!(cached_files(&cache), files);
 
     // A file that does not load is deleted and the module compiled again (R-SBX-14).
     std::fs::write(&files[0], b"not a compiled module").expect("writes");
-    assert_eq!(once(&sandbox), first);
+    assert_eq!(once(&next()), first);
     assert_eq!(cached_files(&cache), files);
     assert_ne!(std::fs::read(&files[0]).expect("reads"), b"not a compiled module");
     // Another module is another file.

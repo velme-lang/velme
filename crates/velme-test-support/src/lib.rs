@@ -6,6 +6,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 pub mod backend;
+pub mod differential;
 pub mod schema;
 
 use std::path::{Path, PathBuf};

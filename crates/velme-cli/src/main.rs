@@ -9,14 +9,16 @@ mod synth;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::{Arc, OnceLock};
 
 use serde::Serialize;
 use velme_builtins::Value;
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_runtime::{
-    ARTIFACT_FORMAT, BuildInput, CallStatus, EntryError, GoalRun, Lock, LockedGoal, Mode, Options, OrderedValue,
-    Registry, Source, Status, Store, Trace, decode_inputs, explain, find_goal, load, run_goal, test_goal,
+    ARTIFACT_FORMAT, Backend, BuildInput, CallStatus, EntryError, GoalRun, Lock, LockedGoal, Mode, Options,
+    OrderedValue, Registry, Source, Status, Store, Trace, Wasm, decode_inputs, explain, find_goal, load, run_goal,
+    test_goal,
 };
 use velme_sema::hir::{GoalId, Program};
 use velme_syntax::SourceFile;
@@ -147,11 +149,11 @@ fn command(args: &[String]) -> u8 {
         Ok(Parsed::Run(cli)) => match cli.cmd {
             Cmd::Check => check(&cli),
             Cmd::Build => build_command(&cli),
-            Cmd::Run => run(&cli, false),
-            Cmd::Trace => run(&cli, true),
+            Cmd::Run => noted(&cli, run(&cli, false)),
+            Cmd::Trace => noted(&cli, run(&cli, true)),
             Cmd::Explain => explain_goal(&cli),
             Cmd::Artifact => artifact(&cli),
-            Cmd::Test => test(&cli),
+            Cmd::Test => noted(&cli, test(&cli)),
             Cmd::Gc => gc(&cli),
             Cmd::CacheClean => cache_clean(&cli),
         },
@@ -537,8 +539,8 @@ fn built_line(source: Source) -> &'static str {
     }
 }
 
-/// `velme run FILE --goal G`: runs a goal with its locked artifact and those of the goals it calls on the reference
-/// interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `--jobs` sets the workers; with
+/// `velme run FILE --goal G`: runs a goal with its locked artifact and those of the goals it calls, leaf bodies on the
+/// backend of `--backend` and everything else on the reference interpreter, its calls wave by wave, then its checks (`tooling/40` §2, `runtime/30` §4). `--jobs` sets the workers; with
 /// `--build` the file is built first (D-28). With `traced` (`velme trace`) the whole execution trace is printed too
 /// (`runtime/30` §8).
 fn run(cli: &Cli, traced: bool) -> u8 {
@@ -887,10 +889,43 @@ fn read_lock(project: &Project, program: &Program) -> Result<Lock, Vec<Diagnosti
         .unwrap_or_else(|| Lock::new(program.language_version.clone())))
 }
 
-/// The execution options `--jobs` asks for.
+/// The execution options `--jobs` and `--backend` ask for. Only leaf bodies of this command use the backend: a
+/// `--build` before it verifies on the interpreter (`runtime/31` R-SBX-17).
 fn run_options(cli: &Cli) -> Options {
-    cli.jobs
-        .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs))
+    let mut options = cli
+        .jobs
+        .map_or_else(Options::default, |jobs| Options::default().with_jobs(jobs));
+    options.backend = match cli.backend.unwrap_or(args::Backend::Interp) {
+        args::Backend::Interp => Backend::Interp,
+        args::Backend::Wasm => Backend::Wasm(wasm()),
+        args::Backend::Auto => Backend::Auto(wasm()),
+    };
+    options
+}
+
+/// The process's WASM backend, the one sandbox of `runtime/31` §6, with the user-level module cache (R-SBX-13,
+/// R-SBX-20): made only for `--backend wasm` or `auto`, and Wasmtime starts only when a leaf runs on it.
+static WASM: OnceLock<Arc<Wasm>> = OnceLock::new();
+
+fn wasm() -> Arc<Wasm> {
+    let made = WASM.get_or_init(|| {
+        let get = |name: &str| std::env::var_os(name);
+        Arc::new(Wasm::new(config::wasm_cache_path(&get, config::Platform::current())))
+    });
+    Arc::clone(made)
+}
+
+/// `code`, after the WASM backend's notes on stderr under `--verbose`: a backstop that fired, a disk cache that is
+/// off, a leaf `auto` ran on the interpreter (R-SBX-12, R-SBX-20, D-115). Never in `--json` or a trace.
+fn noted(cli: &Cli, code: u8) -> u8 {
+    if cli.verbose
+        && let Some(wasm) = WASM.get()
+    {
+        for note in wasm.notes() {
+            print_err(&format!("note: {}\n", render::escape(&note)));
+        }
+    }
+    code
 }
 
 /// The locked artifact of goal `id` of the file of `project` (R-ART-10, R-ART-16): never synthesized here.

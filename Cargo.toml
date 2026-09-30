@@ -22,6 +22,7 @@ velme-check = { path = "crates/velme-check", version = "0.1.0" }
 # No default features: the provider SDKs (`ureq`) come only where a crate asks for them, so the core crates never carry one
 # (AC-REL-03).
 velme-synth = { path = "crates/velme-synth", version = "0.1.0", default-features = false }
+velme-wasm = { path = "crates/velme-wasm", version = "0.1.0" }
 velme-runtime = { path = "crates/velme-runtime", version = "0.1.0" }
 velme-test-support = { path = "crates/velme-test-support", version = "0.1.0" }
 
