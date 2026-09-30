@@ -80,6 +80,14 @@ impl std::fmt::Display for Misplaced {
     }
 }
 
+/// The `--verbose` note for a cache directory that is not used, because of `why` (R-SBX-20, D-120).
+pub fn cache_off_note(dir: &Path, why: impl std::fmt::Display) -> String {
+    format!(
+        "the compiled-module cache in `{}` is not used, since {why}; modules are compiled on every run",
+        dir.display()
+    )
+}
+
 /// A directory the compiled-module cache may be kept in, for one project: absolute, with no `.` or `..` component,
 /// and outside the project once both are resolved (R-SBX-14, T-11). It is the only way to give a sandbox a disk
 /// cache, and it is checked again each time it is opened, before and after it is made:

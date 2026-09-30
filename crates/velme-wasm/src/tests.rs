@@ -3,14 +3,11 @@
 //! differential suite's to prove (R-SBX-15); nothing here runs one.
 
 use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
 
 use velme_builtins::limits::MAX_LIST_SIZE;
 use velme_builtins::memory::{list_bytes, value_bytes};
 use velme_builtins::{BUILTINS_VERSION, CATALOG, Number, Value};
-use velme_ir::{
-    Goal, IR_VERSION, Node, Origin, Request, ValidIr, calls, from_json_str, to_canonical_string, wired_goal,
-};
+use velme_ir::{Goal, IR_VERSION, Node, ValidIr, from_json_str, to_canonical_string, wired_goal};
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 use wasm_encoder::{
     CodeSection, Function, FunctionSection, HeapType, Instruction, MemorySection, MemoryType, TagKind, TagSection,
@@ -23,40 +20,16 @@ use crate::ty::{Ty, Types};
 use crate::validate::{FEATURES, validate};
 use crate::{EmitError, emit};
 
-pub(super) use velme_test_support::differential::EXAMPLES;
-
-/// The `.json` files of `dir`, or `dir` itself if it is one, in name order.
-pub(super) fn documents(dir: &Path) -> Vec<PathBuf> {
-    if dir.is_file() {
-        return vec![dir.to_owned()];
-    }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
-        .map(|entry| entry.expect("a directory entry").path())
-        .filter(|path| path.extension().is_some_and(|e| e == "json"))
-        .collect();
-    files.sort();
-    files
-}
+use velme_test_support::differential;
+pub(super) use velme_test_support::differential::{EXAMPLES, documents};
 
 /// The IR of every leaf goal of the golden set and of the examples, validated, with a name for messages. A composite
 /// goal's tail stays on the interpreter (R-SBX-17).
 pub(super) fn corpus() -> Vec<(String, ValidIr)> {
-    let mut sources = vec![("tests/golden/ir/goals.velme", "tests/golden/ir/accept")];
-    sources.extend(EXAMPLES);
-    let mut out = Vec::new();
-    for (source, ir) in sources {
-        let program = program(&read(&repo(source)));
-        for path in documents(&repo(ir)) {
-            let text = read(&path);
-            let goal: Goal = from_json_str(&text).expect("an IR document");
-            let calls = calls(&program, goal_id(&program, &goal.goal)).expect("a checked goal");
-            if calls.is_empty() {
-                out.push((path.display().to_string(), valid_ir(&program, &text)));
-            }
-        }
-    }
-    out
+    differential::corpus()
+        .into_iter()
+        .map(|leaf| (leaf.name, leaf.ir))
+        .collect()
 }
 
 /// What a module imports, as `module.name`, and exports, in section order.
@@ -219,25 +192,10 @@ fn ac_ir_06_the_validate_corpus_emits_without_panic() {
     {
         let bytes = std::fs::read(path.expect("an entry").path()).expect("a corpus file");
         let text = String::from_utf8_lossy(&bytes);
-        for declared in &program.goals {
-            let calls = if declared.name == "BuildPlayerSummary" {
-                &composite.calls[..]
-            } else {
-                &[]
-            };
-            for origin in [Origin::Candidate, Origin::Complete] {
-                let request = Request {
-                    program: &program,
-                    goal: goal_id(&program, &declared.name),
-                    calls,
-                    origin,
-                };
-                if let Ok(ir) = velme_ir::validate(&text, &request) {
-                    let module = emit(&ir);
-                    assert!(!matches!(module, Err(EmitError::Internal(_))), "{module:?}");
-                    emitted += 1;
-                }
-            }
+        for ir in differential::validated(&program, &composite.calls, &text) {
+            let module = emit(&ir);
+            assert!(!matches!(module, Err(EmitError::Internal(_))), "{module:?}");
+            emitted += 1;
         }
         replayed += 1;
     }

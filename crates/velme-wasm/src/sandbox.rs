@@ -492,10 +492,7 @@ impl Sandbox {
     /// Every module is then compiled on each run; nothing else changes.
     pub fn cache_off(&self) -> Option<String> {
         let (dir, why) = self.cache.as_ref()?.off()?;
-        Some(format!(
-            "the compiled-module cache in `{}` is not used, since {why}; modules are compiled on every run",
-            dir.display()
-        ))
+        Some(crate::cache::cache_off_note(dir, why))
     }
 
     /// The emitted `module`, compiled and linked, ready to run any number of times. Emission always runs first;
