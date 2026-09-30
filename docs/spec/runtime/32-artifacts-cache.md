@@ -119,7 +119,9 @@ largest artifact, 1 MiB of IR (21 §7) plus 64 KiB for the manifest, and past 16
 nests at most 513 JSON levels, the 512 IR may nest (`MAX_JSON_DEPTH`) under the `ir` member. A hash mismatch,
 a file past that size, or bytes that hash to their name but aren't the canonical JSON the store writes are
 `VL0703 ArtifactCorrupt`; a missing file is `VL0701 ArtifactUnavailable`; a document of another `format` (R-ART-24), a
-manifest/lock/computed mismatch or a re-validation failure makes the entry stale (R-ART-14).
+manifest/lock/computed mismatch or a re-validation failure makes the entry stale (R-ART-14), which `run`, `test`,
+`artifact` and `--locked` report as `VL0702` (D-106). So a missing or damaged file is `VL0701`/`VL0703`, and a missing or
+changed lock entry is `VL0702`; "stale" only ever means that `build` re-synthesizes.
 **R-ART-11** Only candidates that passed the full verification pipeline (22 §6) are written. A failed or
 timed-out candidate leaves no file.
 **R-ART-12** Artifacts not referenced by `velme.lock` may be garbage-collected by a CLI command (tooling/40); nothing is
@@ -151,14 +153,17 @@ artifact      = "b3:e2f7…"
 build produces no diff.
 **R-ART-14** An entry is **stale** when its `contract_key` differs from the one computed from current source, when its
 artifact is missing/corrupt, or when the R-ART-10 cross-check finds the manifest's `goal`/`signature`/`contract_key`
-disagreeing with the lock entry or fails re-validation (D-46). The CLI names the cause by comparing key components
+disagreeing with the lock entry or fails re-validation (D-46). A missing or corrupt artifact file makes it stale for `build` only, which then re-synthesizes; everywhere else that file is `VL0701`/`VL0703` (R-ART-10). The CLI names the cause by comparing key components
 ("the plan changed", "`Player` gained a field", "built for language 0.1, file says 0.2", "the stored artifact doesn't
 match its own lock entry").
 **R-ART-15** `velme build` re-synthesizes only stale or missing goals (post-order, 22 R-SYNTH-01), updates their entries
 and prunes entries for deleted goals. `--locked` performs no synthesis and fails with `VL0702 LockStale` listing every
-stale goal and its cause. CI runs with `--locked`.
+goal whose entry is missing or changed, or whose locked artifact no longer passes its examples (re-verified as `build`
+does, with nothing dropped or written), and its cause; a missing or damaged artifact file is `VL0701`/`VL0703` instead,
+and entries for deleted goals are ignored (D-106). CI runs with `--locked`.
 **R-ART-16** `velme run`/`velme test` never synthesize implicitly unless the user passes `--build`; by default a stale or
-missing entry is `VL0702`/`VL0701` with a hint to run `velme build`. (Keeps "run" free of surprise LLM cost.)
+missing lock entry is `VL0702`, and a missing or damaged artifact file `VL0701`/`VL0703`, each with a hint to run `velme build`
+(D-106). (Keeps "run" free of surprise LLM cost.)
 
 ## 6. Reproducibility & cache tests (AC-RDM-08, AC-RDM-09)
 
@@ -198,7 +203,7 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 | AC-ART-04 | Adding a field to `Player` marks every goal whose signature reaches `Player` stale, with a cause naming `Player`. |
 | AC-ART-05 | `--locked` with one stale goal fails with `VL0702` listing it; no provider is constructed. |
 | AC-ART-06 | A tampered artifact file fails with `VL0703`; a deleted one with `VL0701`. |
-| AC-ART-07 | Cloning a built project to another OS and running offline gives the same result and trace — AC-RDM-09. |
+| AC-ART-07 | Cloning a built project to another OS and running offline gives the same result and trace — AC-RDM-09. One test process cannot show this, so a built fixture project (`velme.lock` and its artifacts) is committed with a golden trace, and CI runs `velme run --locked --offline` on it on every OS of its matrix and compares the trace, durations excluded (D-107). |
 | AC-ART-08 | Artifact documents contain no timestamps, usernames or hostnames (schema test). |
 | AC-ART-09 | A wired goal gets a lock entry and an artifact with `"provider": "compiler"`. |
 | AC-ART-10 | Regenerating `FindBadge` so its behaviour changes, then rebuilding `BuildPlayerSummary`: `BuildPlayerSummary` is re-verified against the new `FindBadge` with no provider call; if it now fails a check, it is re-synthesized with a diagnostic naming `FindBadge` (D-55). |
