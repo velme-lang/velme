@@ -10,7 +10,24 @@ expression: run.stdout
       "goal": "OrderTotal",
       "status": "ok",
       "diagnostics": [],
-      "result": 40
+      "result": 40,
+      "calls": [
+        {
+          "binding": "subtotal",
+          "goal": "Subtotal",
+          "status": "ok"
+        },
+        {
+          "binding": "discounted",
+          "goal": "Discount",
+          "status": "ok"
+        },
+        {
+          "binding": "result",
+          "goal": "Shipping",
+          "status": "ok"
+        }
+      ]
     }
   ],
   "diagnostics": [],

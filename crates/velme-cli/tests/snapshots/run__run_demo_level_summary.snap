@@ -14,7 +14,34 @@ expression: run.stdout
         "score": 120,
         "difficulty": "Medium",
         "reward": 270
-      }
+      },
+      "calls": [
+        {
+          "binding": "enemies",
+          "goal": "CountEnemies",
+          "status": "ok"
+        },
+        {
+          "binding": "treasures",
+          "goal": "CountTreasures",
+          "status": "ok"
+        },
+        {
+          "binding": "score",
+          "goal": "CalculateLevelScore",
+          "status": "ok"
+        },
+        {
+          "binding": "difficulty",
+          "goal": "RateDifficulty",
+          "status": "ok"
+        },
+        {
+          "binding": "reward",
+          "goal": "CalculateReward",
+          "status": "ok"
+        }
+      ]
     }
   ],
   "diagnostics": [],

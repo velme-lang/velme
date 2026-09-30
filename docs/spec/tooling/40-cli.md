@@ -36,7 +36,7 @@ LockStale` naming the goal, while an artifact file that is missing or damaged is
 R-ART-10, D-106). `build --locked` re-verifies every lock hit as `build` does, with no provider call; a goal that
 no longer passes its examples or checks fails with `VL0702` and the cause "no longer passes its examples", and nothing is
 dropped or written. Lock entries for goals no longer in the source are ignored, not an error. On `test`, `--locked`
-only forbids `--build` and any write; the verification runs as always (D-107). CI is expected to run `velme test --locked` (D-46), not only `velme run --locked`: when
+only forbids `--build` and any write; the verification runs as always (D-107). A generated input that fails by a runtime failure is reported as that failure, with its own code and exit code, and a failed check as `VL0501`; `VL0503` is a build's alone. CI is expected to run `velme test --locked` (D-46), not only `velme run --locked`: when
 `build` accepts a goal's artifact from the store unchanged (no synthesis needed) and whenever `velme test --locked`
 runs, Velme re-runs that goal's `examples:` and generated-input suite before trusting it (D-46, `runtime/32` R-ART-14);
 `velme run` never does — it relies on hash verification, IR validation and the manifest cross-check (`runtime/32`
@@ -247,7 +247,7 @@ calls = 128
 depth = 32
 
 [artifacts]
-dir = ".velme/artifacts"        # relative, inside the project root (R-CLI-18)
+dir = ".velme/artifacts"        # not available yet: any value is VL0902 "isn't available yet" (a path outside the project is VL0902 too, R-CLI-18)
 ```
 
 The user-level config is a separate file, read once per command (R-CLI-25). It is not a layer of defaults: it holds the

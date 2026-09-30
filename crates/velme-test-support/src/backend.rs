@@ -26,6 +26,9 @@ pub enum Mode {
     Status(u16),
     /// Answers `200` with a body that is not JSON.
     Garbage,
+    /// Answers `200` with a body that is not JSON and holds an OSC 52 clipboard sequence, a right-to-left override and a C1
+    /// control character: what a terminal must never be sent raw (AC-CLI-14).
+    Hostile,
     /// Answers `200` with a body of more than 2 MiB.
     Huge,
     /// Accepts the request and never answers, until the client gives up.
@@ -283,6 +286,7 @@ fn misbehave(stream: &mut TcpStream, mode: &Mode) {
     match mode {
         Mode::Status(status) => reply(stream, *status, &[], r#"{"note":"a test failure"}"#),
         Mode::Garbage => reply(stream, 200, &[], "this is \u{1b}[31mnot JSON"),
+        Mode::Hostile => reply(stream, 200, &[], "\u{1b}]52;c;Zm9v\u{7} evil \u{202e}txet \u{85} end"),
         Mode::Huge => reply(stream, 200, &[], &"x".repeat(3 * 1024 * 1024)),
         Mode::Redirect => reply(stream, 302, &[("location", "/v1/elsewhere")], "moved"),
         Mode::Hang => {

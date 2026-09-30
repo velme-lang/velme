@@ -147,6 +147,45 @@ impl Store {
             .collect()
     }
 
+    /// Deletes the artifact files no address in `keep` names, and every file left in the temporary directory, and says how
+    /// many it removed (`tooling/40` R-CLI-23, `runtime/32` R-ART-12). Only regular files named as the store names them are
+    /// touched, so a link, a directory or anything else in there stays, and a `.velme` directory that is itself a link is
+    /// refused.
+    pub fn collect(&self, keep: &[Fingerprint]) -> io::Result<usize> {
+        refuse_links(&[&self.velme, &self.dir, &self.tmp])?;
+        let keep: Vec<String> = keep.iter().map(|id| id.hex().to_string()).collect();
+        let mut removed = 0;
+        for (dir, artifacts) in [(&self.dir, true), (&self.tmp, false)] {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e),
+            };
+            for entry in entries {
+                let entry = entry?;
+                if !entry.file_type()?.is_file() {
+                    continue;
+                }
+                let name = entry.file_name().into_string().ok();
+                let doomed = if artifacts {
+                    let hex = name
+                        .as_deref()
+                        .and_then(|n| n.strip_prefix(ARTIFACT_PREFIX)?.strip_suffix(ARTIFACT_EXTENSION));
+                    hex.is_some_and(|hex| {
+                        hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()) && !keep.iter().any(|k| k == hex)
+                    })
+                } else {
+                    true
+                };
+                if doomed {
+                    fs::remove_file(entry.path())?;
+                    removed += 1;
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     /// Reads the artifact `id`, checking that its bytes still hash to `id` and are the canonical JSON the store writes
     /// (R-ART-10). The IR in it is not validated and the manifest not cross-checked here: [`load`](crate::load) does
     /// both before trusting it.

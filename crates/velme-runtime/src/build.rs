@@ -814,7 +814,6 @@ struct Runner<'b, 'a> {
 impl ChildRunner for Runner<'_, '_> {
     fn run(&self, candidate: &ValidIr, inputs: Vec<Value>) -> Result<Invocation, Vec<Diagnostic>> {
         let input = self.build.input;
-        let internal = || vec![Diagnostic::internal_error()];
         let stand_in =
             manifest(input.program, self.goal, candidate, Fingerprint::of_bytes(b"candidate")).map_err(|d| vec![d])?;
         let mut goals = self.build.built.clone();
@@ -827,37 +826,43 @@ impl ChildRunner for Runner<'_, '_> {
             },
         );
         let registry = Registry::of(goals);
-        // The scheduler runs a runtime of its own, which can't start inside the build's.
-        let run = std::thread::scope(|scope| {
-            scope
-                .spawn(|| {
-                    run_goal_unchecked(
-                        input.program,
-                        self.goal,
-                        input.source,
-                        &registry,
-                        inputs,
-                        input.run.clone(),
-                    )
-                })
-                .join()
-        })
-        .map_err(|_| internal())?;
-        let result = run.result()?;
-        let bindings = run
-            .calls
-            .iter()
-            .map(|call| match call.run.as_ref().map(|r| &r.outcome) {
-                Some(Ok(value)) => Ok(value.clone()),
-                _ => Err(internal()),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(Invocation {
-            inputs: run.inputs.iter().map(|(_, v)| v.clone()).collect(),
-            bindings,
-            result,
-            fuel: run.fuel,
-            memory: run.memory,
-        })
+        invoke_registry(input.program, self.goal, input.source, &registry, &input.run, inputs)
     }
+}
+
+/// One invocation of `goal` on `inputs` through the scheduler, with the artifacts of `registry` for it and its children, its
+/// checks left to the caller: how verification runs a goal, in `velme build` and `velme test` alike (`compiler/22`
+/// R-SYNTH-14, D-98, D-107).
+pub(crate) fn invoke_registry(
+    program: &Program,
+    goal: GoalId,
+    source: &str,
+    registry: &Registry,
+    options: &Options,
+    inputs: Vec<Value>,
+) -> Result<Invocation, Vec<Diagnostic>> {
+    let internal = || vec![Diagnostic::internal_error()];
+    // The scheduler runs a runtime of its own, which can't start inside the build's.
+    let run = std::thread::scope(|scope| {
+        scope
+            .spawn(|| run_goal_unchecked(program, goal, source, registry, inputs, options.clone()))
+            .join()
+    })
+    .map_err(|_| internal())?;
+    let result = run.result()?;
+    let bindings = run
+        .calls
+        .iter()
+        .map(|call| match call.run.as_ref().map(|r| &r.outcome) {
+            Some(Ok(value)) => Ok(value.clone()),
+            _ => Err(internal()),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Invocation {
+        inputs: run.inputs.iter().map(|(_, v)| v.clone()).collect(),
+        bindings,
+        result,
+        fuel: run.fuel,
+        memory: run.memory,
+    })
 }

@@ -127,26 +127,32 @@ fn ac_synth_18_the_service_gets_only_its_own_token_and_the_project_cannot_name_i
         "a key or the token reached an output or a file"
     );
 
-    // The project's own `velme.toml` can't name the URL: with one that does, and no flag or variable, the build asks for a
-    // URL and the service is never contacted.
+    // The project's own `velme.toml` can't name the URL: a `velme.toml` that does is `VL0902`, whatever the flags say, and
+    // the service is never contacted (R-CLI-13, D-105).
     let (dir, _) = project("toml");
     let log2 = outside.join("log2.txt");
     let server = Server::start(Config::replying(dir.join("replies")).logging(&log2));
     fs::write(
         dir.join("velme.toml"),
         format!(
-            "external_url = \"{0}\"\n[synthesis]\nexternal_url = \"{0}\"\n[providers.external]\nurl = \"{0}\"\n",
+            "[synthesis]\nprovider = \"external\"\nexternal_url = \"{}\"\n",
             server.url()
         ),
     )
     .expect("velme.toml");
-    let out = velme(&dir, &["build", "game.velme", "--provider", "external"], &[]);
-    assert_eq!(out.code, 2, "{}", shown(&out));
-    assert!(
-        shown(&out).contains("VL0405") && shown(&out).contains("VELME_EXTERNAL_URL"),
-        "{}",
-        shown(&out)
-    );
+    for args in [
+        &["build", "game.velme"][..],
+        &["build", "game.velme", "--provider", "external"],
+        &["check", "game.velme"],
+    ] {
+        let out = velme(&dir, args, &[]);
+        assert_eq!(out.code, 64, "{}", shown(&out));
+        assert!(
+            shown(&out).contains("VL0902") && shown(&out).contains("synthesis.external_url"),
+            "{}",
+            shown(&out)
+        );
+    }
     assert!(!log2.exists(), "the service named by the project was contacted");
     let _ = fs::remove_dir_all(&outside);
 }
@@ -537,4 +543,96 @@ fn the_notice_shows_the_model_escaped() {
         model.stderr
     );
     assert!(model.stderr.contains("\\u{202e}"), "{}", model.stderr);
+}
+
+/// A backend whose response body holds an OSC 52 clipboard sequence, a right-to-left override and a C1 control character
+/// gets the override shown as a visible escape in human mode with no raw control byte reaching the terminal, and `--json`
+/// carries the same characters as `\uXXXX` escapes (AC-CLI-14, R-CLI-17, D-47, D-108). The library's own cleaning of the body
+/// tail (`compiler/22` R-SYNTH-28) already removes the OSC sequence itself.
+#[test]
+fn ac_cli_14_untrusted_backend_text_is_shown_escaped_in_both_modes() {
+    let (dir, replies) = project("escapes");
+    let server = Server::start(Config::replying(&replies).misbehaving(Mode::Hostile, On::Synthesize));
+    let raw = |c: char| matches!(c, '\u{1b}' | '\u{7}' | '\u{202e}' | '\u{85}');
+
+    let human = build(&dir, server.url(), &[]);
+    assert_eq!(human.code, 2, "{}", shown(&human));
+    assert!(
+        !shown(&human).chars().any(raw),
+        "raw control characters: {}",
+        shown(&human)
+    );
+    assert!(
+        human.stderr.contains("\\u{202e}txet"),
+        "visible escapes: {}",
+        human.stderr
+    );
+
+    let out = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "external",
+            "--external-url",
+            server.url(),
+            "--json",
+        ],
+        &[],
+    );
+    assert_eq!(out.code, 2, "{}", shown(&out));
+    assert!(out.stdout.contains("\\u202etxet"), "{}", out.stdout);
+    assert!(!out.stdout.chars().any(raw));
+    let envelope: serde_json::Value = serde_json::from_str(&out.stdout).expect("JSON");
+    velme_test_support::schema::assert_cli_envelope(&envelope);
+    let notes = envelope["results"][0]["diagnostics"][0]["notes"].to_string();
+    assert!(
+        notes.contains('\u{202e}'),
+        "decoded, the override is still the backend's: {notes}"
+    );
+}
+
+/// A value that holds an ESC byte, an OSC 52 sequence and an override, echoed by `velme trace`, is shown as visible escapes
+/// in human mode, with no raw escape byte on standard output, and as `\uXXXX` under `--json` with the decoded value
+/// unchanged (AC-CLI-14, R-CLI-17, T-13).
+#[test]
+fn ac_cli_14_a_value_with_terminal_escapes_is_shown_visibly() {
+    let dir = velme_test_support::repo("tests/fixtures/run/hello");
+    let hostile = "\u{1b}]52;c;Zm9v\u{7}\u{202e}rtl";
+    let arg = format!("name={}", serde_json::to_string(hostile).expect("JSON"));
+    let run = |extra: &[&str]| {
+        let mut args = vec!["trace", "hello.velme", "--goal", "SayHello", "--arg", arg.as_str()];
+        args.extend_from_slice(extra);
+        velme(&dir, &args, &[])
+    };
+    let human = run(&[]);
+    assert!(
+        !human
+            .stdout
+            .chars()
+            .any(|c| matches!(c, '\u{1b}' | '\u{7}' | '\u{202e}')),
+        "{}",
+        human.stdout
+    );
+    assert!(
+        human.stdout.contains("\\u001b]52;c;Zm9v") && human.stdout.contains("\\u{202e}"),
+        "{}",
+        human.stdout
+    );
+    let json = run(&["--json"]);
+    assert!(
+        json.stdout.contains("\\u001b]52;c;Zm9v") && json.stdout.contains("\\u202e"),
+        "{}",
+        json.stdout
+    );
+    assert!(
+        !json
+            .stdout
+            .chars()
+            .any(|c| matches!(c, '\u{1b}' | '\u{7}' | '\u{202e}'))
+    );
+    let envelope: serde_json::Value = serde_json::from_str(&json.stdout).expect("JSON");
+    velme_test_support::schema::assert_cli_envelope(&envelope);
+    assert_eq!(envelope["results"][0]["result"], format!("Hello, {hostile}!"));
 }

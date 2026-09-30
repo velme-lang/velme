@@ -64,10 +64,10 @@ impl BudgetKey {
     }
 }
 
-/// The effective limits for a goal with `line` (R-GOAL-20): the system caps, lowered by each valid item; `VL0308` for
-/// each item that isn't.
-pub(crate) fn budget(line: Option<&ast::Budget>, diags: &mut Vec<Diagnostic>) -> Budget {
-    let mut out = Budget::SYSTEM;
+/// The effective limits for a goal with `line` (R-GOAL-20): `defaults` (the system caps, or a project's `[budget]`), each
+/// replaced by a valid item of the line; `VL0308` for each item that isn't.
+pub(crate) fn budget(line: Option<&ast::Budget>, defaults: Budget, diags: &mut Vec<Diagnostic>) -> Budget {
+    let mut out = defaults;
     let mut seen = BTreeSet::new();
     for item in line.iter().flat_map(|l| &l.items) {
         match limit(item, &mut seen) {

@@ -16,7 +16,7 @@ use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
-use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
+use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries};
 
 /// Where the Messages API is, unless a test says otherwise (D-98).
 const BASE_URL: &str = "https://api.anthropic.com";
@@ -389,7 +389,7 @@ impl SynthProvider for Anthropic {
         let key = self.key.get().ok_or(ProviderError::NotConfigured)?;
         let body = self.body(request, limits)?;
         let started = Instant::now();
-        let text = with_transport_retries(self.sleeper.as_ref(), || {
+        let text = with_generation_retries(self.sleeper.as_ref(), || {
             std::future::ready(self.send(&key, &body, limits.timeout))
         })
         .await?;

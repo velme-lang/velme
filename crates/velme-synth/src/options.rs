@@ -55,6 +55,11 @@ pub struct SynthOptions {
     pub schema_in_prompt: SchemaInPrompt,
     /// How a reply spells the IR.
     pub reply_format: ReplyFormat,
+    /// The most time one provider request may take, in seconds (`timeout_secs`); LLM providers only.
+    pub timeout_secs: u64,
+    /// The most tokens a reply may hold (`max_output_tokens`); `None` is the provider's default (D-110). It changes
+    /// neither what is sent as prompt nor which IR is accepted, so it stays out of `input_version`.
+    pub max_output_tokens: Option<u32>,
 }
 
 impl Default for SynthOptions {
@@ -67,6 +72,8 @@ impl Default for SynthOptions {
             max_prompt_examples: 8,
             schema_in_prompt: SchemaInPrompt::Summary,
             reply_format: ReplyFormat::IrJson,
+            timeout_secs: 60,
+            max_output_tokens: None,
         }
     }
 }

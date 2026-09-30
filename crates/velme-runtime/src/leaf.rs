@@ -7,13 +7,16 @@ use velme_builtins::limits::MAX_OUTPUT_BYTES;
 use velme_check::{GoalChecks, Invocation};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
-use velme_ir::encode_value;
+use velme_ir::{ValidIr, contract_key, encode_value};
 use velme_sema::hir::{Goal, GoalId, GoalKind, Program};
+use velme_synth::{ChildRunner, Verdict, verify};
 
 use std::sync::Arc;
 
+use crate::build::invoke_registry;
 use crate::clock::Watchdog;
 use crate::locked::LockedGoal;
+use crate::registry::Registry;
 use crate::sched::{CheckRun, Options};
 
 /// Runs the leaf goal `goal` of `program`, whose source is `source`, on `inputs` with its locked IR, then evaluates its
@@ -157,43 +160,46 @@ pub(crate) fn run_body(
     }
 }
 
-/// Runs every example of the leaf goal `goal` with its locked IR, and its checks on each example's invocation
-/// (R-GOAL-22). How many examples ran if all passed; otherwise every failure, example by example in source order.
-pub fn test_leaf(
+/// What `velme test` ran for a goal that passed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tested {
+    /// The `examples:` items run.
+    pub examples: usize,
+    /// The generated inputs run besides them (`compiler/22` §7).
+    pub generated_inputs: usize,
+}
+
+/// Runs the examples of `goal`, leaf or composite, then its generated-input suite, through the verifier `velme build` uses
+/// (R-GOAL-22, `compiler/22` §6, `tooling/40` R-CLI-04, D-107): every goal it calls runs from `registry` too. Every failing
+/// example is reported, each with its inputs, expected and received values, in source order; the generated inputs run only
+/// when the examples all pass, and stop at the first failure.
+pub fn test_goal(
     program: &Program,
     goal: GoalId,
     source: &str,
-    locked: &LockedGoal,
+    registry: &Registry,
     options: &Options,
-) -> Result<usize, Vec<Diagnostic>> {
-    let target = program
-        .goals
-        .get(goal.0)
-        .ok_or_else(|| vec![Diagnostic::internal_error()])?;
-    if target.kind != GoalKind::Leaf {
-        return Err(vec![Diagnostic::internal_error()]);
-    }
+) -> Result<Tested, Vec<Diagnostic>> {
+    let internal = || vec![Diagnostic::internal_error()];
+    let target = program.goals.get(goal.0).ok_or_else(internal)?;
+    let locked = registry.get(goal).ok_or_else(internal)?;
+    let runner = RegistryRunner {
+        program,
+        goal,
+        source,
+        registry,
+        options,
+    };
     let mut checks = GoalChecks::new(program, goal, source).map_err(|d| vec![d])?;
     let examples = checks.examples().to_vec();
     let mut failures = Vec::new();
     for example in &examples {
         // Each example is its own run, with its own wall-clock allowance (D-51).
-        let interrupt = Some(Arc::new(Watchdog::start(options)).interrupt());
-        checks.watch(interrupt.clone());
-        let invocation = match invoke(
-            program,
-            goal,
-            locked,
-            example.args.clone(),
-            Vec::new(),
-            Progress {
-                spent: Spent::default(),
-                interrupt: interrupt.clone(),
-            },
-        ) {
+        checks.watch(Some(Arc::new(Watchdog::start(options)).interrupt()));
+        let invocation = match runner.run(&locked.ir, example.args.clone()) {
             Ok(invocation) => invocation,
-            Err(stopped) => {
-                failures.push(stopped.0);
+            Err(found) => {
+                failures.extend(found);
                 continue;
             }
         };
@@ -203,10 +209,58 @@ pub fn test_leaf(
             Err(diag) => failures.push(diag),
         }
     }
-    if failures.is_empty() {
-        Ok(examples.len())
-    } else {
-        Err(failures)
+    if !failures.is_empty() {
+        return Err(failures);
+    }
+    let contract = contract_key(program, goal).map_err(|_| internal())?;
+    checks.watch(None);
+    match verify(program, goal, source, contract, &locked.ir, &runner) {
+        Verdict::Accepted(verified) => Ok(Tested {
+            examples: usize::try_from(verified.examples).unwrap_or(usize::MAX),
+            generated_inputs: usize::try_from(verified.generated_inputs).unwrap_or(usize::MAX),
+        }),
+        Verdict::Rejected(rejection) => {
+            let d = if rejection.cause.code == Code::CheckFailed {
+                Diagnostic::new(
+                    Code::CheckFailed,
+                    target.span,
+                    format!("`{}` didn't pass its check: `{}`.", target.name, rejection.cause.name),
+                )
+            } else {
+                // Not `VL0503`, which is a build's: a run that failed on an input is that failure, with its own code (D-107).
+                Diagnostic::new(
+                    rejection.cause.code,
+                    target.span,
+                    format!("`{}` failed on a generated input: {}.", target.name, rejection.line),
+                )
+            };
+            Err(vec![d.with_note(format!("input: {}", rejection.input))])
+        }
+        Verdict::Watchdog(diagnostic) => Err(vec![diagnostic]),
+        Verdict::Internal => Err(internal()),
+    }
+}
+
+/// Runs a goal from the artifacts of a registry, as verification needs it (`compiler/22` R-SYNTH-14): the candidate it is
+/// asked to run is the goal's own locked one.
+struct RegistryRunner<'a> {
+    program: &'a Program,
+    goal: GoalId,
+    source: &'a str,
+    registry: &'a Registry,
+    options: &'a Options,
+}
+
+impl ChildRunner for RegistryRunner<'_> {
+    fn run(&self, _candidate: &ValidIr, inputs: Vec<Value>) -> Result<Invocation, Vec<Diagnostic>> {
+        invoke_registry(
+            self.program,
+            self.goal,
+            self.source,
+            self.registry,
+            self.options,
+            inputs,
+        )
     }
 }
 

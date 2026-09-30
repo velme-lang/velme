@@ -21,6 +21,7 @@ pub(crate) fn check_bodies(
     goals: &mut [Goal],
     scope: &Scope<'_>,
     text: &str,
+    defaults: crate::hir::Budget,
     diags: &mut Vec<Diagnostic>,
 ) {
     let file = File {
@@ -31,13 +32,18 @@ pub(crate) fn check_bodies(
     };
     for (decl, goal) in &scope.unnamed_goals {
         drop(file.body(decl, goal, diags));
-        budget(decl.budget.as_ref(), diags);
+        budget(decl.budget.as_ref(), defaults, diags);
     }
     let bodies: Vec<_> = scope
         .goals
         .iter()
         .zip(goals.iter())
-        .map(|(decl, goal)| (file.body(decl, goal, diags), budget(decl.budget.as_ref(), diags)))
+        .map(|(decl, goal)| {
+            (
+                file.body(decl, goal, diags),
+                budget(decl.budget.as_ref(), defaults, diags),
+            )
+        })
         .collect();
     for (goal, (body, budget)) in goals.iter_mut().zip(bodies) {
         goal.kind = body.kind;

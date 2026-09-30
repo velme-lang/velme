@@ -6,10 +6,13 @@ yanked = "deny"
 # Permissive licenses only. Unicode-3.0 covers `unicode-ident` (every proc macro, incl. serde's) and Zlib
 # covers `foldhash` (via chumsky's hashbrown); both are OSI approved and compatible with MIT OR Apache-2.0.
 # The `anthropic` provider's TLS stack (ureq, rustls, ring, webpki) adds ISC (ring, rustls-webpki, untrusted),
-# BSD-3-Clause (subtle); all permissive, none copyleft. CDLA-Permissive-2.0 (webpki-roots' CA list) is allowed for
-# that crate alone, below.
+# BSD-3-Clause (subtle); all permissive, none copyleft. CDLA-Permissive-2.0 (webpki-roots' and webpki-root-certs' CA list) is allowed for
+# those crates alone, below.
 allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "ISC", "BSD-3-Clause"]
-exceptions = [{ allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" }]
+exceptions = [
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-root-certs" },
+]
 
 [bans]
 multiple-versions = "warn"

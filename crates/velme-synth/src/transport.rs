@@ -40,7 +40,25 @@ impl Sleeper for StdSleeper {
 /// Runs `once`, and again up to twice after `RateLimited`, `Unavailable` or `Timeout`, waiting 1 s then 2 s, or a
 /// `RateLimited`'s `retry_after` (at most 30 s) instead, with no jitter (R-SYNTH-12). Any other result is returned as it
 /// comes; after the last retry the last error is.
-pub async fn with_transport_retries<T, F, Fut>(sleeper: &dyn Sleeper, mut once: F) -> Result<T, ProviderError>
+pub async fn with_transport_retries<T, F, Fut>(sleeper: &dyn Sleeper, once: F) -> Result<T, ProviderError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, ProviderError>>,
+{
+    retrying(sleeper, true, once).await
+}
+
+/// [`with_transport_retries`] for a generation by an LLM provider: a `Timeout` is not retried, since a generation that ran
+/// out of time would only run out again (R-SYNTH-12, D-110). A refused connection, or a timeout before the request was sent, still is.
+pub async fn with_generation_retries<T, F, Fut>(sleeper: &dyn Sleeper, once: F) -> Result<T, ProviderError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, ProviderError>>,
+{
+    retrying(sleeper, false, once).await
+}
+
+async fn retrying<T, F, Fut>(sleeper: &dyn Sleeper, retry_timeout: bool, mut once: F) -> Result<T, ProviderError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, ProviderError>>,
@@ -48,9 +66,8 @@ where
     let mut tries = 0;
     loop {
         let error = match once().await {
-            Err(
-                error @ (ProviderError::RateLimited { .. } | ProviderError::Unavailable(_) | ProviderError::Timeout),
-            ) => error,
+            Err(error @ (ProviderError::RateLimited { .. } | ProviderError::Unavailable(_))) => error,
+            Err(ProviderError::Timeout) if retry_timeout => ProviderError::Timeout,
             other => return other,
         };
         let Some(wait) = WAITS.get(tries).copied() else {

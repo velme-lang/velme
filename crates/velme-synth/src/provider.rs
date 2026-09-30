@@ -55,9 +55,18 @@ pub trait SynthProvider: Send + Sync {
         self.id()
     }
 
+    /// The `max_output_tokens` of a request unless `[synthesis]` sets one: 8192, and 2048 for `ollama`, whose replies are a
+    /// body only (`tooling/40` §5.1, D-110).
+    fn default_max_output_tokens(&self) -> u32 {
+        DEFAULT_MAX_OUTPUT_TOKENS
+    }
+
     /// Asks for one candidate for `request`.
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError>;
 }
+
+/// The default `max_output_tokens` of a provider that has no smaller one (`tooling/40` §5.1).
+pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 8192;
 
 /// What bounds one call, and which goal it is for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +87,7 @@ impl SynthLimits {
     pub fn new(synthesis_key: Fingerprint) -> Self {
         SynthLimits {
             timeout: Duration::from_secs(60),
-            max_output_tokens: 8192,
+            max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
             synthesis_key,
             attempt: 0,
         }

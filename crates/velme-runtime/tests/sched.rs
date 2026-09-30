@@ -15,9 +15,7 @@ use velme_builtins::limits::{FUEL_PER_MS, MAX_WALL_CLOCK_MS};
 use velme_builtins::{BUILTINS_VERSION, Number, Value};
 use velme_diagnostics::Code;
 use velme_ir::{IR_VERSION, calls};
-use velme_runtime::{
-    CallStatus, Clock, GoalRun, Lock, Options, Registry, Store, load, run_goal, run_goal_peak, test_leaf,
-};
+use velme_runtime::{CallStatus, Clock, GoalRun, Lock, Options, Registry, Store, run_goal, run_goal_peak, test_goal};
 use velme_sema::hir::Program;
 use velme_test_support::{goal_id, install, program};
 
@@ -915,13 +913,19 @@ fn a_check_is_stopped_by_the_watchdog_too() {
     // `velme test`'s examples and their checks.
     let id = goal_id(&program, "Heavy");
     let lock = Lock::read(&project).expect("lock").expect("a lock");
-    let locked = load(&program, id, FILE, &lock, &Store::new(&project)).expect("locked");
-    assert_eq!(test_leaf(&program, id, SOURCE, &locked, &Options::default()), Ok(1));
+    let registry = Registry::load(&program, id, FILE, &lock, &Store::new(&project)).expect("registry");
+    let examples = |result: Result<velme_runtime::Tested, Vec<velme_diagnostics::Diagnostic>>| {
+        result.map(|tested| tested.examples)
+    };
+    assert_eq!(
+        examples(test_goal(&program, id, SOURCE, &registry, &Options::default())),
+        Ok(1)
+    );
     let options = Options {
         clock: Script::new(&[0, 61_000]),
         ..Options::default()
     };
-    let failures = test_leaf(&program, id, SOURCE, &locked, &options).expect_err("timed out");
+    let failures = test_goal(&program, id, SOURCE, &registry, &options).expect_err("timed out");
     assert!(failures.iter().any(|d| d.code == Code::Timeout), "{failures:?}");
 }
 
@@ -932,7 +936,6 @@ fn each_example_is_its_own_run_for_the_watchdog() {
     let (project, program) = installed("example_watchdog");
     let id = goal_id(&program, "Repeat");
     let lock = Lock::read(&project).expect("lock").expect("a lock");
-    let locked = load(&program, id, FILE, &lock, &Store::new(&project)).expect("locked");
     // The check of each example is looked at once, at 100 000 fuel; the clock moves 20 s per reading.
     let clock = Arc::new(Ticking {
         step: 20_000,
@@ -942,7 +945,11 @@ fn each_example_is_its_own_run_for_the_watchdog() {
         clock: Arc::clone(&clock) as Arc<dyn Clock>,
         ..Options::default()
     };
-    assert_eq!(test_leaf(&program, id, SOURCE, &locked, &options), Ok(4));
+    let registry = Registry::load(&program, id, FILE, &lock, &Store::new(&project)).expect("registry");
+    assert_eq!(
+        test_goal(&program, id, SOURCE, &registry, &options).map(|tested| tested.examples),
+        Ok(4)
+    );
     assert!(clock.reads.load(Ordering::SeqCst) * 20_000 > MAX_WALL_CLOCK_MS);
 }
 

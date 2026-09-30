@@ -87,6 +87,21 @@ fn stale(test: &str) -> PathBuf {
 /// The copy of `add` whose artifact is replaced by one that is right except at `a == 2`, with a lock entry to match: a
 /// hash-consistent artifact that fails the example `Add(2, 3) == 5` and nothing else the run below asks (D-46).
 fn broken(test: &str) -> PathBuf {
+    broken_at(test, 2)
+}
+
+/// [`broken`] for the input `a == at`: with `at` outside the examples, only the generated inputs can find it.
+fn broken_at(test: &str, at: i64) -> PathBuf {
+    let number = json!({"t": "Number"});
+    let input = |name: &str| json!({"kind": "input", "name": name});
+    let sum = json!({"kind": "binary", "op": "add", "left": input("a"), "right": input("b")});
+    let plus_one =
+        json!({"kind": "binary", "op": "add", "left": sum, "right": {"kind": "literal", "type": number, "value": 1}});
+    broken_with(test, at, plus_one)
+}
+
+/// [`broken_at`] with `then` as what the goal does for `a == at`.
+fn broken_with(test: &str, at: i64, then: Value) -> PathBuf {
     let dir = copy("add", test);
     fs::remove_dir_all(dir.join(".velme")).expect("store removed");
     fs::remove_file(dir.join("velme.lock")).expect("lock removed");
@@ -99,9 +114,8 @@ fn broken(test: &str) -> PathBuf {
         "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "if",
                  "cond": {"kind": "binary", "op": "eq", "left": input("a"),
-                          "right": {"kind": "literal", "type": number, "value": 2}},
-                 "then": {"kind": "binary", "op": "add", "left": sum,
-                          "right": {"kind": "literal", "type": number, "value": 1}},
+                          "right": {"kind": "literal", "type": number, "value": at}},
+                 "then": then,
                  "else": sum}
     });
     install(&dir, ADD, &program(&source), &ir.to_string());
@@ -226,8 +240,8 @@ fn ac_cli_18_build_locked_reverifies_and_writes_nothing() {
 }
 
 /// `velme test --locked` fails on an example the artifact breaks, though the file is hash-consistent; `velme run` with
-/// the same artifact doesn't notice, having no example to run (AC-ART-11, D-46). The full `test` of composite goals and
-/// generated inputs is M6b's.
+/// the same artifact doesn't notice, having no example to run (AC-ART-11, D-46). One broken only for an input no example
+/// names is found by the generated inputs the same `velme test --locked` runs after the examples.
 #[test]
 fn ac_art_11_test_locked_finds_the_broken_example_and_run_does_not() {
     let dir = broken("art_11");
@@ -241,6 +255,61 @@ fn ac_art_11_test_locked_finds_the_broken_example_and_run_does_not() {
     );
     assert_eq!((run.code, run.stderr.as_str()), (0, ""), "{}", run.stdout);
     assert!(run.stdout.trim_end().ends_with('3'), "{}", run.stdout);
+
+    let dir = broken_at("art_11_generated", 1_000_000);
+    let test = velme(&dir, &["test", ADD, "--locked"]);
+    assert_eq!(test.code, 3, "{}{}", test.stdout, test.stderr);
+    assert!(
+        test.stderr.contains("[VL0501]") && !test.stderr.contains("[VL0502]"),
+        "{}",
+        test.stderr
+    );
+    let run = velme(
+        &dir,
+        &[
+            "run",
+            ADD,
+            "--goal",
+            "Add",
+            "--arg",
+            "a=1000000",
+            "--arg",
+            "b=2",
+            "--locked",
+        ],
+    );
+    assert_eq!(
+        run.code, 3,
+        "the run's own checks see it, but only for this input: {}",
+        run.stderr
+    );
+}
+
+/// A locked goal that fails at run time on a generated input is reported by `velme test` as that failure, with its own code
+/// and exit, not as `VL0503`, which is a build's (D-107).
+#[test]
+fn a_runtime_failure_on_a_generated_input_keeps_its_own_code_in_test() {
+    let number = json!({"t": "Number"});
+    let input = |name: &str| json!({"kind": "input", "name": name});
+    let sum = json!({"kind": "binary", "op": "add", "left": input("a"), "right": input("b")});
+    let zero = json!({"kind": "literal", "type": number, "value": 0});
+    let divide = json!({"kind": "binary", "op": "div", "left": sum, "right": zero});
+    let dir = broken_with("test_runtime_failure", 1_000_000, divide);
+    let test = velme(&dir, &["test", ADD, "--locked", "--json"]);
+    assert_eq!(test.code, 3, "{}{}", test.stdout, test.stderr);
+    let envelope = json_of(&test);
+    let found = codes(&envelope);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        !["VL0503", "VL0501", "VL0502"].contains(&found[0].as_str()),
+        "{found:?}"
+    );
+    assert!(
+        envelope["results"][0]["diagnostics"][0]["notes"]
+            .to_string()
+            .contains("input:"),
+        "{envelope}"
+    );
 }
 
 /// `--build` with `--locked` is a usage error, `VL0902` and exit 64, and nothing is built or run (AC-CLI-11, R-CLI-14).
@@ -355,6 +424,8 @@ fn ac_cli_20_artifact_shows_hash_manifest_and_ir() {
     let run = velme(&dir, &["artifact", ADD, "--goal", "Add", "--json"]);
     assert_eq!(run.code, 0, "{}", run.stderr);
     let envelope = json_of(&run);
+    // An artifact result is one `result` shape and only that (the schema's `anyOf` would hide a second match).
+    velme_test_support::schema::assert_cli_envelope(&envelope);
     let result = &envelope["results"][0]["result"];
     assert_eq!(result["artifact"], hash.as_str());
     assert_eq!(result["ir"], ir);
