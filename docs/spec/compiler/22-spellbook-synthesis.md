@@ -60,8 +60,10 @@ pub struct SynthRequest { pub request_version: String, pub ir_version: String, p
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
                           pub output_schema: serde_json::Value }             // reply schema: IR goal or question (R-SYNTH-10)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
-pub enum  ProviderError { NotConfigured, Unavailable(String), RateLimited { retry_after: Option<Duration> },
-                          Refused(String), Timeout, Malformed(String), BackendFailed(String), Pending(String),
+pub enum  ProviderError { NotConfigured, KeyRejected, Unavailable(String), RateLimited { retry_after: Option<Duration> },
+                          Refused(String), Timeout, Malformed(String),
+                          BackendFailed { reason: String, stderr: String },      // R-SYNTH-28
+                          Pending(String), File { path: String, reason: String }, // R-SYNTH-43
                           Internal(String) }
 ```
 
@@ -98,12 +100,14 @@ canonical JSON, overwrites the goal's whole fixture file each time it synthesize
 is the reply (R-SYNTH-10), and a reply with no tool call, both tools or anything else is `Malformed`. Tests reach a
 mock server through a base URL set only by the test-only constructor in `velme-test-support`, never by a config key
 or environment variable (D-98).
-**R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `Unavailable`/`Timeout`/`RateLimited` after
+**R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `KeyRejected` (the API answered 401 or 403 to a key
+that is set) → `VL0405` worded "the API key was rejected" (`reference/90`); `File` (a replay file that is a link, is
+not a regular file, is too large or can't be read or written) → `VL0901`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5) with `VL0401`, in Velme's own
 wording, never the provider's text (R-SYNTH-22, D-93); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
 not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
-**R-SYNTH-45** After one goal ends with `VL0404`, the build contacts the provider no more: every later goal that
-reaches R-SYNTH-02 step 3 ends with `VL0404` without a request (D-93).
+**R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key), the build contacts the
+provider no more: every later goal that reaches R-SYNTH-02 step 3 ends with the same code without a request (D-93).
 **R-SYNTH-24** `ollama` resolves the configured model's digest from the server's `/api/tags` **on the first lock miss in
 a build**, not unconditionally, and reports `<model>@<digest>` as `model()`, with a model name that has no tag
 normalized to `<name>:latest` and the digest kept whole, `sha256:` prefix included (D-98); the result is reused for
@@ -132,16 +136,20 @@ like the IR schema (21 R-IR-20).
 
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
 cached build; its `backend_version` is `model()` and enters `synthesis_key`, so a new backend version is a cache miss
-but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version`, cleaned as in R-SYNTH-33, must
-each be 1..=128 Unicode scalar values, and any other key of the reply is ignored; a `describe` that fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
+but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version` must each be 1..=128 Unicode scalar
+values after whitespace runs collapse to one space, and must hold no control character, Unicode format (`Cf`) character
+or bidi control (D-47): those are refused, not cleaned away. Any other key of the reply is ignored; a `describe` that
+fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
 verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
 R-SYNTH-32..33, as an LLM's does.
 **R-SYNTH-28** Non-zero exit, exceeding `external_timeout_secs`, a broken stdin pipe, stdout that is not one JSON
 document, stdout above 2 MiB, a reply that is not exactly one of the four kinds above, or an `{"error"}` reply is
 `BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of stderr in the notes. The timeout covers
-every message, `describe` included; on expiry the command's whole process group is killed. Nothing is written to the
-store or the lock (D-98).
+every message, `describe` included. However a message ends, a reply included, the command's whole process group is
+killed and the command reaped, so a child left holding the pipes (given 250 ms after the command exits) dies with it;
+group kill is unix-only for now, elsewhere only the command itself is stopped. Nothing is written to the store or the
+lock (D-98).
 **R-SYNTH-29** The command runs in the project root with the user's own permissions, outside the sandbox (tooling/41
 T-10). Its environment is the user's minus every variable whose name ends in `_API_KEY` (`tooling/41` R-SEC-13). The
 command itself comes only from the `--external-command` flag, `VELME_EXTERNAL_COMMAND` or the user-level config, never
@@ -172,7 +180,9 @@ because `{child}` {reason}.", with the child's failure code as a note. `VL04xx` 
 The prompt is rendered from `SynthRequest` (§3) with a versioned template in `crates/velme-synth/prompts/`, one file
 per task kind (`leaf`, `composite`), each holding its retry-turn text too. `prompt_version` is one value covering every template: their
 ids + BLAKE3 of all the template bytes (an edit to one re-keys every goal), the compact alias table (R-SYNTH-36) and the schema summary lines (R-SYNTH-35), so
-an edit to any of them changes synthesis keys (D-11, D-97). Both LLM providers share the templates. The table below is also the content of `SynthRequest`; the external protocol (§3.2)
+an edit to any of them, or to an option that shapes the prompt (R-SYNTH-40), changes synthesis keys (D-11, D-97). It does
+not cover the code that renders a template or the providers' tool descriptions: like any compiler code change, an edit
+there re-keys nothing (`runtime/32` R-ART-04). Both LLM providers share the templates. The table below is also the content of `SynthRequest`; the external protocol (§3.2)
 sends the same fields as structured JSON.
 
 | Section | Contents | From |

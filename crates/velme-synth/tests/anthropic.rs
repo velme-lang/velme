@@ -158,8 +158,8 @@ fn a_refusal_or_a_reply_that_is_not_one_tool_call_is_a_failed_attempt() {
     }
 }
 
-/// Auth and model errors are `NotConfigured` (`VL0405`), a request Velme got wrong is `Internal`, and the provider's
-/// body, which here echoes the key, reaches no error (R-SEC-06).
+/// A rejected key is `KeyRejected` and a missing model `NotConfigured` (both `VL0405`), a request Velme got wrong is
+/// `Internal`, and the provider's body, which here echoes the key, reaches no error (R-SEC-06).
 #[test]
 fn status_codes_map_to_provider_errors_without_the_body() {
     let echo = |status| MockResponse::status(status, format!("{{\"error\": \"bad key {KEY}\"}}"));
@@ -168,8 +168,12 @@ fn status_codes_map_to_provider_errors_without_the_body() {
         [echo(401), echo(403), echo(404), echo(400), echo(413)],
     );
     let request = requests().0;
-    for _ in 0..3 {
-        assert_eq!(complete(&provider, &request), Err(ProviderError::NotConfigured));
+    for expected in [
+        ProviderError::KeyRejected,
+        ProviderError::KeyRejected,
+        ProviderError::NotConfigured,
+    ] {
+        assert_eq!(complete(&provider, &request), Err(expected));
     }
     for _ in 0..2 {
         let error = complete(&provider, &request).expect_err("rejected");

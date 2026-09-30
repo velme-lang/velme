@@ -8,6 +8,7 @@ mod anthropic;
 mod attempt;
 mod compact;
 mod external;
+pub mod fsio;
 mod generate;
 #[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
 mod http;
@@ -26,7 +27,7 @@ mod transport;
 mod verify;
 
 #[cfg(feature = "provider-anthropic")]
-pub use anthropic::{Anthropic, AnthropicConfig, ApiKey};
+pub use anthropic::{Anthropic, AnthropicConfig, ApiKey, KeyError};
 pub use attempt::{Cause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 pub use external::{CommandError, External, ExternalCommand, ExternalConfig, is_api_key_variable};
@@ -45,7 +46,8 @@ pub use request::{
 pub use schema::{reply_schema, schema_summary};
 pub use scripted::{ScriptError, Scripted, Step};
 pub use synthesize::{
-    Built, Failure, Outcome, Session, Task, provider_diagnostic, reaches_no_further, synthesize, unavailable,
+    Built, Failure, Outcome, Session, Task, provider_diagnostic, reaches_no_further, stopped_diagnostic, synthesize,
+    unavailable,
 };
 pub use transport::{Sleeper, StdSleeper, with_transport_retries};
 pub use verify::{ChildRunner, Verdict, Verified, verify};

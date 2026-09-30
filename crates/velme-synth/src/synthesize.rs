@@ -12,13 +12,13 @@ use crate::provider::{ProviderError, SynthLimits, SynthProvider, Usage};
 use crate::request::{AttemptFeedback, build_request};
 use crate::verify::{ChildRunner, Verdict, Verified, verify};
 
-/// What one build's synthesis has done so far: the calls made and the tokens used, and whether the provider is out of
-/// reach, after which it is contacted no more (R-SYNTH-45, D-93).
+/// What one build's synthesis has done so far: the calls made and the tokens used, and the error that put the provider
+/// out of reach, after which it is contacted no more (R-SYNTH-45, D-93).
 #[derive(Debug, Clone)]
 pub struct Session {
     options: SynthOptions,
     calls: usize,
-    unavailable: bool,
+    stopped: Option<ProviderError>,
     usage: Usage,
 }
 
@@ -28,7 +28,7 @@ impl Session {
         Session {
             options,
             calls: 0,
-            unavailable: false,
+            stopped: None,
             usage: Usage::default(),
         }
     }
@@ -48,14 +48,15 @@ impl Session {
         self.usage
     }
 
-    /// Whether a goal ended with `VL0404`, so no goal reaches the provider again (R-SYNTH-45).
-    pub fn unavailable(&self) -> bool {
-        self.unavailable
+    /// The error that ended a goal with `VL0404` or `VL0405`, so no goal reaches the provider again (R-SYNTH-45).
+    pub fn stopped(&self) -> Option<&ProviderError> {
+        self.stopped.as_ref()
     }
 
-    /// Marks the provider out of reach, after the identity step failed to reach it.
-    pub fn mark_unavailable(&mut self) {
-        self.unavailable = true;
+    /// Stops all contact with the provider, after `error` showed it can't be used: the identity step or a call failed
+    /// in a way [`reaches_no_further`].
+    pub fn stop(&mut self, error: &ProviderError) {
+        self.stopped.get_or_insert_with(|| error.clone());
     }
 }
 
@@ -154,9 +155,16 @@ async fn run(
     let compiler_calls = calls(task.program, task.goal).map_err(Failure::of)?;
     let mut history: Vec<Rejection> = Vec::new();
     let mut earlier: Vec<AttemptFeedback> = task.feedback.clone();
+    // `reply_format` is a setting of the LLM providers (R-SYNTH-34..40): an external backend answers in canonical IR.
+    let external = provider.id() == "external";
+    let format = if external {
+        ReplyFormat::IrJson
+    } else {
+        options.reply_format
+    };
     for attempt in 0..=options.max_retries {
-        if session.unavailable {
-            return Err(Failure::of(unavailable(name, span, None)));
+        if let Some(error) = &session.stopped {
+            return Err(Failure::of(stopped_diagnostic(error, name, span)));
         }
         let cap = options.max_calls_per_build as usize;
         if session.calls >= cap {
@@ -171,7 +179,7 @@ async fn run(
         }
         session.calls += 1;
         let mut request = base.clone();
-        request.attempts = carried(&earlier, provider.id() == "external", options.retry_history);
+        request.attempts = carried(&earlier, external, options.retry_history);
         let mut limits = SynthLimits::new(task.synthesis_key);
         limits.attempt = attempt;
         let reply = match provider.complete(&request, &limits).await {
@@ -188,7 +196,7 @@ async fn run(
             },
         };
         session.usage = add(session.usage, reply.usage);
-        let rejection = match read(&reply.reply_json, options.reply_format) {
+        let rejection = match read(&reply.reply_json, format) {
             Reply::Question(question) => return Err(Failure::of(question_diagnostic(name, span, &question))),
             Reply::Bad(rejection) => rejection,
             Reply::Candidate(text) => {
@@ -296,19 +304,33 @@ fn failed_call(
         ProviderError::Pending(text) => Err(Failure::of(pending(name, span, backend, &text, history))),
         other => {
             if reaches_no_further(&other) {
-                session.unavailable = true;
+                session.stop(&other);
             }
             Err(Failure::of(provider_diagnostic(&other, backend, name, span)))
         }
     }
 }
 
-/// Whether the error means the provider can't be reached, after which it is contacted no more (R-SYNTH-45).
+/// Whether the error means the provider can't be used, after which it is contacted no more (R-SYNTH-45): it can't be
+/// reached, or it refuses what it was given.
 pub fn reaches_no_further(error: &ProviderError) -> bool {
     matches!(
         error,
-        ProviderError::Unavailable(_) | ProviderError::Timeout | ProviderError::RateLimited { .. }
+        ProviderError::Unavailable(_)
+            | ProviderError::Timeout
+            | ProviderError::RateLimited { .. }
+            | ProviderError::NotConfigured
+            | ProviderError::KeyRejected
     )
+}
+
+/// What a goal that reaches a stopped provider ends with, without a request: `VL0405` again if that is what stopped it,
+/// else `VL0404` (R-SYNTH-45).
+pub fn stopped_diagnostic(error: &ProviderError, name: &str, span: Span) -> Diagnostic {
+    match error {
+        ProviderError::NotConfigured | ProviderError::KeyRejected => provider_diagnostic(error, "", name, span),
+        _ => unavailable(name, span, None),
+    }
 }
 
 /// The diagnostic of a provider error that ends a goal (R-SYNTH-07): also what the identity step and opening the provider
@@ -321,6 +343,12 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             format!("I can't write `{name}` because no AI provider is set up."),
         )
         .with_help("set the provider, model and key it needs"),
+        ProviderError::KeyRejected => Diagnostic::new(
+            Code::ProviderNotConfigured,
+            span,
+            format!("I can't write `{name}` because the API key was rejected."),
+        )
+        .with_help("check the key in `VELME_API_KEY` (or `ANTHROPIC_API_KEY`), or set a valid one"),
         ProviderError::Unavailable(why) => unavailable(name, span, Some(why)),
         ProviderError::Timeout => unavailable(name, span, Some("the request timed out")),
         ProviderError::RateLimited { .. } => unavailable(name, span, Some("the provider is rate limiting requests")),
@@ -342,6 +370,9 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             d
         }
         ProviderError::Pending(text) => pending(name, span, backend, text, &[]),
+        ProviderError::File { path, reason } => {
+            Diagnostic::new(Code::FileError, span, format!("I couldn't open `{path}`.")).with_note(reason.clone())
+        }
         ProviderError::Refused(_) | ProviderError::Malformed(_) | ProviderError::Internal(_) => {
             Diagnostic::internal_error()
         }
@@ -421,9 +452,9 @@ fn read(reply: &str, format: ReplyFormat) -> Reply {
 
 fn add(a: Usage, b: Usage) -> Usage {
     Usage {
-        input_tokens: a.input_tokens + b.input_tokens,
-        output_tokens: a.output_tokens + b.output_tokens,
-        cache_read_tokens: a.cache_read_tokens + b.cache_read_tokens,
-        cache_write_tokens: a.cache_write_tokens + b.cache_write_tokens,
+        input_tokens: a.input_tokens.saturating_add(b.input_tokens),
+        output_tokens: a.output_tokens.saturating_add(b.output_tokens),
+        cache_read_tokens: a.cache_read_tokens.saturating_add(b.cache_read_tokens),
+        cache_write_tokens: a.cache_write_tokens.saturating_add(b.cache_write_tokens),
     }
 }

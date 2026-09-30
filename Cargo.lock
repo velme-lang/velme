@@ -913,7 +913,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "insta",
- "libc",
  "proptest",
  "serde",
  "serde_json",
@@ -959,6 +958,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "insta",
+ "libc",
  "rustix",
  "schemars",
  "serde",

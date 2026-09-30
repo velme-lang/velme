@@ -207,6 +207,26 @@ fn assert_nothing_stored(dir: &Path) {
     assert!(!dir.join(".velme/artifacts").exists(), "an artifact was written");
 }
 
+/// `reply_format = "compact"` is a setting of the LLM providers: an external backend answers in canonical IR, which the
+/// loop reads as it is, whatever the build's options say (R-SYNTH-34..40).
+#[test]
+fn r_synth_36_the_compact_format_does_not_apply_to_an_external_backend() {
+    let project = scratch("compact-external");
+    let replies = replies("compact-external", &[("Double.json", &double())]);
+    let backend = external(&project, &replies, &[], PATIENT);
+    let options = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::Compact,
+        ..no_retries()
+    };
+    let built = build_with(&project, ONE, &backend, options);
+    assert_eq!(
+        status(&built, "Double"),
+        Status::Built(Source::Synthesized),
+        "{:?}",
+        built.report.goals
+    );
+}
+
 /// A backend replying with hostile IR, a `call` node or a builtin that isn't there, is rejected with `VL0402` both times,
 /// and nothing is stored (AC-SYNTH-15, D-63).
 #[test]

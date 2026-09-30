@@ -580,6 +580,37 @@ fn ac_art_10_a_store_hit_is_checked_against_a_changed_child() {
     );
 }
 
+/// A store hit is verified before it is pinned, even for a goal with no calls: an artifact planted under the goal's
+/// `synthesis_key` whose hashes all agree but whose behaviour is wrong is rejected, not pinned (D-46, T-12, R-ART-22).
+#[test]
+fn ac_art_10_a_planted_store_hit_with_wrong_behaviour_is_rejected() {
+    let dir = project("planted");
+    let text = source("Double it.");
+    build_with(&dir, &text, Some(&full_script()), SynthOptions::default());
+    let store = velme_runtime::Store::new(&dir);
+    let good = Lock::read(&dir)
+        .expect("lock")
+        .expect("a lock")
+        .entry(FILE, "Double")
+        .expect("entry")
+        .artifact;
+    // The same artifact with `Double` tripling: still canonical, still hashing to its own name, keyed as the real one.
+    let mut planted = serde_json::to_value(store.get(good).expect("artifact")).expect("value");
+    planted["ir"]["body"]["right"] = literal(3);
+    let bytes = velme_ir::to_canonical_string(&planted).expect("canonical");
+    let id = velme_ir::Fingerprint::of_bytes(bytes.as_bytes());
+    assert_ne!(id, good);
+    fs::remove_file(store.path(good)).expect("original removed");
+    fs::write(store.path(id), &bytes).expect("planted");
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    let script = replies(&[double()]);
+    let built = build_with(&dir, &text, Some(&script), SynthOptions::default());
+    assert_eq!(status(&built, "Double"), Status::Built(Source::Synthesized));
+    assert_eq!(script.calls(), 1);
+    let lock = Lock::read(&dir).expect("lock").expect("a lock");
+    assert_eq!(lock.entry(FILE, "Double").expect("entry").artifact, good);
+}
+
 /// A parent that could not be rebuilt after its child changed keeps its old lock entry (AC-SYNTH-03), and the next build
 /// finds it stale by checking it against the current child, with no provider: the manifest records no child artifacts,
 /// so a goal with calls is checked again on every build (R-ART-22).

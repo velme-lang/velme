@@ -3,15 +3,16 @@
 //! request hashes, replies or error variants, and usage: no prompt body, header or key (`tooling/41` R-SEC-07).
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use async_trait::async_trait;
 use velme_ir::{Fingerprint, to_canonical_string};
 
 use crate::attempt::clean_line;
+use crate::fsio::write_file;
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
-use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, fixture_path};
+use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, file_error, fixture_name};
 use crate::request::SynthRequest;
 
 /// A backend that records what `inner` answers into `dir`.
@@ -27,9 +28,10 @@ impl Recorder {
     }
 }
 
-/// A fixture that can't be written is a Velme-side failure, never a verdict on a candidate.
-fn unwritable(_: std::io::Error) -> ProviderError {
-    ProviderError::Internal("a replay fixture could not be written".to_owned())
+/// Writes the file `name` of the replay directory `dir` the way the artifact store writes: whole or not at all, and
+/// never through a link (R-ART-09). A file that can't be written is `VL0901`, never a verdict on a candidate.
+fn write(dir: &Path, name: &str, text: &str) -> Result<(), ProviderError> {
+    write_file(dir, name, text.as_bytes()).map_err(|e| file_error(&dir.join(name), &e))
 }
 
 #[async_trait]
@@ -45,8 +47,7 @@ impl SynthBackend for Recorder {
         };
         let text = to_canonical_string(&recorded)
             .map_err(|_| ProviderError::Internal("the replay identity could not be written".to_owned()))?;
-        std::fs::create_dir_all(&self.dir).map_err(unwritable)?;
-        std::fs::write(self.dir.join(IDENTITY_FILE), text).map_err(unwritable)?;
+        write(&self.dir, IDENTITY_FILE, &text)?;
         Ok(identity)
     }
 
@@ -114,8 +115,7 @@ impl SynthProvider for Recording {
             to_canonical_string(&*all)
                 .map_err(|_| ProviderError::Internal("a replay fixture could not be written".to_owned()))?
         };
-        std::fs::create_dir_all(&self.dir).map_err(unwritable)?;
-        std::fs::write(fixture_path(&self.dir, limits.synthesis_key), file).map_err(unwritable)?;
+        write(&self.dir, &fixture_name(limits.synthesis_key), &file)?;
         result
     }
 }

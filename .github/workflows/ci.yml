@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo test --workspace --all-targets --locked
+      - run: cargo test --workspace --all-targets --locked --features velme-cli/test-provider
 
   msrv:
     name: msrv
@@ -49,4 +49,4 @@ jobs:
       - run: |
           msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
           rustup toolchain install "$msrv" --profile minimal
-          cargo +"$msrv" check --workspace --all-targets --locked
+          cargo +"$msrv" check --workspace --all-targets --locked --features velme-cli/test-provider

@@ -435,3 +435,48 @@ fn a_replayed_external_build_reproduces_the_recorded_one() {
     let shown = format!("{}{}", replayed.stdout, replayed.stderr);
     assert!(shown.contains("VL0403") && !shown.contains("VL0404"), "{shown}");
 }
+
+/// The notice of what is sent names the user's model and command, which reach the terminal escaped: no raw ESC byte or
+/// bidi control gets through (R-SEC-12, D-47).
+#[test]
+fn the_notice_shows_the_model_and_command_escaped() {
+    let (dir, _) = project("notice-escape");
+    let model = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "ollama",
+            "--model",
+            "m\u{1b}[31mx\u{202e}y",
+        ],
+        &[],
+    );
+    let program = dir
+        .join("no-such-backend\u{1b}[31m")
+        .to_string_lossy()
+        .replace(' ', "\\ ");
+    let command = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "external",
+            "--external-command",
+            &program,
+        ],
+        &[],
+    );
+    for (name, out) in [("model", &model), ("command", &command)] {
+        assert!(out.stderr.contains("Sending your plans"), "{name}: {}", out.stderr);
+        assert!(out.stderr.contains("\\u{1b}"), "{name}: {}", out.stderr);
+        assert!(
+            !out.stderr.contains('\u{1b}') && !out.stderr.contains('\u{202e}'),
+            "{name}: {:?}",
+            out.stderr
+        );
+    }
+    assert!(model.stderr.contains("\\u{202e}"), "{}", model.stderr);
+}

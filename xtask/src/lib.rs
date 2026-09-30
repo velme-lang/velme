@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod ac_audit;
+pub mod features;
 pub mod layering;
 pub mod verify;
 

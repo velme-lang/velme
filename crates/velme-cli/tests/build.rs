@@ -331,3 +331,31 @@ fn ac_cmp_02_commands_other_than_build_never_reach_a_provider() {
     }
     assert!(!dir.join(".velme").exists() && !dir.join("velme.lock").exists());
 }
+
+/// A `VELME_API_KEY` that can't be a key is `VL0405` naming it, and the build does not fall back to
+/// `ANTHROPIC_API_KEY`: nothing is contacted and nothing is written (R-SEC-05, R-CLI-12).
+#[test]
+fn a_malformed_velme_api_key_is_vl0405_and_does_not_fall_back() {
+    let dir = project("malformed-key");
+    let out = velme_with(
+        &dir,
+        &["build", "game.velme", "--provider", "anthropic", "--model", "m"],
+        None,
+        &[("VELME_API_KEY", "sk bad key"), ("ANTHROPIC_API_KEY", "sk-good-key")],
+    );
+    assert_eq!(out.code, 2, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr.contains("[VL0405]") && out.stderr.contains("`VELME_API_KEY`"),
+        "{}",
+        out.stderr
+    );
+    for text in [&out.stdout, &out.stderr] {
+        assert!(!text.contains("sk bad key") && !text.contains("sk-good-key"), "{text}");
+    }
+    assert!(
+        !out.stderr.contains("Sending your plans"),
+        "nothing was contacted: {}",
+        out.stderr
+    );
+    assert!(!dir.join("velme.lock").exists());
+}

@@ -1,9 +1,9 @@
-//! `cargo xtask <verify [--quick] | layering | ac-audit [--strict] [--list]>`.
+//! `cargo xtask <verify [--quick] | layering | features | ac-audit [--strict] [--list]>`.
 
 use std::process::ExitCode;
 
 use anyhow::{Result, bail};
-use xtask::{ac_audit, layering, verify, workspace_root};
+use xtask::{ac_audit, features, layering, verify, workspace_root};
 
 fn main() -> ExitCode {
     match run() {
@@ -42,6 +42,20 @@ fn run() -> Result<ExitCode> {
                 ExitCode::FAILURE
             })
         }
+        Some("features") => {
+            let offending = features::check(&root)?;
+            for line in &offending {
+                println!(
+                    "features: velme-cli's normal dependencies enable `{}`: {line}",
+                    features::TEST_ENDPOINT
+                );
+            }
+            Ok(if offending.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
+        }
         Some("ac-audit") => {
             let report = ac_audit::audit(&root)?;
             let uncovered = report.uncovered();
@@ -64,6 +78,6 @@ fn run() -> Result<ExitCode> {
                 ExitCode::FAILURE
             })
         }
-        _ => bail!("usage: cargo xtask <verify [--quick] | layering | ac-audit [--strict] [--list]>"),
+        _ => bail!("usage: cargo xtask <verify [--quick] | layering | features | ac-audit [--strict] [--list]>"),
     }
 }

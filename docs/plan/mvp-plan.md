@@ -106,7 +106,7 @@ live Anthropic is an attended user step, not part of the slice (D-99) · M5d `ol
 mock-server tests) and `external` backend (protocol, command sourcing, env scrubbing, `VL0406`, pending replies
 `VL0408`) with a small test backend in `velme-test-support` (D-41, D-42, D-45), and replay fixtures for every
 `examples/` goal recorded unattended through that backend (D-99).
-**Exit:** all `AC-SYNTH-*` green on scripted/replay; AC-ART-01/02/03/09/10, AC-CMP-05/06/08, AC-SEC-02/03/05/06/09,
+**Exit:** all `AC-SYNTH-*` except AC-SYNTH-08 (an M6 exit, with `--locked` and `--offline`) green on scripted/replay; AC-ART-01/02/03/09/10, AC-CMP-05/06/08, AC-SEC-02/03/05/06/09,
 AC-QA-02, AC-REL-03/05 green; fixtures for every example; AC-RDM-01 and AC-RDM-08 green on replay.
 **User verifies:** with an API key, `velme build examples/beginner/add.velme` synthesizes and verifies; without one,
 `VL0405` explains how to configure it. Running `velme build` twice makes 0 provider calls the second time; editing one
@@ -117,8 +117,10 @@ the same with no key; `velme build --provider external --external-command "<back
 
 **Read:** `runtime/32` §locked mode, `tooling/40` (all).
 **Slices:** M6a `--locked`, `--offline`, `artifact` command · M6b remaining CLI (input/output mapping D-23, config
-file, exit codes, cache commands).
-**Exit:** AC-ART-05, AC-ART-07, AC-ART-11, all `AC-CLI-*` green; AC-SEC-08 green.
+file, exit codes, cache commands) · M6c the synth log `.velme/synth-log.jsonl` (R-SYNTH-23), which M5 left unbuilt.
+**Exit:** AC-ART-05, AC-ART-07, AC-ART-11, all `AC-CLI-*` green; AC-SEC-08 green; AC-SYNTH-08 (`--locked` with a
+stale entry is `VL0702`, `--offline` with a miss is `VL0404`, neither constructs a provider) green, moved here from
+M5 with the two flags it tests.
 **User verifies:** `velme run --locked` works with the network off; `velme artifact` shows a goal's IR; a stale goal
 under `--locked` exits 4 with `VL0702`.
 

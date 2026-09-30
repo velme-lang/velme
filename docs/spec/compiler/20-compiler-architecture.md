@@ -147,7 +147,7 @@ pub fn validate(ir_json: &str, req: &ir::Request) -> Result<ValidIr, Vec<Diagnos
 // Request { program, goal, calls, origin }: text in, since stage 1 is the schema; `calls` is the compiler's call
 // section (with child signatures) and `origin` says whether it is joined into a candidate or compared (21 §6).
 pub async fn build(p: &hir::Program, opts: BuildOptions, store: &dyn ArtifactStore,
-                   provider: Option<&dyn SynthProvider>) -> BuildReport;                // velme-runtime (D-54)
+                   backend: Option<&dyn SynthBackend>) -> BuildReport;                  // velme-runtime (D-54)
 pub async fn run(p: &hir::Program, lock: &Lockfile, goal: GoalId, input: Value,
                  opts: RunOptions) -> RunOutcome;                                       // velme-runtime
 pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                             // velme-runtime (no LLM)
@@ -155,7 +155,7 @@ pub fn explain(p: &hir::Program, g: GoalId) -> Explanation;                     
 
 **R-CMP-18** `analyze` is synchronous, allocation-bounded and fast enough for keystroke-level use by an editor
 (target: < 50 ms for a 1 000-line file, `delivery/51`).
-**R-CMP-19** Everything that can reach the network takes the provider as an explicit argument; passing `None` (the
+**R-CMP-19** Everything that can reach the network takes the provider's `SynthBackend` (`compiler/22` R-SYNTH-25) as an explicit argument; passing `None` (the
 `--locked`/offline path) makes synthesis impossible by construction (INV-7).
 **R-CMP-20** `build` lives in `velme-runtime`, which owns lock/store staleness and the `compiler/22` R-SYNTH-02 lookup
 order, calling `velme-synth` only for goals that need synthesis (D-54). `velme-synth` exposes a `ChildRunner` trait

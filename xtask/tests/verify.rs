@@ -6,7 +6,12 @@ use xtask::workspace_root;
 #[test]
 fn ac_qa_01_verify_runs_every_gate_step() {
     let names: Vec<&str> = verify::steps(false).expect("steps").iter().map(|s| s.name).collect();
-    assert_eq!(names, ["fmt", "clippy", "test", "doc", "deny", "layering", "ac-audit"]);
+    assert_eq!(
+        names,
+        [
+            "fmt", "clippy", "test", "doc", "deny", "layering", "features", "ac-audit"
+        ]
+    );
 }
 
 #[test]
@@ -71,4 +76,20 @@ fn ac_qa_02_the_gate_removes_keys_and_provider_settings_from_every_step() {
         std::env::vars_os().any(|(name, _)| name.to_string_lossy().to_ascii_uppercase().ends_with("_API_KEY"));
     let removed_keys = removed.iter().any(|r| r.to_ascii_uppercase().ends_with("_API_KEY"));
     assert_eq!(has_key, removed_keys);
+}
+
+/// The release-feature check finds the test endpoint in a `cargo tree` listing and nothing else, and passes on the
+/// workspace as it is: `velme-cli`'s normal dependencies never enable it.
+#[test]
+fn ac_qa_01_the_features_check_flags_only_the_test_endpoint() {
+    let tree = "velme-cli v0.1.0\n└── velme-synth feature \"provider-ollama\"\nvelme-synth feature \"test-endpoint\"\n";
+    assert_eq!(
+        xtask::features::offending_lines(tree),
+        ["velme-synth feature \"test-endpoint\""]
+    );
+    assert!(xtask::features::offending_lines("velme-synth feature \"provider-ollama\"\n").is_empty());
+    assert_eq!(
+        xtask::features::check(&workspace_root().expect("root")).expect("cargo tree"),
+        Vec::<String>::new()
+    );
 }

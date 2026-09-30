@@ -6,12 +6,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
+use velme_builtins::limits::MIB;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_ir::Fingerprint;
+use velme_synth::fsio::{read_file, refuse_links, sync_dir, write_temp};
 
-use velme_builtins::limits::MIB;
-
-use crate::store::{TMP_DIR, VELME_DIR, read_file, refuse_links, sync_dir, write_temp};
+use crate::store::{TMP_DIR, VELME_DIR};
 
 /// The lock's file name, in the project root (`runtime/32` §4).
 pub const LOCK_FILE: &str = "velme.lock";

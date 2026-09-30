@@ -11,11 +11,16 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use velme_ir::{Fingerprint, from_json_str};
 
+use crate::fsio::{read_file, refuse_links};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::SynthRequest;
 
 /// The file in `replay_dir` that holds the recorded build's identity.
 pub const IDENTITY_FILE: &str = "replay.json";
+
+/// The most a fixture file may hold: a goal's whole conversation, each reply within the IR limit, with room to spare.
+/// A longer file is no fixture and is not read past this (R-ART-10's bound, applied to R-SYNTH-43).
+const MAX_FIXTURE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// The hint that ends every replay failure (R-SYNTH-43).
 const RE_RECORD: &str = "re-record the fixture with VELME_SYNTH_RECORD=1";
@@ -97,7 +102,42 @@ pub struct Exchange {
 /// The file of `key`'s fixture in `dir`: `b3-<hex>.json`, spelled as the artifact store spells its files (a `:` is not
 /// a portable file name character).
 pub fn fixture_path(dir: &Path, key: Fingerprint) -> PathBuf {
-    dir.join(format!("b3-{}.json", key.hex()))
+    dir.join(fixture_name(key))
+}
+
+/// The file name of `key`'s fixture.
+pub(crate) fn fixture_name(key: Fingerprint) -> String {
+    format!("b3-{}.json", key.hex())
+}
+
+/// A replay file that can't be read or written: `VL0901`.
+pub(crate) fn file_error(path: &Path, error: &std::io::Error) -> ProviderError {
+    ProviderError::File {
+        path: path.display().to_string(),
+        reason: error.to_string(),
+    }
+}
+
+/// The text of the replay file `path`, or `None` if there is no such file. Read like the artifact store reads: bounded,
+/// and never through a link or from anything but a regular file (R-ART-10).
+fn read_text(path: &Path) -> Result<Option<String>, ProviderError> {
+    let Some(dir) = path.parent() else {
+        return Ok(None);
+    };
+    let read = refuse_links(&[dir]).and_then(|()| read_file(path, MAX_FIXTURE_BYTES));
+    match read {
+        Ok(Some(bytes)) => String::from_utf8(bytes)
+            .map(Some)
+            .map_err(|e| file_error(path, &std::io::Error::other(e))),
+        Ok(None) => Err(file_error(
+            path,
+            &std::io::Error::other(format!(
+                "it is longer than the {MAX_FIXTURE_BYTES} bytes a fixture may be"
+            )),
+        )),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(file_error(path, &e)),
+    }
 }
 
 /// The replay backend over the fixtures in one directory.
@@ -118,7 +158,7 @@ impl SynthBackend for Replay {
     /// Reads `replay.json` (R-SYNTH-25). Contacts nothing else.
     async fn identify(&self) -> Result<Identity, ProviderError> {
         let path = self.dir.join(IDENTITY_FILE);
-        let text = std::fs::read_to_string(&path).map_err(|_| {
+        let text = read_text(&path)?.ok_or_else(|| {
             ProviderError::Unavailable(format!(
                 "there is no {IDENTITY_FILE} in the replay directory; {RE_RECORD}"
             ))
@@ -181,7 +221,7 @@ impl SynthProvider for ReplayProvider {
             ProviderError::Unavailable(format!("replay fixture {key}, attempt {attempt}: {why}; {RE_RECORD}"))
         };
         let path = fixture_path(&self.dir, key);
-        let text = std::fs::read_to_string(&path).map_err(|_| fail("there is no fixture"))?;
+        let text = read_text(&path)?.ok_or_else(|| fail("there is no fixture"))?;
         let exchanges: Vec<Exchange> =
             from_json_str(&text).map_err(|_| fail("the fixture isn't a list of exchanges"))?;
         let exchange = exchanges

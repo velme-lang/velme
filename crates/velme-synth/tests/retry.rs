@@ -505,7 +505,7 @@ fn ac_synth_39_after_one_vl0404_the_provider_is_not_contacted_again() {
         provider.sleeper.waits(),
         [std::time::Duration::from_secs(1), std::time::Duration::from_secs(2)]
     );
-    assert!(session.unavailable());
+    assert!(session.stopped().is_some());
     assert_eq!(
         unavailable("Double", Default::default(), None).message,
         "Velme couldn't reach the AI helper to build `Double`."
@@ -514,6 +514,28 @@ fn ac_synth_39_after_one_vl0404_the_provider_is_not_contacted_again() {
         unavailable("Double", Default::default(), None).code,
         Code::ProviderUnavailable
     );
+}
+
+/// A rejected key is `VL0405` in its own words, and, like `VL0404`, ends all contact: the next goal gets the same
+/// diagnostic with no request (R-SYNTH-45, R-SYNTH-07).
+#[test]
+fn r_synth_45_a_rejected_key_stops_further_contact_with_vl0405() {
+    let program = program(SOURCE);
+    let provider = Scripted::new([Step::Error(ProviderError::KeyRejected), Step::Reply("{}".to_owned())]);
+    let mut session = Session::new(SynthOptions::default());
+    let runner = LeafRunner::new();
+    for _ in 0..2 {
+        let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task(&program), &runner)) else {
+            panic!("it fails")
+        };
+        assert_eq!(failure.diagnostic.code, Code::ProviderNotConfigured);
+        assert!(
+            failure.diagnostic.message.contains("the API key was rejected"),
+            "{}",
+            failure.diagnostic.message
+        );
+    }
+    assert_eq!(provider.calls(), 1);
 }
 
 /// A `RateLimited` waits its `retry_after`, at most 30 s (R-SYNTH-12).
@@ -619,7 +641,13 @@ fn r_synth_31_a_validator_cause_is_its_rule_not_its_message() {
     };
     let shown = format!("{d:?} {:?}", failed.attempts);
     assert!(!shown.contains("SENTINEL"), "{shown}");
-    assert!(failed.attempts[0].contains("rule structure-"), "{:?}", failed.attempts);
+    // The learner's line is the rule in words; the id is there for tools and bug reports (P-6).
+    assert!(
+        failed.attempts[0].contains("calls another goal itself") && failed.attempts[0].contains("(structure-6)"),
+        "{:?}",
+        failed.attempts
+    );
+    assert!(!d.message.contains("structure-6"), "{}", d.message);
     // The provider still gets the whole story, path apart from detail.
     let sent = &run.provider.requests()[1].attempts[0].diagnostics[0];
     assert_eq!(sent.code, "VL0402");

@@ -96,7 +96,7 @@ fn failure(result: Result<String, ProviderError>) -> String {
 #[test]
 fn describe_gives_the_backend_name_and_version() {
     let dir = scratch("describe");
-    let backend = external(&dir, &["--describe", "  my\u{1b}[1m backend ", "v\n2"], PATIENT);
+    let backend = external(&dir, &["--describe", "  my   backend ", "v  2"], PATIENT);
     let identity = block_on(backend.identify()).expect("identity");
     assert_eq!(identity.provider, "external");
     assert_eq!(identity.backend.as_deref(), Some("my backend"));
@@ -104,8 +104,8 @@ fn describe_gives_the_backend_name_and_version() {
     assert_eq!(identity.input_version, REQUEST_VERSION);
 }
 
-/// A name or version that is empty, over 128 characters or blank once cleaned, or a reply with anything else in it, is a
-/// backend failure (R-SYNTH-26, D-98).
+/// A name or version that is empty, over 128 characters, blank, or holding a control, format or bidi character, or a
+/// reply with anything else in it, is a backend failure (R-SYNTH-26, D-98).
 #[test]
 fn a_describe_reply_that_breaks_the_rules_is_a_backend_failure() {
     let dir = scratch("describe-bad");
@@ -113,6 +113,12 @@ fn a_describe_reply_that_breaks_the_rules_is_a_backend_failure() {
         ("", "v"),
         ("n", ""),
         (" \u{7} ", "v"),
+        // Control, format and bidi characters are refused, not cleaned away (R-SYNTH-26, D-47).
+        ("my\u{1b}[1m backend", "v"),
+        ("n", "v\n2"),
+        ("n\u{202e}", "v"),
+        ("n", "v\u{200b}2"),
+        ("\u{feff}n", "v"),
         (&"n".repeat(129), "v"),
         ("n", &"v".repeat(129)),
     ] {
@@ -237,20 +243,56 @@ fn a_backend_that_outlives_the_timeout_is_stopped_with_its_whole_group() {
         );
         failure(complete(&group, &request()));
         let pid = fs::read_to_string(&pidfile).expect("the grandchild's pid");
-        // Signal 0 asks only whether the process exists; a killed child is reaped by init, so give it a moment.
-        let alive = || {
-            std::process::Command::new("kill")
-                .args(["-0", pid.trim()])
-                .stderr(std::process::Stdio::null())
-                .status()
-                .is_ok_and(|s| s.success())
-        };
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while alive() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        assert!(!alive(), "the grandchild {pid} is still running");
+        assert!(gone(&pid), "the grandchild {pid} is still running");
     }
+}
+
+/// Whether the process `pid` is gone. Signal 0 asks only whether it exists; a killed one is reaped by init, so it is
+/// given a moment.
+#[cfg(unix)]
+fn gone(pid: &str) -> bool {
+    let alive = || {
+        std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    !alive()
+}
+
+/// A backend that replies and exits but leaves a child holding its stdout open is not a hang: the reply is accepted at
+/// once, no timeout is reported, and the child is killed with the group (R-SYNTH-28).
+#[cfg(unix)]
+#[test]
+fn a_reply_is_accepted_when_a_leftover_child_holds_the_pipe_and_the_child_is_killed() {
+    let dir = scratch("sleeper");
+    fs::write(dir.join("FindBadge.json"), r#"{"question":"Which badge?"}"#).expect("reply file");
+    let pidfile = dir.join("pid");
+    let backend = external(
+        &dir,
+        &[
+            "--dir",
+            dir.to_str().expect("utf-8"),
+            "--sleeper",
+            "--pidfile",
+            pidfile.to_str().expect("utf-8"),
+        ],
+        PATIENT,
+    );
+    let started = Instant::now();
+    let reply = complete(&backend, &request()).expect("the reply is accepted");
+    assert!(reply.contains("Which badge?"), "{reply}");
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the sleeper was waited for"
+    );
+    let pid = fs::read_to_string(&pidfile).expect("the sleeper's pid");
+    assert!(gone(&pid), "the sleeper {pid} is still running");
 }
 
 /// A command that can't be started is a backend failure, not a panic.

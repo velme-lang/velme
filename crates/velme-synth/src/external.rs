@@ -25,6 +25,12 @@ const MAX_STDOUT_BYTES: usize = 2 * 1024 * 1024;
 /// How often the supervisor looks whether the command has exited.
 const POLL: Duration = Duration::from_millis(10);
 
+/// How long the pipes get to close after the command exits, before the group is killed for holding them open.
+const EXIT_GRACE: Duration = Duration::from_millis(250);
+
+/// How long the pipes get to drain once the group is dead, before their threads are abandoned.
+const DRAIN: Duration = Duration::from_millis(500);
+
 /// How much of a backend's stderr the notes keep (R-SYNTH-28).
 const STDERR_TAIL_BYTES: usize = 4096;
 
@@ -196,7 +202,7 @@ impl SynthBackend for External {
         };
         let (Some(backend), Some(version)) = (text("backend"), text("backend_version")) else {
             return Err(failed(
-                "its `describe` reply wasn't a `backend` and a `backend_version` of 1 to 128 characters each",
+                "its `describe` reply wasn't a `backend` and a `backend_version` of 1 to 128 characters each, with no control or invisible characters",
                 "",
             ));
         };
@@ -304,7 +310,8 @@ enum Event {
 }
 
 /// Runs the command with `input` on its stdin and returns its stdout (R-SYNTH-28): a failure of any kind is a
-/// `BackendFailed` with the tail of stderr. On timeout, or output past the cap, the whole process group is killed.
+/// `BackendFailed` with the tail of stderr. However it ends, success included, the whole process group is killed and the
+/// command reaped, so nothing it started outlives the message.
 fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<Vec<u8>, ProviderError> {
     let command = &config.command;
     let mut process = Command::new(&command.program);
@@ -372,78 +379,123 @@ fn run(config: &ExternalConfig, input: Vec<u8>) -> Result<Vec<u8>, ProviderError
     }
     drop(tx);
 
-    // Only this thread reaps the child, so a child still unreaped is a child whose group can be signalled safely.
+    // Only this thread reaps the child, and only once the group is dead, so the leader stays a zombie that keeps its
+    // process group id reserved: a signal to the group can never reach an unrelated process (R-SYNTH-28).
     let deadline = Instant::now() + config.timeout;
-    let (mut status, mut stdout, mut stderr, mut stdin) = (None, None, None, None);
-    let mut cut: Option<String> = None;
-    while cut.is_none() && (status.is_none() || stdout.is_none() || stderr.is_none() || stdin.is_none()) {
-        let left = deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            cut = Some(format!("it took longer than {:?}", config.timeout));
+    let mut heard = Heard::default();
+    let mut exited: Option<Instant> = None;
+    loop {
+        if exited.is_none() && has_exited(&mut child, pid) {
+            exited = Some(Instant::now());
+        }
+        let done = heard.stdout.is_some() && heard.stderr.is_some() && heard.stdin.is_some();
+        if heard.cut.is_some() || exited.is_some_and(|at| done || at.elapsed() >= EXIT_GRACE) {
             break;
         }
-        match rx.recv_timeout(left.min(POLL)) {
-            Ok(Event::Stdout(bytes, over)) => {
-                if over {
-                    cut = Some(format!("it wrote more than {} MiB", MAX_STDOUT_BYTES / (1024 * 1024)));
-                }
-                stdout = Some(bytes);
-            }
-            Ok(Event::Stderr(bytes)) => stderr = Some(bytes),
-            Ok(Event::Stdin(ok)) => stdin = Some(ok),
-            // Every pipe thread may be done already: what is left is the exit.
-            Err(_) => {}
+        let left = deadline.saturating_duration_since(Instant::now());
+        // The grace after the exit is not the command's time: only a command still running can be too slow.
+        if exited.is_none() && left.is_zero() {
+            heard.cut = Some(format!("it took longer than {:?}", config.timeout));
+            break;
         }
-        if status.is_none() {
-            status = child.try_wait().transpose();
+        if let Ok(event) = rx.recv_timeout(left.min(POLL)) {
+            heard.hear(event);
         }
     }
-    if cut.is_some() {
-        if status.is_none() {
-            kill_group(&mut child, pid);
-        }
-        status = Some(child.wait());
-        // The pipes close with the group, so its last words arrive at once.
-        while let Ok(event) = rx.recv_timeout(Duration::from_millis(500)) {
-            if let Event::Stderr(bytes) = event {
-                stderr = Some(bytes);
-                break;
-            }
+    // Every path ends the same way: the whole group is killed, a leader that left it is killed on its own (it is still
+    // unreaped, so its pid is still its), and only then is it reaped, which can no longer block for long.
+    kill_all(&mut child, pid);
+    let status = child.wait();
+    // The pipes close with the group, so its last words arrive at once; a holder outside the group is not waited for.
+    let drain = Instant::now() + DRAIN;
+    while !(heard.stdout.is_some() && heard.stderr.is_some() && heard.stdin.is_some()) {
+        let left = drain.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(event) => heard.hear(event),
+            Err(_) => break,
         }
     }
-    let tail = clean_tail(&stderr.unwrap_or_default(), STDERR_TAIL_BYTES);
-    if let Some(reason) = cut {
+    let tail = clean_tail(&heard.stderr.unwrap_or_default(), STDERR_TAIL_BYTES);
+    if let Some(reason) = heard.cut {
         return Err(failed(&reason, &tail));
     }
     match status {
-        Some(Ok(status)) if status.success() => {}
-        Some(Ok(status)) => {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
             let reason = match status.code() {
                 Some(code) => format!("it exited with status {code}"),
                 None => "it was stopped by a signal".to_owned(),
             };
             return Err(failed(&reason, &tail));
         }
-        _ => return Err(failed("it couldn't be waited for", &tail)),
+        Err(_) => return Err(failed("it couldn't be waited for", &tail)),
     }
-    if stdin != Some(true) {
+    if heard.stdin != Some(true) {
         return Err(failed("it closed its input before reading the message", &tail));
     }
-    stdout.ok_or_else(|| failed("its output couldn't be read", &tail))
+    heard.stdout.ok_or_else(|| failed("its output couldn't be read", &tail))
 }
 
-/// Stops the command's whole process group: it leads its own (`process_group(0)`), so the group is `pid`'s. Where there
-/// are no groups only the process itself is stopped. No helper program is looked up on `PATH`.
+/// What the supervisor has heard from the pipe threads, and why it cut the command short, if it did.
+#[derive(Default)]
+struct Heard {
+    stdout: Option<Vec<u8>>,
+    stderr: Option<Vec<u8>>,
+    stdin: Option<bool>,
+    cut: Option<String>,
+}
+
+impl Heard {
+    fn hear(&mut self, event: Event) {
+        match event {
+            Event::Stdout(bytes, over) => {
+                if over && self.cut.is_none() {
+                    self.cut = Some(format!("it wrote more than {} MiB", MAX_STDOUT_BYTES / (1024 * 1024)));
+                }
+                self.stdout = Some(bytes);
+            }
+            Event::Stderr(bytes) => self.stderr = Some(bytes),
+            Event::Stdin(ok) => self.stdin = Some(ok),
+        }
+    }
+}
+
+/// Whether the command has exited, without reaping it: on unix the zombie stays, so its process group id stays taken.
 #[cfg(unix)]
-fn kill_group(_child: &mut std::process::Child, pid: u32) {
+fn has_exited(_child: &mut std::process::Child, pid: u32) -> bool {
+    use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+    let Some(pid) = i32::try_from(pid).ok().and_then(Pid::from_raw) else {
+        return true;
+    };
+    // An error can only mean there is nothing left to wait for.
+    waitid(
+        WaitId::Pid(pid),
+        WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
+    )
+    .map_or(true, |status| status.is_some())
+}
+
+#[cfg(not(unix))]
+fn has_exited(child: &mut std::process::Child, _pid: u32) -> bool {
+    // Windows keeps the exit status on the handle, so `wait` still has it after this.
+    child.try_wait().map_or(true, |status| status.is_some())
+}
+
+/// Stops the command and everything it started: its whole process group, which it leads (`process_group(0)`), so the
+/// group is `pid`'s; then the command itself, in case it left the group. Both are safe because it is not yet reaped.
+/// Where there are no groups only the process itself is stopped (group kill is unix-only for now). No helper program is
+/// looked up on `PATH`.
+#[cfg(unix)]
+fn kill_all(child: &mut std::process::Child, pid: u32) {
     use rustix::process::{Pid, Signal, kill_process_group};
     if let Some(group) = i32::try_from(pid).ok().and_then(Pid::from_raw) {
         let _ = kill_process_group(group, Signal::KILL);
     }
+    let _ = child.kill();
 }
 
 #[cfg(not(unix))]
-fn kill_group(child: &mut std::process::Child, _pid: u32) {
+fn kill_all(child: &mut std::process::Child, _pid: u32) {
     let _ = child.kill();
 }
 

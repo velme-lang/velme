@@ -38,27 +38,57 @@ impl ApiKey {
         ApiKey(key.into())
     }
 
-    /// The key in the environment: `VELME_API_KEY`, else `ANTHROPIC_API_KEY` (`tooling/40` §5.2), trimmed. A variable
-    /// that is empty, or holds anything but visible ASCII once trimmed, is not a key.
+    /// The key in the environment (`tooling/40` §5.2): see [`ApiKey::lookup`].
     pub fn from_env() -> Option<Self> {
-        Self::first_usable(
-            ["VELME_API_KEY", "ANTHROPIC_API_KEY"]
-                .iter()
-                .filter_map(|name| std::env::var(name).ok()),
-        )
+        Self::lookup().ok()
     }
 
-    /// The first of `values`, trimmed, that can be a key.
-    fn first_usable(values: impl Iterator<Item = String>) -> Option<Self> {
-        values
-            .map(|value| ApiKey(value.trim().to_owned()))
-            .find(ApiKey::is_usable)
+    /// The key in the environment: `VELME_API_KEY`, else `ANTHROPIC_API_KEY`, trimmed. A variable that is empty is not
+    /// set. One that is set to something that can't be a key, anything but visible ASCII once trimmed, is an error
+    /// naming it: it is not skipped for the next variable, so a typo in `VELME_API_KEY` never sends a request under
+    /// another key.
+    pub fn lookup() -> Result<Self, KeyError> {
+        Self::pick(["VELME_API_KEY", "ANTHROPIC_API_KEY"].map(|name| {
+            let value = match std::env::var(name) {
+                Ok(value) => Some(value),
+                // Set, but not text: it can't be a key.
+                Err(std::env::VarError::NotUnicode(_)) => Some("\u{fffd}".to_owned()),
+                Err(std::env::VarError::NotPresent) => None,
+            };
+            (name, value)
+        }))
+    }
+
+    /// The first of `vars` that is set and not empty, as a key, or the error naming it.
+    fn pick(vars: [(&'static str, Option<String>); 2]) -> Result<Self, KeyError> {
+        for (name, value) in vars {
+            let Some(value) = value else { continue };
+            let key = ApiKey(value.trim().to_owned());
+            if key.0.is_empty() {
+                continue;
+            }
+            return if key.is_usable() {
+                Ok(key)
+            } else {
+                Err(KeyError::Malformed(name))
+            };
+        }
+        Err(KeyError::Missing)
     }
 
     /// Whether the text can be an `x-api-key` header value: non-empty visible ASCII.
     fn is_usable(&self) -> bool {
         !self.0.is_empty() && self.0.bytes().all(|b| b.is_ascii_graphic())
     }
+}
+
+/// Why the environment holds no key to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyError {
+    /// Neither variable is set to anything.
+    Missing,
+    /// This variable is set to something that can't be an API key.
+    Malformed(&'static str),
 }
 
 impl fmt::Debug for ApiKey {
@@ -109,7 +139,7 @@ enum KeySource {
 impl KeySource {
     fn get(&self) -> Option<ApiKey> {
         match self {
-            KeySource::Env => ApiKey::from_env(),
+            KeySource::Env => ApiKey::lookup().ok(),
             KeySource::Fixed(key) => Some(key.clone()).filter(ApiKey::is_usable),
         }
     }
@@ -239,7 +269,8 @@ impl Anthropic {
             .map(Duration::from_secs);
         match status {
             200..=299 => read_body(&mut response),
-            401 | 403 | 404 => Err(ProviderError::NotConfigured),
+            401 | 403 => Err(ProviderError::KeyRejected),
+            404 => Err(ProviderError::NotConfigured),
             429 => Err(ProviderError::RateLimited { retry_after }),
             300..=399 | 408 | 500..=599 => Err(ProviderError::Unavailable(format!(
                 "the provider answered with status {status}"
@@ -378,14 +409,40 @@ impl SynthProvider for Anthropic {
 
 #[cfg(test)]
 mod tests {
-    use super::ApiKey;
+    use super::{ApiKey, KeyError};
 
-    /// A key is trimmed, and an empty, blank, non-ASCII or control-character value is skipped (`VL0405`).
+    fn pick(velme: Option<&str>, anthropic: Option<&str>) -> Result<ApiKey, KeyError> {
+        ApiKey::pick([
+            ("VELME_API_KEY", velme.map(str::to_owned)),
+            ("ANTHROPIC_API_KEY", anthropic.map(str::to_owned)),
+        ])
+    }
+
+    /// A key is trimmed, and an empty or blank variable is not set (`VL0405`).
     #[test]
-    fn a_key_is_trimmed_and_an_unusable_value_is_skipped() {
-        let pick = |values: &[&str]| ApiKey::first_usable(values.iter().map(|v| (*v).to_owned()));
-        assert_eq!(pick(&["  sk-1\n"]), Some(ApiKey("sk-1".to_owned())));
-        assert_eq!(pick(&["", "   ", "sk-2"]), Some(ApiKey("sk-2".to_owned())));
-        assert_eq!(pick(&["sk\u{7}1", "sk-é", "sk 3", ""]), None);
+    fn a_key_is_trimmed_and_an_empty_variable_is_not_set() {
+        assert_eq!(pick(Some("  sk-1\n"), None), Ok(ApiKey("sk-1".to_owned())));
+        assert_eq!(pick(Some("  "), Some("sk-2")), Ok(ApiKey("sk-2".to_owned())));
+        assert_eq!(pick(None, Some("sk-3")), Ok(ApiKey("sk-3".to_owned())));
+        assert_eq!(pick(Some(""), None), Err(KeyError::Missing));
+        assert_eq!(pick(None, None), Err(KeyError::Missing));
+    }
+
+    /// A variable set to what can't be a key is an error naming it; it never falls back to the next variable, so a typo
+    /// in `VELME_API_KEY` doesn't send a request under `ANTHROPIC_API_KEY`.
+    #[test]
+    fn a_malformed_key_is_an_error_naming_the_variable_and_never_falls_back() {
+        for bad in ["sk\u{7}1", "sk-\u{e9}", "sk 3", "sk-\nx", "\u{fffd}"] {
+            assert_eq!(
+                pick(Some(bad), Some("sk-good")),
+                Err(KeyError::Malformed("VELME_API_KEY")),
+                "{bad:?}"
+            );
+            assert_eq!(
+                pick(None, Some(bad)),
+                Err(KeyError::Malformed("ANTHROPIC_API_KEY")),
+                "{bad:?}"
+            );
+        }
     }
 }

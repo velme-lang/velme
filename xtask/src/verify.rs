@@ -69,6 +69,7 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
         steps.push(doc);
         steps.push(cargo_step("deny", &["deny", "check"]));
         steps.push(self_step("layering", "layering")?);
+        steps.push(self_step("features", "features")?);
         steps.push(self_step("ac-audit", "ac-audit")?);
     }
     Ok(steps)
