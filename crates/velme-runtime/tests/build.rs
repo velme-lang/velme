@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use velme_builtins::BUILTINS_VERSION;
 use velme_diagnostics::Code;
 use velme_ir::IR_VERSION;
-use velme_runtime::{BuildInput, BuildReport, Clock, Lock, Mode, Options, Source, Status, build};
+use velme_runtime::{Backend, BuildInput, BuildReport, Clock, Lock, Mode, Options, Source, Status, Wasm, build};
 use velme_synth::{
     AnthropicConfig, Identity, ProviderError, Recorder, Replay, Scripted, Step, SynthBackend, SynthOptions,
     SynthProvider,
@@ -1035,4 +1035,65 @@ fn ac_synth_08_an_offline_build_needs_no_contact_and_skips_the_store() {
     );
     assert!(fresh.report.goals.iter().all(|g| matches!(g.status, Status::Built(_))));
     assert_eq!(fresh.contacts, 0);
+}
+
+/// Build verification and `--locked` re-verification run on the interpreter whatever backend the caller's run options
+/// name: a leaf the WASM emitter declines builds and re-verifies under `wasm`, where running it would be `VL0607`,
+/// and under `auto` leaves no note of a fallback (R-SBX-17, D-80, D-117).
+#[test]
+fn r_sbx_17_build_and_locked_verification_run_on_the_interpreter() {
+    let text = "language: velme/0.1
+
+goal Hidden(xs: List<Number>) -> Boolean:
+    plan: \"Say whether a list of nothing has nothing in it.\"
+    examples:
+        - Hidden([1, 2]) == true
+";
+    // `is_empty(find(map(xs, x -> nothing), y -> true))`: a `Nothing?`, which the emitter declines.
+    let nothing = json!({"kind": "literal", "type": {"t": "Nothing"}, "value": null});
+    let mapped = json!({"kind": "map", "list": {"kind": "input", "name": "xs"}, "fn": {"param": "x", "body": nothing}});
+    let yes = json!({"kind": "literal", "type": {"t": "Boolean"}, "value": true});
+    let found = json!({"kind": "find", "list": mapped, "fn": {"param": "y", "body": yes}});
+    let hidden = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Hidden", "types": {},
+                        "inputs": [["xs", {"t": "List", "of": number()}]], "output": {"t": "Boolean"},
+                        "body": {"kind": "unary", "op": "is_empty", "arg": found}})
+    .to_string();
+    let checked = program(text);
+    let wasm = Arc::new(Wasm::new(None));
+    for (name, backend) in [
+        ("wasm", Backend::Wasm(Arc::clone(&wasm))),
+        ("auto", Backend::Auto(Arc::clone(&wasm))),
+    ] {
+        let dir = project(&format!("backend_{name}"));
+        let script = replies(std::slice::from_ref(&hidden));
+        for (mode, provider) in [
+            (Mode::Build, &script as &dyn SynthBackend),
+            (Mode::Locked, &PanicProvider),
+        ] {
+            let input = BuildInput {
+                mode,
+                program: &checked,
+                source: text,
+                project: &dir,
+                file: FILE,
+                backend: Some(provider),
+                options: SynthOptions::default(),
+                run: Options {
+                    backend: backend.clone(),
+                    ..Options::default()
+                },
+            };
+            let built = Built {
+                report: build(&input, &mut || {}),
+                contacts: 0,
+            };
+            let source = if mode == Mode::Build {
+                Source::Synthesized
+            } else {
+                Source::Lock
+            };
+            assert_eq!(status(&built, "Hidden"), Status::Built(source), "{name} {mode:?}");
+        }
+    }
+    assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
 }

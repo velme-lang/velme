@@ -20,6 +20,7 @@ velme-interp.workspace = true
 velme-ir.workspace = true
 velme-sema.workspace = true
 velme-synth.workspace = true
+velme-wasm.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

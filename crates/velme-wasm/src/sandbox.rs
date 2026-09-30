@@ -2,7 +2,9 @@
 //! and run once per invocation in a fresh store under the run's limits. The module's own meters decide a run
 //! (R-SBX-05); Wasmtime's fuel, its resource limiter and the epoch watchdog stand behind them (R-SBX-12, INV-5).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -157,6 +159,10 @@ pub struct Run {
     pub backstop: Option<Backstop>,
     /// The Wasmtime fuel the run was given and used.
     pub wasmtime_fuel: WasmtimeFuel,
+    /// Whether `velme_run` was called. A run that never started failed in the host before the module ran any of the
+    /// goal (its thread, its instance, its inputs): the caller may run the goal elsewhere. One that started is the
+    /// goal's outcome, whatever it is (D-121).
+    pub started: bool,
 }
 
 /// The Wasmtime fuel of one run, which the differential suite holds under a quarter of what was given (R-SBX-15).
@@ -184,6 +190,7 @@ impl Run {
             spent: Spent::default(),
             backstop: None,
             wasmtime_fuel: WasmtimeFuel::default(),
+            started: false,
         }
     }
 }
@@ -372,11 +379,15 @@ fn engine() -> wasmtime::Result<Engine> {
 /// The sandbox: one engine, its linker of the whitelist, the thread that moves its epoch on, and where its compiled
 /// modules are kept. Nothing public runs bytes the emitter did not produce (R-SBX-09).
 ///
-/// A sandbox is made once per process: its disk cache, once refused, stays off (R-SBX-20, D-120).
+/// A sandbox is made once per process: its disk cache, once refused, stays off (R-SBX-20, D-120), and each module
+/// it loads is compiled once for the process.
 pub struct Sandbox {
     engine: Engine,
     linker: Linker<Host>,
     cache: Option<Cache>,
+    /// What each module loaded so far was compiled and linked to, by BLAKE3 of its bytes: code only, never a goal's
+    /// signature or data, which two goals with the same bytes need not share.
+    linked: Mutex<HashMap<[u8; 32], InstancePre<Host>>>,
 }
 
 impl std::fmt::Debug for Sandbox {
@@ -409,7 +420,12 @@ impl Sandbox {
             .spawn(ticker)
             .map_err(internal)?;
         let cache = cache.map(|dir| Cache::new(dir, &engine));
-        Ok(Sandbox { engine, linker, cache })
+        Ok(Sandbox {
+            engine,
+            linker,
+            cache,
+            linked: Mutex::new(HashMap::new()),
+        })
     }
 
     /// The disk cache, for the tests of what it reads.
@@ -429,7 +445,8 @@ impl Sandbox {
     }
 
     /// The emitted `module`, compiled and linked, ready to run any number of times. Emission always runs first;
-    /// only what Cranelift made of the module is cached (R-SBX-13).
+    /// only what Cranelift made of the module is cached (R-SBX-13), and in memory only its code: the program takes
+    /// the signature, data and literals of `module` itself.
     pub fn load(&self, module: &Module) -> Result<Program, LoadError> {
         self.load_bytes(module.bytes(), module)
     }
@@ -438,10 +455,24 @@ impl Sandbox {
     /// the crate (R-SBX-09): they are validated (R-SBX-07), then their imports are held against the whitelist, and
     /// only then compiled.
     pub(crate) fn load_bytes(&self, bytes: &[u8], like: &Module) -> Result<Program, LoadError> {
-        validate(bytes).map_err(LoadError::Internal)?;
-        whitelisted(bytes)?;
-        let compiled = self.compiled(bytes)?;
-        let pre = self.linker.instantiate_pre(&compiled).map_err(internal)?;
+        let key = *blake3::hash(bytes).as_bytes();
+        let known = self
+            .linked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&key)
+            .cloned();
+        let pre = match known {
+            Some(pre) => pre,
+            None => {
+                validate(bytes).map_err(LoadError::Internal)?;
+                whitelisted(bytes)?;
+                let compiled = self.compiled(bytes)?;
+                let pre = self.linker.instantiate_pre(&compiled).map_err(internal)?;
+                let mut linked = self.linked.lock().unwrap_or_else(PoisonError::into_inner);
+                linked.entry(key).or_insert(pre).clone()
+            }
+        };
         Ok(Program {
             pre,
             signature: like.signature.clone(),
@@ -621,7 +652,14 @@ impl Program {
             .saturating_add(self.literals.bytes)
             .saturating_add(RESULT_SLACK_BYTES);
         let sizeless = image.sizeless().saturating_add(self.literals.sizeless);
-        let called = call(&exports, &mut store, image, limits);
+        let Ok(base) = prepare(&exports, &mut store, image, limits) else {
+            return run;
+        };
+        // The first deadline is the call itself: a run that starts past its time is stopped before it runs, and from
+        // then on the watchdog is asked at every tick (D-115).
+        store.set_epoch_deadline(0);
+        run.started = true;
+        let called = exports.run.call(&mut store, base);
         run.wasmtime_fuel.used = run.wasmtime_fuel.given.saturating_sub(store.get_fuel().unwrap_or(0));
         let left = |global: &Global, store: &mut Store<Host>| global.get(store).i64().map(i64::cast_unsigned);
         let fuel_left = left(&exports.fuel_left, &mut store);
@@ -666,8 +704,8 @@ impl Program {
 /// Room in the result's budget for an output that is a scalar, which nobody is charged for (D-89).
 const RESULT_SLACK_BYTES: u64 = 64;
 
-/// Sets the limits, writes the inputs and calls `velme_run`: the address it returns (R-SBX-03).
-fn call(exports: &Exports, store: &mut Store<Host>, image: Image, limits: Limits) -> wasmtime::Result<i32> {
+/// Sets the limits and writes the inputs: the address to call `velme_run` with (R-SBX-03).
+fn prepare(exports: &Exports, store: &mut Store<Host>, image: Image, limits: Limits) -> wasmtime::Result<i32> {
     exports
         .fuel_left
         .set(&mut *store, Val::I64(limits.fuel.cast_signed()))?;
@@ -680,10 +718,7 @@ fn call(exports: &Exports, store: &mut Store<Host>, image: Image, limits: Limits
     exports
         .memory
         .write(&mut *store, base.cast_unsigned() as usize, &bytes)?;
-    // The first deadline is the call itself: a run that starts past its time is stopped before it runs, and from
-    // then on the watchdog is asked at every tick (D-115).
-    store.set_epoch_deadline(0);
-    exports.run.call(&mut *store, base)
+    Ok(base)
 }
 
 /// Why the module stopped, in the order of R-SBX-11, and the backstop that fired if one did; `None` for `VL0607`.

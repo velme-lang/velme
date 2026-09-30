@@ -1489,6 +1489,7 @@ dependencies = [
  "velme-sema",
  "velme-synth",
  "velme-test-support",
+ "velme-wasm",
 ]
 
 [[package]]

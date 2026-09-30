@@ -302,8 +302,8 @@ too) must be in it; if not, the build fails with `VL0405` "The model `{model}` i
 contact, naming the list. Nothing is swapped for the first allowed model, across providers or otherwise (D-105).
 **R-CLI-21** Provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) apply only to `build` and to
 `run`/`test`/`trace` with `--build`; given anywhere else they are `VL0902`, not ignored. `--backend` takes `interp`,
-`wasm` or `auto`, and any other value is `VL0902`; under `--backend wasm` a leaf goal the emitter declines is `VL0607`,
-never a silent fallback (`runtime/31` R-SBX-02, D-117). The output has no `backend` field, in `velme-cli/1` or in the
+`wasm` or `auto`, and any other value is `VL0902`; under `--backend wasm` a leaf goal the WASM backend can't run is
+`VL0607`, never a silent fallback (`runtime/31` R-SBX-02, D-117, D-121). The output has no `backend` field, in `velme-cli/1` or in the
 trace. A bad flag is reported like any input error: as a top-level diagnostic in the normal `--json` envelope, exit
 `64` (D-108).
 **R-CLI-22** `velme artifact FILE --goal G` loads the goal's artifact with the same checks and the same codes as `run`

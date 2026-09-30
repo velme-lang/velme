@@ -15,6 +15,17 @@ pub enum Color {
     Never,
 }
 
+/// `--backend` (`tooling/40` §2, `runtime/31` R-SBX-02): what evaluates leaf goal bodies in `run`, `test` and `trace`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// The reference interpreter, the default until the M7 gate (D-117).
+    Interp,
+    /// WASM, and a leaf the WASM backend can't run is `VL0607`.
+    Wasm,
+    /// WASM, and on the interpreter a leaf whose module fails before it starts (D-121).
+    Auto,
+}
+
 /// The command (`tooling/40` §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cmd {
@@ -74,6 +85,7 @@ pub struct Cli {
     pub offline: bool,
     pub build: bool,
     pub jobs: Option<usize>,
+    pub backend: Option<Backend>,
     pub config: Option<String>,
     pub goal: Option<String>,
     pub input: Option<String>,
@@ -185,6 +197,7 @@ pub fn parse(args: &[String]) -> Result<Parsed, Box<Bad>> {
         offline: false,
         build: false,
         jobs: None,
+        backend: None,
         config: None,
         goal: None,
         input: None,
@@ -283,11 +296,13 @@ pub fn parse(args: &[String]) -> Result<Parsed, Box<Bad>> {
             }
             "--backend" => {
                 only(arg, cmd.executes(), &run_only, &file)?;
-                match value(arg, &file)?.as_str() {
-                    "interp" => {}
-                    "wasm" => return Err(fail(&file, misuse("--backend wasm", "it isn't available yet"))),
-                    v => return Err(fail(&file, expected(arg, "interp or wasm", &format!("`{v}`")))),
-                }
+                once(arg, cli.backend.is_some(), &file)?;
+                cli.backend = Some(match value(arg, &file)?.as_str() {
+                    "interp" => Backend::Interp,
+                    "wasm" => Backend::Wasm,
+                    "auto" => Backend::Auto,
+                    v => return Err(fail(&file, expected(arg, "interp, wasm or auto", &format!("`{v}`")))),
+                });
             }
             "--goal" => {
                 only(
@@ -387,8 +402,8 @@ mod tests {
             "`--nope` can't be used here: Velme has no such flag."
         );
         assert_eq!(
-            message("run a.velme --goal G --backend wasm"),
-            "`--backend wasm` can't be used here: it isn't available yet."
+            message("run a.velme --goal G --backend native"),
+            "Input `--backend` should be interp, wasm or auto, but got `native`."
         );
         assert_eq!(
             message("run a.velme --goal G --jobs 0"),
@@ -402,6 +417,21 @@ mod tests {
             message("check a.velme --build"),
             "`--build` can't be used here: `velme check` doesn't take it."
         );
+    }
+
+    /// `--backend` takes its three values once, on the commands that run goals (R-SBX-02, R-CLI-21, D-117).
+    #[test]
+    fn backend_takes_interp_wasm_or_auto_on_run_test_and_trace() {
+        let backend = |line: &str| match parsed(line) {
+            Ok(Parsed::Run(cli)) => cli.backend,
+            other => panic!("{line}: {other:?}"),
+        };
+        assert_eq!(backend("run a.velme --goal G"), None);
+        assert_eq!(backend("run a.velme --goal G --backend interp"), Some(Backend::Interp));
+        assert_eq!(backend("test a.velme --backend wasm"), Some(Backend::Wasm));
+        assert_eq!(backend("trace a.velme --goal G --backend auto"), Some(Backend::Auto));
+        assert!(parsed("check a.velme --backend wasm").is_err());
+        assert!(parsed("run a.velme --goal G --backend wasm --backend auto").is_err());
     }
 
     #[test]

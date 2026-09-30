@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod artifact;
+mod backend;
 mod build;
 mod clock;
 mod config;
@@ -18,6 +19,7 @@ mod synth_log;
 mod trace;
 
 pub use artifact::{ARTIFACT_FORMAT, Artifact, ArtifactFormat, Child, Kind, Manifest, Verification};
+pub use backend::{Backend, MAX_WASM_RUNS, Unrun, Wasm, eval_leaf};
 pub use build::{BuildInput, BuildReport, GoalOutcome, Mode, Source, Status, Summary, build};
 pub use clock::{Clock, SystemClock};
 pub use config::{BudgetConfig, PROJECT_FILE, ProjectConfig, UserConfig, inside_project};
