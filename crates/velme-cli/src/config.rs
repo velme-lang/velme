@@ -164,9 +164,11 @@ mod tests {
     #[test]
     fn ac_cli_22_the_user_file_is_found_at_the_location_of_each_platform() {
         let path = |vars: &[(&str, &str)], platform| user_config_path(&env(vars), platform);
+        // The XDG variables count only when absolute, and `/x` is not absolute on a Windows host.
+        let (x, c) = if cfg!(windows) { ("C:/x", "C:/c") } else { ("/x", "/c") };
         assert_eq!(
-            path(&[("XDG_CONFIG_HOME", "/x"), ("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/x/velme/config.toml"))
+            path(&[("XDG_CONFIG_HOME", x), ("HOME", "/h")], Platform::Unix),
+            Some(PathBuf::from(x).join("velme/config.toml"))
         );
         assert_eq!(
             path(&[("HOME", "/h")], Platform::Unix),
@@ -195,13 +197,13 @@ mod tests {
         assert_eq!(path(&[], Platform::Unix), None);
         let cache = |vars: &[(&str, &str)], platform| wasm_cache_path(&env(vars), platform);
         assert_eq!(
-            cache(&[("XDG_CACHE_HOME", "/c"), ("HOME", "/h")], Platform::Unix),
-            Some(PathBuf::from("/c/velme/wasm"))
+            cache(&[("XDG_CACHE_HOME", c), ("HOME", "/h")], Platform::Unix),
+            Some(PathBuf::from(c).join("velme/wasm"))
         );
         assert_eq!(
             cache(&[("HOME", "/h")], Platform::Unix),
             Some(PathBuf::from("/h/.cache/velme/wasm"))
         );
-        assert_eq!(path(&[("XDG_CONFIG_HOME", "/x")], Platform::Windows), None);
+        assert_eq!(path(&[("XDG_CONFIG_HOME", x)], Platform::Windows), None);
     }
 }
