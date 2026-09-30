@@ -34,6 +34,9 @@ pub struct ReplayIdentity {
     pub model_version: String,
     /// Its `input_version`.
     pub input_version: String,
+    /// An external backend's name (R-ART-21), so a replayed build writes the same manifests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
 }
 
 /// Token counts as a fixture keeps them.
@@ -126,6 +129,7 @@ impl SynthBackend for Replay {
             provider: identity.provider,
             model: identity.model_version,
             input_version: identity.input_version,
+            backend: identity.backend,
         })
     }
 
@@ -159,6 +163,10 @@ impl SynthProvider for ReplayProvider {
 
     fn input_version(&self) -> &str {
         &self.identity.input_version
+    }
+
+    fn backend(&self) -> &str {
+        self.identity.backend.as_deref().unwrap_or(&self.identity.provider)
     }
 
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {

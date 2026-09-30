@@ -176,7 +176,7 @@ async fn run(
         limits.attempt = attempt;
         let reply = match provider.complete(&request, &limits).await {
             Ok(reply) => reply,
-            Err(error) => match failed_call(session, error, provider.id(), name, span, &history) {
+            Err(error) => match failed_call(session, error, provider.backend(), name, span, &history) {
                 Ok(rejection) => {
                     history.push(rejection);
                     if let Some(end) = next(&mut earlier, &history, &options, attempt, name, span) {
@@ -324,18 +324,22 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
         ProviderError::Unavailable(why) => unavailable(name, span, Some(why)),
         ProviderError::Timeout => unavailable(name, span, Some("the request timed out")),
         ProviderError::RateLimited { .. } => unavailable(name, span, Some("the provider is rate limiting requests")),
-        ProviderError::BackendFailed(reason) => {
+        ProviderError::BackendFailed { reason, stderr } => {
             let reason = clean_line(reason);
             let reason = if reason.is_empty() {
                 "it failed".to_owned()
             } else {
                 reason
             };
-            Diagnostic::new(
+            let mut d = Diagnostic::new(
                 Code::BackendFailed,
                 span,
                 format!("The backend `{backend}` couldn't build `{name}`: {reason}"),
-            )
+            );
+            if !stderr.is_empty() {
+                d = d.with_note(format!("The backend's stderr ended: {stderr}"));
+            }
+            d
         }
         ProviderError::Pending(text) => pending(name, span, backend, text, &[]),
         ProviderError::Refused(_) | ProviderError::Malformed(_) | ProviderError::Internal(_) => {

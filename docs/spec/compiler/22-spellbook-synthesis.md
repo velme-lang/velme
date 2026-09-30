@@ -83,7 +83,7 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 
 **R-SYNTH-06** Live-provider tests run only with `VELME_LIVE_LLM=1` and are never part of the default gate (D-13).
 **R-SYNTH-43** Replay fixtures (D-94). `<replay_dir>/replay.json` holds `provider`, `model_version` and
-`input_version` of the recorded build; `replay` reports them from the identity step (R-SYNTH-25), so the replayed
+`input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21); `replay` reports them from the identity step (R-SYNTH-25), so the replayed
 build computes the same keys and writes byte-identical manifests. `b3-<hex>.json`, named from the synthesis key as store files are, holds one entry per exchange
 of that goal, in order: `request`, the BLAKE3 of the canonical JSON (21 R-IR-21) of the `SynthRequest` sent; then
 either `reply`, the reply JSON, or `error`, the `ProviderError` variant (`refused`, `malformed`, `backend_failed`,
@@ -133,7 +133,7 @@ like the IR schema (21 R-IR-20).
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
 cached build; its `backend_version` is `model()` and enters `synthesis_key`, so a new backend version is a cache miss
 but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version`, cleaned as in R-SYNTH-33, must
-each be 1..=128 Unicode scalar values; a `describe` that fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
+each be 1..=128 Unicode scalar values, and any other key of the reply is ignored; a `describe` that fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
 **R-SYNTH-27** A `synthesize` reply's `ir` is handled exactly like an LLM reply: full validation (21 §6), then
 verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
 R-SYNTH-32..33, as an LLM's does.
@@ -146,8 +146,8 @@ store or the lock (D-98).
 T-10). Its environment is the user's minus every variable whose name ends in `_API_KEY` (`tooling/41` R-SEC-13). The
 command itself comes only from the `--external-command` flag, `VELME_EXTERNAL_COMMAND` or the user-level config, never
 from the project's `velme.toml` (`tooling/40` R-CLI-13). It is run directly with no shell (`tooling/41` T-10, D-50): the
-program is either an absolute path or a bare name resolved on `PATH`, with the current directory, `.` entries and the
-project directory excluded from that lookup; any other relative path is `VL0902` before the command is run.
+program is either an absolute path or a bare name resolved on `PATH`, with the current directory, `.` and other relative entries, and the project directory, each with its
+subdirectories, excluded from that lookup; any other relative path is `VL0902` before the command is run.
 **R-SYNTH-30** `max_retries` defaults to 0 for `external`, since a deterministic backend returns the same reply
 again. When raised, each retry request carries the earlier replies and their diagnostics in `attempts`, as an LLM's
 retry turn does (R-SYNTH-11).

@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod project;
+mod synth;
 
 use std::io::{IsTerminal, Write};
 use std::path::Path;
@@ -20,6 +21,7 @@ use velme_syntax::SourceFile;
 use velme_synth::{Replay, SynthBackend, SynthOptions};
 
 use crate::project::Project;
+use crate::synth::{Chosen, model_name};
 
 /// Exit codes (`tooling/40` §4, R-CLI-10).
 const EXIT_OK: u8 = 0;
@@ -58,7 +60,7 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 ];
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
-                     velme build FILE [--provider NAME] [--model ID] [-v] [--json]\n       \
+                     velme build FILE [--provider NAME] [--model ID] [--external-command CMD] [-v] [--json]\n       \
                      velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--json]\n       \
                      velme test FILE [--goal G] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
@@ -89,6 +91,7 @@ enum Command {
         json: bool,
         provider: Option<String>,
         model: Option<String>,
+        external_command: Option<String>,
         verbose: bool,
     },
     Run {
@@ -129,11 +132,12 @@ fn parse_args(args: &[String]) -> Option<Command> {
         return (!json && rest.next().is_none()).then_some(Command::Version);
     }
     let (mut file, mut goal, mut input, mut pairs, mut jobs) = (None, None, None, Vec::new(), None);
-    let (mut provider, mut model, mut verbose) = (None, None, false);
+    let (mut provider, mut model, mut external_command, mut verbose) = (None, None, None, false);
     while let Some(arg) = rest.next() {
         match arg {
             "--provider" if provider.is_none() => provider = Some(rest.next()?.to_owned()),
             "--model" if model.is_none() => model = Some(rest.next()?.to_owned()),
+            "--external-command" if external_command.is_none() => external_command = Some(rest.next()?.to_owned()),
             "-v" | "--verbose" => verbose = true,
             "--goal" if goal.is_none() => goal = Some(rest.next()?.to_owned()),
             "--input" if input.is_none() => input = Some(rest.next()?.to_owned()),
@@ -155,10 +159,11 @@ fn parse_args(args: &[String]) -> Option<Command> {
             json,
             provider,
             model,
+            external_command,
             verbose,
         });
     }
-    if provider.is_some() || model.is_some() || verbose {
+    if provider.is_some() || model.is_some() || external_command.is_some() || verbose {
         return None;
     }
     match command {
@@ -248,8 +253,17 @@ fn command(args: &[String]) -> u8 {
             json,
             provider,
             model,
+            external_command,
             verbose,
-        }) => build_command(&file, json, provider.as_deref(), model.as_deref(), verbose),
+        }) => {
+            let flags = BuildFlags {
+                provider: provider.as_deref(),
+                model: model.as_deref(),
+                external_command: external_command.as_deref(),
+                verbose,
+            };
+            build_command(&file, json, &flags)
+        }
         Some(Command::Run {
             file,
             json,
@@ -419,8 +433,8 @@ fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<
 
 /// The provider `name` names, or why there is none (`tooling/40` §2.1, R-CLI-12), recorded as replay fixtures when
 /// `VELME_SYNTH_RECORD=1` says so (`compiler/22` R-SYNTH-43); the `replay` provider is never recorded onto itself.
-fn backend(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
-    let (backend, notice) = provider(name, project, model)?;
+fn backend(name: &str, project: &Project, flags: &BuildFlags) -> Result<Chosen, Diagnostic> {
+    let (backend, notice) = provider(name, project, flags)?;
     if name != "replay" && std::env::var("VELME_SYNTH_RECORD").is_ok_and(|v| v == "1") {
         let recorder = velme_synth::Recorder::new(backend, project.root.join(REPLAY_DIR));
         return Ok((Box::new(recorder), notice));
@@ -430,8 +444,8 @@ fn backend(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<dy
 
 /// The provider `name` names, and the notice that says what it sends (`tooling/41` R-SEC-12): `replay` reads the
 /// fixtures of the project's `tests/fixtures/synth`; `scripted` is there only in a build with the `test-provider`
-/// feature (D-94). `ollama` and `external` come with their providers.
-fn provider(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<dyn SynthBackend>, String), Diagnostic> {
+/// feature (D-94).
+fn provider(name: &str, project: &Project, flags: &BuildFlags) -> Result<Chosen, Diagnostic> {
     match name {
         "replay" => Ok((
             Box::new(Replay::new(project.root.join(REPLAY_DIR))),
@@ -454,13 +468,9 @@ fn provider(name: &str, project: &Project, model: Option<&str>) -> Result<(Box<d
                 "Nothing is sent: the scripted provider answers from its script.".to_owned(),
             ))
         }
-        "anthropic" => anthropic(model),
-        "ollama" | "external" => Err(Diagnostic::new(
-            Code::ProviderNotConfigured,
-            Span::default(),
-            format!("The `{name}` provider isn't available in this version of Velme yet."),
-        )
-        .with_help("build with `--provider replay`, or use the fixtures of a project that has them")),
+        "anthropic" => anthropic(flags.model),
+        "ollama" => synth::ollama(flags.model),
+        "external" => synth::external(flags.external_command, project),
         _ => Err(Diagnostic::new(
             Code::InvalidInput,
             Span::default(),
@@ -519,16 +529,44 @@ impl SynthBackend for NotConfigured {
 /// Where a project's replay fixtures are unless `[synthesis] replay_dir` says otherwise (`tooling/40` §5.1).
 const REPLAY_DIR: &str = "tests/fixtures/synth";
 
+/// The `[synthesis]` settings of a build with provider `name`: `external` defaults to no retries, since a deterministic
+/// backend gives the same answer again (`compiler/22` R-SYNTH-30). A replay follows the provider it replays, so a replayed
+/// external build asks for what the recorded one did.
+fn synth_options(name: &str, project: &Project) -> SynthOptions {
+    let recorded = || {
+        let text = std::fs::read_to_string(project.root.join(REPLAY_DIR).join(velme_synth::IDENTITY_FILE)).ok()?;
+        velme_ir::from_json_str::<velme_synth::ReplayIdentity>(&text).ok()
+    };
+    let external = name == "external" || (name == "replay" && recorded().is_some_and(|r| r.provider == "external"));
+    SynthOptions {
+        max_retries: if external {
+            0
+        } else {
+            SynthOptions::default().max_retries
+        },
+        ..SynthOptions::default()
+    }
+}
+
+/// The flags of `velme build` that choose and set up the provider (`tooling/40` §2.1).
+struct BuildFlags<'a> {
+    provider: Option<&'a str>,
+    model: Option<&'a str>,
+    external_command: Option<&'a str>,
+    verbose: bool,
+}
+
 /// `velme build FILE`: checks the file, then gives every goal without a fresh lock entry a verified artifact and a lock
 /// entry (`tooling/40` §2, `runtime/32` R-ART-15). `provider` is `--provider`; with `verbose`, every attempt of a
 /// failed goal is listed (`compiler/22` R-SYNTH-13).
-fn build_command(arg: &str, json: bool, provider: Option<&str>, model: Option<&str>, verbose: bool) -> u8 {
+fn build_command(arg: &str, json: bool, flags: &BuildFlags) -> u8 {
     let analyzed = analyze(arg);
     let (Some(program), Some(text), Some(project)) = (&analyzed.program, &analyzed.text, &analyzed.project) else {
         return finish(&analyzed, &Outcome::file(&analyzed), json);
     };
-    let name = provider.unwrap_or(DEFAULT_PROVIDER);
-    let chosen = backend(name, project, model);
+    let name = flags.provider.unwrap_or(DEFAULT_PROVIDER);
+    let verbose = flags.verbose;
+    let chosen = backend(name, project, flags);
     // A provider that can't be used doesn't stop a build that needs none; a name or script that is wrong does.
     if let Err(diagnostic) = &chosen
         && diagnostic.code == Code::InvalidInput
@@ -553,7 +591,7 @@ fn build_command(arg: &str, json: bool, provider: Option<&str>, model: Option<&s
         project: &project.root,
         file: &project.file,
         backend: Some(backend),
-        options: SynthOptions::default(),
+        options: synth_options(name, project),
         run: Options::default(),
     };
     let report = velme_runtime::build(&input, &mut || announce(notice));
@@ -572,6 +610,15 @@ fn build_command(arg: &str, json: bool, provider: Option<&str>, model: Option<&s
             for d in diagnostics.iter_mut().filter(|d| d.code == Code::ProviderNotConfigured) {
                 d.message.clone_from(&why.message);
                 d.help.clone_from(&why.help);
+            }
+        } else if name == "ollama" {
+            // The server doesn't have the model (`compiler/22` R-SYNTH-24).
+            let model = model_name(flags.model);
+            for d in diagnostics.iter_mut().filter(|d| d.code == Code::ProviderNotConfigured) {
+                d.message = format!("The Ollama server doesn't have the model `{model}`.");
+                d.help = Some(format!(
+                    "run `ollama pull {model}`, or choose another model with `--model`"
+                ));
             }
         }
         // The checked-again note stays; only the per-attempt lines wait for `-v` (R-SYNTH-13, R-SYNTH-46).

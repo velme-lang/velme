@@ -19,6 +19,9 @@ pub struct Identity {
     pub model: String,
     /// The `prompt_version` plus request options, or an external backend's `request_version` (D-97).
     pub input_version: String,
+    /// An external backend's own name, from its `describe` reply (`runtime/32` R-ART-21, R-SYNTH-26); none for any other
+    /// provider.
+    pub backend: Option<String>,
 }
 
 /// A provider before it is built (D-92). The identity step contacts whatever the provider needs to know its identity
@@ -46,6 +49,11 @@ pub trait SynthProvider: Send + Sync {
 
     /// The `prompt_version` plus request options (LLM providers, R-SYNTH-40), or the `request_version` (external).
     fn input_version(&self) -> &str;
+
+    /// What diagnostics call the provider: an external backend's own name, else the provider id.
+    fn backend(&self) -> &str {
+        self.id()
+    }
 
     /// Asks for one candidate for `request`.
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError>;
@@ -119,8 +127,13 @@ pub enum ProviderError {
     Timeout,
     /// The reply was not a reply (a failed attempt, `VL0401`).
     Malformed(String),
-    /// An external backend failed (`VL0406`).
-    BackendFailed(String),
+    /// An external backend failed (`VL0406`, R-SYNTH-28).
+    BackendFailed {
+        /// Why, in one cleaned line: Velme's wording, or the backend's own `{"error"}` text, collapsed and bounded.
+        reason: String,
+        /// The cleaned tail of the backend's stderr, empty if there was none.
+        stderr: String,
+    },
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),
     /// A bug in Velme itself, such as a request that has no hash (`VL0607`); never a verdict on the candidate.
@@ -137,7 +150,7 @@ impl ProviderError {
             ProviderError::Refused(_) => "refused",
             ProviderError::Timeout => "timeout",
             ProviderError::Malformed(_) => "malformed",
-            ProviderError::BackendFailed(_) => "backend_failed",
+            ProviderError::BackendFailed { .. } => "backend_failed",
             ProviderError::Pending(_) => "pending",
             ProviderError::Internal(_) => "internal",
         }
@@ -153,7 +166,10 @@ impl ProviderError {
             "refused" => ProviderError::Refused(String::new()),
             "timeout" => ProviderError::Timeout,
             "malformed" => ProviderError::Malformed(String::new()),
-            "backend_failed" => ProviderError::BackendFailed(String::new()),
+            "backend_failed" => ProviderError::BackendFailed {
+                reason: String::new(),
+                stderr: String::new(),
+            },
             "pending" => ProviderError::Pending(text.unwrap_or_default().to_owned()),
             "internal" => ProviderError::Internal(String::new()),
             _ => return None,

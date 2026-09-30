@@ -62,7 +62,10 @@ fn the_recorder_writes_every_exchange_that_reached_a_reply() {
         Step::Error(ProviderError::Timeout),
         Step::Error(ProviderError::Malformed("more words".to_owned())),
         Step::Error(ProviderError::Pending("ticket\n42".to_owned())),
-        Step::Error(ProviderError::BackendFailed("crashed".to_owned())),
+        Step::Error(ProviderError::BackendFailed {
+            reason: "crashed".to_owned(),
+            stderr: String::new(),
+        }),
     ]);
     let recorder = Recorder::new(Box::new(scripted), &dir);
     let identity = block_on(recorder.identify()).expect("identity");

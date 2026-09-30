@@ -47,6 +47,7 @@ fn identity() -> ReplayIdentity {
         provider: "anthropic".to_owned(),
         model_version: "claude-test".to_owned(),
         input_version: "prompt-1:abc".to_owned(),
+        backend: None,
     }
 }
 
@@ -118,6 +119,7 @@ fn scripted_identifies_itself_and_opens_a_provider_on_the_same_queue() {
             provider: "scripted".to_owned(),
             model: "scripted".to_owned(),
             input_version: prompt_version(),
+            backend: None,
         }
     );
     let provider = scripted.open(&identity).expect("a provider");
@@ -181,6 +183,7 @@ fn replay_reports_the_identity_it_recorded() {
             provider: "anthropic".to_owned(),
             model: "claude-test".to_owned(),
             input_version: "prompt-1:abc".to_owned(),
+            backend: None,
         }
     );
     let provider = replay.open(&found).expect("a provider");

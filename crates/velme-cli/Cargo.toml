@@ -27,7 +27,7 @@ velme-ir.workspace = true
 velme-runtime.workspace = true
 velme-sema.workspace = true
 velme-syntax.workspace = true
-velme-synth.workspace = true
+velme-synth = { workspace = true, features = ["provider-anthropic", "provider-ollama"] }
 
 [dev-dependencies]
 insta.workspace = true

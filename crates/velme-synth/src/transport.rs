@@ -15,6 +15,10 @@ const WAITS: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(2)];
 /// The longest a `retry_after` is honoured (R-SYNTH-12).
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
 
+/// The levels a response envelope adds around a reply, which is itself held to the IR depth limit (`velme_ir`'s
+/// `MAX_JSON_DEPTH`): a provider's message, `content`, block and `input`, or an external backend's reply object.
+pub(crate) const ENVELOPE_DEPTH: usize = 8;
+
 /// Where the waits go: injected, so tests take no wall time (D-95).
 #[async_trait]
 pub trait Sleeper: Send + Sync {
