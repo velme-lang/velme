@@ -30,7 +30,8 @@ impl SourceFile {
             }
             _ => Diagnostic::new(Code::FileError, Span::default(), format!("I couldn't read `{path}`.")),
         };
-        diag.with_note(err.to_string())
+        // It is about that file, whether or not it is the source being compiled (D-111).
+        diag.with_note(err.to_string()).with_file(path)
     }
 
     /// Decodes raw file bytes; bytes that aren't UTF-8 are `VL0901` (R-SYN-01, AC-SYN-14).

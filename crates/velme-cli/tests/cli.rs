@@ -821,6 +821,41 @@ fn ac_cli_12_a_diagnostic_with_no_place_names_the_file_it_is_about() {
     no_place(&velme(&dir, &["check", ADD, "--frobnicate", "--json"]), "");
 }
 
+/// Human output names the file a placeless diagnostic is about, and has no empty header when there is none; a usage error
+/// honours `--color always` (D-111, R-CLI-28).
+#[test]
+fn ac_cli_12_human_output_names_the_file_a_diagnostic_is_about() {
+    let dir = copy("add", "ac_cli_12_human");
+    fs::remove_file(dir.join("velme.lock")).expect("lock removed");
+    let run = velme(&dir, &["gc"]);
+    assert!(
+        run.stderr.contains("[VL0901]") && run.stderr.contains("╭─[ velme.lock ]"),
+        "{}",
+        run.stderr
+    );
+    write_project_config(&dir, "[synthesis\n");
+    let run = velme(&dir, &["check", ADD]);
+    assert!(
+        run.stderr.contains("╭─[ velme.toml ]") && !run.stderr.contains(ADD),
+        "{}",
+        run.stderr
+    );
+    write_project_config(&dir, "");
+    let run = velme(&dir, &["check", ADD, "--input", "-", "--frobnicate"]);
+    assert!(!run.stderr.contains("╭─[  ]"), "{}", run.stderr);
+    let run = velme(&dir, &["check", ADD, "--color", "always", "--frobnicate"]);
+    assert!(
+        run.stderr.contains('\u{1b}'),
+        "a usage error is coloured: {}",
+        run.stderr
+    );
+    let run = velme(&dir, &["check", ADD, "--frobnicate"]);
+    assert!(!run.stderr.contains('\u{1b}'), "{}", run.stderr);
+    // An unreadable `--input` file is about that file.
+    let run = velme(&dir, &["run", ADD, "--goal", "Add", "--input", "nope.json", "--json"]);
+    assert_eq!(parsed(&run)["diagnostics"][0]["file"], "nope.json", "{}", run.stdout);
+}
+
 /// `gc` and `cache clean` never delete through a link (R-CLI-23, R-CLI-24).
 #[cfg(unix)]
 #[test]

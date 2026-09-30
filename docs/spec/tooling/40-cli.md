@@ -128,7 +128,7 @@ hold `calls[]`: one `{binding, goal, status}` per child call, in source order (D
 and traces are not repeated there; the human output lists the same calls (§3.3). The enum values (`goalStatus`, `severity`, `kind`, the trace `version`) are closed within `velme-cli/1`: a new value needs
 `velme-cli/2` (D-111). A diagnostic with no place in a source file carries in `file` the file it is about (`velme.toml`,
 the user config path, `velme.lock`, or the empty string when there is none) and the span `0,0,1,1`, documented in the
-schema as "no place" (D-111). Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the
+schema as "no place" (D-111). Human output names the same file, or has no file header when there is none. Changes within `velme-cli/1` are additive only, as `runtime/30` R-RUN-19 already requires for the
 trace schema; a breaking change ships as `velme-cli/2` (`delivery/52` R-REL-08).
 
 ### 3.3 Sample output (F-2)

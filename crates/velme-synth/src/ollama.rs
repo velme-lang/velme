@@ -56,6 +56,17 @@ impl OllamaConfig {
     }
 }
 
+/// [`transport_error`] for this server, which needs no key: a request that can't be built is a server Velme can't use
+/// (`VL0404`), never "no provider is set up".
+fn transport(error: ureq::Error) -> ProviderError {
+    match transport_error(error) {
+        ProviderError::NotConfigured => {
+            ProviderError::Unavailable("Velme couldn't send the request to the server".to_owned())
+        }
+        other => other,
+    }
+}
+
 /// `model` with a tag: a name without one is `<name>:latest` (R-SYNTH-24). A `:` before the last `/` belongs to a
 /// registry host, not a tag.
 pub fn normalize_model(model: &str) -> String {
@@ -157,7 +168,7 @@ impl Ollama {
             .agent(self.config.timeout)
             .get(&self.endpoint("/api/tags"))
             .call()
-            .map_err(transport_error)?;
+            .map_err(transport)?;
         match response.status().as_u16() {
             200..=299 => read_body(&mut response),
             429 => Err(ProviderError::RateLimited { retry_after: None }),
@@ -174,7 +185,7 @@ impl Ollama {
             .post(&self.endpoint("/api/chat"))
             .header("content-type", "application/json")
             .send(body)
-            .map_err(transport_error)?;
+            .map_err(transport)?;
         match response.status().as_u16() {
             200..=299 => read_body(&mut response),
             // Ollama answers a model it doesn't have with 404.
@@ -352,8 +363,15 @@ impl SynthProvider for OllamaProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::{Ollama, OllamaConfig, normalize_model};
+    use super::{Ollama, OllamaConfig, ProviderError, normalize_model, transport};
     use crate::url::ExternalUrl;
+
+    /// A request that can't be built is `Unavailable` for Ollama, which has no key or provider to be missing.
+    #[test]
+    fn an_unbuildable_request_is_unavailable_not_unconfigured() {
+        let error = transport(ureq::Error::BadUri("x".to_owned()));
+        assert!(matches!(error, ProviderError::Unavailable(_)), "{error:?}");
+    }
 
     /// A server on this machine is reached without a proxy whatever the spelling of its address, and no other is: the
     /// decision is the checked URL's, not a comparison of strings (D-111).

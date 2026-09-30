@@ -261,17 +261,10 @@ fn stores_write_once_and_leave_no_temporary_files() {
     ];
     names.sort();
     assert_eq!(files(store.dir()), names);
-    // R-ART-09: an artifact already stored is left as it is.
-    let stored = fs::metadata(store.path(leaf_id))
-        .expect("stored")
-        .modified()
-        .expect("mtime");
+    // R-ART-09: an artifact already stored is left as it is; only its modification time is refreshed (D-111).
+    let stored = fs::read(store.path(leaf_id)).expect("stored");
     assert_eq!(store.put(&manifest(&program, &leaf), &leaf).expect("stored"), leaf_id);
-    let again = fs::metadata(store.path(leaf_id))
-        .expect("stored")
-        .modified()
-        .expect("mtime");
-    assert_eq!(stored, again);
+    assert_eq!(stored, fs::read(store.path(leaf_id)).expect("stored"));
     // A file under the name with other bytes isn't that artifact: it is replaced whole.
     fs::write(store.path(leaf_id), "damaged").expect("damaged");
     assert_eq!(store.put(&manifest(&program, &leaf), &leaf).expect("stored"), leaf_id);
@@ -586,4 +579,25 @@ fn collect_keeps_recent_files_and_names_that_are_not_lowercase_hex() {
     // A referenced artifact stays however old.
     assert_eq!(store.collect(&[id], later, Duration::ZERO).expect("collected"), 0);
     assert!(store.path(id).is_file());
+}
+
+/// A `put` of bytes that are already there refreshes the file's modification time, so `velme gc`'s age guard keeps an
+/// artifact a running build reuses (D-111).
+#[test]
+fn put_of_an_existing_artifact_refreshes_its_modification_time() {
+    use std::time::{Duration, SystemTime};
+    let program = goals();
+    let ir = golden(&program, "player_summary");
+    let manifest = manifest(&program, &ir);
+    let store = Store::new(&project("put_touch"));
+    let id = store.put(&manifest, &ir).expect("stored");
+    let old = SystemTime::now() - Duration::from_secs(3600);
+    fs::File::options()
+        .write(true)
+        .open(store.path(id))
+        .and_then(|f| f.set_modified(old))
+        .expect("aged");
+    assert_eq!(store.put(&manifest, &ir).expect("stored again"), id);
+    let modified = fs::metadata(store.path(id)).and_then(|m| m.modified()).expect("mtime");
+    assert!(modified > old + Duration::from_secs(3000), "{modified:?}");
 }

@@ -93,6 +93,8 @@ pub struct Bad {
     pub json: bool,
     /// The file the command was given, if it got as far as one.
     pub file: Option<String>,
+    /// The last valid `--color` value on the line, else `auto`, so the usage error itself honours it (R-CLI-28).
+    pub color: Color,
     pub diagnostic: Diagnostic,
 }
 
@@ -119,9 +121,22 @@ fn expected(name: &str, expected: &str, found: &str) -> Diagnostic {
 pub fn parse(args: &[String]) -> Result<Parsed, Box<Bad>> {
     let json = args.iter().any(|a| a == "--json");
     let mut rest = args.iter().map(String::as_str).filter(|a| *a != "--json");
+    let color = args
+        .iter()
+        .zip(args.iter().skip(1))
+        .filter(|(flag, _)| *flag == "--color")
+        .filter_map(|(_, value)| match value.as_str() {
+            "auto" => Some(Color::Auto),
+            "always" => Some(Color::Always),
+            "never" => Some(Color::Never),
+            _ => None,
+        })
+        .next_back()
+        .unwrap_or(Color::Auto);
     let bad = |file: Option<&str>, diagnostic: Diagnostic| {
         Box::new(Bad {
             json,
+            color,
             file: file.map(str::to_owned),
             diagnostic,
         })
@@ -411,6 +426,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A valid `--color` on a bad command line is kept for the usage error's own rendering (R-CLI-28).
+    #[test]
+    fn a_usage_error_keeps_a_valid_color_flag() {
+        assert_eq!(
+            parsed("check a.velme --color always --nope").expect_err("bad").color,
+            Color::Always
+        );
+        assert_eq!(
+            parsed("check a.velme --color pink").expect_err("bad").color,
+            Color::Auto
+        );
+        assert_eq!(parsed("check a.velme --nope").expect_err("bad").color, Color::Auto);
     }
 
     #[test]
