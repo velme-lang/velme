@@ -60,6 +60,9 @@ pub struct SynthLimits {
     pub max_output_tokens: u32,
     /// The goal's `synthesis_key`, which names its replay fixture and its synth-log lines (R-SYNTH-23, R-SYNTH-43).
     pub synthesis_key: Fingerprint,
+    /// Which attempt of the goal's loop this call is, from 0: what `retry_model` keys on (R-SYNTH-39). A request that
+    /// carries earlier feedback (R-SYNTH-46) is still attempt 0, so the request itself is unchanged.
+    pub attempt: u32,
 }
 
 impl SynthLimits {
@@ -69,6 +72,7 @@ impl SynthLimits {
             timeout: Duration::from_secs(60),
             max_output_tokens: 8192,
             synthesis_key,
+            attempt: 0,
         }
     }
 }

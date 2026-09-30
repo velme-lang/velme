@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 // A helper here fails the test that called it, so it panics on bad input like a test body does (CC-ERR-01 covers
 // non-test code only).
-#![allow(clippy::expect_used, clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::path::{Path, PathBuf};
 
@@ -260,5 +260,220 @@ impl ChildRunner for LeafRunner {
             }),
             Err(failure) => Err(vec![failure.diagnostic(&candidate.goal().goal, Default::default())]),
         }
+    }
+}
+
+/// The `anthropic` provider pointed at `server` with the sentinel-able key `key` and a sleeper that never waits (D-98,
+/// R-SYNTH-44): the only way a test reaches a mock, since no config key or environment variable sets the base URL.
+pub fn mock_anthropic(
+    config: velme_synth::AnthropicConfig,
+    server: &mock::MockServer,
+    key: &str,
+    sleeper: &RecordingSleeper,
+) -> velme_synth::Anthropic {
+    velme_synth::Anthropic::new(config)
+        .with_sleeper(std::sync::Arc::new(sleeper.clone()))
+        .with_test_endpoint(server.url(), velme_synth::ApiKey::new(key))
+}
+
+/// A local HTTP server that plays back canned responses, for the tests of the `anthropic` provider: no network.
+pub mod mock {
+    use std::collections::{BTreeMap, VecDeque};
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+
+    use serde_json::{Value, json};
+
+    /// One canned response.
+    #[derive(Debug, Clone)]
+    pub struct MockResponse {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: String,
+        hang: bool,
+    }
+
+    impl MockResponse {
+        /// A `200` with `body`.
+        pub fn ok(body: impl Into<String>) -> Self {
+            Self::status(200, body)
+        }
+
+        /// A response with `status` and `body`.
+        pub fn status(status: u16, body: impl Into<String>) -> Self {
+            MockResponse {
+                status,
+                headers: Vec::new(),
+                body: body.into(),
+                hang: false,
+            }
+        }
+
+        /// A connection that is accepted and then never answered, until the client gives up.
+        pub fn hang() -> Self {
+            MockResponse {
+                hang: true,
+                ..Self::status(200, "")
+            }
+        }
+
+        /// The response with one more header.
+        #[must_use]
+        pub fn header(mut self, name: &str, value: &str) -> Self {
+            self.headers.push((name.to_owned(), value.to_owned()));
+            self
+        }
+
+        /// A Messages API response in which the model called `tool` with `input`.
+        pub fn tool_call(tool: &str, input: &Value) -> Self {
+            Self::ok(
+                json!({
+                    "id": "msg_test",
+                    "type": "message",
+                    "role": "assistant",
+                    "stop_reason": "tool_use",
+                    "content": [{"type": "tool_use", "id": "toolu_test", "name": tool, "input": input}],
+                    "usage": {
+                        "input_tokens": 11,
+                        "output_tokens": 7,
+                        "cache_read_input_tokens": 5,
+                        "cache_creation_input_tokens": 3,
+                    },
+                })
+                .to_string(),
+            )
+        }
+    }
+
+    /// One request the server received.
+    #[derive(Debug, Clone)]
+    pub struct MockRequest {
+        /// The request path.
+        pub path: String,
+        /// The headers, with lower-case names.
+        pub headers: BTreeMap<String, String>,
+        /// The body.
+        pub body: String,
+    }
+
+    impl MockRequest {
+        /// The body as JSON.
+        pub fn json(&self) -> Value {
+            serde_json::from_str(&self.body).expect("a JSON body")
+        }
+    }
+
+    /// A server on a free local port. It answers each request with the next canned response, and a `500` when there is
+    /// none left. Dropping it stops the thread.
+    pub struct MockServer {
+        url: String,
+        requests: Arc<Mutex<Vec<MockRequest>>>,
+        stop: Arc<AtomicBool>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl MockServer {
+        /// Starts a server that plays `responses` back in order.
+        pub fn start(responses: impl IntoIterator<Item = MockResponse>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
+            let url = format!("http://{}", listener.local_addr().expect("an address"));
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let stop = Arc::new(AtomicBool::new(false));
+            let mut queue: VecDeque<MockResponse> = responses.into_iter().collect();
+            let thread = {
+                let (requests, stop) = (requests.clone(), stop.clone());
+                std::thread::spawn(move || {
+                    for stream in listener.incoming() {
+                        if stop.load(Ordering::SeqCst) {
+                            break;
+                        }
+                        let Ok(mut stream) = stream else { continue };
+                        let Some(request) = read_request(&mut stream) else {
+                            continue;
+                        };
+                        requests.lock().expect("requests").push(request);
+                        let response = queue
+                            .pop_front()
+                            .unwrap_or_else(|| MockResponse::status(500, "no response queued"));
+                        if response.hang {
+                            // Held open until the client hangs up.
+                            let mut sink = [0_u8; 64];
+                            while stream.read(&mut sink).is_ok_and(|n| n > 0) {}
+                            continue;
+                        }
+                        let mut text = format!(
+                            "HTTP/1.1 {} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n",
+                            response.status,
+                            response.body.len()
+                        );
+                        for (name, value) in &response.headers {
+                            text.push_str(&format!("{name}: {value}\r\n"));
+                        }
+                        text.push_str("\r\n");
+                        text.push_str(&response.body);
+                        let _ = stream.write_all(text.as_bytes());
+                    }
+                })
+            };
+            MockServer {
+                url,
+                requests,
+                stop,
+                thread: Some(thread),
+            }
+        }
+
+        /// The base URL of the server.
+        pub fn url(&self) -> &str {
+            &self.url
+        }
+
+        /// The requests received so far, in order.
+        pub fn requests(&self) -> Vec<MockRequest> {
+            self.requests.lock().expect("requests").clone()
+        }
+    }
+
+    impl Drop for MockServer {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            // A connection unblocks the `accept` that waits for the next request.
+            let _ = TcpStream::connect(self.url.trim_start_matches("http://"));
+            if let Some(thread) = self.thread.take() {
+                let _ = thread.join();
+            }
+        }
+    }
+
+    fn read_request(stream: &mut TcpStream) -> Option<MockRequest> {
+        let mut data = Vec::new();
+        let mut chunk = [0_u8; 4096];
+        let end = loop {
+            let n = stream.read(&mut chunk).ok().filter(|n| *n > 0)?;
+            data.extend_from_slice(&chunk[..n]);
+            if let Some(at) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                break at + 4;
+            }
+        };
+        let head = String::from_utf8_lossy(&data[..end]).into_owned();
+        let mut lines = head.lines();
+        let path = lines.next()?.split_whitespace().nth(1)?.to_owned();
+        let headers: BTreeMap<String, String> = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+            .collect();
+        let length: usize = headers.get("content-length")?.parse().ok()?;
+        while data.len() < end + length {
+            let n = stream.read(&mut chunk).ok().filter(|n| *n > 0)?;
+            data.extend_from_slice(&chunk[..n]);
+        }
+        Some(MockRequest {
+            path,
+            headers,
+            body: String::from_utf8_lossy(&data[end..end + length]).into_owned(),
+        })
     }
 }

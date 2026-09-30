@@ -5,7 +5,9 @@ yanked = "deny"
 [licenses]
 # Permissive licenses only. Unicode-3.0 covers `unicode-ident` (every proc macro, incl. serde's) and Zlib
 # covers `foldhash` (via chumsky's hashbrown); both are OSI approved and compatible with MIT OR Apache-2.0.
-allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib"]
+# The `anthropic` provider's TLS stack (ureq, rustls, ring, webpki) adds ISC (ring, rustls-webpki, untrusted),
+# BSD-3-Clause (subtle) and CDLA-Permissive-2.0 (webpki-roots' CA list); all permissive, none copyleft.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "ISC", "BSD-3-Clause", "CDLA-Permissive-2.0"]
 
 [bans]
 multiple-versions = "warn"
