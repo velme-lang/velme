@@ -25,10 +25,15 @@ velme-wasm.workspace = true
 [dev-dependencies]
 arbitrary.workspace = true
 async-trait.workspace = true
+criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
 velme-test-support.workspace = true
+
+[[bench]]
+name = "eval"
+harness = false
 
 [lints]
 workspace = true

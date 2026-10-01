@@ -30,8 +30,13 @@ velme-syntax.workspace = true
 velme-synth = { workspace = true, features = ["provider-anthropic", "provider-ollama", "provider-external"] }
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
 velme-test-support.workspace = true
+
+[[bench]]
+name = "run"
+harness = false
 
 [lints]
 workspace = true

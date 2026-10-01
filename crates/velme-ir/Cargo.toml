@@ -19,8 +19,14 @@ velme-sema.workspace = true
 serde_json = { workspace = true, features = ["arbitrary_precision", "unbounded_depth"] }
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
+velme-test-support.workspace = true
+
+[[bench]]
+name = "fingerprint"
+harness = false
 
 [lints]
 workspace = true

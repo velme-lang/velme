@@ -3,6 +3,7 @@
 
 pub mod ac_audit;
 pub mod features;
+pub mod gate;
 pub mod layering;
 pub mod verify;
 
