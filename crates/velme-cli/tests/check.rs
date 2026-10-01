@@ -46,9 +46,19 @@ fn ac_cli_01_parse_part_valid_file_prints_parsed() {
     );
 }
 
-/// `CalculateScore("hello")` is rejected by `velme check`, before anything runs.
 #[test]
 fn ac_rdm_04_type_mismatch_rejects_the_call_before_execution() {
+    calculate_score_of_text_is_a_type_mismatch();
+}
+
+#[test]
+fn ac_typ_01_text_for_a_player_parameter_is_a_type_mismatch() {
+    calculate_score_of_text_is_a_type_mismatch();
+}
+
+/// `CalculateScore("hello")` is rejected by `velme check`, before anything runs: the body of AC-RDM-04 and AC-TYP-01
+/// (D-138).
+fn calculate_score_of_text_is_a_type_mismatch() {
     let run = velme(&["check", "tests/golden/sema/reject/call_block.velme"]);
     assert_eq!(run.code, 1);
     assert!(
