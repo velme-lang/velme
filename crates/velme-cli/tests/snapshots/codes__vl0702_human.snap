@@ -1,0 +1,15 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Add` changed since it was last built — run `velme build`.  [VL0702]
+    ╭─[ add.velme:4:1 ]
+    │
+  4 │ ╭─▶ goal Add(a: Number, b: Number) -> Number:
+    ┆ ┆   
+ 11 │ ├─▶         - Add(0.1, 0.2) == 0.3
+    │ │                                    
+    │ ╰──────────────────────────────────── here
+    │     
+    │     Note: its plan, checks, examples or budget changed
+────╯

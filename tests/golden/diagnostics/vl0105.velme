@@ -1,0 +1,5 @@
+# A text literal with no closing quote is VL0105.
+language: velme/0.1
+
+goal Greet(name: Text) -> Text:
+    plan: "Say hello.

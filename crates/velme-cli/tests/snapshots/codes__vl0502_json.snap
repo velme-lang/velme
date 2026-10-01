@@ -1,0 +1,52 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0502",
+          "file": "add.velme",
+          "labels": [],
+          "message": "For Add(2, 3), `Add` gave 6 but the example expects 5.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 11,
+            "end": 258,
+            "line": 9,
+            "start": 244
+          }
+        },
+        {
+          "code": "VL0501",
+          "file": "add.velme",
+          "labels": [],
+          "message": "`Add` didn't pass its check: `result == a + b`.",
+          "notes": [
+            "Expected: 5",
+            "Received: 6",
+            "`result` = 6",
+            "`a` = 2",
+            "`b` = 3"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 11,
+            "end": 219,
+            "line": 7,
+            "start": 204
+          }
+        }
+      ],
+      "goal": "Add",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

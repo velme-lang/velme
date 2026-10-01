@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0204.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0204",
+      "file": "vl0204.velme",
+      "labels": [],
+      "message": "Expected Number, but got Text.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 18,
+        "end": 152,
+        "line": 7,
+        "start": 147
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

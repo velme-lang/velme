@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0206.velme
+---
+Error: `-` can't be used with Text and Number.  [VL0206]
+   ╭─[ vl0206.velme:7:11 ]
+   │
+ 7 │         - name - 1 == result
+   │           ────┬───  
+   │               ╰───── here
+───╯

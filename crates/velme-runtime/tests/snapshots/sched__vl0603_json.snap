@@ -1,0 +1,23 @@
+---
+source: crates/velme-runtime/tests/sched.rs
+expression: "serde_json::to_string_pretty(&json).expect(\"diagnostics serialize\")"
+---
+[
+  {
+    "code": "VL0603",
+    "severity": "error",
+    "message": "`Spin` ran too long and was stopped.",
+    "file": "sched.velme",
+    "span": {
+      "start": 21,
+      "end": 79,
+      "line": 3,
+      "column": 1
+    },
+    "labels": [],
+    "notes": [
+      "this happened at item 132 of a list (counting from 0)",
+      "this happened at item 182 of a list (counting from 0)"
+    ]
+  }
+]

@@ -1,0 +1,9 @@
+# A goal with neither a plan nor a `result` binding is VL0307 (D-4).
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Main(x: Number) -> Number:
+    call:
+        doubled = Double(x)

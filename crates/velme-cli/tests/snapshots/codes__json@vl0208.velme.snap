@@ -1,0 +1,40 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0208.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0208",
+      "file": "vl0208.velme",
+      "help": "store the related values in a separate list instead of inside each other",
+      "labels": [
+        {
+          "span": {
+            "column": 5,
+            "end": 94,
+            "line": 5,
+            "start": 84
+          },
+          "text": "this field leads back to it"
+        }
+      ],
+      "message": "`Node` contains itself, which Velme doesn't allow yet.",
+      "notes": [
+        "Node → Node"
+      ],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 78,
+        "line": 4,
+        "start": 74
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

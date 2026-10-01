@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0306.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0306",
+      "file": "vl0306.velme",
+      "help": "give this call its own name",
+      "labels": [],
+      "message": "`twice` is already used in this goal.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 200,
+        "line": 10,
+        "start": 195
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

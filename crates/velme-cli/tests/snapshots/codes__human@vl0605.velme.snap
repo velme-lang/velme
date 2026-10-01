@@ -1,0 +1,19 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0605.velme
+---
+Error: Goals call each other too deeply while running `Main`.  [VL0605]
+    ╭─[ vl0605.velme:11:6 ]
+    │
+ 11 │ goal Main(x: Number) -> Number:
+    │      ──┬─  
+    │        ╰─── here
+ 12 │     budget depth=1
+    │            ───┬───  
+    │               ╰───── the limit set here
+    │ 
+    │ Help: raise `depth=` in its budget, or make its chains of calls shorter
+    │ 
+    │ Note: its calls would nest 2 deep, but its limit is 1
+────╯

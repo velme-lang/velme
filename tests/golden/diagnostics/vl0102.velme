@@ -1,0 +1,7 @@
+# A dedent to a width no enclosing block uses is VL0102 (R-SYN-09).
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+        plan: "Double x."
+      check:
+        - result == x * 2

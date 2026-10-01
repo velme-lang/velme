@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0105.velme
+---
+Error: This text starts with `"` but never ends.  [VL0105]
+   ╭─[ vl0105.velme:5:11 ]
+   │
+ 5 │     plan: "Say hello.
+   │           ─────┬─────  
+   │                ╰─────── here
+   │ 
+   │ Help: add a `"` at the end of the text
+───╯

@@ -1,0 +1,29 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0901",
+      "file": "missing.velme",
+      "help": "check the file name, and that you're in the folder that holds it",
+      "labels": [],
+      "message": "I couldn't find `missing.velme`.",
+      "notes": [
+        "[the system's message]"
+      ],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 0,
+        "line": 1,
+        "start": 0
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -1,0 +1,12 @@
+---
+source: crates/velme-wasm/src/sandbox_tests.rs
+expression: human
+---
+Error: `G` tried to use `wasi_snapshot_preview1.fd_write`, which goals aren't allowed to use.  [VL0801]
+   ╭─[ game.velme:3:1 ]
+   │
+ 3 │ ╭─▶ goal G(x: Number) -> Number:
+ 4 │ ├─▶     plan: "Return x."
+   │ │                           
+   │ ╰─────────────────────────── here
+───╯

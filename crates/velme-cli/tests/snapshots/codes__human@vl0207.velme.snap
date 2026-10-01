@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0207.velme
+---
+Error: `player` might be empty — check `is not empty` first.  [VL0207]
+    ╭─[ vl0207.velme:10:21 ]
+    │
+ 10 │         - result == player.name
+    │                     ───┬──  
+    │                        ╰──── here
+    │ 
+    │ Help: write `player is not empty and …` before using it
+────╯

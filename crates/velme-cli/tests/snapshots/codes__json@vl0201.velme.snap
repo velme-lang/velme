@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0201.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0201",
+      "file": "vl0201.velme",
+      "help": "declare it with `type`, or use `Number`, `Text` or `Boolean`",
+      "labels": [],
+      "message": "I don't know a type called `Player`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 20,
+        "end": 92,
+        "line": 4,
+        "start": 86
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

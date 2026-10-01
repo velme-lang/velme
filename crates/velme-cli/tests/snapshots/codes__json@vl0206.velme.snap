@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0206.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0206",
+      "file": "vl0206.velme",
+      "labels": [],
+      "message": "`-` can't be used with Text and Number.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 161,
+        "line": 7,
+        "start": 153
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

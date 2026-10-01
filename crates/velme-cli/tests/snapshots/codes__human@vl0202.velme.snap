@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0202.velme
+---
+Error: I don't know what `y` is here.  [VL0202]
+   ╭─[ vl0202.velme:7:21 ]
+   │
+ 7 │         - result == y * 2
+   │                     ┬  
+   │                     ╰── here
+   │ 
+   │ Help: a check can use the goal's inputs, its `call:` names and `result`
+───╯

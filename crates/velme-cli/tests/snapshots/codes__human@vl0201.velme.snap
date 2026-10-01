@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0201.velme
+---
+Error: I don't know a type called `Player`.  [VL0201]
+   ╭─[ vl0201.velme:4:20 ]
+   │
+ 4 │ goal Score(player: Player) -> Number:
+   │                    ───┬──  
+   │                       ╰──── here
+   │ 
+   │ Help: declare it with `type`, or use `Number`, `Text` or `Boolean`
+───╯

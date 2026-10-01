@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0105.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0105",
+      "file": "vl0105.velme",
+      "help": "add a `\"` at the end of the text",
+      "labels": [],
+      "message": "This text starts with `\"` but never ends.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 124,
+        "line": 5,
+        "start": 113
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

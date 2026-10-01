@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0202.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0202",
+      "file": "vl0202.velme",
+      "help": "a check can use the goal's inputs, its `call:` names and `result`",
+      "labels": [],
+      "message": "I don't know what `y` is here.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 21,
+        "end": 150,
+        "line": 7,
+        "start": 149
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

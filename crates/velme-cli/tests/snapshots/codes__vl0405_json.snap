@@ -1,0 +1,43 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0405",
+          "file": "game.velme",
+          "help": "set `VELME_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment; Velme reads a key from nowhere else",
+          "labels": [],
+          "message": "The Anthropic provider needs an API key, and there isn't one.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 116,
+            "line": 3,
+            "start": 21
+          }
+        }
+      ],
+      "goal": "Double",
+      "status": "failed"
+    }
+  ],
+  "status": "failed",
+  "summary": {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "calls": 0,
+    "input_tokens": 0,
+    "lock_hits": 0,
+    "output_tokens": 0,
+    "store_hits": 0,
+    "synthesized": 0
+  }
+}

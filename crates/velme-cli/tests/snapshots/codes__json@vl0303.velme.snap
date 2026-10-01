@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0303.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0303",
+      "file": "vl0303.velme",
+      "help": "a check looks at one run; list the call in `call:` and use its name here",
+      "labels": [],
+      "message": "`Double` can only be used after it's listed in `call:`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 21,
+        "end": 219,
+        "line": 10,
+        "start": 213
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

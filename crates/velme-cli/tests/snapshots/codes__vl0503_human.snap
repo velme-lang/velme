@@ -1,0 +1,16 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Nothing is sent: the scripted provider answers from its script.
+Error: The generated program didn't pass `Both(1)` for `n` is `1`.  [VL0503]
+    ╭─[ game.velme:8:1 ]
+    │
+  8 │ ╭─▶ goal Both(n: Number) -> Number:
+    ┆ ┆   
+ 12 │ ├─▶         - Both(1) == 3
+    │ │                            
+    │ ╰──────────────────────────── here
+    │     
+    │     Help: check the goal's examples and checks against what its calls give
+────╯

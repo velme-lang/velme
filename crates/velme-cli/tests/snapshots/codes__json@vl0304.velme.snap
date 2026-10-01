@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0304.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0304",
+      "file": "vl0304.velme",
+      "help": "a goal can't use itself, even through other goals; move the shared work into a new goal",
+      "labels": [],
+      "message": "These goals call each other in a circle: Ping → Pong → Ping.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 140,
+        "line": 6,
+        "start": 124
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

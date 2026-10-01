@@ -1,0 +1,18 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Nothing is sent: the scripted provider answers from its script.
+Error: Velme couldn't build `Double`: For Double(2), `Double` gave 2 but the example expects 4. (2 of 3 tries, stopped after 3 attempts).  [VL0403]
+   ╭─[ game.velme:3:1 ]
+   │
+ 3 │ ╭─▶ goal Double(n: Number) -> Number:
+   ┆ ┆   
+ 6 │ ├─▶         - Double(2) == 4
+   │ │                              
+   │ ╰────────────────────────────── here
+   │     
+   │     Help: check the example, or say in the plan how that case is handled; `stop_on_repeat = false` retries anyway
+   │     
+   │     Note: Another attempt failed differently: the reply had no `body`
+───╯

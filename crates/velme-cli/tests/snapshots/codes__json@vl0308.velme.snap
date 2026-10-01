@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0308.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0308",
+      "file": "vl0308.velme",
+      "labels": [],
+      "message": "`budget` can only make limits smaller — `calls` can be at most `128`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 138,
+        "line": 5,
+        "start": 129
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

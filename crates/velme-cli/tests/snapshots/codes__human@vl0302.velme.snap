@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0302.velme
+---
+Error: `Double` needs 1 input, but got 2.  [VL0302]
+   ╭─[ vl0302.velme:9:9 ]
+   │
+ 9 │         result = Double(x, x)
+   │         ──────────┬──────────  
+   │                   ╰──────────── here
+───╯

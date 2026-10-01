@@ -1,0 +1,7 @@
+# A value of the wrong type is VL0204.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+    examples:
+        - Double("two") == 4

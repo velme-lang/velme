@@ -1,0 +1,9 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: I couldn't find `missing.velme`.  [VL0901]
+   ╭─[ missing.velme ]
+   │ Note: [the system's message]
+   │ Help: check the file name, and that you're in the folder that holds it
+───╯

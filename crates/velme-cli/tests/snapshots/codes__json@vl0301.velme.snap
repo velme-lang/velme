@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0301.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0301",
+      "file": "vl0301.velme",
+      "help": "declare it with `goal` in this file",
+      "labels": [],
+      "message": "I don't know a goal called `Triple`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 18,
+        "end": 137,
+        "line": 6,
+        "start": 131
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

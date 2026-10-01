@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0203.velme
+---
+Error: `Double` is already defined on line 4.  [VL0203]
+   ╭─[ vl0203.velme:7:6 ]
+   │
+ 7 │ goal Double(y: Number) -> Number:
+   │      ───┬──  
+   │         ╰──── here
+   │ 
+   │ Help: rename one of them
+───╯

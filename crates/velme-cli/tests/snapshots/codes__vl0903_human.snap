@@ -1,0 +1,7 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: There's no goal called `Ad`. Did you mean `Add`?  [VL0903]
+   ╭─[ add.velme ]
+───╯

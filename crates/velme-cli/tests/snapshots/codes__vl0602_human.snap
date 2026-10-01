@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Divide` tried to divide 5 by 0, which has no answer.  [VL0602]
+   ╭─[ game.velme:7:1 ]
+   │
+ 7 │ ╭─▶ goal Divide(n: Number) -> Number:
+ 8 │ ├─▶     plan: "Divide n by zero."
+   │ │                                   
+   │ ╰─────────────────────────────────── here
+───╯

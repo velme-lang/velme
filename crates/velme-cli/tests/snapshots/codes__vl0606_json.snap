@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0606",
+          "file": "game.velme",
+          "labels": [],
+          "message": "`Long` made a list or answer that's too big.",
+          "notes": [
+            "it asked for a list of 20000 items; at most 10000 are allowed"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 341,
+            "line": 14,
+            "start": 270
+          }
+        }
+      ],
+      "goal": "Long",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

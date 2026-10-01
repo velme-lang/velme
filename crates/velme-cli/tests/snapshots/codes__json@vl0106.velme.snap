@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0106.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0106",
+      "file": "vl0106.velme",
+      "help": "change the first line to `language: velme/0.1`",
+      "labels": [],
+      "message": "This file is written for `velme/9.0`, but this Velme understands `velme/0.1`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 11,
+        "end": 100,
+        "line": 2,
+        "start": 91
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

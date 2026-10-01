@@ -1,0 +1,46 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [
+    "Sending your plans, types, checks and examples to the external backend at 127.0.0.1 to write the code."
+  ],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0406",
+          "file": "game.velme",
+          "labels": [],
+          "message": "The backend `velme-test-support` couldn't build `Double`: its reply wasn't one JSON object, or nested too deeply or repeated a key",
+          "notes": [
+            "The backend's reply ended: this is not JSON"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 116,
+            "line": 3,
+            "start": 21
+          }
+        }
+      ],
+      "goal": "Double",
+      "status": "failed"
+    }
+  ],
+  "status": "failed",
+  "summary": {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "calls": 1,
+    "input_tokens": 0,
+    "lock_hits": 0,
+    "output_tokens": 0,
+    "store_hits": 0,
+    "synthesized": 0
+  }
+}

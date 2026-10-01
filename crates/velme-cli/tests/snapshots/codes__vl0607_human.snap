@@ -1,0 +1,8 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: The WASM backend can't run `Absent` yet.  [VL0607]
+   ╭─[ game.velme ]
+   │ Note: the backend has no code for a type that holds Nothing; run it without `--backend wasm`
+───╯

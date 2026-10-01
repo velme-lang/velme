@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0307.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0307",
+      "file": "vl0307.velme",
+      "help": "tell Velme what this goal should do in `plan:`",
+      "labels": [],
+      "message": "`Main` needs a `plan:` that says what it should do.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 156,
+        "line": 7,
+        "start": 152
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

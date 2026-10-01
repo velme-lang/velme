@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: For Add(2, 3), `Add` gave 6 but the example expects 5.  [VL0502]
+   ╭─[ add.velme:9:11 ]
+   │
+ 9 │         - Add(2, 3) == 5
+   │           ───────┬──────  
+   │                  ╰──────── here
+───╯
+Error: `Add` didn't pass its check: `result == a + b`.  [VL0501]
+   ╭─[ add.velme:7:11 ]
+   │
+ 7 │         - result == a + b
+   │           ───────┬───────  
+   │                  ╰───────── here
+   │ 
+   │ Note 1: Expected: 5
+   │ 
+   │ Note 2: Received: 6
+   │ 
+   │ Note 3: `result` = 6
+   │ 
+   │ Note 4: `a` = 2
+   │ 
+   │ Note 5: `b` = 3
+───╯

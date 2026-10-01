@@ -21,6 +21,7 @@ wasmtime.workspace = true
 rustix.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 serde_json.workspace = true
 velme-test-support.workspace = true

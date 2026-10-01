@@ -1,0 +1,47 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [
+    "Nothing is sent: the scripted provider answers from its script."
+  ],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0403",
+          "file": "game.velme",
+          "help": "check the example, or say in the plan how that case is handled; `stop_on_repeat = false` retries anyway",
+          "labels": [],
+          "message": "Velme couldn't build `Double`: For Double(2), `Double` gave 2 but the example expects 4. (2 of 3 tries, stopped after 3 attempts).",
+          "notes": [
+            "Another attempt failed differently: the reply had no `body`"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 116,
+            "line": 3,
+            "start": 21
+          }
+        }
+      ],
+      "goal": "Double",
+      "status": "failed"
+    }
+  ],
+  "status": "failed",
+  "summary": {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "calls": 3,
+    "input_tokens": 0,
+    "lock_hits": 0,
+    "output_tokens": 0,
+    "store_hits": 0,
+    "synthesized": 0
+  }
+}

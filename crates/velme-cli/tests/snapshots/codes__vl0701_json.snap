@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0701",
+          "file": "add.velme",
+          "labels": [],
+          "message": "The built version of `Add` is missing — run `velme build`.",
+          "notes": [
+            "there is no file for artifact b3:eb3bdbf705b664b9710a629c28bf70bd19c330c5d02a0b4d01ffe0144fee6dec"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 315,
+            "line": 4,
+            "start": 116
+          }
+        }
+      ],
+      "goal": "Add",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

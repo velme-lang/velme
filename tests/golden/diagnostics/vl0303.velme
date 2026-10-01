@@ -1,0 +1,10 @@
+# A goal used outside its `call` block is VL0303.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Main(x: Number) -> Number:
+    plan: "Double x."
+    check:
+        - result == Double(x)

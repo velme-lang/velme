@@ -1,0 +1,7 @@
+# An operator on types it does not take is VL0206.
+language: velme/0.1
+
+goal Shout(name: Text) -> Text:
+    plan: "Shout the name."
+    check:
+        - name - 1 == result

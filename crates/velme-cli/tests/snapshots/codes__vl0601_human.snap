@@ -1,0 +1,19 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Spin` took too many steps and was stopped.  [VL0601]
+   ╭─[ game.velme:3:1 ]
+   │
+ 3 │ ╭─▶ goal Spin(n: Number) -> Number:
+   ┆ ┆   
+ 5 │ ├─▶     plan: "Count up to n times n."
+   │ │                                        
+   │ ╰──────────────────────────────────────── here
+   │     
+   │     Note 1: it may take 100000 steps (fuel)
+   │     
+   │     Note 2: this happened at item 66 of a list (counting from 0)
+   │     
+   │     Note 3: this happened at item 15 of a list (counting from 0)
+───╯

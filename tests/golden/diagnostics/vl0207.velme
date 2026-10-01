@@ -1,0 +1,10 @@
+# A field of a `T?` that was not narrowed is VL0207 (D-6).
+language: velme/0.1
+
+type Player:
+    name: Text
+
+goal Named(player: Player?) -> Text:
+    plan: "The name of the player, if there is one."
+    check:
+        - result == player.name

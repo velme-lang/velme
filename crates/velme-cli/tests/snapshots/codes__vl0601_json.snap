@@ -1,0 +1,36 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0601",
+          "file": "game.velme",
+          "labels": [],
+          "message": "`Spin` took too many steps and was stopped.",
+          "notes": [
+            "it may take 100000 steps (fuel)",
+            "this happened at item 66 of a list (counting from 0)",
+            "this happened at item 15 of a list (counting from 0)"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 106,
+            "line": 3,
+            "start": 21
+          }
+        }
+      ],
+      "goal": "Spin",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

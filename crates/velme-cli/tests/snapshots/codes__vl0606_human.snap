@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Long` made a list or answer that's too big.  [VL0606]
+    ╭─[ game.velme:14:1 ]
+    │
+ 14 │ ╭─▶ goal Long(n: Number) -> Number:
+ 15 │ ├─▶     plan: "Add up the numbers below n."
+    │ │                                             
+    │ ╰───────────────────────────────────────────── here
+    │     
+    │     Note: it asked for a list of 20000 items; at most 10000 are allowed
+────╯

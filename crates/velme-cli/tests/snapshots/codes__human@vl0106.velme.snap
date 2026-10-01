@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0106.velme
+---
+Error: This file is written for `velme/9.0`, but this Velme understands `velme/0.1`.  [VL0106]
+   ╭─[ vl0106.velme:2:11 ]
+   │
+ 2 │ language: velme/9.0
+   │           ────┬────  
+   │               ╰────── here
+   │ 
+   │ Help: change the first line to `language: velme/0.1`
+───╯

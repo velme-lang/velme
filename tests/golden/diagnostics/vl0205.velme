@@ -1,0 +1,10 @@
+# A field the record does not have is VL0205.
+language: velme/0.1
+
+type Player:
+    name: Text
+
+goal Score(player: Player) -> Number:
+    plan: "Score the player."
+    check:
+        - result == player.score
