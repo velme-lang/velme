@@ -1,0 +1,11 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: Input `a` should be Number, but got text.  [VL0902]
+   ╭─[ add.velme:4:10 ]
+   │
+ 4 │ goal Add(a: Number, b: Number) -> Number:
+   │          ────┬────  
+   │              ╰────── here
+───╯

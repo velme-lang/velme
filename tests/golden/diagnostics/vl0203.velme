@@ -1,0 +1,8 @@
+# A goal declared twice is VL0203.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Double(y: Number) -> Number:
+    plan: "Double y."

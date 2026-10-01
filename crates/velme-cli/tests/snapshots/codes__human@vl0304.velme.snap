@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0304.velme
+---
+Error: These goals call each other in a circle: Ping → Pong → Ping.  [VL0304]
+   ╭─[ vl0304.velme:6:9 ]
+   │
+ 6 │         result = Pong(x)
+   │         ────────┬───────  
+   │                 ╰───────── here
+   │ 
+   │ Help: a goal can't use itself, even through other goals; move the shared work into a new goal
+───╯

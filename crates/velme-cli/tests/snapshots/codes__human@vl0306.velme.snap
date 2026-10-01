@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0306.velme
+---
+Error: `twice` is already used in this goal.  [VL0306]
+    ╭─[ vl0306.velme:10:9 ]
+    │
+ 10 │         twice = Double(x)
+    │         ──┬──  
+    │           ╰──── here
+    │ 
+    │ Help: give this call its own name
+────╯

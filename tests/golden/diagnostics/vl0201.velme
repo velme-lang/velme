@@ -1,0 +1,5 @@
+# A type name that is not declared is VL0201.
+language: velme/0.1
+
+goal Score(player: Player) -> Number:
+    plan: "Score the player."

@@ -1,0 +1,5 @@
+# A header naming a version this compiler does not support is VL0106 (R-SYN-15).
+language: velme/9.0
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."

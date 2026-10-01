@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0104.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0104",
+      "file": "vl0104.velme",
+      "labels": [],
+      "message": "`module` is coming in a later Velme version — try another name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 13,
+        "end": 90,
+        "line": 4,
+        "start": 84
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

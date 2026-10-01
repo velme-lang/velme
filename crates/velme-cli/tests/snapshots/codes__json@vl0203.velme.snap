@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0203.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0203",
+      "file": "vl0203.velme",
+      "help": "rename one of them",
+      "labels": [],
+      "message": "`Double` is already defined on line 4.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 124,
+        "line": 7,
+        "start": 118
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

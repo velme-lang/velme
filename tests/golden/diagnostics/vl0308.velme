@@ -1,0 +1,6 @@
+# A `budget` value above the system cap is VL0308 (R-GOAL-20).
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    budget calls=999
+    plan: "Double x."

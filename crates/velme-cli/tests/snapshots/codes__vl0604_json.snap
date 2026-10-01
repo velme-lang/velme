@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0604",
+          "file": "game.velme",
+          "labels": [],
+          "message": "`Hungry` needed more memory than it's allowed.",
+          "notes": [
+            "it may allocate 1024 bytes"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 268,
+            "line": 10,
+            "start": 173
+          }
+        }
+      ],
+      "goal": "Hungry",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

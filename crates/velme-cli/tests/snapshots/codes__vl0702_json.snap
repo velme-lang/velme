@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0702",
+          "file": "add.velme",
+          "labels": [],
+          "message": "`Add` changed since it was last built — run `velme build`.",
+          "notes": [
+            "its plan, checks, examples or budget changed"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 320,
+            "line": 4,
+            "start": 116
+          }
+        }
+      ],
+      "goal": "Add",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

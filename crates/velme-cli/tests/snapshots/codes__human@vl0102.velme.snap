@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0102.velme
+---
+Error: This line's indentation doesn't line up with the lines above it.  [VL0102]
+   ╭─[ vl0102.velme:6:1 ]
+   │
+ 6 │       check:
+   │ ───┬──  
+   │    ╰──── here
+   │ 
+   │ Help: indent it exactly as far as the line it belongs with
+───╯

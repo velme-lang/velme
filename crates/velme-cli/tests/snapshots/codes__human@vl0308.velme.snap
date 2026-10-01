@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0308.velme
+---
+Error: `budget` can only make limits smaller — `calls` can be at most `128`.  [VL0308]
+   ╭─[ vl0308.velme:5:12 ]
+   │
+ 5 │     budget calls=999
+   │            ────┬────  
+   │                ╰────── here
+───╯

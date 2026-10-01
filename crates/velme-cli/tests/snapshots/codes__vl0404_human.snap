@@ -1,0 +1,15 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Double` needs building, and `--offline` is on.  [VL0404]
+   ╭─[ game.velme:3:1 ]
+   │
+ 3 │ ╭─▶ goal Double(n: Number) -> Number:
+   ┆ ┆   
+ 6 │ ├─▶         - Double(2) == 4
+   │ │                              
+   │ ╰────────────────────────────── here
+   │     
+   │     Help: run `velme build` without `--offline`
+───╯

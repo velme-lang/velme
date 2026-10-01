@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0205.velme
+---
+Error: A `Player` doesn't have a field called `score`.  [VL0205]
+    ╭─[ vl0205.velme:10:28 ]
+    │
+ 10 │         - result == player.score
+    │                            ──┬──  
+    │                              ╰──── here
+────╯

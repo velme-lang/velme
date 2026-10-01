@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0207.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0207",
+      "file": "vl0207.velme",
+      "help": "write `player is not empty and …` before using it",
+      "labels": [],
+      "message": "`player` might be empty — check `is not empty` first.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 21,
+        "end": 236,
+        "line": 10,
+        "start": 230
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

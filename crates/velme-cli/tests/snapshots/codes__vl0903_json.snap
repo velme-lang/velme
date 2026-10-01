@@ -1,0 +1,26 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0903",
+      "file": "add.velme",
+      "labels": [],
+      "message": "There's no goal called `Ad`. Did you mean `Add`?",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 0,
+        "line": 1,
+        "start": 0
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

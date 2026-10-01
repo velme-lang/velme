@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0205.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0205",
+      "file": "vl0205.velme",
+      "labels": [],
+      "message": "A `Player` doesn't have a field called `score`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 28,
+        "end": 207,
+        "line": 10,
+        "start": 202
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

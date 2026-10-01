@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0305.velme
+---
+Error: `second` is used before it's made — move its line up.  [VL0305]
+   ╭─[ vl0305.velme:9:24 ]
+   │
+ 9 │         first = Double(second)
+   │                        ───┬──  
+   │                           ╰──── here
+   │ 
+   │ Help: a call can use only the names made on the lines above it
+───╯

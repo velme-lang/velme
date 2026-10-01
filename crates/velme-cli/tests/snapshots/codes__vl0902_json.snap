@@ -1,0 +1,32 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0902",
+          "file": "add.velme",
+          "labels": [],
+          "message": "Input `a` should be Number, but got text.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 10,
+            "end": 134,
+            "line": 4,
+            "start": 125
+          }
+        }
+      ],
+      "goal": "Add",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

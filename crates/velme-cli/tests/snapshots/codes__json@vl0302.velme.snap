@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0302.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0302",
+      "file": "vl0302.velme",
+      "labels": [],
+      "message": "`Double` needs 1 input, but got 2.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 9,
+        "end": 204,
+        "line": 9,
+        "start": 183
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

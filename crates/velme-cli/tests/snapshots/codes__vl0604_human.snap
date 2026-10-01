@@ -1,0 +1,15 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Hungry` needed more memory than it's allowed.  [VL0604]
+    ╭─[ game.velme:10:1 ]
+    │
+ 10 │ ╭─▶ goal Hungry(n: Number) -> Number:
+    ┆ ┆   
+ 12 │ ├─▶     plan: "Add up the numbers below n."
+    │ │                                             
+    │ ╰───────────────────────────────────────────── here
+    │     
+    │     Note: it may allocate 1024 bytes
+────╯

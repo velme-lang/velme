@@ -1743,6 +1743,7 @@ name = "velme-wasm"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "insta",
  "proptest",
  "rustix",
  "serde_json",

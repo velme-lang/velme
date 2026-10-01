@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0305.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0305",
+      "file": "vl0305.velme",
+      "help": "a call can use only the names made on the lines above it",
+      "labels": [],
+      "message": "`second` is used before it's made — move its line up.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 24,
+        "end": 193,
+        "line": 9,
+        "start": 187
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

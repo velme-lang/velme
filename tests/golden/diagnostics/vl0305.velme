@@ -1,0 +1,11 @@
+# A binding used before its line is VL0305.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Main(x: Number) -> Number:
+    call:
+        first = Double(second)
+        second = Double(x)
+        result = Double(first)

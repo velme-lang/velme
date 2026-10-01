@@ -1,0 +1,40 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0605.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0605",
+      "file": "vl0605.velme",
+      "help": "raise `depth=` in its budget, or make its chains of calls shorter",
+      "labels": [
+        {
+          "span": {
+            "column": 12,
+            "end": 297,
+            "line": 12,
+            "start": 290
+          },
+          "text": "the limit set here"
+        }
+      ],
+      "message": "Goals call each other too deeply while running `Main`.",
+      "notes": [
+        "its calls would nest 2 deep, but its limit is 1"
+      ],
+      "severity": "error",
+      "span": {
+        "column": 6,
+        "end": 256,
+        "line": 11,
+        "start": 252
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

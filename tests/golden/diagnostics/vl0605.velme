@@ -1,0 +1,14 @@
+# A run tree deeper than the goal's `depth` limit is VL0605, checked statically (runtime/30 §7).
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Twice(x: Number) -> Number:
+    call:
+        result = Double(x)
+
+goal Main(x: Number) -> Number:
+    budget depth=1
+    call:
+        result = Twice(x)

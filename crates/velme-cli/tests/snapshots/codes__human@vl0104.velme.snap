@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0104.velme
+---
+Error: `module` is coming in a later Velme version — try another name.  [VL0104]
+   ╭─[ vl0104.velme:4:13 ]
+   │
+ 4 │ goal Double(module: Number) -> Number:
+   │             ───┬──  
+   │                ╰──── here
+───╯

@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0307.velme
+---
+Error: `Main` needs a `plan:` that says what it should do.  [VL0307]
+   ╭─[ vl0307.velme:7:6 ]
+   │
+ 7 │ goal Main(x: Number) -> Number:
+   │      ──┬─  
+   │        ╰─── here
+   │ 
+   │ Help: tell Velme what this goal should do in `plan:`
+───╯

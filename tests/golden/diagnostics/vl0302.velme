@@ -1,0 +1,9 @@
+# A call with the wrong number of arguments is VL0302.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+
+goal Main(x: Number) -> Number:
+    call:
+        result = Double(x, x)

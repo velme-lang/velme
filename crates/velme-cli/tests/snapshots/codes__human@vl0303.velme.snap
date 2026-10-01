@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0303.velme
+---
+Error: `Double` can only be used after it's listed in `call:`.  [VL0303]
+    ╭─[ vl0303.velme:10:21 ]
+    │
+ 10 │         - result == Double(x)
+    │                     ───┬──  
+    │                        ╰──── here
+    │ 
+    │ Help: a check looks at one run; list the call in `call:` and use its name here
+────╯

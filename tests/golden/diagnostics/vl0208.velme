@@ -1,0 +1,8 @@
+# A record type that contains itself is VL0208.
+language: velme/0.1
+
+type Node:
+    next: Node
+
+goal Count(node: Node) -> Number:
+    plan: "Count the nodes."

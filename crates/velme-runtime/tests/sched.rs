@@ -14,6 +14,7 @@ use serde_json::{Value as Json, json};
 use velme_builtins::limits::{FUEL_PER_MS, MAX_WALL_CLOCK_MS};
 use velme_builtins::{BUILTINS_VERSION, Number, Value};
 use velme_diagnostics::Code;
+use velme_diagnostics::render::{JsonDiagnostic, LineIndex, render_human};
 use velme_ir::{IR_VERSION, calls};
 use velme_runtime::{CallStatus, Clock, GoalRun, Lock, Options, Registry, Store, run_goal, run_goal_peak, test_goal};
 use velme_sema::hir::Program;
@@ -841,6 +842,32 @@ fn ac_run_12_the_watchdog_stops_a_run_only_once_the_clock_passes_sixty_seconds()
     // The clock's origin doesn't matter, only its readings' differences.
     let later = elapsed(&[1_000_000, 1_030_000, 1_000_000 + limit]);
     assert_eq!(later.result(), Ok(number_value(90_000)));
+}
+
+/// `VL0603`'s human and JSON rendering (R-QA-05, D-140): the watchdog fires on the fake clock alone, so this code is
+/// snapshotted here and not through the CLI.
+#[test]
+fn vl0603_a_run_stopped_by_the_watchdog() {
+    let (project, program) = installed("vl0603");
+    let options = Options {
+        clock: Script::new(&[0, 30_000, 60_000, 60_001]),
+        ..Options::default().with_jobs(1)
+    };
+    let diagnostics = run_with(&project, &program, "Spin", &[300], options)
+        .result()
+        .expect_err("timed out");
+    assert_eq!(diagnostics[0].code, Code::Timeout);
+    let human = render_human(&diagnostics, FILE, Some(SOURCE), false);
+    let lines = LineIndex::new(SOURCE);
+    let json: Vec<_> = diagnostics
+        .iter()
+        .map(|d| JsonDiagnostic::new(d, FILE, &lines))
+        .collect();
+    insta::assert_snapshot!("vl0603_human", human);
+    insta::assert_snapshot!(
+        "vl0603_json",
+        serde_json::to_string_pretty(&json).expect("diagnostics serialize")
+    );
 }
 
 /// A wired goal of 128 invocations, each spending about a full `max_fuel` on a clock that advances a millisecond per

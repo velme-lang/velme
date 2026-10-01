@@ -502,6 +502,31 @@ fn ac_sbx_02_a_module_importing_wasi_is_refused_by_name_and_never_compiled() {
     assert_eq!(cached_files(&cache).len(), usize::from(cfg!(unix)));
 }
 
+/// `VL0801`'s human and JSON rendering (R-QA-05, D-140): no emitted module imports outside the whitelist, so the
+/// refusal is reached through the private loader, as the runtime reports it for the goal's declaration.
+#[test]
+fn vl0801_a_module_importing_outside_the_whitelist() {
+    let file = "game.velme";
+    let source = "language: velme/0.1\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n";
+    let span = program(source).goals[0].span;
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let error = sandbox()
+        .load_bytes(&importing("wasi_snapshot_preview1", "fd_write"), &like)
+        .expect_err("refused");
+    let diagnostics = [error.diagnostic("G", span)];
+    let human = velme_diagnostics::render::render_human(&diagnostics, file, Some(source), false);
+    let lines = velme_diagnostics::render::LineIndex::new(source);
+    let json: Vec<_> = diagnostics
+        .iter()
+        .map(|d| velme_diagnostics::render::JsonDiagnostic::new(d, file, &lines))
+        .collect();
+    insta::assert_snapshot!("vl0801_human", human);
+    insta::assert_snapshot!(
+        "vl0801_json",
+        serde_json::to_string_pretty(&json).expect("diagnostics serialize")
+    );
+}
+
 /// A module read from the disk cache is a hit, one compiled a miss, and one kept in memory neither: the counts `-v`
 /// shows (D-137). Off Unix there is no disk cache, so every module is compiled (D-120).
 #[test]

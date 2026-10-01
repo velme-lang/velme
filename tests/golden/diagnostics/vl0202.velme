@@ -1,0 +1,7 @@
+# A name that is not in scope is VL0202.
+language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: "Double x."
+    check:
+        - result == y * 2

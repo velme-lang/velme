@@ -1,0 +1,15 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: The built version of `Add` is missing — run `velme build`.  [VL0701]
+    ╭─[ add.velme:4:1 ]
+    │
+  4 │ ╭─▶ goal Add(a: Number, b: Number) -> Number:
+    ┆ ┆   
+ 11 │ ├─▶         - Add(0.1, 0.2) == 0.3
+    │ │                                    
+    │ ╰──────────────────────────────────── here
+    │     
+    │     Note: there is no file for artifact b3:eb3bdbf705b664b9710a629c28bf70bd19c330c5d02a0b4d01ffe0144fee6dec
+────╯

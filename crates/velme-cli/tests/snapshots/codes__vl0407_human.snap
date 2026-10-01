@@ -1,0 +1,16 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Nothing is sent: the scripted provider answers from its script.
+Error: Velme needs more detail to build `Double`. Add the answer as an example, or to the plan, and build again.  [VL0407]
+   ╭─[ game.velme:3:1 ]
+   │
+ 3 │ ╭─▶ goal Double(n: Number) -> Number:
+   ┆ ┆   
+ 6 │ ├─▶         - Double(2) == 4
+   │ │                              
+   │ ╰────────────────────────────── here
+   │     
+   │     Note: The AI helper asked: "Round up?"
+───╯

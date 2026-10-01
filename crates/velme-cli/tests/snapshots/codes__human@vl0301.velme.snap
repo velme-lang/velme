@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0301.velme
+---
+Error: I don't know a goal called `Triple`.  [VL0301]
+   ╭─[ vl0301.velme:6:18 ]
+   │
+ 6 │         result = Triple(x)
+   │                  ───┬──  
+   │                     ╰──── here
+   │ 
+   │ Help: declare it with `goal` in this file
+───╯

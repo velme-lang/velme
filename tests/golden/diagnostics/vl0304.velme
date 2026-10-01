@@ -1,0 +1,10 @@
+# Goals that call each other in a circle are VL0304.
+language: velme/0.1
+
+goal Ping(x: Number) -> Number:
+    call:
+        result = Pong(x)
+
+goal Pong(x: Number) -> Number:
+    call:
+        result = Ping(x)

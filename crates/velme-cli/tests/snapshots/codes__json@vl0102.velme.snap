@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0102.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0102",
+      "file": "vl0102.velme",
+      "help": "indent it exactly as far as the line it belongs with",
+      "labels": [],
+      "message": "This line's indentation doesn't line up with the lines above it.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 155,
+        "line": 6,
+        "start": 149
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -1,0 +1,43 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0404",
+          "file": "game.velme",
+          "help": "run `velme build` without `--offline`",
+          "labels": [],
+          "message": "`Double` needs building, and `--offline` is on.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 116,
+            "line": 3,
+            "start": 21
+          }
+        }
+      ],
+      "goal": "Double",
+      "status": "failed"
+    }
+  ],
+  "status": "failed",
+  "summary": {
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "calls": 0,
+    "input_tokens": 0,
+    "lock_hits": 0,
+    "output_tokens": 0,
+    "store_hits": 0,
+    "synthesized": 0
+  }
+}

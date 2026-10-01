@@ -1,0 +1,32 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0602",
+          "file": "game.velme",
+          "labels": [],
+          "message": "`Divide` tried to divide 5 by 0, which has no answer.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 171,
+            "line": 7,
+            "start": 108
+          }
+        }
+      ],
+      "goal": "Divide",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

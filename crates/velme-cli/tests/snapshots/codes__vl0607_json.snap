@@ -1,0 +1,34 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0607",
+          "file": "game.velme",
+          "labels": [],
+          "message": "The WASM backend can't run `Absent` yet.",
+          "notes": [
+            "the backend has no code for a type that holds Nothing; run it without `--backend wasm`"
+          ],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 0,
+            "line": 1,
+            "start": 0
+          }
+        }
+      ],
+      "goal": "Absent",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}
