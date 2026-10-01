@@ -17,9 +17,6 @@ use velme_test_support::repo;
 /// Set to rewrite the committed fixtures, then review the diff.
 const BLESS: &str = "VELME_BLESS_FIXTURES";
 
-/// Held while the committed fixtures are rewritten, so tests running in parallel can't race on the same files (R-QA-09).
-static FIXTURES_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 const FIXTURES: &str = "tests/fixtures/synth";
 
 struct Out {
@@ -127,10 +124,23 @@ fn built(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 /// What recording every example wrote: the fixtures, and the lock and store of each example's build.
 type Recorded = (BTreeMap<String, Vec<u8>>, BTreeMap<String, BTreeMap<String, Vec<u8>>>);
 
-/// [`record_all`], once per test process: the tests that need it share the run.
+/// [`record_all`], once per test process: the tests that need it share the run. Under `VELME_BLESS_FIXTURES=1` the
+/// committed fixtures are rewritten with it here, once, before any test reads them (R-QA-09).
 fn record() -> &'static Recorded {
     static RECORDED: std::sync::OnceLock<Recorded> = std::sync::OnceLock::new();
-    RECORDED.get_or_init(record_all)
+    RECORDED.get_or_init(|| {
+        let recorded = record_all();
+        if std::env::var_os(BLESS).is_some() {
+            let committed = repo(FIXTURES);
+            for path in tree(&committed).keys() {
+                fs::remove_file(committed.join(path)).expect("stale fixture removed");
+            }
+            for (path, bytes) in &recorded.0 {
+                fs::write(committed.join(path), bytes).expect("fixture written");
+            }
+        }
+        recorded
+    })
 }
 
 /// Builds every example through the test backend with `VELME_SYNTH_RECORD=1`: the fixtures each recorded, and the lock
@@ -167,6 +177,135 @@ fn record_all() -> Recorded {
     (fixtures, stores)
 }
 
+/// The lock and the store of the project at `dir`, by path from `dir` with `/` separators: what an example directory
+/// commits (D-141). The synth log and temporary files are each machine's own, and a missing lock is simply absent.
+fn lock_and_store(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    let mut files: BTreeMap<String, Vec<u8>> = tree(&dir.join(".velme"))
+        .into_iter()
+        .filter(|(path, _)| path != "synth-log.jsonl" && !path.starts_with("tmp/"))
+        .map(|(path, bytes)| (format!(".velme/{path}"), bytes))
+        .collect();
+    if let Ok(lock) = fs::read(dir.join("velme.lock")) {
+        files.insert("velme.lock".to_owned(), lock);
+    }
+    files
+}
+
+/// Each example directory as building its examples one by one on the replay provider leaves it, from the fixtures
+/// recorded now: the lock and the store, by the directory's path from the repository root.
+fn build_example_dirs() -> BTreeMap<String, BTreeMap<String, Vec<u8>>> {
+    let (fixtures, _) = record();
+    let mut dirs: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (example, _) in EXAMPLES {
+        let (dir, _) = example.rsplit_once('/').expect("an example in a directory");
+        dirs.entry(dir).or_default().push(example);
+    }
+    let mut built = BTreeMap::new();
+    for (name, examples) in dirs {
+        let dir = scratch(&format!("{}-locked", name.replace('/', "-")));
+        let fixture_dir = dir.join(FIXTURES);
+        fs::create_dir_all(&fixture_dir).expect("fixture directory");
+        for (path, bytes) in fixtures {
+            fs::write(fixture_dir.join(path), bytes).expect("fixture written");
+        }
+        for example in examples {
+            let file = format!("{}.velme", stem(example));
+            fs::copy(repo(example), dir.join(&file)).expect("the example is copied");
+            let out = velme(&dir, &["build", &file, "--provider", "replay"]);
+            assert_eq!(out.code, 0, "{example}: {}{}", out.stdout, out.stderr);
+        }
+        built.insert(name.to_owned(), lock_and_store(&dir));
+    }
+    built
+}
+
+/// [`build_example_dirs`], once per test process; under `VELME_BLESS_FIXTURES=1` the example directories are rewritten
+/// with it here, once, before any test reads them, so blessing then testing in place is one deterministic run (R-QA-09).
+fn example_dirs() -> &'static BTreeMap<String, BTreeMap<String, Vec<u8>>> {
+    static BUILT: std::sync::OnceLock<BTreeMap<String, BTreeMap<String, Vec<u8>>>> = std::sync::OnceLock::new();
+    BUILT.get_or_init(|| {
+        let built = build_example_dirs();
+        if std::env::var_os(BLESS).is_some() {
+            for (name, files) in &built {
+                let dir = repo(name);
+                for path in lock_and_store(&dir).keys() {
+                    fs::remove_file(dir.join(path)).expect("stale file removed");
+                }
+                for (path, bytes) in files {
+                    let path = dir.join(path);
+                    fs::create_dir_all(path.parent().expect("a parent")).expect("store directory");
+                    fs::write(path, bytes).expect("file written");
+                }
+            }
+        }
+        built
+    })
+}
+
+/// What a test that reads the committed fixtures or examples calls first: under `VELME_BLESS_FIXTURES=1` it waits for the
+/// bless of [`record`] and [`example_dirs`]; otherwise it does nothing.
+fn blessed() {
+    if std::env::var_os(BLESS).is_some() {
+        example_dirs();
+    }
+}
+
+/// Each example directory commits the lock and the store that building its examples on the replay provider gives, so
+/// every example runs with no API key; the manifests record the compiler version, so a version bump is re-blessed here
+/// (D-141, `delivery/51` §2).
+#[test]
+fn the_committed_example_locks_and_artifacts_are_what_replay_builds() {
+    for (name, files) in example_dirs() {
+        assert!(
+            lock_and_store(&repo(name)) == *files,
+            "{name}: the lock or the store is out of date: run `{BLESS}=1 cargo test -p velme-cli --test examples` and \
+             review the diff"
+        );
+    }
+}
+
+/// Examples-as-tests (`delivery/51` §2, D-141): every example passes `velme test --locked` where it is committed, run
+/// from the repository root with no key, and leaves its directory as it was.
+#[test]
+fn every_committed_example_passes_velme_test_locked() {
+    blessed();
+    let root = repo("");
+    for (example, _) in EXAMPLES {
+        let dir = repo(example);
+        let dir = dir.parent().expect("an example directory");
+        let before = tree(dir);
+        let out = velme(&root, &["test", "--locked", example]);
+        assert_eq!(out.code, 0, "{example}: {}{}", out.stdout, out.stderr);
+        assert!(!out.stdout.contains('✗'), "{example}: {}", out.stdout);
+        assert!(
+            tree(dir) == before,
+            "{example}: `velme test --locked` wrote to {}",
+            dir.display()
+        );
+    }
+}
+
+/// The README's quick start runs an example with no key and no build (D-142).
+#[test]
+fn the_readme_quick_start_runs_add_with_no_key() {
+    blessed();
+    let out = velme(
+        &repo(""),
+        &[
+            "run",
+            "examples/beginner/add.velme",
+            "--goal",
+            "Add",
+            "--arg",
+            "a=2",
+            "--arg",
+            "b=3",
+        ],
+    );
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+    assert!(out.stdout.ends_with("Result:\n5\n"), "{}", out.stdout);
+}
+
 /// The examples the fixtures are recorded for are the examples there are.
 #[test]
 fn every_example_has_its_ir_and_no_example_is_missing() {
@@ -196,18 +335,7 @@ fn every_example_has_its_ir_and_no_example_is_missing() {
 #[test]
 fn the_committed_replay_fixtures_are_what_the_test_backend_records() {
     let (recorded, _) = record();
-    let committed_dir = repo(FIXTURES);
-    if std::env::var_os(BLESS).is_some() {
-        // One bless at a time in this process (R-QA-09).
-        let _bless = FIXTURES_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        for path in tree(&committed_dir).keys() {
-            fs::remove_file(committed_dir.join(path)).expect("stale fixture removed");
-        }
-        for (path, bytes) in recorded {
-            fs::write(committed_dir.join(path), bytes).expect("fixture written");
-        }
-    }
-    let committed = tree(&committed_dir);
+    let committed = tree(&repo(FIXTURES));
     assert!(
         committed == *recorded,
         "{FIXTURES} is out of date: run `{BLESS}=1 cargo test -p velme-cli --test examples` and review the diff"
@@ -240,6 +368,7 @@ fn ac_rdm_01_every_example_builds_from_its_plan_on_replay() {
 /// were (AC-RDM-08, AC-ART-01, R-ART-17).
 #[test]
 fn ac_rdm_08_a_second_build_of_every_example_makes_no_provider_call() {
+    blessed();
     for (example, _) in EXAMPLES {
         let (dir, file) = project(example, &format!("{}-twice", stem(example)));
         let fixtures = dir.join(FIXTURES);

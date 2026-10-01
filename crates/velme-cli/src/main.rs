@@ -68,11 +68,11 @@ const CHECK_LINES: [(&str, &[&str]); 3] = [
 
 const USAGE: &str = "usage: velme check FILE [--json]\n       \
                      velme build FILE [--provider NAME] [--model ID] [--external-url URL] [--ollama-url URL] [--locked] [--offline] [-v] [--json]\n       \
-                     velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--build] [--json]\n       \
-                     velme test FILE [--goal G] [--jobs N] [--build] [--json]\n       \
+                     velme run FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--build] [--locked] [--offline] [--backend interp|wasm|auto] [--json]\n       \
+                     velme test FILE [--goal G] [--jobs N] [--build] [--locked] [--offline] [--backend interp|wasm|auto] [--json]\n       \
                      velme explain FILE --goal G [--json]\n       \
                      velme artifact FILE --goal G [--json]\n       \
-                     velme trace FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--build] [--json]\n       \
+                     velme trace FILE --goal G [--input FILE.json|-] [--arg NAME=JSON]... [--jobs N] [--build] [--locked] [--offline] [--backend interp|wasm|auto] [--json]\n       \
                      velme gc | velme cache clean\n       \
                      velme --version\n\
                      every command also takes [--color auto|always|never] [-q] [-v]; FILE commands take [--config PATH]";
