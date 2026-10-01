@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 use serde_json::Value;
 use velme_runtime::{Entry, Lock, Store};
 use velme_test_support::schema::assert_cli_envelope;
+use velme_test_support::workload::user_cache;
 use velme_test_support::{install, program, read, repo};
 
 struct Run {
@@ -22,7 +23,8 @@ struct Run {
 }
 
 /// `velme` in `dir` with `envs` set, and the user's own provider, colour and config settings removed: the user-level config
-/// and cache point at directories inside `dir`, so a test never reads the developer's own.
+/// points at a directory inside `dir` and the module cache at [`user_cache`] beside it, outside the project as R-SBX-20
+/// asks, so a test never reads the developer's own (D-135).
 fn velme_env(dir: &Path, args: &[&str], envs: &[(&str, &str)], stdin: &[u8]) -> Run {
     let home = dir.join("no-home");
     let mut command = Command::new(env!("CARGO_BIN_EXE_velme"));
@@ -39,9 +41,9 @@ fn velme_env(dir: &Path, args: &[&str], envs: &[(&str, &str)], stdin: &[u8]) -> 
         .env_remove("VELME_OLLAMA_URL")
         .env("HOME", &home)
         .env("XDG_CONFIG_HOME", &home)
-        .env("XDG_CACHE_HOME", home.join("cache"))
+        .env("XDG_CACHE_HOME", user_cache(dir))
         .env("APPDATA", &home)
-        .env("LOCALAPPDATA", home.join("cache"))
+        .env("LOCALAPPDATA", user_cache(dir))
         .envs(envs.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -94,10 +96,11 @@ fn tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     files
 }
 
-/// A copy of the committed fixture project `name`, in a fresh directory for `test`.
+/// A copy of the committed fixture project `name`, in a fresh directory for `test` with an empty [`user_cache`].
 fn copy(name: &str, test: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli").join(test);
     let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(user_cache(&dir));
     fs::create_dir_all(&dir).expect("scratch directory");
     for (file, bytes) in tree(&repo(&format!("tests/fixtures/run/{name}"))) {
         let path = dir.join(file);
@@ -754,6 +757,7 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
         .join("cli")
         .join("ac_cli_21_empty");
     let _ = fs::remove_dir_all(&empty);
+    let _ = fs::remove_dir_all(user_cache(&empty));
     fs::create_dir_all(&empty).expect("directory");
     assert_eq!(velme(&empty, &["gc"]).code, 64);
 
@@ -768,7 +772,7 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
         (envelope["status"].as_str(), envelope["summary"]["removed"].as_u64()),
         (Some("ok"), Some(0))
     );
-    let cache = empty.join("no-home/cache/velme/wasm");
+    let cache = user_cache(&empty).join("velme/wasm");
     fs::create_dir_all(&cache).expect("cache");
     fs::write(cache.join("m.cwasm"), b"x").expect("module");
     let envelope = parsed(&velme(&empty, &["cache", "clean", "--json"]));
@@ -779,7 +783,7 @@ fn ac_cli_21_gc_removes_unreferenced_files_and_cache_clean_needs_no_cache() {
     assert_eq!((run.stdout.as_str(), run.code), ("Removed the WASM module cache.\n", 0));
     assert!(!cache.exists());
     assert!(
-        empty.join("no-home/cache/velme").exists(),
+        user_cache(&empty).join("velme").exists(),
         "only the wasm directory goes"
     );
 }
@@ -878,7 +882,7 @@ fn gc_and_cache_clean_never_delete_through_a_link() {
     assert_eq!(run.code, 64, "{}", run.stderr);
     assert!(run.stderr.contains("[VL0901]"), "{}", run.stderr);
     // A cache directory that is a link is left alone.
-    let home = dir.join("no-home/cache/velme");
+    let home = user_cache(&dir).join("velme");
     fs::create_dir_all(&home).expect("cache parent");
     std::os::unix::fs::symlink(&outside, home.join("wasm")).expect("link");
     let run = velme(&dir, &["cache", "clean"]);

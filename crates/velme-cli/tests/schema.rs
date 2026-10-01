@@ -5,7 +5,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use serde_json::Value;
 use velme_test_support::repo;
@@ -119,7 +119,7 @@ fn ac_cli_05_a_failing_check_in_json_has_the_same_message_as_human_mode() {
         if json {
             args.push("--json");
         }
-        Command::new(env!("CARGO_BIN_EXE_velme"))
+        velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
             .args(args)
             .current_dir(Path::new(&dir))
             .env_remove("NO_COLOR")

@@ -75,3 +75,34 @@ expect_used = "warn"
 indexing_slicing = "warn"
 panic = "warn"
 unreachable = "warn"
+
+# Wasmtime and Cranelift built at `opt-level = 2` in the dev profile, which the test profile inherits: the CLI's tests
+# compile WASM modules on every backend run, and unoptimised Cranelift makes that the slow part of a debug test (D-135).
+[profile.dev.package.wasmtime]
+opt-level = 2
+[profile.dev.package.wasmtime-environ]
+opt-level = 2
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 2
+[profile.dev.package.wasmtime-internal-core]
+opt-level = 2
+[profile.dev.package.wasmtime-internal-unwinder]
+opt-level = 2
+[profile.dev.package.regalloc2]
+opt-level = 2
+[profile.dev.package.cranelift-codegen]
+opt-level = 2
+[profile.dev.package.cranelift-frontend]
+opt-level = 2
+[profile.dev.package.cranelift-entity]
+opt-level = 2
+[profile.dev.package.cranelift-bforest]
+opt-level = 2
+[profile.dev.package.cranelift-bitset]
+opt-level = 2
+[profile.dev.package.cranelift-control]
+opt-level = 2
+[profile.dev.package.cranelift-native]
+opt-level = 2
+[profile.dev.package.cranelift-assembler-x64]
+opt-level = 2

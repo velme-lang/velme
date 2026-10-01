@@ -33,6 +33,18 @@ pub fn repo(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path)
 }
 
+/// The `velme` binary `exe` of a CLI test binary, its module cache in a directory of its own under `tmp`, the test
+/// binary's `CARGO_TARGET_TMPDIR` (D-135): never the user's `~/.cache/velme/wasm`, and outside every project a test makes
+/// there, since R-SBX-20 refuses a cache inside the project. A test that needs another cache sets `XDG_CACHE_HOME` after.
+pub fn velme_command(exe: &str, tmp: &str) -> std::process::Command {
+    let binary = std::env::current_exe().expect("the test binary's path");
+    let name = binary.file_stem().expect("a file name");
+    let cache = Path::new(tmp).join("velme-cache").join(name);
+    let mut command = std::process::Command::new(exe);
+    command.env("XDG_CACHE_HOME", &cache).env("LOCALAPPDATA", &cache);
+    command
+}
+
 /// The text of the file at `path`.
 pub fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))

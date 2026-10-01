@@ -6,11 +6,10 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::{Value, json};
 use velme_runtime::{Lock, Store};
-use velme_test_support::{install, program, read, repo};
+use velme_test_support::{install, program, read, repo, velme_command};
 
 const ADD: &str = "add.velme";
 
@@ -22,7 +21,7 @@ struct Run {
 
 /// Runs `velme` in `dir` with every provider setting of the user's environment removed.
 fn velme(dir: &Path, args: &[&str]) -> Run {
-    let out = Command::new(env!("CARGO_BIN_EXE_velme"))
+    let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
         .args(args)
         .current_dir(dir)
         .env_remove("NO_COLOR")

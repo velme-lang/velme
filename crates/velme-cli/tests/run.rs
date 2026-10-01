@@ -7,12 +7,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use serde_json::Value;
 use velme_runtime::{ARTIFACTS_DIR, LOCK_FILE, VELME_DIR};
 use velme_test_support::differential::EXAMPLES;
-use velme_test_support::{goal_id, install, program, read, repo};
+use velme_test_support::{goal_id, install, program, read, repo, velme_command};
 
 /// Set to rewrite the committed fixture projects from their hand-written IR, then review the diff.
 const BLESS: &str = "VELME_BLESS_FIXTURES";
@@ -52,7 +52,7 @@ fn velme(args: &[&str]) -> Run {
 
 /// Runs `velme` in `dir` with `stdin` as its standard input.
 fn velme_in(dir: &Path, args: &[&str], stdin: &[u8]) -> Run {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_velme"))
+    let mut child = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
         .args(args)
         .current_dir(dir)
         .env_remove("NO_COLOR")

@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use serde_json::json;
 use velme_test_support::backend::{Config, Mode, On, Server};
@@ -41,7 +41,7 @@ fn project(name: &str) -> (PathBuf, PathBuf) {
 }
 
 fn velme(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Out {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_velme"));
+    let mut command = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"));
     command
         .args(args)
         .current_dir(dir)

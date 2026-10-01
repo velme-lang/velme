@@ -1,6 +1,7 @@
 //! `cargo xtask gate`: the phase-gate steps `cargo xtask verify` leaves out (`delivery/51` R-QA-07, D-130). The ignored
-//! release-mode `ac_cmp_07_*` and `ac_qa_07_*` tests hold the `delivery/51` §6 targets, and each `ac_rdm_*` test runs
-//! [`RUNS`] times, each in a fresh process, for `delivery/50` R-RDM-04.
+//! release-mode `ac_cmp_07_*` and `ac_qa_07_*` tests hold the `delivery/51` §6 targets, `d_134_flip_criterion` measures
+//! the test of the CLI's default backend (D-134), and each `ac_rdm_*` test runs [`RUNS`] times, each in a fresh process,
+//! for `delivery/50` R-RDM-04.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

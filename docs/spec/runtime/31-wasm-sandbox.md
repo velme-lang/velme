@@ -25,18 +25,18 @@ modules.
 
 **R-SBX-01** WASM is never produced by an LLM (INV-1); only `velme-wasm` emits it, only from validated IR.
 **R-SBX-02** Backend selection: `--backend interp|wasm|auto`, a flag only, with no `velme.toml` key (D-117). The default
-is `interp` until M8e, which flips it to `auto` on each platform that passes D-134's test once the per-run cost of WASM
-is reduced (warm module cache on Unix, cold on Windows); a platform that fails keeps `interp` for v0.1. Only the CLI's
-default flips, never the runtime's own (D-121, D-122, D-134). `auto` runs a leaf goal on WASM when the sandbox can load
-and start it, and on the interpreter on any failure before its module starts: the emitter declines it, or the sandbox
-can't be made, or can't compile, link or start the module. `--verbose` then notes "`G` ran on the interpreter: …" with
-the reason (D-121); when the reason is a bug in Velme (an emitter bug, or an import the sandbox refuses), stderr says so
-without `--verbose` and asks for a report (D-123), and under `--json` that note goes in `notices[]` instead (from M8,
-D-136). A leaf whose module has started is never run again on the interpreter, whatever its outcome: a backstop firing
-is a backend bug (D-115). `wasm` does the same, except that a leaf the WASM backend can't run is `VL0607` (`VL0801` for
-an import the sandbox refuses), never a silent fallback; a leaf the emitter declines is not a bug, and its `VL0607` has
-its own message with no report link (D-123). On a composite goal both run the leaves on WASM and the tail on the
-interpreter.
+is `interp` on every platform for v0.1: no platform passed D-134's test at M8e (warm module cache on Unix, cold on
+Windows), since Wasmtime's fixed per-run cost still makes `velme test` slower under `auto` on the small examples and on
+`level_summary`. A later release may flip the CLI's default, never the runtime's own (D-121, D-122, D-134). `auto` runs
+a leaf goal on WASM when the sandbox can load and start it, and on the interpreter on any failure before its module
+starts: the emitter declines it, or the sandbox can't be made, or can't compile, link or start the module. `--verbose`
+then notes "`G` ran on the interpreter: …" with the reason (D-121); when the reason is a bug in Velme (an emitter bug,
+or an import the sandbox refuses), stderr says so without `--verbose` and asks for a report (D-123), and under `--json`
+that note goes in `notices[]` instead (from M8, D-136). A leaf whose module has started is never run again on the
+interpreter, whatever its outcome: a backstop firing is a backend bug (D-115). `wasm` does the same, except that a leaf
+the WASM backend can't run is `VL0607` (`VL0801` for an import the sandbox refuses), never a silent fallback; a leaf the
+emitter declines is not a bug, and its `VL0607` has its own message with no report link (D-123). On a composite goal
+both run the leaves on WASM and the tail on the interpreter.
 **R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Under `velme test` the leaf body of each
 example and of each generated input runs on the selected backend, while the examples' expected-value expressions and
 every check evaluate on the interpreter (D-80); a test run changes no artifact, lock or store, and only the derived

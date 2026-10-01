@@ -18,7 +18,7 @@ pub enum Color {
 /// `--backend` (`tooling/40` §2, `runtime/31` R-SBX-02): what evaluates leaf goal bodies in `run`, `test` and `trace`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
-    /// The reference interpreter, the default until M8e flips it to `auto` where D-134's test passes (D-122).
+    /// The reference interpreter, the CLI's default on every platform for v0.1 (D-122, D-134).
     Interp,
     /// WASM, and a leaf the WASM backend can't run is `VL0607`.
     Wasm,
