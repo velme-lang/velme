@@ -73,7 +73,7 @@ spelling suggestion.
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14); the provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) are valid only on `build` or together with `--build` (R-CLI-21) |
 | `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` R-RUN-07); results are identical for every value, including 1 (INV-3) |
-| `--backend interp\|wasm\|auto` | `interp` until the M7 gate, then `auto` | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
+| `--backend interp\|wasm\|auto` | `interp` until the start of M8, then `auto` (D-122) | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3), apart from the always-printed note of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
 | `--config PATH` | nearest `velme.toml` upward from `FILE` | alternative project config: it supplies settings only and does not move the project root (R-CLI-25) |
 | `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds phase timings and cache hits |
 
@@ -212,7 +212,7 @@ length/format rule for that one field, not a substitute for this one.
 | `3` | execution failed: check/example failure `VL0501/0502` or runtime failure `VL06xx` except `VL0607`, `VL0801` |
 | `4` | artifact/lock problem: `VL07xx` |
 | `64` | usage or input error: `VL09xx`, bad flags |
-| `70` | internal error `VL0607` (a Velme bug — message asks the user to report it) |
+| `70` | internal error `VL0607` (a Velme bug — message asks the user to report it; or, under `--backend wasm`, a leaf the WASM backend declines, with no report link, D-123) |
 
 **R-CLI-10** Exit codes are part of the CLI contract; changing a mapping is a breaking change (`delivery/52` §5).
 **R-CLI-16** When goals in one invocation fail with codes from different rows above, the process exit code is decided
@@ -303,7 +303,7 @@ contact, naming the list. Nothing is swapped for the first allowed model, across
 **R-CLI-21** Provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) apply only to `build` and to
 `run`/`test`/`trace` with `--build`; given anywhere else they are `VL0902`, not ignored. `--backend` takes `interp`,
 `wasm` or `auto`, and any other value is `VL0902`; under `--backend wasm` a leaf goal the WASM backend can't run is
-`VL0607`, never a silent fallback (`runtime/31` R-SBX-02, D-117, D-121). The output has no `backend` field, in `velme-cli/1` or in the
+`VL0607`, never a silent fallback (`runtime/31` R-SBX-02, D-117, D-121, D-123). The output has no `backend` field, in `velme-cli/1` or in the
 trace. A bad flag is reported like any input error: as a top-level diagnostic in the normal `--json` envelope, exit
 `64` (D-108).
 **R-CLI-22** `velme artifact FILE --goal G` loads the goal's artifact with the same checks and the same codes as `run`

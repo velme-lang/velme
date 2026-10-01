@@ -18,7 +18,7 @@ pub enum Color {
 /// `--backend` (`tooling/40` §2, `runtime/31` R-SBX-02): what evaluates leaf goal bodies in `run`, `test` and `trace`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
-    /// The reference interpreter, the default until the M7 gate (D-117).
+    /// The reference interpreter, the default until the start of M8 (D-117, D-122).
     Interp,
     /// WASM, and a leaf the WASM backend can't run is `VL0607`.
     Wasm,

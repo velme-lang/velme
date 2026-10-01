@@ -77,7 +77,8 @@ pub enum EmitError {
     /// (R-SBX-17). A caller passes leaves only, so this is its bug and never a decline of a valid program.
     NotLeaf,
     /// A backend bug: IR the validator should have rejected, or a module that didn't validate. `VL0607` under an
-    /// explicit `wasm`; under `auto` the leaf runs on the interpreter, with a `--verbose` note (D-121).
+    /// explicit `wasm`; under `auto` the leaf runs on the interpreter, with a note on stderr whether or not
+    /// `--verbose` is set (D-121, D-123).
     Internal(String),
 }
 

@@ -919,13 +919,13 @@ fn wasm(root: &Path) -> Arc<Wasm> {
     Arc::clone(made)
 }
 
-/// `code`, after the WASM backend's notes on stderr under `--verbose`: a backstop that fired, a disk cache that is
-/// off, a leaf `auto` ran on the interpreter (R-SBX-12, R-SBX-20, D-115). Never in `--json` or a trace.
+/// `code`, after the WASM backend's notes on stderr: always, a leaf `auto` ran on the interpreter because of a bug in
+/// Velme (D-123); under `--verbose` also a backstop that fired, a disk cache that is off, any other leaf `auto` ran on
+/// the interpreter (R-SBX-12, R-SBX-20, D-115, D-121). Never in `--json` or a trace.
 fn noted(cli: &Cli, code: u8) -> u8 {
-    if cli.verbose
-        && let Some(wasm) = WASM.get()
-    {
-        for note in wasm.notes() {
+    if let Some(wasm) = WASM.get() {
+        let verbose = if cli.verbose { wasm.notes() } else { Vec::new() };
+        for note in wasm.bug_notes().into_iter().chain(verbose) {
             print_err(&format!("note: {}\n", render::escape(&note)));
         }
     }

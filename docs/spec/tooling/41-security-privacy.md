@@ -58,6 +58,10 @@ architecture-review change (INV-4/INV-5), with a threat-table update in the same
 Pre-1.0 target (not a v0.1 gate): `cargo-vet` (or `cargo-crev`) audits for the Wasmtime and HTTP dependency chains
 (T-6), the two largest and most security-sensitive transitive graphs in the workspace.
 
+Wasmtime is a hard dependency, with no build without it. A Wasmtime security advisory is answered by a prompt bump,
+which only invalidates compiled-module caches, since their key includes Wasmtime's compatibility hash (R-SBX-13, T-6,
+D-124).
+
 ## 4. Secrets
 
 **R-SEC-05** Provider API keys come only from environment variables (`tooling/40` §5.2). They are never read from
