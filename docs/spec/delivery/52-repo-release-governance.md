@@ -163,8 +163,10 @@ The first public commit contains: README, both licenses, CONTRIBUTING, CODE_OF_C
 workspace `Cargo.toml`, `rust-toolchain.toml`, `crates/`, `examples/`, `tests/`, `docs/`, `rfc/`, `.github/`.
 README order: 1 What is Velme? · 2 Why is it different? · 3 a 10-line example a child can read · 4 run it locally ·
 5 the kid → professional path · 6 architecture · 7 contribute · 8 license. Until the crates are on crates.io, item 4 is
-`cargo install --git https://github.com/velme-lang/velme velme-cli --locked`, then `velme run
-examples/beginner/add.velme` with no key, then `velme build` with `ANTHROPIC_API_KEY` set or Ollama running (D-142).
+`cargo install --git https://github.com/velme-lang/velme velme-cli --locked`, then, in a `git clone` of the repository,
+`velme run examples/beginner/add.velme --goal Add --arg a=2 --arg b=3` with no key (`tooling/40` §2: `run` takes
+`--goal`), then `velme build` with a model (`--model` or `VELME_MODEL`) and `ANTHROPIC_API_KEY` set or Ollama running
+(D-142).
 
 ## 11. Naming clearance (D-38)
 

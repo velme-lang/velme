@@ -36,13 +36,17 @@ fn json(run: &Run) -> Value {
     serde_json::from_str(&run.stdout).expect("--json prints one JSON document")
 }
 
-/// The syntax part of AC-CLI-01; the other four ✓ lines arrive with M2 and later.
+/// AC-CLI-01's valid half: the five ✓ lines, the IR line counting the goals of the example's committed lock (D-141).
 #[test]
-fn ac_cli_01_parse_part_valid_file_prints_parsed() {
+fn ac_cli_01_a_valid_example_prints_the_five_lines() {
     let run = velme(&["check", "examples/beginner/hello.velme"]);
     assert_eq!(
         (run.stdout.as_str(), run.stderr.as_str(), run.code),
-        ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", "", 0)
+        (
+            "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ IR valid        (1 goal locked)\n✓ Checks valid\n",
+            "",
+            0
+        )
     );
 }
 
@@ -101,10 +105,23 @@ fn every_example_parses_cleanly() {
                 .to_str()
                 .expect("UTF-8 path");
             let run = velme(&["check", rel]);
+            // Every example commits its lock (D-141), so the IR line is there, with the example's own goal count.
+            let lines: Vec<&str> = run.stdout.lines().collect();
+            assert_eq!((run.stderr.as_str(), run.code), ("", 0), "{rel}");
             assert_eq!(
-                (run.stdout.as_str(), run.stderr.as_str(), run.code),
-                ("✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n", "", 0),
-                "{rel}"
+                lines
+                    .iter()
+                    .map(|l| l.split("  ").next().unwrap_or(l))
+                    .collect::<Vec<_>>(),
+                [
+                    "✓ Parsed",
+                    "✓ Types valid",
+                    "✓ Call graph valid",
+                    "✓ IR valid",
+                    "✓ Checks valid"
+                ],
+                "{rel}: {}",
+                run.stdout
             );
             checked += 1;
         }

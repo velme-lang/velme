@@ -160,6 +160,14 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// The example at `example` alone in a fresh directory called `test`, with no lock: the examples commit theirs (D-141).
+fn unbuilt(example: &str, test: &str) -> PathBuf {
+    let dir = scratch(test);
+    let file = dir.join(Path::new(example).file_name().expect("a file name"));
+    fs::copy(repo(example), &file).expect("the example is copied");
+    file
+}
+
 /// A copy of the fixture project `name` to change.
 fn copy(name: &str, test: &str) -> PathBuf {
     let dir = scratch(test);
@@ -258,7 +266,8 @@ fn ac_cmp_02_check_reads_the_store_only_to_validate_locked_ir() {
     );
     assert_eq!(tree(&project), before);
     // A file with no lock in its project reads no store: the output is phases 1–6 alone.
-    let run = velme(&["check", EXAMPLE]);
+    let unbuilt = unbuilt(EXAMPLE, "ac_cmp_02_unbuilt");
+    let run = velme(&["check", unbuilt.to_str().expect("UTF-8 path")]);
     assert_eq!(
         run.stdout,
         "✓ Parsed\n✓ Types valid\n✓ Call graph valid\n✓ Checks valid\n"
@@ -383,9 +392,13 @@ fn run_of_a_changed_goal_is_stale() {
 /// naming each (R-ART-16).
 #[test]
 fn run_of_a_goal_with_calls_needs_every_goal_built() {
+    let file = unbuilt(
+        "examples/beginner/double_then_add_one.velme",
+        "run_needs_every_goal_built",
+    );
     let run = velme(&[
         "run",
-        "examples/beginner/double_then_add_one.velme",
+        file.to_str().expect("UTF-8 path"),
         "--goal",
         "Main",
         "--arg",
