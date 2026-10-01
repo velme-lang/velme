@@ -12,8 +12,8 @@ use velme_diagnostics::render::{JsonDiagnostic, LineIndex, render_human};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
 use velme_ir::{
-    CallNode, CheckScope, Goal, IR_VERSION, MAX_JSON_DEPTH, Node, Origin, Request, ValidIr, calls, from_json_str,
-    signature, validate,
+    CallNode, CheckScope, Fingerprint, Goal, IR_VERSION, MAX_JSON_DEPTH, Node, Origin, Request, ValidIr, calls,
+    from_json_str, signature, validate,
 };
 use velme_sema::hir::{GoalId, Program, Type as HirType};
 use velme_sema::{SourceFile, analyze};
@@ -118,6 +118,11 @@ fn golden_ir_validates() {
         let goal: Goal = from_json_str(&text).expect("golden parses");
         let valid = accepts(&program, &goal.goal, &text);
         assert_eq!(valid.goal(), &goal);
+        // The hash a back end keeps what it made of the goal by (D-133).
+        assert_eq!(
+            valid.fingerprint(),
+            Some(Fingerprint::of(&goal).expect("a canonical form"))
+        );
     });
 }
 

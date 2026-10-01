@@ -21,7 +21,7 @@ use crate::mapping::{DecodeProblem, decode_value};
 use crate::node::{
     BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
 };
-use crate::{IR_VERSION, ParseError, from_json_str, to_canonical_string};
+use crate::{Fingerprint, IR_VERSION, ParseError, from_json_str, to_canonical_string};
 
 /// Where the IR being validated comes from, which decides what its `calls` may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub struct Request<'a> {
 
 /// IR that passed every validation stage (`compiler/21` §6): the only form a back end accepts (INV-1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidIr(Goal);
+pub struct ValidIr(Goal, Option<Fingerprint>);
 
 impl ValidIr {
     /// The validated goal, with the request's `calls` joined in for a candidate.
@@ -82,6 +82,12 @@ impl ValidIr {
     /// The validated goal, by value.
     pub fn into_goal(self) -> Goal {
         self.0
+    }
+
+    /// BLAKE3 of the goal's canonical JSON (R-IR-21), taken once when it was validated: what a back end keeps what it
+    /// made of the goal by (`runtime/31` R-SBX-13, D-133). `None` for a goal with no canonical form.
+    pub fn fingerprint(&self) -> Option<Fingerprint> {
+        self.1
     }
 }
 
@@ -286,7 +292,7 @@ pub fn validate_detailed(text: &str, request: &Request<'_>) -> Result<ValidIr, V
         v.findings
     };
     let Some(first) = findings.iter().map(|f| f.stage).min() else {
-        return canonical_size(&goal, target.span).map(|()| ValidIr(goal));
+        return canonical_size(&goal, target.span).map(|fingerprint| ValidIr(goal, fingerprint));
     };
     let mut found: Vec<Invalid> = findings
         .into_iter()
@@ -301,11 +307,12 @@ pub fn validate_detailed(text: &str, request: &Request<'_>) -> Result<ValidIr, V
 /// The §7 size limit on the canonical form of a goal that passed every other stage, which is what a store keeps: plain
 /// decimals can be far longer than the numbers written (`1e27` is 28 digits), and a candidate's joined-in `calls` add
 /// to it (R-IR-18, `runtime/32` R-ART-10). Checked last, so the walk over a document that fails a stage, however deep,
-/// is the parser's alone.
-fn canonical_size(goal: &Goal, span: Span) -> Result<(), Vec<Invalid>> {
-    let length = to_canonical_string(goal).map_or(0, |text| text.len());
+/// is the parser's alone. The fingerprint of that form, if it has one.
+fn canonical_size(goal: &Goal, span: Span) -> Result<Option<Fingerprint>, Vec<Invalid>> {
+    let text = to_canonical_string(goal).ok();
+    let length = text.as_ref().map_or(0, String::len);
     if length <= MAX_IR_BYTES {
-        return Ok(());
+        return Ok(text.map(|text| Fingerprint::of_bytes(text.as_bytes())));
     }
     let rule = format!("its canonical form is {length} bytes long; at most {MAX_IR_BYTES} are allowed");
     Err(vec![

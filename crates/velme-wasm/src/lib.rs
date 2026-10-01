@@ -12,6 +12,7 @@ mod code;
 mod codec;
 mod data;
 mod emit;
+mod kept;
 mod runtime;
 mod sandbox;
 mod ty;
@@ -25,21 +26,26 @@ mod sandbox_tests;
 #[allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 mod tests;
 
+use std::sync::Arc;
+
 use velme_ir::ValidIr;
 
 pub use cache::{CacheDir, Misplaced, cache_off_note};
+pub use kept::Modules;
 pub use sandbox::{
-    Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Program, Run, Sandbox, UNIT_INSTRUCTIONS,
-    WasmtimeFuel, backstop_fuel,
+    Backstop, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MAX_WASM_RUNS, MEMORY_FACTOR, Program, Run, Sandbox,
+    UNIT_INSTRUCTIONS, WasmtimeFuel, backstop_fuel,
 };
 
 /// An emitted module: a pure function of its IR, with no limit baked in (R-SBX-03).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     bytes: Vec<u8>,
+    /// BLAKE3 of `bytes`, what the sandbox keeps the module's compiled code by.
+    hash: [u8; 32],
     data_bytes: u32,
     /// The layouts the module reads its inputs and leaves its output in.
-    signature: ty::Signature,
+    signature: Arc<ty::Signature>,
     literals: Literals,
 }
 
@@ -88,9 +94,10 @@ pub fn emit(ir: &ValidIr) -> Result<Module, EmitError> {
     let (bytes, data_bytes, signature, literals) = emit::module(ir.goal(), ir.body().node())?;
     validate::validate(&bytes).map_err(EmitError::Internal)?;
     Ok(Module {
+        hash: *blake3::hash(&bytes).as_bytes(),
         bytes,
         data_bytes,
-        signature,
+        signature: Arc::new(signature),
         literals,
     })
 }

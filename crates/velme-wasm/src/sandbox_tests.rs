@@ -21,15 +21,16 @@ use crate::cache::Refused;
 #[cfg(unix)]
 use crate::cache::Unusable;
 use crate::code::{Assembly, Func, G_FUEL, G_REASON, V, mem};
+use crate::kept::{Lru, MAX_KEPT, MAX_KEPT_BYTES};
 use crate::runtime::{self, Rt};
-use crate::sandbox::{BYTE_INSTRUCTIONS, MAX_LINKED, MEMORY_MOVES, SUM_ITEM_INSTRUCTIONS, memory_limit};
+use crate::sandbox::{BYTE_INSTRUCTIONS, MEMORY_MOVES, SUM_ITEM_INSTRUCTIONS, memory_limit};
 use crate::tests::{
     EVERYTHING, EXAMPLES, binary, builtin, collection, document, documents, everything, field, input, item, local,
-    number, unary,
+    nothing_goal, number, unary,
 };
 use crate::{
-    Backstop, CacheDir, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MEMORY_FACTOR, Module, Program, Run, Sandbox,
-    UNIT_INSTRUCTIONS, backstop_fuel, emit,
+    Backstop, CacheDir, EmitError, FUEL_ALLOWANCE, FUEL_FACTOR, LoadError, MAX_WASM_RUNS, MEMORY_FACTOR, Module,
+    Modules, Program, Run, Sandbox, UNIT_INSTRUCTIONS, backstop_fuel, emit,
 };
 
 /// A watchdog that never stops the run.
@@ -394,7 +395,7 @@ fn modules_with_the_same_bytes_keep_their_own_signatures() {
     assert_eq!(run(&list, &numbers), Ok(numbers));
 }
 
-/// A sandbox keeps at most `MAX_LINKED` compiled modules, the least recently used dropped first, and a dropped one is
+/// A sandbox keeps at most `MAX_KEPT` compiled modules, the least recently used dropped first, and a dropped one is
 /// compiled again and runs as before.
 #[test]
 fn the_modules_kept_in_memory_are_bounded() {
@@ -418,21 +419,21 @@ fn the_modules_kept_in_memory_are_bounded() {
         for start in 0..8 {
             let (sandbox, copies) = (&sandbox, &copies);
             scope.spawn(move || {
-                for k in (2 + start..=MAX_LINKED + 1).step_by(8) {
+                for k in (2 + start..=MAX_KEPT + 1).step_by(8) {
                     sandbox.load(&copies(k)).expect("loads");
                 }
             });
         }
     });
-    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert_eq!(sandbox.linked(), MAX_KEPT);
     assert!(!sandbox.is_kept(first.bytes()), "the least recently used is dropped");
     let again = sandbox.load(&first).expect("loads again");
-    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert_eq!(sandbox.linked(), MAX_KEPT);
     assert!(sandbox.is_kept(first.bytes()));
     // One more: now some other module is the least recently used, and `first`, just loaded, stays.
-    let last = copies(MAX_LINKED + 2);
+    let last = copies(MAX_KEPT + 2);
     sandbox.load(&last).expect("loads");
-    assert_eq!(sandbox.linked(), MAX_LINKED);
+    assert_eq!(sandbox.linked(), MAX_KEPT);
     assert!(sandbox.is_kept(first.bytes()) && sandbox.is_kept(last.bytes()));
     let run = again.run(&[num(7)], Limits::SYSTEM, &unwatched());
     assert_eq!(run.result, Ok(num(7)));
@@ -1065,29 +1066,27 @@ fn r_sbx_11_lists_of_nothing_are_read_back_only_as_far_as_a_run_paid_for_them() 
     assert_eq!(constant.result, Ok(Value::list(vec![Value::Nothing; 3])));
 }
 
-#[test]
-fn a_module_that_uses_all_its_stack_is_vl0607_and_nothing_worse() {
-    // `runtime/31` §6: the WASM stack is 4 MiB on every host, and running out of it is a trap, not the end of the
-    // thread's own stack. Wasmtime's fuel would stop it later.
+/// A module whose `velme_run` calls itself until its stack runs out, run as `x: Number -> Number`.
+fn stack_exhausting() -> Vec<u8> {
     let mut assembly = Assembly::default();
     runtime::define(&mut assembly);
     let run = assembly.reserve();
     let mut f = Func::new(&[V::I32], &[V::I32]);
     f.ops([I::LocalGet(0), I::Call(run)]);
     assembly.define(run, f);
-    let bytes = assembly.finish(&[], Rt::Alloc.index(), run).expect("a module");
-    let like = goal("x: Number -> Number", "", &input("x"));
-    let limits = Limits {
-        fuel: MAX_FUEL,
-        ..Limits::SYSTEM
-    };
-    let done = run_hostile(&bytes, &like, &[num(1)], limits);
-    assert_eq!((done.result, done.backstop), (internal(), None));
+    assembly.finish(&[], Rt::Alloc.index(), run).expect("a module")
 }
 
-#[test]
-fn the_deepest_body_the_validator_allows_runs_within_the_stack() {
-    // `runtime/31` §6: expressions at `MAX_DEPTH`, and collection nodes at `MAX_COLLECTION_NESTING` inside them.
+/// The limits a stack-exhausting module runs out of stack within, not of fuel.
+fn stack_limits() -> Limits {
+    Limits {
+        fuel: MAX_FUEL,
+        ..Limits::SYSTEM
+    }
+}
+
+/// A body whose expressions are at `MAX_DEPTH`, and the inputs it runs on.
+fn deepest_body() -> (Module, [Value; 4]) {
     let mut deep = number("1");
     for _ in 0..MAX_DEPTH - 3 {
         deep = binary("add", &number("1"), &deep);
@@ -1099,6 +1098,22 @@ fn the_deepest_body_the_validator_allows_runs_within_the_stack() {
         Value::text("s"),
         Value::Nothing,
     ];
+    (module, inputs)
+}
+
+#[test]
+fn a_module_that_uses_all_its_stack_is_vl0607_and_nothing_worse() {
+    // `runtime/31` §6: the WASM stack is 4 MiB on every host, and running out of it is a trap, not the end of the
+    // thread's own stack. Wasmtime's fuel would stop it later.
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let done = run_hostile(&stack_exhausting(), &like, &[num(1)], stack_limits());
+    assert_eq!((done.result, done.backstop), (internal(), None));
+}
+
+#[test]
+fn the_deepest_body_the_validator_allows_runs_within_the_stack() {
+    // `runtime/31` §6: expressions at `MAX_DEPTH`, and collection nodes at `MAX_COLLECTION_NESTING` inside them.
+    let (module, inputs) = deepest_body();
     let Ok(Value::Record(record)) = run(&module, &inputs, Limits::SYSTEM).result else {
         panic!("a record");
     };
@@ -1693,4 +1708,176 @@ fn a_program_runs_from_many_threads_at_once() {
             scope.spawn(|| assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), first));
         }
     });
+}
+
+// ---- what a process keeps between runs (D-133) ----
+
+/// Each IR is emitted once a process, a decline too, and the module kept is the one [`emit`] gives; at most
+/// `MAX_KEPT` are kept, the least recently used dropped first (R-SBX-13, D-133).
+#[test]
+fn d_133_each_ir_is_emitted_once_a_process() {
+    let modules = Modules::new();
+    let ir = goal_ir("x: Number -> Number", &squares_body());
+    let first = modules.emit(&ir).expect("emits");
+    assert_eq!(*first, emit(&ir).expect("emits"));
+    assert!(Arc::ptr_eq(&first, &modules.emit(&ir).expect("emits")), "emitted again");
+    // The same IR validated again has the same hash, so its module is the one kept.
+    let same = goal_ir("x: Number -> Number", &squares_body());
+    assert!(Arc::ptr_eq(&first, &modules.emit(&same).expect("emits")));
+    let nothing = r#"{"kind": "literal", "type": {"t": "Nothing"}, "value": null}"#;
+    let found = unary(
+        "is_empty",
+        &collection(
+            "find",
+            &collection("map", &input("xs"), "x", nothing),
+            "y",
+            r#"{"kind": "literal", "type": {"t": "Boolean"}, "value": true}"#,
+        ),
+    );
+    let declined = nothing_goal("Boolean", r#"{"t": "Boolean"}"#, &found);
+    let why = Err(EmitError::Declined("a type that holds Nothing"));
+    assert_eq!(modules.emit(&declined), why);
+    assert_eq!(modules.emit(&declined), why);
+    assert_eq!(modules.len(), 2);
+    for k in 0..MAX_KEPT {
+        let k = i64::try_from(k).expect("fits");
+        let body = binary(
+            "add",
+            &input("x"),
+            &format!(r#"{{"kind": "literal", "type": {{"t": "Number"}}, "value": {k}}}"#),
+        );
+        modules.emit(&goal_ir("x: Number -> Number", &body)).expect("emits");
+    }
+    assert_eq!(modules.len(), MAX_KEPT);
+}
+
+/// What is kept is bounded by its bytes too, whatever their count: the least recently used are dropped until a new
+/// one fits, and one larger than the bound alone is kept alone (D-133).
+#[test]
+fn d_133_what_a_process_keeps_is_bounded_by_its_bytes() {
+    let mut kept = Lru::default();
+    let third = MAX_KEPT_BYTES / 3;
+    for k in 0..3_u8 {
+        assert_eq!(kept.keep(k, k, third), k);
+    }
+    assert_eq!(kept.len(), 3);
+    assert_eq!(kept.get(&0), Some(0));
+    kept.keep(3, 3, third);
+    assert_eq!(kept.len(), 3);
+    assert!(!kept.contains(&1), "the least recently used is dropped");
+    assert!(kept.contains(&0) && kept.contains(&2) && kept.contains(&3));
+    kept.keep(4, 4, MAX_KEPT_BYTES + 1);
+    assert_eq!(kept.len(), 1);
+    assert!(kept.contains(&4));
+    kept.keep(5, 5, 1);
+    assert_eq!(kept.len(), 1, "nothing fits beside it");
+    assert!(kept.contains(&5));
+}
+
+/// The run threads are kept and reused, at most `MAX_WASM_RUNS` of them, and nothing of a run is left on one for the
+/// next: a run that ran out of fuel, one the watchdog stopped and one that trapped leave the next run on the same
+/// thread what it is on a fresh sandbox, its fuel, memory and Wasmtime fuel too (D-133, D-120).
+#[test]
+fn d_133_run_threads_are_reused_and_keep_nothing_of_a_run() {
+    let fresh = run(&squares(), &[num(100)], Limits::SYSTEM);
+    assert_eq!(fresh.result, Ok(num(328_350)));
+    let sandbox = sandbox();
+    assert_eq!(sandbox.idle_threads(), 0, "made when a run asks");
+    let loaded = sandbox.load(&squares()).expect("loads");
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(sandbox.idle_threads(), 1);
+    let starved = Limits {
+        fuel: 10,
+        ..Limits::SYSTEM
+    };
+    let short = loaded.run(&[num(100)], starved, &unwatched());
+    assert_eq!(
+        short.result.expect_err("out of fuel").error,
+        Error::OutOfFuel { max_fuel: 10 }
+    );
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    let stopped = loaded.run(&[num(100)], Limits::SYSTEM, &Interrupt::new(|| true));
+    assert_eq!(stopped.result.expect_err("stopped").error, Error::Interrupted);
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let trapping = sandbox
+        .load_bytes(&hostile(|f| f.ops([I::Unreachable, I::I32Const(0)])), &like)
+        .expect("loads");
+    assert_eq!(trapping.run(&[num(1)], Limits::SYSTEM, &unwatched()).result, internal());
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(sandbox.idle_threads(), 1, "one thread served every run in turn");
+    std::thread::scope(|scope| {
+        for _ in 0..2 * MAX_WASM_RUNS {
+            scope.spawn(|| assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh));
+        }
+    });
+    assert!((1..=MAX_WASM_RUNS).contains(&sandbox.idle_threads()));
+}
+
+/// A run that used all its stack, the deepest body the validator allows, twice, and a load outside the memory each
+/// give on a reused thread what they give on a fresh sandbox, and leave the next run what it is on one (D-133,
+/// `runtime/31` §6).
+#[test]
+fn d_133_a_reused_thread_keeps_nothing_of_a_run_at_its_stack_or_memory_edge() {
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let exhausting = stack_exhausting();
+    let out_of_bounds = hostile(|f| f.ops([I::I32Const(-8), I::I32Load(mem(0, 2))]));
+    let (deepest, deep_inputs) = deepest_body();
+    let fresh = run(&squares(), &[num(100)], Limits::SYSTEM);
+    let fresh_exhausted = run_hostile(&exhausting, &like, &[num(1)], stack_limits());
+    let fresh_deepest = run(&deepest, &deep_inputs, Limits::SYSTEM);
+    let fresh_out = run_hostile(&out_of_bounds, &like, &[num(1)], Limits::SYSTEM);
+    assert_eq!(fresh_exhausted.result, internal());
+    assert!(fresh_deepest.result.is_ok());
+    assert_eq!(fresh_out.result, internal());
+
+    let sandbox = sandbox();
+    let squares = sandbox.load(&squares()).expect("loads");
+    let exhausting = sandbox.load_bytes(&exhausting, &like).expect("loads");
+    let deepest = sandbox.load(&deepest).expect("loads");
+    let out_of_bounds = sandbox.load_bytes(&out_of_bounds, &like).expect("loads");
+    assert_eq!(squares.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(exhausting.run(&[num(1)], stack_limits(), &unwatched()), fresh_exhausted);
+    assert_eq!(squares.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    for _ in 0..2 {
+        assert_eq!(deepest.run(&deep_inputs, Limits::SYSTEM, &unwatched()), fresh_deepest);
+    }
+    assert_eq!(squares.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(out_of_bounds.run(&[num(1)], Limits::SYSTEM, &unwatched()), fresh_out);
+    assert_eq!(squares.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(sandbox.idle_threads(), 1, "one thread served every run in turn");
+}
+
+/// A kept thread that has ended is not the run's failure: the run is handed to a new thread instead, and gives what it
+/// gives on a fresh sandbox (D-133).
+#[test]
+fn d_133_a_kept_thread_that_ended_is_replaced() {
+    let fresh = run(&squares(), &[num(100)], Limits::SYSTEM);
+    let sandbox = sandbox();
+    let loaded = sandbox.load(&squares()).expect("loads");
+    sandbox.keep_ended_thread();
+    assert_eq!(sandbox.idle_threads(), 1);
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(sandbox.idle_threads(), 1, "the new thread is kept in its place");
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+}
+
+/// A host panic on a run thread goes on in the caller's thread, never as `VL0607`, and that thread is not kept: the
+/// next run gets another and gives what it gives on a fresh sandbox (D-120 (4), D-133).
+#[test]
+fn d_133_a_host_panic_goes_on_in_the_caller_and_its_thread_is_not_kept() {
+    let sandbox = sandbox();
+    let loaded = sandbox.load(&squares()).expect("loads");
+    let fresh = loaded.run(&[num(100)], Limits::SYSTEM, &unwatched());
+    assert_eq!(sandbox.idle_threads(), 1);
+    // The watchdog is host code, asked on the run thread when `velme_run` is called.
+    let panicking = Interrupt::new(|| panic!("a host bug"));
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        loaded.run(&[num(100)], Limits::SYSTEM, &panicking)
+    }));
+    let panic = caught.expect_err("the panic goes on");
+    assert_eq!(panic.downcast_ref::<&str>(), Some(&"a host bug"));
+    assert_eq!(sandbox.idle_threads(), 0, "the thread that panicked is not kept");
+    assert_eq!(loaded.run(&[num(100)], Limits::SYSTEM, &unwatched()), fresh);
+    assert_eq!(sandbox.idle_threads(), 1);
 }
