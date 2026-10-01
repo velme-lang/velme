@@ -260,11 +260,26 @@ fn next(seed: &mut u64) -> i64 {
     i64::try_from(*seed >> 33).expect("fits") % 250
 }
 
-/// Three independent children of equal weight are all in wave 1 and three bodies are in flight at once with `--jobs 3`;
-/// with one worker never more than one (AC-RUN-01, AC-RDM-03).
+/// Held by each test that runs `Fan` heavy enough to measure its peak.
+static HEAVY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn ac_run_01_independent_children_overlap_in_time() {
-    let (project, program) = installed("ac_run_01");
+    independent_children_overlap_in_time("ac_run_01");
+}
+
+#[test]
+fn ac_rdm_03_three_heavy_children_run_concurrently_in_source_order() {
+    independent_children_overlap_in_time("ac_rdm_03");
+}
+
+/// Three independent children of equal weight are all in wave 1 and three bodies are in flight at once with `--jobs 3`;
+/// with one worker never more than one, and the result and trace are the same: the body of AC-RUN-01 and AC-RDM-03
+/// (D-138), in a project directory of its own named `name`.
+fn independent_children_overlap_in_time(name: &str) {
+    // The two tests sharing this body would otherwise run at once and split the cores the peak of 3 needs.
+    let _alone = HEAVY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (project, program) = installed(name);
     let waves: Vec<usize> = run(&project, &program, "Fan", &[1], 1)
         .calls
         .iter()

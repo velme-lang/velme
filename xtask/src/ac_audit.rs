@@ -1,7 +1,7 @@
-//! Coverage audit stub (`delivery/51` §5): every spec `AC-*` should have a test named for it.
+//! Coverage audit (`delivery/51` §5): every spec `AC-*` has a `#[test]` function named for it.
 //!
-//! The plan-phase exemption for criteria owned by later phases is not implemented yet, so uncovered criteria
-//! are reported and fail only under `--strict` (AC-QA-03); tests citing an unknown criterion always fail.
+//! Uncovered criteria are listed, and fail only under `--strict` (AC-QA-03, D-139); tests citing an unknown criterion
+//! always fail.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -73,16 +73,16 @@ fn criterion_in_table_row(line: &str) -> Option<String> {
     well_formed.then(|| id.to_owned())
 }
 
-/// Criteria named by `fn ac_<area>_<nn>…` test functions (R-QA-01, CC-TEST-01).
+/// Criteria named by `#[test] fn ac_<area>_<nn>…` functions (R-QA-01, CC-TEST-01). Only a function under a `#[test]`
+/// attribute counts, and comments and string literals are blanked first, so neither a helper `fn ac_…` nor an id quoted
+/// in a doc comment or a string covers a criterion (D-139).
 fn test_criteria(source: &str) -> BTreeSet<String> {
+    let code = code_only(source);
     let mut ids = BTreeSet::new();
-    for (at, _) in source.match_indices("fn ac_") {
-        let name: String = source
-            .get(at + 3..)
-            .unwrap_or_default()
-            .chars()
-            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
-            .collect();
+    for (at, attribute) in code.match_indices("#[test]") {
+        let Some(name) = code.get(at + attribute.len()..).and_then(function_after_attributes) else {
+            continue;
+        };
         let mut parts = name.split('_');
         if let (Some("ac"), Some(area), Some(num)) = (parts.next(), parts.next(), parts.next())
             && !area.is_empty()
@@ -93,6 +93,140 @@ fn test_criteria(source: &str) -> BTreeSet<String> {
         }
     }
     ids
+}
+
+/// The name of the `fn` that `code` starts with once any further attributes (`#[ignore]`, `#[cfg(…)]`) and qualifiers
+/// are skipped.
+fn function_after_attributes(mut code: &str) -> Option<String> {
+    loop {
+        code = code.trim_start();
+        let Some(attribute) = code.strip_prefix("#[") else {
+            break;
+        };
+        let mut depth = 1usize;
+        let end = attribute.char_indices().find_map(|(i, c)| {
+            match c {
+                '[' => depth += 1,
+                ']' => depth -= 1,
+                _ => {}
+            }
+            (depth == 0).then_some(i)
+        })?;
+        code = attribute.get(end + 1..)?;
+    }
+    // Qualifiers before `fn`: `pub`, `pub(crate)`, `async`, `const`, `unsafe`, `extern` (its ABI string is blanked).
+    loop {
+        code = code.trim_start();
+        if let Some(rest) = code.strip_prefix("pub") {
+            let rest = rest.trim_start();
+            code = match rest.strip_prefix('(') {
+                Some(scope) => scope.get(scope.find(')')? + 1..)?,
+                None => rest,
+            };
+            continue;
+        }
+        let Some(rest) = ["async", "const", "unsafe", "extern"]
+            .iter()
+            .find_map(|q| code.strip_prefix(q).filter(|r| r.starts_with(char::is_whitespace)))
+        else {
+            break;
+        };
+        code = rest;
+    }
+    let rest = code.strip_prefix("fn")?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    Some(
+        rest.trim_start()
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+            .collect(),
+    )
+}
+
+/// `source` with every comment and every string, raw string and character literal replaced by spaces.
+fn code_only(source: &str) -> String {
+    let chars: Vec<char> = source.chars().collect();
+    let ident = |i: usize| chars.get(i).is_some_and(|c| c.is_alphanumeric() || *c == '_');
+    let mut out = String::with_capacity(source.len());
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        let next = chars.get(i + 1).copied();
+        let start = i;
+        match c {
+            '/' if next == Some('/') => {
+                while chars.get(i).is_some_and(|c| *c != '\n') {
+                    i += 1;
+                }
+            }
+            '/' if next == Some('*') => {
+                let mut depth = 0usize;
+                loop {
+                    match (chars.get(i), chars.get(i + 1)) {
+                        (Some('/'), Some('*')) => {
+                            depth += 1;
+                            i += 2;
+                        }
+                        (Some('*'), Some('/')) => {
+                            depth -= 1;
+                            i += 2;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        (Some(_), _) => i += 1,
+                        (None, _) => break,
+                    }
+                }
+            }
+            '"' => {
+                i += 1;
+                while let Some(&c) = chars.get(i) {
+                    i += if c == '\\' { 2 } else { 1 };
+                    if c == '"' {
+                        break;
+                    }
+                }
+            }
+            // `r"…"`, `r#"…"#` and `br"…"`, but not the `r` ending a name.
+            'r' if !ident(i.wrapping_sub(1))
+                || (chars.get(i.wrapping_sub(1)) == Some(&'b') && !ident(i.wrapping_sub(2))) =>
+            {
+                let hashes = chars.iter().skip(i + 1).take_while(|c| **c == '#').count();
+                if chars.get(i + 1 + hashes) != Some(&'"') {
+                    out.push(c);
+                    i += 1;
+                    continue;
+                }
+                i += hashes + 2;
+                while let Some(&c) = chars.get(i) {
+                    i += 1;
+                    if c == '"' && chars.get(i..i + hashes).is_some_and(|h| h.iter().all(|c| *c == '#')) {
+                        i += hashes;
+                        break;
+                    }
+                }
+            }
+            // A character literal (`'x'`, `'\n'`, `'"'`); a lifetime (`'a`) is code.
+            '\'' if next == Some('\\') => {
+                // Past the quote, the backslash and the escaped character, which may itself be a quote (`'\''`).
+                i += 3;
+                while chars.get(i).is_some_and(|c| *c != '\'') {
+                    i += 1;
+                }
+                i += 1;
+            }
+            '\'' if chars.get(i + 2) == Some(&'\'') => i += 3,
+            _ => {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+        }
+        out.extend(std::iter::repeat_n(' ', i.min(chars.len()) - start));
+    }
+    out
 }
 
 /// Files with `extension` under `dir`, sorted; a missing directory is empty. Skips `target/`.

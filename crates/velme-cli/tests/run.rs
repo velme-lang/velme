@@ -217,13 +217,26 @@ fn fixture_projects_are_the_installers_output() {
 
 // ---- criteria ----
 
-/// The failed check shows the assertion with its expected and received values (`language/13` §5).
 #[test]
 fn ac_rdm_06_a_broken_fixture_shows_the_failed_check_with_its_values() {
+    broken_fixture_shows_the_failed_check_with_its_values();
+}
+
+#[test]
+fn ac_run_07_a_failing_check_reports_its_assertion_and_values() {
+    broken_fixture_shows_the_failed_check_with_its_values();
+}
+
+/// The failed check shows the assertion with its expected and received values (`language/13` §5), the body of AC-RDM-06
+/// and AC-RUN-07 (D-138).
+fn broken_fixture_shows_the_failed_check_with_its_values() {
     let run = velme(&["run", BROKEN, "--goal", "Add", "--arg", "a=2", "--arg", "b=3"]);
     assert_eq!(run.code, 3, "{}", run.stderr);
     assert_eq!(run.stdout, "Add  ✗\n");
-    insta::assert_snapshot!(run.stderr);
+    insta::assert_snapshot!(
+        "ac_rdm_06_a_broken_fixture_shows_the_failed_check_with_its_values",
+        run.stderr
+    );
 }
 
 /// `velme check` reads the store only to validate locked IR and writes nothing (`tooling/40` §2). The CLI builds no

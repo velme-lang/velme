@@ -171,6 +171,17 @@ fn golden_ir_rejects() {
 
 #[test]
 fn ac_ir_02_calls_from_synthesized_ir_are_rejected() {
+    calls_from_synthesized_ir_are_rejected();
+}
+
+/// The composite `BuildPlayerSummary`'s candidate sending calls is `VL0402` (D-138: the body of AC-IR-02).
+#[test]
+fn ac_goal_09_synthesized_ir_of_a_composite_goal_with_a_call_is_rejected() {
+    calls_from_synthesized_ir_are_rejected();
+}
+
+/// A candidate's `calls` section, or a `call` node anywhere in a body, is `VL0402` at its path.
+fn calls_from_synthesized_ir_are_rejected() {
     let program = goals();
     // A candidate that sends the call section itself.
     let with_calls = read(&repo("tests/golden/ir/accept/player_summary.json"));

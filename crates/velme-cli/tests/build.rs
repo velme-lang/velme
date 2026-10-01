@@ -444,3 +444,72 @@ fn a_warm_store_builds_with_no_api_key() {
         cold.stderr
     );
 }
+
+/// `language/12` §8.3 as `examples/beginner/double_then_add_one.velme` has it.
+const WIRED_EXAMPLE: &str = include_str!("../../../examples/beginner/double_then_add_one.velme");
+
+/// `delivery/50` §5's AC-RDM-02 program.
+const WIRED_ROADMAP: &str = "language: velme/0.1
+
+goal Double(x: Number) -> Number:
+    plan: \"Multiply x by 2.\"
+    check:
+        - result == x * 2
+
+goal AddOne(x: Number) -> Number:
+    plan: \"Add 1 to x.\"
+    check:
+        - result == x + 1
+
+goal Main(x: Number) -> Number:
+    call:
+        doubled = Double(x)
+        result = AddOne(doubled)
+    plan: |
+        Return the result from the second goal.
+";
+
+/// Builds `source` as `wired.velme` in `name` on a script of two replies, `Double`'s then `AddOne`'s, and returns the
+/// project: the provider is asked for those two goals only, so `Main` gets no request, and `Main(4)` runs to 9.
+fn wired_main_makes_no_request(name: &str, source: &str) -> PathBuf {
+    let dir = project(name);
+    fs::write(dir.join("wired.velme"), source).expect("source");
+    let on_x = |op: &str, k: i64| reply(op, k).replace("\"name\":\"n\"", "\"name\":\"x\"");
+    let script = script(&dir, &[on_x("mul", 2), on_x("add", 1)]);
+    let build = velme(&dir, &["build", "wired.velme", "--provider", "scripted"], Some(&script));
+    assert_eq!(build.code, 0, "{}{}", build.stdout, build.stderr);
+    assert!(
+        build.stdout.contains("Main  ✓ built by the compiler"),
+        "{}",
+        build.stdout
+    );
+    assert!(build.stdout.contains("2 provider calls"), "{}", build.stdout);
+    // One log line per request (R-SYNTH-23): none of them is for `Main`.
+    let log = fs::read_to_string(dir.join(".velme/synth-log.jsonl")).expect("the synthesis log");
+    let goals: Vec<String> = log
+        .lines()
+        .map(|line| {
+            let line: Value = serde_json::from_str(line).expect("a JSON line");
+            line["goal"].as_str().expect("a goal").to_owned()
+        })
+        .collect();
+    assert_eq!(goals, ["Double", "AddOne"]);
+    let run = velme(&dir, &["run", "wired.velme", "--goal", "Main", "--arg", "x=4"], None);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(run.stdout.ends_with("Main    ✓\n\nResult:\n9\n"), "{}", run.stdout);
+    dir
+}
+
+/// `language/12` §8.3 builds with no request for `Main`, and `velme test` passes its example `Main(4) == 9`.
+#[test]
+fn ac_goal_08_the_wired_example_builds_with_no_request_for_main() {
+    let dir = wired_main_makes_no_request("ac_goal_08", WIRED_EXAMPLE);
+    let test = velme(&dir, &["test", "wired.velme", "--goal", "Main"], None);
+    assert_eq!(test.code, 0, "{}{}", test.stdout, test.stderr);
+    assert!(test.stdout.starts_with("Main  ✓ 1 example, "), "{}", test.stdout);
+}
+
+#[test]
+fn ac_rdm_02_a_wired_composite_runs_with_no_synthesis_for_main() {
+    wired_main_makes_no_request("ac_rdm_02", WIRED_ROADMAP);
+}

@@ -237,11 +237,53 @@ fn ac_cli_06_call_lines_keep_source_order_across_100_runs() {
     }
 }
 
-/// `velme test` runs the `examples:` first, for a goal with calls as for a leaf, and reports a failing example with what it
-/// was given, expected and got; the generated inputs follow only when the examples pass (AC-CLI-10, D-107).
 #[test]
 fn ac_cli_10_test_runs_examples_before_generated_inputs_for_leaf_and_composite_goals() {
-    let dir = copy("double_then_add_one", "ac_cli_10");
+    test_runs_examples_before_generated_inputs("ac_cli_10");
+}
+
+/// AC-CLI-10's body, and a check failing on an example's input is reported as it is on a generated input (D-138).
+#[test]
+fn ac_goal_17_checks_run_on_examples_and_fail_as_on_generated_inputs() {
+    let on_example = test_runs_examples_before_generated_inputs("ac_goal_17");
+    // `add_broken` without its examples, so `velme test` goes straight to the generated inputs, where `a * b` fails too.
+    let dir = copy("add_broken", "ac_goal_17_generated");
+    let source = read(&dir.join(ADD));
+    let source = &source[..source.find("    examples:").expect("the examples block")];
+    fs::write(dir.join(ADD), source).expect("source");
+    let a = serde_json::json!({"kind": "input", "name": "a"});
+    let b = serde_json::json!({"kind": "input", "name": "b"});
+    let number = serde_json::json!({"t": "Number"});
+    let ir = serde_json::json!({
+        "ir_version": "0.1", "builtins_version": "0.1", "goal": "Add", "types": {},
+        "inputs": [["a", number], ["b", number]], "output": number,
+        "body": {"kind": "binary", "op": "mul", "left": a, "right": b}
+    });
+    install(&dir, ADD, &program(source), &ir.to_string());
+    let run = velme(&dir, &["test", ADD, "--json"]);
+    assert_eq!(run.code, 3, "{}", run.stderr);
+    let envelope = parsed(&run);
+    assert_eq!(codes(&envelope), ["VL0501"]);
+    let on_generated = envelope["results"][0]["diagnostics"][0].clone();
+    // The same code, severity, file and message, and both runs exit 3 with the goal marked failed.
+    let headline = |d: &Value| {
+        (
+            d["code"].clone(),
+            d["severity"].clone(),
+            d["file"].clone(),
+            d["message"].clone(),
+        )
+    };
+    assert_eq!(headline(&on_generated), headline(&on_example));
+    let run = velme(&dir, &["test", ADD]);
+    assert_eq!((run.stdout.as_str(), run.code), ("Add  ✗\n", 3), "{}", run.stderr);
+}
+
+/// `velme test` runs the `examples:` first, for a goal with calls as for a leaf, and reports a failing example with what it
+/// was given, expected and got; the generated inputs follow only when the examples pass (AC-CLI-10, D-107). Projects are
+/// copied under `name`; returns the first check failure on an example of `add_broken`.
+fn test_runs_examples_before_generated_inputs(name: &str) -> Value {
+    let dir = copy("double_then_add_one", name);
     let run = velme(&dir, &["test", DOUBLE]);
     assert_eq!(run.code, 0, "{}", run.stderr);
     let lines: Vec<&str> = run.stdout.lines().collect();
@@ -256,7 +298,7 @@ fn ac_cli_10_test_runs_examples_before_generated_inputs_for_leaf_and_composite_g
 
     // A leaf that fails its examples: each failing example is reported with what it was given, expected and got, and the
     // generated inputs never run, so nothing but the three examples and their checks is in the report.
-    let broken = copy("add_broken", "ac_cli_10_broken");
+    let broken = copy("add_broken", &format!("{name}_broken"));
     let run = velme(&broken, &["test", ADD, "--json"]);
     assert_eq!(run.code, 3, "{}", run.stderr);
     let envelope = parsed(&run);
@@ -268,6 +310,7 @@ fn ac_cli_10_test_runs_examples_before_generated_inputs_for_leaf_and_composite_g
         .as_str()
         .expect("a message");
     assert_eq!(message, "For Add(2, 3), `Add` gave 6 but the example expects 5.");
+    let on_example = envelope["results"][0]["diagnostics"][1].clone();
     let run = velme(&broken, &["test", ADD]);
     assert!(run.stderr.contains("[VL0502]"), "{}", run.stderr);
 
@@ -297,6 +340,7 @@ fn ac_cli_10_test_runs_examples_before_generated_inputs_for_leaf_and_composite_g
     let run = velme(&dir, &["test", DOUBLE, "--goal", "Main"]);
     assert!(run.stdout.starts_with("Main  ✗\n"), "{}", run.stdout);
     assert!(run.stderr.contains("[VL0501]"), "{}", run.stderr);
+    on_example
 }
 
 /// `run --json` for a goal with calls has one result for the requested goal, with `calls` in source order (AC-CLI-26).

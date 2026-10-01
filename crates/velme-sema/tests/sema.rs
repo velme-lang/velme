@@ -140,6 +140,36 @@ fn check_item(inputs: &str, output: &str, item: &str) -> String {
     )
 }
 
+/// Goals taking `Number?`, `Player?`, `Number` and `List<Number?>`, and a goal `G(x: Number, maybe: Number?, xs:
+/// List<Number>)` whose call block is `lines`.
+fn optional_calls(lines: &str) -> String {
+    format!(
+        "type Player:\n    name: Text\n\n\
+         goal Bump(n: Number?) -> Number:\n    plan: \"x\"\n\ngoal Greet(p: Player?) -> Text:\n    plan: \"x\"\n\n\
+         goal Exact(n: Number) -> Number:\n    plan: \"x\"\n\ngoal Sum(xs: List<Number?>) -> Number:\n    plan: \"x\"\n\n\
+         goal G(x: Number, maybe: Number?, xs: List<Number>) -> Number:\n    call:\n{lines}    plan: \"x\"\n"
+    )
+}
+
+/// The call-argument half of AC-TYP-02: an argument may be wider-assigned into an optional input, never the reverse.
+#[test]
+fn ac_typ_02_call_arguments_assign_into_optional_inputs() {
+    program(&optional_calls(
+        "        a = Bump(x)\n        b = Bump(4)\n        c = Greet(nothing)\n",
+    ));
+    let d = only(&optional_calls("        a = Exact(maybe)\n"));
+    assert_eq!(d.code, Code::TypeMismatch);
+    assert_eq!(d.message, "Expected Number, but got Number?.");
+}
+
+/// `List` is invariant in a call too (R-TYP-13).
+#[test]
+fn ac_typ_03_list_is_invariant_in_a_call() {
+    let d = only(&optional_calls("        s = Sum(xs)\n"));
+    assert_eq!(d.code, Code::TypeMismatch);
+    assert_eq!(d.message, "Expected List<Number?>, but got List<Number>.");
+}
+
 #[test]
 fn ac_typ_04_field_of_optional_needs_narrowing() {
     let d = only(&check_item("p: Player", "Player?", "result.score > 0"));
