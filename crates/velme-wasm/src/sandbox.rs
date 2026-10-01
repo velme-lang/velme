@@ -41,8 +41,9 @@ pub const UNIT_INSTRUCTIONS: u64 = TEXT_BLOCK_BYTES * BYTE_INSTRUCTIONS;
 /// K of the Wasmtime fuel backstop (`runtime/31` §6, D-115): 4 × [`UNIT_INSTRUCTIONS`].
 pub const FUEL_FACTOR: u64 = 4 * UNIT_INSTRUCTIONS;
 
-/// Instructions one item costs at most in `sum`, the one function paid after its work: the length of its body.
-pub(crate) const SUM_ITEM_INSTRUCTIONS: u64 = 48;
+/// Instructions one item costs at most in `sum`, the one function paid after its work: the length of its body plus
+/// that of the emitted `num_add` its loop calls (D-126).
+pub(crate) const SUM_ITEM_INSTRUCTIONS: u64 = 128;
 
 /// Instructions that run unpaid besides: `velme_alloc` for the inputs, and storing the result.
 const FIXED_INSTRUCTIONS: u64 = 1024;
@@ -173,6 +174,9 @@ pub struct Run {
     /// goal (its thread, its instance, its inputs): the caller may run the goal elsewhere. One that started is the
     /// goal's outcome, whatever it is (D-121).
     pub started: bool,
+    /// The calls of each import, by [`Import::index`]: which path a run took (D-126).
+    #[cfg(test)]
+    pub(crate) imports: [u32; Import::ALL.len()],
 }
 
 /// The Wasmtime fuel of one run, which the differential suite holds under a quarter of what was given (R-SBX-15).
@@ -201,6 +205,8 @@ impl Run {
             backstop: None,
             wasmtime_fuel: WasmtimeFuel::default(),
             started: false,
+            #[cfg(test)]
+            imports: [0; Import::ALL.len()],
         }
     }
 }
@@ -213,6 +219,9 @@ struct Host {
     /// Whether `velme_run` has been called. Until then a deadline only moves on: the watchdog stopping the host's own
     /// setup would leave a run that never started, `VL0607`, where the goal ran out of time, `VL0603` (D-115, D-121).
     started: bool,
+    /// The calls of each import, by [`Import::index`] (D-126).
+    #[cfg(test)]
+    imports: [u32; Import::ALL.len()],
 }
 
 /// The resource limiter of one invocation: one instance with one memory, which may grow to `memory` bytes, and no
@@ -323,39 +332,97 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
     for import in Import::ALL {
         let (module, name) = (abi::IMPORT_MODULE, import.name());
         match import {
-            Import::NumAdd => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                arithmetic(Number::checked_add, (a, b), (c, d))
+            Import::NumAdd => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    arithmetic(Number::checked_add, (a, b), (c, d))
+                },
+            ),
+            Import::NumSub => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    arithmetic(Number::checked_sub, (a, b), (c, d))
+                },
+            ),
+            Import::NumMul => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    arithmetic(Number::checked_mul, (a, b), (c, d))
+                },
+            ),
+            Import::NumDiv => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    arithmetic(Number::checked_div, (a, b), (c, d))
+                },
+            ),
+            Import::NumNeg => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
+                Ok(bits(-number(a, b)?))
             }),
-            Import::NumSub => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                arithmetic(Number::checked_sub, (a, b), (c, d))
+            Import::NumCmp => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    // Exactly -1, 0 or 1 (D-119).
+                    Ok(match number(a, b)?.cmp(&number(c, d)?) {
+                        std::cmp::Ordering::Less => -1,
+                        std::cmp::Ordering::Equal => 0,
+                        std::cmp::Ordering::Greater => 1,
+                    })
+                },
+            ),
+            Import::Abs => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
+                unary(Function::Abs, a, b)
             }),
-            Import::NumMul => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                arithmetic(Number::checked_mul, (a, b), (c, d))
+            Import::Floor => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
+                unary(Function::Floor, a, b)
             }),
-            Import::NumDiv => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                arithmetic(Number::checked_div, (a, b), (c, d))
+            Import::Ceil => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
+                unary(Function::Ceil, a, b)
             }),
-            Import::NumNeg => linker.func_wrap(module, name, |a: i64, b: i64| Ok(bits(-number(a, b)?))),
-            Import::NumCmp => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                // Exactly -1, 0 or 1 (D-119).
-                Ok(match number(a, b)?.cmp(&number(c, d)?) {
-                    std::cmp::Ordering::Less => -1,
-                    std::cmp::Ordering::Equal => 0,
-                    std::cmp::Ordering::Greater => 1,
-                })
+            Import::Round => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
+                unary(Function::Round, a, b)
             }),
-            Import::Abs => linker.func_wrap(module, name, |a: i64, b: i64| unary(Function::Abs, a, b)),
-            Import::Floor => linker.func_wrap(module, name, |a: i64, b: i64| unary(Function::Floor, a, b)),
-            Import::Ceil => linker.func_wrap(module, name, |a: i64, b: i64| unary(Function::Ceil, a, b)),
-            Import::Round => linker.func_wrap(module, name, |a: i64, b: i64| unary(Function::Round, a, b)),
-            Import::Clamp => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64, e: i64, f: i64| {
-                numeric(Function::Clamp, &[number(a, b)?, number(c, d)?, number(e, f)?])
-            }),
-            Import::Random => linker.func_wrap(module, name, |a: i64, b: i64, c: i64, d: i64| {
-                numeric(Function::Random, &[number(a, b)?, number(c, d)?])
-            }),
-            Import::ToText => linker.func_wrap(module, name, to_text),
-            Import::RangeLen => linker.func_wrap(module, name, |a: i64, b: i64| {
+            Import::Clamp => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64, e: i64, f: i64| {
+                    called(&mut caller, import);
+                    numeric(Function::Clamp, &[number(a, b)?, number(c, d)?, number(e, f)?])
+                },
+            ),
+            Import::Random => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    numeric(Function::Random, &[number(a, b)?, number(c, d)?])
+                },
+            ),
+            Import::ToText => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, lo: i64, hi: i64, ptr: i32| {
+                    called(&mut caller, import);
+                    to_text(caller, lo, hi, ptr)
+                },
+            ),
+            Import::RangeLen => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+                called(&mut caller, import);
                 let length = kept(range_length(number(a, b)?))?;
                 // At most `max_list_size`, which fits.
                 kept(i32::try_from(length).map_err(|_| velme_builtins::Error::Internal))
@@ -363,6 +430,15 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
         }?;
     }
     Ok(linker)
+}
+
+/// Counts a call of `import` in tests, which check which path a run took (D-126); nothing otherwise.
+#[cfg_attr(not(test), expect(unused_variables, clippy::needless_pass_by_ref_mut))]
+fn called(caller: &mut Caller<'_, Host>, import: Import) {
+    #[cfg(test)]
+    {
+        caller.data_mut().imports[import.index() as usize] += 1;
+    }
 }
 
 /// The engine every module runs on (`runtime/31` §6). Its configuration is part of a cached file's name (R-SBX-13).
@@ -803,6 +879,8 @@ impl Program {
             },
             interrupt: interrupt.clone(),
             started: false,
+            #[cfg(test)]
+            imports: [0; Import::ALL.len()],
         };
         let mut store = Store::new(self.pre.module().engine(), host);
         store.limiter(|host| &mut host.guard);
@@ -845,6 +923,10 @@ impl Program {
         store.set_epoch_deadline(0);
         run.started = true;
         let called = exports.run.call(&mut store, base);
+        #[cfg(test)]
+        {
+            run.imports = store.data().imports;
+        }
         run.wasmtime_fuel.used = run.wasmtime_fuel.given.saturating_sub(store.get_fuel().unwrap_or(0));
         let left = |global: &Global, store: &mut Store<Host>| global.get(store).i64().map(i64::cast_unsigned);
         let fuel_left = left(&exports.fuel_left, &mut store);

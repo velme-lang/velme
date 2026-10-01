@@ -32,6 +32,12 @@ pub(crate) enum Rt {
     TextBytes,
     /// `(len: i64) -> i64`: the fuel blocks of a text.
     Blocks,
+    /// `(lo, hi, lo, hi) -> (lo, hi)`: `velme.num_add`, its common case inline.
+    NumAdd,
+    /// `(lo, hi, lo, hi) -> (lo, hi)`: `velme.num_sub`, its common case inline.
+    NumSub,
+    /// `(lo, hi, lo, hi) -> i32`: `velme.num_cmp`, its common case inline.
+    NumCmp,
     /// `(ptr, len, ptr, len) -> i32`: whether two texts are equal.
     TextEq,
     /// `(ptr, len) -> i32`: the characters of a text.
@@ -53,7 +59,7 @@ pub(crate) enum Rt {
 }
 
 impl Rt {
-    pub(crate) const ALL: [Rt; 18] = [
+    pub(crate) const ALL: [Rt; 21] = [
         Rt::Fail,
         Rt::Tick,
         Rt::ChargeFuel,
@@ -63,6 +69,9 @@ impl Rt {
         Rt::SatAdd,
         Rt::TextBytes,
         Rt::Blocks,
+        Rt::NumAdd,
+        Rt::NumSub,
+        Rt::NumCmp,
         Rt::TextEq,
         Rt::TextChars,
         Rt::Concat,
@@ -96,6 +105,9 @@ impl Rt {
             Rt::SatAdd => sat_add(),
             Rt::TextBytes => text_bytes(),
             Rt::Blocks => blocks(),
+            Rt::NumAdd => num_sum(Import::NumAdd),
+            Rt::NumSub => num_sum(Import::NumSub),
+            Rt::NumCmp => num_cmp(),
             Rt::TextEq => text_eq(),
             Rt::TextChars => text_chars(),
             Rt::Concat => concat(),
@@ -252,6 +264,139 @@ fn sat_add() -> Func {
     f.ops([I::LocalGet(0), I::LocalGet(1), I::I64Add, I::LocalSet(total)]);
     f.ops([I::I64Const(-1), I::LocalGet(total)]);
     f.ops([I::LocalGet(total), I::LocalGet(0), I::I64LtU, I::Select]);
+    f
+}
+
+/// The bits of a `Number` slot's `hi` that are neither its sign nor its scale: magnitude bits 64..95, and bits
+/// 40..62, which a canonical slot leaves 0 (D-113). Either set leaves the common case.
+const NOT_SIGN_OR_SCALE: i64 = !(i64::MIN | SCALE);
+
+/// The bits of a `Number` slot's `hi` that hold the scale (D-113).
+const SCALE: i64 = 0xFF << 32;
+
+/// Pushes whether the two numbers `(0, 1)` and `(2, 3)` are the common case of [`num_sum`] and [`num_cmp`]: one
+/// scale, and magnitudes below `2^bits`, so each is its signed `lo` exactly (D-113, D-126).
+fn common_case(f: &mut Func, bits: i64) {
+    f.ops([
+        I::LocalGet(1),
+        I::LocalGet(3),
+        I::I64Or,
+        I::I64Const(NOT_SIGN_OR_SCALE),
+        I::I64And,
+    ]);
+    f.ops([
+        I::LocalGet(1),
+        I::LocalGet(3),
+        I::I64Xor,
+        I::I64Const(SCALE),
+        I::I64And,
+        I::I64Or,
+    ]);
+    f.ops([
+        I::LocalGet(0),
+        I::LocalGet(2),
+        I::I64Or,
+        I::I64Const(bits),
+        I::I64ShrU,
+        I::I64Or,
+        I::I64Eqz,
+    ]);
+}
+
+/// Pushes the coefficient of the number `(lo, hi)` of the common case as an `i64`, negated if `negate`.
+fn coefficient(f: &mut Func, lo: u32, hi: u32, negate: bool) {
+    f.ops([I::I64Const(0), I::LocalGet(lo), I::I64Sub, I::LocalGet(lo)]);
+    f.ops([I::LocalGet(hi), I::I64Const(0), I::I64LtS]);
+    if negate {
+        f.op(I::I32Eqz);
+    }
+    f.op(I::Select);
+}
+
+/// `velme.num_add` or `velme.num_sub` (`import`), with the common case here (D-126): one scale and magnitudes
+/// below 2^62, so the exact sum is an `i64` below 2^63 in magnitude, which fits and needs no rounding (R-TYP-04).
+/// Only a sum at a scale above 0 that ends in a zero would need normalizing (D-113), and it goes to the import,
+/// as everything else does. The import runs the interpreter's `velme-builtins` code, so either way the bits are the
+/// interpreter's, and only the import can fail (R-SBX-06).
+fn num_sum(import: Import) -> Func {
+    let mut f = Func::new(&[I64, I64, I64, I64], &[I64, I64]);
+    let (sum, sign, magnitude, scale) = (f.local(I64), f.local(I64), f.local(I64), f.local(I64));
+    common_case(&mut f, 62);
+    f.op(I::If(Empty));
+    coefficient(&mut f, 0, 1, false);
+    coefficient(&mut f, 2, 3, import == Import::NumSub);
+    f.ops([
+        I::I64Add,
+        I::LocalTee(sum),
+        I::I64Const(63),
+        I::I64ShrS,
+        I::LocalSet(sign),
+    ]);
+    f.ops([
+        I::LocalGet(sum),
+        I::LocalGet(sign),
+        I::I64Xor,
+        I::LocalGet(sign),
+        I::I64Sub,
+        I::LocalSet(magnitude),
+    ]);
+    f.ops([
+        I::LocalGet(1),
+        I::I64Const(SCALE),
+        I::I64And,
+        I::LocalTee(scale),
+        I::I64Eqz,
+    ]);
+    f.ops([
+        I::LocalGet(magnitude),
+        I::I64Const(10),
+        I::I64RemU,
+        I::I64Const(0),
+        I::I64Ne,
+        I::I32Or,
+    ]);
+    f.ops([I::If(Empty), I::LocalGet(magnitude), I::LocalGet(scale)]);
+    // The sign bit of `hi` is the sum's own, and 0 has none (R-TYP-06).
+    f.ops([I::LocalGet(sum), I::I64Const(i64::MIN), I::I64And, I::I64Or, I::Return]);
+    f.ops([I::End, I::End]);
+    f.ops([
+        I::LocalGet(0),
+        I::LocalGet(1),
+        I::LocalGet(2),
+        I::LocalGet(3),
+        I::Call(import.index()),
+    ]);
+    f
+}
+
+/// `velme.num_cmp`, exactly -1, 0 or 1 (D-119), with the common case here (D-126): one scale and magnitudes below
+/// 2^63, where a value's one canonical form (D-113) makes the order that of the signed coefficients.
+fn num_cmp() -> Func {
+    let mut f = Func::new(&[I64, I64, I64, I64], &[I32]);
+    let (a, b) = (f.local(I64), f.local(I64));
+    common_case(&mut f, 63);
+    f.op(I::If(Empty));
+    coefficient(&mut f, 0, 1, false);
+    f.op(I::LocalSet(a));
+    coefficient(&mut f, 2, 3, false);
+    f.op(I::LocalSet(b));
+    f.ops([
+        I::LocalGet(a),
+        I::LocalGet(b),
+        I::I64GtS,
+        I::LocalGet(a),
+        I::LocalGet(b),
+        I::I64LtS,
+        I::I32Sub,
+    ]);
+    f.ops([I::Return, I::End]);
+    f.ops([
+        I::LocalGet(0),
+        I::LocalGet(1),
+        I::LocalGet(2),
+        I::LocalGet(3),
+        I::Call(Import::NumCmp.index()),
+    ]);
     f
 }
 
@@ -473,7 +618,7 @@ fn sum() -> Func {
     open_loop(&mut f, i, 1);
     f.ops([I::LocalGet(lo), I::LocalGet(hi)]);
     number_at(&mut f, 0, i);
-    f.ops([I::Call(Import::NumAdd.index()), I::LocalSet(hi), I::LocalSet(lo)]);
+    f.ops([I::Call(Rt::NumAdd.index()), I::LocalSet(hi), I::LocalSet(lo)]);
     close_loop(&mut f, i);
     f.ops([I::LocalGet(1), I::I64ExtendI32U, I::Call(Rt::ChargeFuel.index())]);
     f.ops([I::LocalGet(lo), I::LocalGet(hi)]);
@@ -493,7 +638,7 @@ fn extreme() -> Func {
     f.ops([I::LocalSet(hi), I::LocalSet(lo), I::I32Const(1), I::LocalSet(i)]);
     open_loop(&mut f, i, 1);
     number_at(&mut f, 0, i);
-    f.ops([I::LocalGet(lo), I::LocalGet(hi), I::Call(Import::NumCmp.index())]);
+    f.ops([I::LocalGet(lo), I::LocalGet(hi), I::Call(Rt::NumCmp.index())]);
     f.ops([I::LocalGet(2), I::I32Eq, I::If(Empty)]);
     number_at(&mut f, 0, i);
     f.ops([I::LocalSet(hi), I::LocalSet(lo), I::End]);
@@ -577,7 +722,7 @@ fn sort() -> Func {
         f.ops([I::I32Load(mem(0, 2)), I::LocalSet(c)]);
         number_at(&mut f, area, c);
     }
-    f.ops([I::Call(Import::NumCmp.index()), I::LocalSet(c)]);
+    f.ops([I::Call(Rt::NumCmp.index()), I::LocalSet(c)]);
     f.ops([I::LocalGet(c), I::I32Const(0), I::I32GtS]);
     f.ops([I::LocalGet(c), I::I32Const(0), I::I32LtS]);
     f.ops([I::LocalGet(descending), I::Select]);

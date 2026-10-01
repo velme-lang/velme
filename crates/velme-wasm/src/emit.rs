@@ -687,21 +687,23 @@ impl<'ir> Emitter<'ir> {
                 self.f.release(&a);
                 self.f.release(&b);
             }
-            // The host's `Number` is the interpreter's (R-SBX-06); an overflow or a division by zero doesn't return.
+            // Add and subtract go through emitted `num_add`/`num_sub`, which call the host only outside the common case
+            // (D-126); `mul`/`div` are host imports; a failure doesn't return.
             BinaryOperator::Add | BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div => {
                 self.expr(left)?;
                 self.expr(right)?;
-                self.import(match op {
-                    BinaryOperator::Add => Import::NumAdd,
-                    BinaryOperator::Sub => Import::NumSub,
-                    BinaryOperator::Mul => Import::NumMul,
-                    _ => Import::NumDiv,
-                });
+                match op {
+                    // The common case inline, the import otherwise (D-126).
+                    BinaryOperator::Add => self.call(Rt::NumAdd),
+                    BinaryOperator::Sub => self.call(Rt::NumSub),
+                    BinaryOperator::Mul => self.import(Import::NumMul),
+                    _ => self.import(Import::NumDiv),
+                }
             }
             BinaryOperator::Lt | BinaryOperator::Le | BinaryOperator::Gt | BinaryOperator::Ge => {
                 self.expr(left)?;
                 self.expr(right)?;
-                self.import(Import::NumCmp);
+                self.call(Rt::NumCmp);
                 self.f.op(I::I32Const(0));
                 self.f.op(match op {
                     BinaryOperator::Lt => I::I32LtS,

@@ -588,6 +588,197 @@ fn ac_sbx_05_division_by_zero_is_vl0602_on_wasm() {
 }
 
 #[test]
+fn ac_sbx_01_add_sub_and_compare_are_the_interpreters_inline_and_through_the_import() {
+    // D-126: the common case is emitted, everything else calls the import, and both give the interpreter's bits,
+    // its failures and its fuel. The values sit on each side of every condition: one scale or two, a magnitude
+    // below or at 2^62 and 2^63, above 2^64, at the top of the range, and sums that end in a zero at a scale.
+    let values = [
+        "0",
+        "1",
+        "-1",
+        "7",
+        "-10",
+        "0.5",
+        "-0.5",
+        "1.5",
+        "2.25",
+        "-2.75",
+        "0.1",
+        "9.9",
+        "12.34",
+        "-99.99",
+        "4611686018427387903",
+        "4611686018427387904",
+        "-4611686018427387903",
+        "-4611686018427387904",
+        "9223372036854775807",
+        "9223372036854775808",
+        "-9223372036854775808",
+        "18446744073709551616",
+        "461168601842738790.3",
+        "-461168601842738790.3",
+        "79228162514264337593543950335",
+        "-79228162514264337593543950335",
+        "0.0000000000000000000000000001",
+        "-0.0000000000000000000000000001",
+    ]
+    .map(|text| Number::parse(text).expect("a number"));
+    let pairs = Pairs::load();
+    for x in values {
+        for y in values {
+            pairs.check(x, y);
+        }
+    }
+    // The other callers of the emitted functions: `sum` adds, `minimum`, `maximum` and `sort_by` compare.
+    let list = |numbers: &[Number]| Value::list(numbers.iter().copied().map(Value::Number).collect());
+    let mut lists: Vec<Value> = values.windows(3).map(list).collect();
+    lists.push(list(&values));
+    let edge = ["0.5", "0.5", "4611686018427387904"].map(|text| Number::parse(text).expect("a number"));
+    lists.push(list(&edge));
+    let sorted = format!(
+        r#"{{"kind": "sort_by", "list": {}, "key": {{"param": "v", "body": {}}}, "descending": false}}"#,
+        input("xs"),
+        local("v")
+    );
+    for (signature, body) in [
+        ("xs: List<Number> -> Number", builtin("sum", &[&input("xs")])),
+        ("xs: List<Number> -> Number?", builtin("minimum", &[&input("xs")])),
+        ("xs: List<Number> -> Number?", builtin("maximum", &[&input("xs")])),
+        ("xs: List<Number> -> List<Number>", sorted),
+    ] {
+        let ir = goal_ir(signature, &body);
+        let program = sandbox().load(&emit(&ir).expect("emits")).expect("loads");
+        for xs in &lists {
+            let done = program.run(std::slice::from_ref(xs), Limits::SYSTEM, &unwatched());
+            assert_eq!(done.backstop, None, "{body} of {xs:?}");
+            let interpreted = interpret(&ir, vec![xs.clone()], Limits::SYSTEM);
+            assert_eq!(
+                done.result.map(|value| (value, done.spent)),
+                interpreted,
+                "{body} of {xs:?}"
+            );
+        }
+    }
+}
+
+/// The goals `x + y`, `x - y` and `x < y`, `<=`, `>`, `>=` of two numbers, loaded.
+struct Pairs {
+    add: Program,
+    sub: Program,
+    compares: [Program; 4],
+}
+
+impl Pairs {
+    fn load() -> Pairs {
+        let sandbox = sandbox();
+        let module = |op: &str, output: &str| {
+            let signature = format!("x: Number, y: Number -> {output}");
+            let module = goal(&signature, "", &binary(op, &input("x"), &input("y")));
+            sandbox.load(&module).expect("loads")
+        };
+        Pairs {
+            add: module("add", "Number"),
+            sub: module("sub", "Number"),
+            compares: ["lt", "le", "gt", "ge"].map(|op| module(op, "Boolean")),
+        }
+    }
+
+    /// Checks that `x` and `y` give the bits, the failure and the fuel of `velme-builtins` (D-126).
+    fn check(&self, x: Number, y: Number) {
+        let inputs = [Value::Number(x), Value::Number(y)];
+        let number = |result: Result<Number, velme_builtins::Error>| result.map(Value::Number).map_err(Error::Builtin);
+        for (program, expected) in [(&self.add, x.checked_add(y)), (&self.sub, x.checked_sub(y))] {
+            let done = program.run(&inputs, Limits::SYSTEM, &unwatched());
+            let got = done.result.map_err(|failure| failure.error);
+            assert_eq!(got, number(expected), "{x} and {y}");
+            assert_eq!((done.spent.fuel, done.backstop), (3, None), "{x} and {y}");
+        }
+        let wanted = [x < y, x <= y, x > y, x >= y];
+        for (program, want) in self.compares.iter().zip(wanted) {
+            let done = program.run(&inputs, Limits::SYSTEM, &unwatched());
+            assert_eq!(done.result, Ok(Value::Boolean(want)), "{x} and {y}");
+            assert_eq!((done.spent.fuel, done.backstop), (3, None), "{x} and {y}");
+        }
+    }
+}
+
+/// The number `±coefficient / 10^scale`, if it is one.
+fn decimal(coefficient: u128, scale: u32, negative: bool) -> Option<Number> {
+    let digits = format!("{coefficient:0>width$}", width = scale as usize + 1);
+    let (whole, fraction) = digits.split_at(digits.len() - scale as usize);
+    let sign = if negative { "-" } else { "" };
+    let point = if scale == 0 { "" } else { "." };
+    Number::parse(&format!("{sign}{whole}{point}{fraction}"))
+}
+
+/// A coefficient near each bound of the emitted common case (2^62, 2^63) and of a slot's `lo` (2^64), or any.
+fn coefficient() -> impl proptest::strategy::Strategy<Value = u128> {
+    use proptest::prelude::*;
+    let near = |bit: u32| (1u128 << bit) - 3..=(1u128 << bit) + 3;
+    prop_oneof![4 => 0u128..1 << 20, 2 => near(62), 2 => near(63), 1 => near(64), 2 => 0u128..1 << 96]
+}
+
+/// Two scales, mostly one.
+fn scales() -> impl proptest::strategy::Strategy<Value = (u32, u32)> {
+    use proptest::prelude::*;
+    prop_oneof![3 => (0u32..=28).prop_map(|s| (s, s)), 1 => (0u32..=28, 0u32..=28)]
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(512))]
+
+    /// Pairs biased to the edges of the common case, mostly of one scale: the bits, failures and fuel of
+    /// `velme-builtins` whichever path a pair takes (D-126).
+    #[test]
+    fn ac_sbx_01_add_sub_and_compare_are_the_interpreters_on_any_pair(
+        a in coefficient(),
+        b in coefficient(),
+        scales in scales(),
+        signs in (proptest::bool::ANY, proptest::bool::ANY),
+    ) {
+        let (Some(x), Some(y)) = (decimal(a, scales.0, signs.0), decimal(b, scales.1, signs.1)) else {
+            return Ok(());
+        };
+        PAIRS.with(|pairs| pairs.check(x, y));
+    }
+}
+
+thread_local! {
+    /// The goals of [`Pairs`], loaded once for the proptest's cases.
+    static PAIRS: Pairs = Pairs::load();
+}
+
+#[test]
+fn ac_sbx_01_the_common_case_calls_no_import() {
+    // D-126: a regression where the emitted path is never taken fails here, not only in the perf gate.
+    let calls = |body: &str, output: &str| {
+        let signature = format!("x: Number -> {output}");
+        let done = run(&goal(&signature, "", body), &[num(0)], Limits::SYSTEM);
+        assert!(done.result.is_ok(), "{body}");
+        done.imports
+    };
+    let none = [0; Import::ALL.len()];
+    let once = |import: Import| {
+        let mut calls = none;
+        calls[import.index() as usize] = 1;
+        calls
+    };
+    let pair = |op: &str, x: &str, y: &str| binary(op, &number(x), &number(y));
+    assert_eq!(calls(&pair("add", "1", "2"), "Number"), none);
+    assert_eq!(calls(&pair("sub", "0.35", "0.12"), "Number"), none);
+    assert_eq!(calls(&pair("lt", "1.5", "-2.5"), "Boolean"), none);
+    // A sum at a scale that ends in a zero, and a magnitude of 2^62.
+    assert_eq!(calls(&pair("add", "0.5", "0.5"), "Number"), once(Import::NumAdd));
+    assert_eq!(
+        calls(&pair("add", "4611686018427387904", "1"), "Number"),
+        once(Import::NumAdd)
+    );
+    // Two scales.
+    assert_eq!(calls(&pair("sub", "0.5", "0.25"), "Number"), once(Import::NumSub));
+    assert_eq!(calls(&pair("gt", "0.5", "0.25"), "Boolean"), once(Import::NumCmp));
+}
+
+#[test]
 fn r_blt_07_a_failure_names_the_items_being_visited() {
     // `map(xs, v -> map(xs, w -> v / w))`: the inner list's item first (R-SBX-19).
     let inner = collection("map", &input("xs"), "w", &binary("div", &local("v"), &local("w")));
@@ -1139,6 +1330,7 @@ fn the_fuel_backstop_covers_every_runtime_function() {
     // D-115: K is 4 × the most instructions one paid unit covers, and A is 4 × what runs unpaid. A body's length
     // bounds what it runs between two turns of a loop in it, so a body that outgrows what the constants assume
     // fails here.
+    let (add, cmp) = (Rt::NumAdd.instructions(), Rt::NumCmp.instructions());
     let mut total = 0;
     for rt in Rt::ALL {
         let body = rt.instructions();
@@ -1146,13 +1338,14 @@ fn the_fuel_backstop_covers_every_runtime_function() {
         match rt {
             // A unit pays for a block of bytes, one turn of the loop each.
             Rt::TextEq | Rt::TextChars => assert!(body <= BYTE_INSTRUCTIONS, "{rt:?}: {body}"),
-            // Paid after its work, a unit for each item.
-            Rt::Sum => assert!(body <= SUM_ITEM_INSTRUCTIONS, "{rt:?}: {body}"),
+            // Paid after its work, a unit for each item, and a turn adds once (D-126).
+            Rt::Sum => assert!(body + add <= SUM_ITEM_INSTRUCTIONS, "{rt:?}: {body} + {add}"),
             // `n·⌈log2(n+1)⌉` units for `n` turns to number the items, at most `⌈log2 n⌉` passes, and in each pass
-            // at most `n` runs and `n` items merged: under three turns a unit.
-            Rt::Sort => assert!(3 * body <= UNIT_INSTRUCTIONS, "{rt:?}: {body}"),
-            // A unit an item: one turn each.
-            Rt::Range | Rt::Extreme => assert!(body <= UNIT_INSTRUCTIONS, "{rt:?}: {body}"),
+            // at most `n` runs and `n` items merged: under three turns a unit, a turn comparing once.
+            Rt::Sort => assert!(3 * (body + cmp) <= UNIT_INSTRUCTIONS, "{rt:?}: {body} + {cmp}"),
+            // A unit an item: one turn each, comparing once.
+            Rt::Range => assert!(body <= UNIT_INSTRUCTIONS, "{rt:?}: {body}"),
+            Rt::Extreme => assert!(body + cmp <= UNIT_INSTRUCTIONS, "{rt:?}: {body} + {cmp}"),
             // No loop: run once for a node, an element or a pair that has paid its unit.
             Rt::Fail
             | Rt::Tick
@@ -1163,6 +1356,9 @@ fn the_fuel_backstop_covers_every_runtime_function() {
             | Rt::SatAdd
             | Rt::TextBytes
             | Rt::Blocks
+            | Rt::NumAdd
+            | Rt::NumSub
+            | Rt::NumCmp
             | Rt::Concat
             | Rt::ToText
             | Rt::Alloc => {}

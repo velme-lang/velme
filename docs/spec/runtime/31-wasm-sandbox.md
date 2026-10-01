@@ -104,9 +104,15 @@ nothing; 1, out of fuel (`VL0601`); 2, out of memory (`VL0604`); 3, a state the 
 the host refused to grow the memory (the `StoreLimits` backstop, R-SBX-12). One paid fuel unit covers at most a
 constant number of emitted instructions, whatever the program's types (§6, D-115, D-119).
 The cost table is one constant set in `velme-builtins`, depended on by both `velme-interp` and `velme-wasm` (D-54).
-**R-SBX-06** `Number` arithmetic and comparison are host imports (`velme.num_add`, `num_sub`, `num_mul`, `num_div`,
-`num_neg`, `num_cmp`) implemented by the same `velme-builtins` code as the interpreter, so results match bit for bit
-(D-36). An import that fails — division by zero or overflow (`VL0602`), or an argument another import of §5 refuses
+**R-SBX-06** `Number` arithmetic and comparison give the bits of the `velme-builtins` code the interpreter runs (D-36).
+`num_mul`, `num_div` and `num_neg` are host imports. Add, subtract and compare are emitted functions of the module
+(D-126) that compute the common case themselves — two operands of one scale whose magnitudes are below 2^62 (below 2^63
+to compare), except a sum at a scale above 0 that ends in the digit 0 — and call `velme.num_add`, `num_sub` or `num_cmp`
+for everything else. In the common case the exact result is an `i64` that needs neither rounding (R-TYP-04) nor
+normalizing (R-TYP-06, D-113), so it cannot fail; only an import fails. Either path is charged the node's Velme fuel and
+memory and nothing else (R-SBX-05). Emitted code assumes canonical operands (D-113); a non-canonical slot is `VL0607`
+where the host decodes it: an import, or the result. An import that fails — division by zero or overflow (`VL0602`), or
+an argument another import of §5 refuses
 (`VL0602`, `VL0606`) — does not return: the host keeps the `velme-builtins` error, whose message names the operands, and
 raises the trap itself, and `velme_reason` stays 0 (D-119). Numbers cross these imports, and
 the other imports of §5, as values — two `i64`, `lo` then `hi` (§3), never through linear memory (D-90, D-112).
@@ -132,9 +138,9 @@ v0.1 import is pure and deterministic, and is charged as the IR node or builtin 
 
 | Import | Signature | v0.1 | Notes |
 |---|---|---|---|
-| `velme.num_add`, `num_sub`, `num_mul`, `num_div` | `(n, n) -> n` | yes | R-SBX-06; overflow or division by zero is `VL0602` |
+| `velme.num_add`, `num_sub`, `num_mul`, `num_div` | `(n, n) -> n` | yes | R-SBX-06; overflow or division by zero is `VL0602`; `num_add` and `num_sub` outside emitted code's common case (D-126) |
 | `velme.num_neg` | `(n) -> n` | yes | R-SBX-06 |
-| `velme.num_cmp` | `(n, n) -> i32` | yes | the order of the two numbers: exactly -1, 0 or 1 (D-119) |
+| `velme.num_cmp` | `(n, n) -> i32` | yes | the order of the two numbers: exactly -1, 0 or 1 (D-119); outside emitted code's common case (D-126) |
 | `velme.abs`, `floor`, `ceil`, `round` | `(n) -> n` | yes | language/14 |
 | `velme.clamp` | `(n, n, n) -> n` | yes | `x`, `low`, `high`; `low > high` is `VL0602` |
 | `velme.random` | `(n, n) -> n` | yes | `seed`, `index` (D-22) |
