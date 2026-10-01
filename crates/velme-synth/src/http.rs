@@ -93,6 +93,7 @@ fn connect_phase_timeout(kind: &ureq::Timeout) -> ProviderError {
 pub(crate) fn transport_error(error: ureq::Error) -> ProviderError {
     match error {
         ureq::Error::Timeout(kind) => connect_phase_timeout(&kind),
+        // The connect limit above fires long before the operating system's, so this one struck mid-exchange (D-129).
         ureq::Error::Io(e) if e.kind() == std::io::ErrorKind::TimedOut => ProviderError::Timeout,
         // A header that can't be built, such as a key with a control character, is never a network failure.
         ureq::Error::Http(_) | ureq::Error::BadUri(_) => ProviderError::NotConfigured,

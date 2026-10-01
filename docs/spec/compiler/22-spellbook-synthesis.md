@@ -83,7 +83,8 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 | `replay` | integration tests, golden builds, CI | reads `<replay_dir>/b3-<hex>.json`, named from the synthesis key as store files are (R-SYNTH-43); missing fixture → `VL0404` naming the key; `VELME_SYNTH_RECORD=1` with a live provider writes fixtures |
 | `scripted` | unit tests of the retry loop and pipeline | a queue of replies/errors: in memory from library tests, or from the script file in `VELME_SYNTH_SCRIPT` in a `velme-cli` built with the `test-provider` feature, never in release builds (`tooling/40` §5.2) |
 
-**R-SYNTH-06** Live-provider tests run only with `VELME_LIVE_LLM=1` and are never part of the default gate (D-13).
+**R-SYNTH-06** Live-provider runs are never part of the default gate (D-13). In v0.1 they are a manual CLI run at the
+MVP gate (`delivery/51` §2, D-148); `VELME_LIVE_LLM=1` is reserved for live-provider tests after v0.1.
 **R-SYNTH-43** Replay fixtures (D-94). `<replay_dir>/replay.json` holds `provider`, `model_version` and
 `input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21), and, when they
 aren't the defaults, its `retry_history` and `reply_format` (R-SYNTH-36, R-SYNTH-37), which change the bytes of the requests the fixtures are
@@ -284,11 +285,13 @@ failures the input, the assertion and the actual values) are appended as a new t
 real conversation turns: each carried reply as an assistant turn, then one user turn with the diagnostics, rendered
 by the template's retry text (D-95).
 At most `max_retries` (default and cap: 3) retries follow the first attempt.
-**R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried up to 2 times per attempt and
-do not consume a synthesis retry, except that the LLM providers (`anthropic`, `ollama`) never retry a `Timeout` that
-struck after the request was sent: a generation that ran out of time would only run out again, so the attempt ends with
-`VL0404` at once (D-110). The waits are 1 s then 2 s with no jitter; a `RateLimited` with `retry_after` waits
-that long instead, at most 30 s. The sleep is injected, so tests take no wall time (D-95).
+**R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried up to 2 times per attempt and do
+not consume a synthesis retry, except that the LLM providers (`anthropic`, `ollama`) never retry a `Timeout` that struck
+after the request was sent: a generation that ran out of time would only run out again, so the attempt ends with
+`VL0404` at once (D-110). An operating-system `TimedOut` error counts as such a timeout: the client's own connect limit
+fires long before the operating system's, so it strikes mid-exchange (D-129). The waits are 1 s then 2 s with no jitter;
+a `RateLimited` with `retry_after` waits that long instead, at most 30 s. The sleep is injected, so tests take no wall
+time (D-95).
 **R-SYNTH-13** After the last retry the goal fails with `VL0403`, whose message states the cause (R-SYNTH-31);
 `--verbose` adds every attempt's diagnostics. The source `plan` is never modified; nothing is written to the artifact
 store or the lock.

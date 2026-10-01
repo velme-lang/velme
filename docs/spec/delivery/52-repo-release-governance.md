@@ -20,16 +20,16 @@ velme/
 ├── crates/
 │   ├── velme-syntax/  velme-diagnostics/  velme-sema/  velme-ir/  velme-check/  velme-builtins/
 │   ├── velme-interp/  velme-synth/  velme-runtime/  velme-wasm/  velme-cli/  velme-test-support/
+│   └── <crate>/benches/          criterion benchmarks of that crate, from M8 (D-130)
 ├── examples/{beginner,intermediate,games,professional}/   each with velme.lock + .velme/artifacts
 ├── tests/
 │   ├── golden/{parser,diagnostics,ir,explain,trace}/
 │   └── fixtures/synth/           replay provider fixtures
-├── benches/                      criterion benchmarks, from M8 (or per-crate benches/)
 ├── fuzz/                         cargo-fuzz targets: parse, validate, differential (M7, D-118)
 ├── xtask/                        verify, ac-audit, layering check, release helpers
 ├── rfc/                          README.md, 0000-template.md, accepted RFCs
 ├── docs/{spec,plan}/  docs/code-conventions.md
-└── .github/{workflows/,ISSUE_TEMPLATE/,PULL_REQUEST_TEMPLATE.md,CODEOWNERS,dependabot.yml,release.yml}
+└── .github/{workflows/{ci,release,codeql}.yml,ISSUE_TEMPLATE/,PULL_REQUEST_TEMPLATE.md,CODEOWNERS,dependabot.yml}
 ```
 
 **R-REL-01** A new crate needs a real API or ownership boundary and an update to SPEC.md §5 and INV-9's order; a
@@ -61,9 +61,17 @@ no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/vel
 | Workflow | Trigger | Runs |
 |---|---|---|
 | `ci.yml` | every PR and push to `main` | `cargo xtask verify` on Linux; test job on macOS + Windows; fuzz smoke job on a pinned nightly toolchain, 60 s per target (from M7, D-118); `cargo check --all-targets` on MSRV |
-| `nightly.yml` | schedule | long fuzz runs, benchmark suite vs baseline, large examples, cross-platform determinism |
-| `live-llm.yml` | manual dispatch only | live provider tests with repository secret; never on forks' PRs |
-| `release.yml` | tag `vX.Y.Z[-pre]` | full verify → build Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows x86_64 → release tests → reproducibility check → checksums + signatures → GitHub Release → `cargo publish` |
+| `codeql.yml` | every PR and push to `main` | CodeQL code scanning of the workflows (D-147) |
+| `release.yml` | tag `vX.Y.Z[-pre]`; manual dispatch with a `dry_run` input, default true (D-143) | full verify → build Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows x86_64 → release tests → reproducibility check → checksums (`SHA256SUMS`) + signatures → GitHub Release → `cargo publish`. A dry run stops before the GitHub Release: it uploads the binaries, checksums and signatures to the workflow run and runs `cargo publish --workspace --dry-run` |
+| `nightly.yml`, `live-llm.yml` | — | deferred until after v0.1.0-alpha (D-132); the live synthesis evidence is a manual run by the owner (D-148) |
+
+**R-REL-13** Release signing and reproducibility (D-144, D-145). A real release signs with GitHub artifact attestations,
+and only its job is granted `id-token: write`; a dry run signs with a throwaway key and writes nothing to a public
+transparency log. Each target is built on two fresh runners with no build cache, build paths remapped so neither the
+workspace nor the cargo home appears in the binary (Rust and C dependencies), `/Brepro` on Windows, `SOURCE_DATE_EPOCH`
+set and `--locked`; the two builds' checksums must match. The dry run builds the version given as its input (`0.1.0`
+for M8); the first real release is `0.1.0-alpha.1`, tagged by the owner after the M8 gate (D-146).
+`.github/dependabot.yml` covers cargo and GitHub Actions (D-147).
 
 **R-REL-12** Git flow (trunk-based; applies now, before CI exists):
 - `main` is always green (`cargo xtask verify` passes) and only moves by merging a branch — never direct commits.
@@ -154,7 +162,9 @@ new host functions. Reserved words (D-24) mark expected RFC topics: effects, mod
 The first public commit contains: README, both licenses, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG,
 workspace `Cargo.toml`, `rust-toolchain.toml`, `crates/`, `examples/`, `tests/`, `docs/`, `rfc/`, `.github/`.
 README order: 1 What is Velme? · 2 Why is it different? · 3 a 10-line example a child can read · 4 run it locally ·
-5 the kid → professional path · 6 architecture · 7 contribute · 8 license.
+5 the kid → professional path · 6 architecture · 7 contribute · 8 license. Until the crates are on crates.io, item 4 is
+`cargo install --git https://github.com/velme-lang/velme velme-cli --locked`, then `velme run
+examples/beginner/add.velme` with no key, then `velme build` with `ANTHROPIC_API_KEY` set or Ollama running (D-142).
 
 ## 11. Naming clearance (D-38)
 
@@ -172,5 +182,5 @@ then filings in the US, EU and target markets.
 | AC-REL-01 | The workspace builds with exactly the D-15 crates and `xtask`; `rust-toolchain.toml` pins the toolchain. |
 | AC-REL-02 | `xtask layering` fails when a test crate edge violating INV-9 is added (e.g. `velme-syntax → velme-runtime`). |
 | AC-REL-03 | Core crates (all but `velme-cli`) build with `--no-default-features` and no provider SDK in their dependency tree. |
-| AC-REL-04 | A release dry run produces binaries for the five targets, checksums and signatures, and two builds of the same tag have identical checksums. |
+| AC-REL-04 | A release dry run produces binaries for the five targets, checksums and signatures, and two builds of the same commit have identical checksums (R-REL-13); `ac_rel_04_*` checks that `release.yml` has these steps and the dry-run guard (D-143). |
 | AC-REL-05 | Every artifact manifest records language, compiler, IR, builtins, prompt and model versions. |

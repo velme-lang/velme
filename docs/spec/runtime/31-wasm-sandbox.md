@@ -25,16 +25,18 @@ modules.
 
 **R-SBX-01** WASM is never produced by an LLM (INV-1); only `velme-wasm` emits it, only from validated IR.
 **R-SBX-02** Backend selection: `--backend interp|wasm|auto`, a flag only, with no `velme.toml` key (D-117). The default
-is `interp` until the start of M8, then `auto`, once the per-run cost of WASM is reduced; only the CLI's default flips,
-never the runtime's own (D-121, D-122). `auto` runs a leaf goal on WASM when the sandbox can load and start it, and on
-the interpreter on any failure before its module starts: the emitter declines it, or the sandbox can't be made, or can't
-compile, link or start the module. `--verbose` then notes "`G` ran on the interpreter: …" with the reason (D-121); when
-the reason is a bug in Velme (an emitter bug, or an import the sandbox refuses), stderr says so without `--verbose` and
-asks for a report (D-123). A leaf whose module has started is never run again on the interpreter, whatever its outcome:
-a backstop firing is a backend bug (D-115). `wasm` does the same, except that a leaf the WASM backend can't run is
-`VL0607` (`VL0801` for an import the sandbox refuses), never a silent fallback; a leaf the emitter declines is not a
-bug, and its `VL0607` has its own message with no report link (D-123). On a composite goal both run the leaves on WASM
-and the tail on the interpreter.
+is `interp` until M8e, which flips it to `auto` on each platform that passes D-134's test once the per-run cost of WASM
+is reduced (warm module cache on Unix, cold on Windows); a platform that fails keeps `interp` for v0.1. Only the CLI's
+default flips, never the runtime's own (D-121, D-122, D-134). `auto` runs a leaf goal on WASM when the sandbox can load
+and start it, and on the interpreter on any failure before its module starts: the emitter declines it, or the sandbox
+can't be made, or can't compile, link or start the module. `--verbose` then notes "`G` ran on the interpreter: …" with
+the reason (D-121); when the reason is a bug in Velme (an emitter bug, or an import the sandbox refuses), stderr says so
+without `--verbose` and asks for a report (D-123), and under `--json` that note goes in `notices[]` instead (from M8,
+D-136). A leaf whose module has started is never run again on the interpreter, whatever its outcome: a backstop firing
+is a backend bug (D-115). `wasm` does the same, except that a leaf the WASM backend can't run is `VL0607` (`VL0801` for
+an import the sandbox refuses), never a silent fallback; a leaf the emitter declines is not a bug, and its `VL0607` has
+its own message with no report link (D-123). On a composite goal both run the leaves on WASM and the tail on the
+interpreter.
 **R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Under `velme test` the leaf body of each
 example and of each generated input runs on the selected backend, while the examples' expected-value expressions and
 every check evaluate on the interpreter (D-80); a test run changes no artifact, lock or store, and only the derived
@@ -42,10 +44,11 @@ module cache (R-SBX-13) may be written. Call arguments, composite tails, build v
 re-verification stay on the interpreter, whatever `--backend` says (D-80, D-117).
 **R-SBX-18** Output is byte-identical for all three values: stdout, the diagnostics on stderr, the exit code, `--json`,
 and `trace --json` with its fuel and memory figures, for a success and for every deterministic failure, except a leaf
-the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801`, and the note on stderr of a leaf
-`auto` ran on the interpreter because of a bug in Velme (D-123). Timings and `VL0603` are excluded, and `--verbose` notes
-are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts against the run's wall
-clock, so `VL0603` can come earlier on WASM. Neither `velme-cli/1` nor the trace has a `backend` field (D-117, D-121).
+the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801`, and the note on stderr, or under
+`--json` in `notices[]` (D-136), of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123). Timings and
+`VL0603` are excluded, and `--verbose` notes are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts
+against the run's wall clock, so `VL0603` can come earlier on WASM. Neither `velme-cli/1` nor the trace has a `backend`
+field (D-117, D-121).
 
 ## 3. Value layout (ABI)
 
@@ -176,8 +179,9 @@ a text longer than the 48 marshalling bytes and a `ptr` that is not the marshall
 `Number` that crosses the boundary, in either direction, goes through the canonical-form check of R-SBX-04.
 **R-SBX-12** Only the deterministic limits (Velme fuel, Velme memory) can produce reproducible outcomes; if a backstop
 fires first, including host resource exhaustion (memory growth refused by the OS after start), the run is reported as
-that backstop's code. `--verbose` adds a note on stderr saying that a backstop fired, which is a backend bug; nothing
-else changes, in `--json` or in the trace (D-115).
+that backstop's code. A note saying that a backstop fired, which is a bug in Velme's WASM backend, with the `VL0607`
+report link, is printed on stderr whatever `--verbose` is, and under `--json` goes in `notices[]` instead; nothing else
+changes, in `--json` or in the trace (D-115, revised by D-136 from M8).
 
 ## 7. Compiled-module cache
 
@@ -185,7 +189,8 @@ else changes, in `--json` or in the trace (D-115).
 project: `$XDG_CACHE_HOME/velme/wasm/<module-hash>-<compat-hash>.cwasm`, else `~/.cache/velme/wasm/…` by the XDG rule on
 Linux and macOS alike, where `module-hash` = BLAKE3 of the emitted module's bytes and `compat-hash` is Wasmtime's
 compatibility hash for the engine, so a change to the emitter, to Wasmtime or to the engine configuration gives a new
-name (D-116). Emission always runs; only Wasmtime's compiled output is cached. They are never locked, never committed
+name (D-116). Emission runs once per IR per process: emitted modules are kept in memory, keyed by the IR hash (from
+M8, D-133); only Wasmtime's compiled output is cached on disk. They are never locked, never committed
 and may be deleted at any time (D-48).
 **R-SBX-20** The cache directory is an option passed to the backend: `velme-cli` passes the user-level directory, and a
 test passes a temporary directory or none (no disk cache). The directory is created with mode `0700`, then opened

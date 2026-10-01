@@ -26,8 +26,8 @@ assertions, no unseeded randomness, no dependence on test execution order.
 | **Differential** | interpreter vs WASM on the same IR + inputs: equal value, equal full diagnostic, equal fuel and memory used (`runtime/31` R-SBX-15) | `velme-test-support` harness and typed valid-IR generator, shared by proptest and the fuzz target | all golden IR + examples + generated IR (M7, D-118) |
 | **Integration** | CLI end-to-end on `examples/` using the `replay` provider and committed locks | `assert_cmd` + `insta` | covers the AC-RDM set |
 | **Examples-as-tests** | every file in `examples/` passes `velme test --locked` | xtask step | an example that stops working fails the gate |
-| **Live LLM** | real provider synthesis of the success-criteria programs | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` | opt-in only (D-13); records fixtures with `--record` |
-| **Benchmarks** | compile time, interpreter throughput, scheduler overhead, WASM compile + run | `criterion` in `benches/`, from M8 | tracked nightly; not a pass/fail gate except §6 budgets. M7 has one ignored release-mode test that prints fuel/s for both backends: the number goes in the gate report, and it fails only if the maximum budget would take over 60 s (D-51, D-118) |
+| **Live LLM** | real provider synthesis of the success-criteria programs | by hand through the CLI against `anthropic`, recorded into a scratch directory | a manual gate step only (D-13): the gate report holds the transcripts, the model version and the lock, nothing is committed, and there is no live test target in v0.1 (D-148) |
+| **Benchmarks** | compile time, interpreter throughput, scheduler overhead, WASM compile + run | `criterion` (default features off) in a `benches/` folder inside each crate it measures, from M8 (D-130) | report-only and not part of PR CI; no nightly tracking before v0.1.0-alpha (D-132). The §6 targets are asserted by ignored release-mode tests `ac_cmp_07_*` and `ac_qa_07_*`, each taking the best of N runs, which `cargo xtask gate` runs (R-QA-07, D-130). M7 has one ignored release-mode test that prints fuel/s for both backends: the number goes in the gate report, and it fails only if the maximum budget would take over 60 s (D-51, D-118) |
 
 **R-QA-03** Golden snapshots are updated only with `cargo insta review` (or `INSTA_UPDATE=always` for a bulk rename),
 and every snapshot change appears in the PR diff for review. Never hand-edit a `.snap` file.
@@ -63,38 +63,41 @@ human and JSON rendering.
 | Dependencies | `cargo deny check` (advisories, licenses, bans, sources) |
 | Layering | `xtask` crate-graph check against INV-9 (`delivery/52` R-REL-03) |
 | Release features | `cargo tree -e features,normal -p velme-cli` names no `test-endpoint` (`compiler/22` R-SYNTH-44) |
-| Coverage audit | `xtask ac-audit` (§5) |
-| Fixture scrub | no key-shaped strings under `tests/fixtures` (R-SEC-07) |
+| Coverage audit | `xtask ac-audit` (§5); `--strict` from M8's exit (D-139) |
+| Fixture scrub | a test in the default suite finds no key-shaped strings under `tests/fixtures` (R-SEC-07; from M8) |
 
 `cargo xtask verify --quick` runs fmt, clippy and the tests of changed crates for inner-loop use.
 
 **R-QA-07** Every change keeps `cargo xtask verify` green. A phase gate (`delivery/50` R-RDM-02) additionally runs the
-fuzz smoke and the benchmark budgets of §6.
+fuzz smoke and the benchmark budgets of §6. From M8, `cargo xtask gate` runs the phase-gate steps: the ignored
+release-mode `ac_cmp_07_*` and `ac_qa_07_*` tests, and each `ac_rdm_*` test 20 times, each in a fresh process, printing
+the pass counts as `delivery/50` R-RDM-04's evidence; `cargo xtask verify` does not run them (D-130).
 
 ## 5. Coverage audit
 
-`xtask ac-audit` greps every `AC-[A-Z]+-\d+` defined in `docs/spec/**` (the acceptance tables) and every test function
-name under `crates/**` and `tests/**`, lowercasing ids. It fails when a criterion has no test, and lists tests citing
-unknown criteria. Criteria owned by a later phase (the phase whose exit criteria name them, `delivery/50` §2) are
-allowed to be missing only while that phase has not started: no `mN-verified` tag exists and the branch under test
-(in CI, the PR head branch) is not an `mN-*` phase branch (R-REL-12, D-66).
+`xtask ac-audit` greps every `AC-[A-Z]+-\d+` defined in `docs/spec/**` (the acceptance tables) and every `#[test]`
+function name under `crates/**` and `tests/**`, lowercasing ids. It fails when a criterion has no test, and lists tests
+citing unknown criteria, which always fail. Without `--strict` it lists the criteria with no test but does not fail;
+from M8's exit `cargo xtask verify` runs it with `--strict`, so a new criterion ships with its test (D-139).
 
 ## 6. Performance targets
 
-Measured on a mid-range laptop (4 performance cores), release build, warm file cache.
+Measured on a mid-range laptop (4 performance cores), the reference machine, release build, warm file cache. The
+workloads are fixed by D-131; cold compile and per-example `velme test` are reported, not asserted.
 
 | Operation | Target |
 |---|---|
-| `velme check` on a 1,000-line file | < 100 ms |
+| `velme check` on a 1,000-line file (a seeded generator's program) | < 100 ms |
 | Parse only, 1,000 lines | < 10 ms |
-| `velme run --locked`, cache hit, small program (CLI start to exit) | < 50 ms |
-| Interpreter: `reduce` over 1M numbers | < 200 ms |
-| WASM leaf: same workload | ≤ 0.5× interpreter time, excluding first compile (measured at M8, D-118) |
-| Scheduler overhead per call node | < 20 µs |
-| Fingerprint of a 100-goal program | < 5 ms |
+| `velme run --locked`, cache hit, small program (`find_badge`, interpreter and `auto`; CLI start to exit) | < 50 ms |
+| Interpreter: a `reduce` over `range(1000)` nested inside a `reduce` over `range(1000)` (1M additions) | < 200 ms |
+| WASM leaf: same workload, module already compiled, instantiation and run thread included | ≤ 0.5× interpreter time (D-118); report-only for v0.1 if still missed after M8c (D-125) |
+| Scheduler overhead per call node (128 trivial calls minus their leaves alone, ÷ 128) | < 20 µs |
+| Fingerprint of a 100-goal generated program | < 5 ms |
 
 **R-QA-08** A benchmark regression over 20 % against the stored baseline fails the nightly job and opens an issue; it
-does not block PRs.
+does not block PRs. Deferred until after v0.1.0-alpha, with the nightly job and its baselines; until then the gate's
+numbers go in the gate report (D-132).
 
 ## 7. Acceptance criteria
 
@@ -106,4 +109,4 @@ does not block PRs.
 | AC-QA-04 | Every `VLnnnn` code in `reference/90` is triggered by a golden test. |
 | AC-QA-05 | The determinism tests in §3 pass on Linux, macOS and Windows. |
 | AC-QA-06 | Each fuzz target runs a 60-second smoke without crash in the pinned-nightly CI job; on stable, `ac_qa_06_*` replays the committed corpora without crash and fails if the workflow omits a target (D-118). |
-| AC-QA-07 | §6 targets are met at the M8 gate. |
+| AC-QA-07 | §6 targets are met at the M8 gate (the WASM row per D-125). |

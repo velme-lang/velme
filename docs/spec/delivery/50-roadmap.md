@@ -32,7 +32,7 @@ Leaf execution comes before the DAG runtime (F-15, D-16).
 | **M5** | Spellbook | `SynthProvider` trait, `anthropic`/`ollama`/`external`/`replay`/`scripted`, external protocol, prompt contract, structured output, retry with diagnostics, verification pipeline, generated test inputs | `compiler/22`, `tooling/41` | plan → runnable goal via `velme build`; a second build makes no provider call | AC-SYNTH-* except AC-SYNTH-08 (M6), AC-ART-01/02/03/09/10, AC-CMP-05, AC-CMP-06, AC-CMP-08, AC-SEC-02/03/05/06/09, AC-QA-02, AC-REL-03, AC-REL-05, AC-RDM-01, AC-RDM-08 |
 | **M6** | CLI completion | `--locked`/`--offline`, `artifact` command, config file, input/output mapping (D-23), exit codes, cache commands, synth log (R-SYNTH-23) | `runtime/32`, `tooling/40`, `compiler/22` | `velme run --locked --offline` on a cloned project | AC-ART-05, AC-ART-07, AC-ART-11, AC-BLT-10, AC-SYNTH-08, AC-CLI-* (except 06/07), AC-SEC-08 |
 | **M7** | WASM backend | IR → core WASM for leaf goals, `wasmparser` validation, Wasmtime with fuel + epoch + `ResourceLimiter`, host-function allowlist, differential tests vs interpreter | `runtime/31`, `delivery/51` | `velme run --backend wasm` equals interpreter | AC-SBX-*, AC-SEC-01/07, AC-RDM-07, AC-RDM-09 (WASM), AC-BLT-01/04, AC-TYP-06/15, AC-QA-05, AC-CHK-11 (WASM halves, D-118), AC-QA-06 |
-| **M8** | MVP gate | all success criteria end-to-end, examples tree, fuzz smoke, perf targets, security baseline, docs, release dry run | all | `v0.1.0-alpha` release candidate | §5 all green; `delivery/51` §6 targets met; AC-CMP-07, AC-QA-04, AC-QA-07, AC-REL-04 |
+| **M8** | MVP gate | all success criteria end-to-end, examples tree, fuzz smoke, perf targets, security baseline, docs, release dry run | all | `v0.1.0-alpha` release candidate (the dry run builds `0.1.0`; tagged `0.1.0-alpha.1` after the gate, D-146) | §5 all green; `delivery/51` §6 targets met; AC-CMP-07, AC-QA-04, AC-QA-07, AC-REL-04 |
 
 ## 3. MVP scope
 
@@ -76,14 +76,16 @@ Leaf execution comes before the DAG runtime (F-15, D-16).
 ## 5. MVP success criteria
 
 **R-RDM-04** The MVP gate passes only when each criterion below passes reliably: 20 consecutive runs of its test in the
-replay/scripted configuration, plus one recorded live run per synthesis criterion. The live run is a manual gate step,
-never part of `cargo xtask verify` (D-13).
+replay/scripted configuration, each in a fresh process, counted by `cargo xtask gate` (D-130), plus one live run per
+synthesis criterion (AC-RDM-01, AC-RDM-02, AC-RDM-08). The live run is a manual gate step through the CLI, never part of
+`cargo xtask verify` (D-13); its transcripts, model version and lock go in the gate report and are not committed
+(D-148).
 
 | ID | Criterion | Program / check | Phase |
 |---|---|---|---|
 | AC-RDM-01 | **Simple goal** — synthesized from plan, passes its check | `goal Add(a: Number, b: Number) -> Number:` `plan: "Add a and b."` `check: - result == a + b` | M5 |
 | AC-RDM-02 | **Goal composition** — wired composite goal runs with no synthesis for `Main` | see below | M4 |
-| AC-RDM-03 | **Parallel calls** — three independent children run concurrently (overlapping spans in trace), result and trace order identical to sequential execution | `BuildPlayerSummary` 3-call form | M4 |
+| AC-RDM-03 | **Parallel calls** — three independent children run concurrently (overlapping spans in trace), result and trace order identical to sequential execution | a composite with three independent heavy children (D-138) | M4 |
 | AC-RDM-04 | **Type mismatch** — invalid call rejected before execution | `CalculateScore("hello")` → `VL0204` | M2 |
 | AC-RDM-05 | **Cycle** — `A → B → A` fails compilation | → `VL0304` naming the cycle | M2 |
 | AC-RDM-06 | **Check failure** — shows the exact failed assertion and the values | → `VL0501` with expected/got | M3 |
@@ -123,6 +125,9 @@ goal Main(x: Number) -> Number:
 | Component Model + WIT, typed cross-goal components | v0.2+ |
 | Conditional calls, effects, modules | each through an RFC (`delivery/52`) |
 | Remote artifact store (Redis + object storage + PostgreSQL), Velme Cloud | separate private repos |
+| User-level `allowed_providers`, restricting which configured providers a project may choose | Q-28, closed for v0.1 without it (D-127) |
+| `--offline` rebuilding a wired goal whose children are all fresh | Q-29, a later relaxation; `VL0404` in v0.1 (D-128) |
+| `nightly.yml`, `live-llm.yml` and stored benchmark baselines (R-QA-08) | after v0.1.0-alpha (D-132) |
 
 ## 7. Acceptance criteria
 

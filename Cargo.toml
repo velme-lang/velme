@@ -24,7 +24,8 @@ velme-check = { path = "crates/velme-check", version = "0.1.0" }
 velme-synth = { path = "crates/velme-synth", version = "0.1.0", default-features = false }
 velme-wasm = { path = "crates/velme-wasm", version = "0.1.0" }
 velme-runtime = { path = "crates/velme-runtime", version = "0.1.0" }
-velme-test-support = { path = "crates/velme-test-support", version = "0.1.0" }
+# Never published (`publish = false`) and only ever a dev-dependency: no `version`, so `cargo publish` drops the edge.
+velme-test-support = { path = "crates/velme-test-support" }
 
 anyhow = "1"
 # The typed valid-IR generator reads a fuzzer's bytes (`delivery/51` §2, D-118); already in the tree through

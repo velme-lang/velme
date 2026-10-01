@@ -70,7 +70,8 @@ fn ac_rdm_05_cycle_fails_compilation_naming_it() {
     );
 }
 
-/// Until `velme test --locked` exists (`delivery/51` §2), every example at least parses without a warning.
+/// Until the examples commit their locks and the examples-as-tests step runs `velme test --locked` on each
+/// (`delivery/51` §2, D-141), every example at least parses without a warning.
 #[test]
 fn every_example_parses_cleanly() {
     let mut checked = 0;
