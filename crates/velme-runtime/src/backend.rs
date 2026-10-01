@@ -47,7 +47,8 @@ pub struct Wasm {
     running: Mutex<usize>,
     freed: Condvar,
     /// Sorted and without repeats, so they don't depend on the order the scheduler ran things in: those `--verbose`
-    /// prints, and those of a Velme bug `auto` ran around, printed always (D-123).
+    /// prints, and those of a bug in Velme, printed always: a leaf `auto` ran around one, or a backstop that fired
+    /// (D-123, D-136).
     notes: Mutex<BTreeSet<String>>,
     bugs: Mutex<BTreeSet<String>>,
     /// The stage at which the tests make a module fail before it starts (D-121).
@@ -67,6 +68,8 @@ enum Stage {
     Load(LoadError),
     /// Starting it: its thread, its instance or its inputs.
     Start,
+    /// Not a failure before the start: the run ends as if this backstop had fired (R-SBX-12, D-136).
+    Backstop(Backstop),
 }
 
 impl std::fmt::Debug for Wasm {
@@ -198,16 +201,26 @@ impl Wasm {
         }
     }
 
-    /// What `--verbose` says on stderr about how the backend went, in order and once each (R-SBX-12, R-SBX-20):
+    /// What `--verbose` says on stderr about how the backend went, in order and once each (R-SBX-20, D-121):
     /// never part of `--json` or of a trace.
     pub fn notes(&self) -> Vec<String> {
         lock(&self.notes).iter().cloned().collect()
     }
 
-    /// What stderr says whatever `--verbose` is, in order and once each: a leaf `auto` ran on the interpreter because
-    /// of a bug in Velme, with where to report it (D-123). Never part of `--json` or of a trace.
+    /// What is said whatever `--verbose` is, in order and once each, each with where to report it: a leaf `auto` ran
+    /// on the interpreter because of a bug in Velme (D-123), or a backstop that fired (R-SBX-12, D-136). On stderr, or
+    /// in `notices[]` under `--json`; never part of a trace.
     pub fn bug_notes(&self) -> Vec<String> {
         lock(&self.bugs).iter().cloned().collect()
+    }
+
+    /// How many modules the sandbox read from its disk cache, and how many it compiled: `(0, 0)` if it was never made
+    /// (`tooling/40` §2, D-137).
+    pub fn cache_counts(&self) -> (usize, usize) {
+        match self.sandbox.get() {
+            Some(Ok(sandbox)) => sandbox.cache_counts(),
+            _ => (0, 0),
+        }
     }
 
     fn note(&self, note: String) {
@@ -225,6 +238,8 @@ impl Wasm {
         let program = self.program(ir)?;
         let _slot = self.slot();
         let run = program.run(inputs, limits, interrupt);
+        #[cfg(test)]
+        let run = self.backstopped(run);
         if !self.started(&run) {
             return Err(Unrun::Unstarted);
         }
@@ -277,6 +292,15 @@ impl Wasm {
         Sandbox::new(self.cache.clone())
     }
 
+    /// `run`, ended by the backstop the tests ask for (D-136).
+    #[cfg(test)]
+    fn backstopped(&self, mut run: Run) -> Run {
+        if let Some(Stage::Backstop(backstop)) = &self.fail {
+            run.backstop = Some(*backstop);
+        }
+        run
+    }
+
     /// Whether `run` reached `velme_run` (D-121).
     fn started(&self, run: &Run) -> bool {
         #[cfg(test)]
@@ -323,9 +347,9 @@ pub fn eval_leaf(
                     Backstop::Memory => "Wasmtime refused to grow its memory",
                     _ => "a backstop fired",
                 };
-                wasm.note(format!(
+                lock(&wasm.bugs).insert(format!(
                     "`{}` was stopped on WASM by a backstop before its own limit: {which}, which is a bug in Velme's \
-                     WASM backend",
+                     WASM backend. Please report it: {REPORT_URL}.",
                     goal.name
                 ));
             }
@@ -520,6 +544,35 @@ mod tests {
             (wasm.notes(), wasm.bug_notes())
         };
         assert_eq!(notes(true), notes(false));
+    }
+
+    /// A backstop that fires is a bug in Velme's WASM backend: under `wasm` and `auto` alike its note, with the report
+    /// link, is said whatever `--verbose` is, the leaf is never run again, and nothing else changes (R-SBX-12, D-136).
+    #[test]
+    fn d_136_a_backstop_that_fired_is_a_bug_note() {
+        let interp = on(&Backend::Interp, 7);
+        for (backstop, which) in [
+            (Backstop::Fuel, "its Wasmtime fuel ran out"),
+            (Backstop::Memory, "Wasmtime refused to grow its memory"),
+        ] {
+            for explicit in [true, false] {
+                let wasm = Arc::new(Wasm::failing(Stage::Backstop(backstop)));
+                let backend = if explicit {
+                    Backend::Wasm(Arc::clone(&wasm))
+                } else {
+                    Backend::Auto(Arc::clone(&wasm))
+                };
+                assert_eq!(on(&backend, 7), interp, "{backstop:?}");
+                assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
+                assert_eq!(
+                    wasm.bug_notes(),
+                    [format!(
+                        "`Half` was stopped on WASM by a backstop before its own limit: {which}, which is a bug in \
+                         Velme's WASM backend. Please report it: {REPORT_URL}."
+                    )]
+                );
+            }
+        }
     }
 
     /// Under an explicit `wasm` a declined leaf is `VL0607` with its own headline and no report link, since it is not

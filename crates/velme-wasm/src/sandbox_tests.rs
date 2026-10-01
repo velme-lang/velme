@@ -502,6 +502,27 @@ fn ac_sbx_02_a_module_importing_wasi_is_refused_by_name_and_never_compiled() {
     assert_eq!(cached_files(&cache).len(), usize::from(cfg!(unix)));
 }
 
+/// A module read from the disk cache is a hit, one compiled a miss, and one kept in memory neither: the counts `-v`
+/// shows (D-137). Off Unix there is no disk cache, so every module is compiled (D-120).
+#[test]
+fn d_137_the_module_cache_counts_its_hits_and_misses() {
+    let scratch = Scratch::new("counts");
+    let cache = scratch.0.join("wasm");
+    let module = goal("x: Number -> Number", "", &input("x"));
+    let first = Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
+    assert_eq!(first.cache_counts(), (0, 0));
+    first.load(&module).expect("loads");
+    first.load(&module).expect("loads");
+    assert_eq!(first.cache_counts(), (0, 1), "the second load is kept in memory");
+    let second = Sandbox::new(Some(cache_dir(&cache))).expect("a sandbox");
+    second.load(&module).expect("loads");
+    let hit = usize::from(cfg!(unix));
+    assert_eq!(second.cache_counts(), (hit, 1 - hit));
+    let none = Sandbox::new(None).expect("a sandbox");
+    none.load(&module).expect("loads");
+    assert_eq!(none.cache_counts(), (0, 1));
+}
+
 #[test]
 fn ac_sec_01_only_the_whitelist_is_linked() {
     // AC-SBX-02. A name the whitelist lacks under its own module, a whitelisted name under another module, and a

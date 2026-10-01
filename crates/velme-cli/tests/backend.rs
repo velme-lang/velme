@@ -1,7 +1,7 @@
 //! `--backend` end to end on the committed fixture projects (`tooling/40` §2, `runtime/31` R-SBX-02, R-SBX-18, D-117):
 //! `run`, `trace` and `test` print byte-identical stdout and stderr and exit with the same code on `interp`, `wasm` and
 //! `auto`, in human mode and under `--json`, for a success and for each deterministic failure. `--verbose` adds the
-//! backend's notes on stderr and nothing else.
+//! backend's notes and the phase timings on stderr and nothing else (D-137).
 // `clippy.toml` allows these in `#[test]` bodies only; the helpers below are test code too.
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -193,8 +193,25 @@ fn r_sbx_18_run_trace_and_test_are_byte_identical_on_every_backend() {
     }
 }
 
-/// `--verbose` adds a note on stderr when the WASM backend turned its disk cache off, and changes nothing else: the
-/// `--json` document is the interpreter's (R-SBX-12, R-SBX-20, D-120).
+/// `stderr` split into its `-v` timing lines (D-137), each number masked as `<ms>`, and everything else.
+fn timings(stderr: &str) -> (Vec<String>, String) {
+    let (mut timed, mut rest) = (Vec::new(), String::new());
+    for line in stderr.split_inclusive('\n') {
+        if let Some(timing) = line.strip_prefix("timing: ") {
+            let (phase, ms) = timing.trim_end().split_once(' ').expect("a phase and its time");
+            assert!(ms.parse::<f64>().is_ok_and(|ms| ms >= 0.0), "{line}");
+            timed.push(format!("timing: {phase} <ms>"));
+        } else if line.starts_with("module cache: ") {
+            timed.push(line.trim_end().to_owned());
+        } else {
+            rest.push_str(line);
+        }
+    }
+    (timed, rest)
+}
+
+/// `--verbose` adds a note on stderr when the WASM backend turned its disk cache off, and its timings (D-137), and
+/// changes nothing else: the `--json` document is the interpreter's (R-SBX-12, R-SBX-20, D-120).
 #[test]
 fn r_sbx_12_verbose_notes_are_on_stderr_only() {
     let dir = scratch("verbose");
@@ -220,19 +237,71 @@ fn r_sbx_12_verbose_notes_are_on_stderr_only() {
         b"",
     );
     assert_eq!((&loud.stdout, loud.code), (&interp.stdout, interp.code));
-    assert!(
-        loud.stderr.starts_with("note: the compiled-module cache in `"),
-        "{}",
-        loud.stderr
-    );
-    assert!(
-        loud.stderr.ends_with("modules are compiled on every run\n"),
-        "{}",
-        loud.stderr
-    );
+    let (_, notes) = timings(&loud.stderr);
+    assert!(notes.starts_with("note: the compiled-module cache in `"), "{notes}");
+    assert!(notes.ends_with("modules are compiled on every run\n"), "{notes}");
     // The interpreter has no notes to give.
     let plain = velme(&cache, &[&args[..], &["--json", "-v"]].concat(), b"");
-    assert_eq!(plain, interp);
+    assert_eq!((&plain.stdout, plain.code), (&interp.stdout, interp.code));
+    assert_eq!(timings(&plain.stderr).1, interp.stderr);
+}
+
+/// `-v` adds one `timing:` line on stderr for each phase the command ran, and the module cache's hits and misses
+/// when it made the WASM backend; stdout, the rest of stderr and the exit code are the same, in human mode and under
+/// `--json` (`tooling/40` §2, D-137).
+#[test]
+fn d_137_verbose_timings_are_on_stderr_only() {
+    let cache = scratch("timings");
+    let add = "tests/fixtures/run/add/add.velme";
+    let run = ["run", add, "--goal", "Add", "--arg", "a=2", "--arg", "b=3"];
+    let phases = |names: &[&str]| -> Vec<String> { names.iter().map(|p| format!("timing: {p} <ms>")).collect() };
+    let auto = [&run[..], &["--backend", "auto"]].concat();
+    // A cold cache compiles the module; then it is read from the disk cache, which only Unix has (D-120). Concurrent
+    // first loads may both compile, so the counts are pinned with one leaf and `--jobs 1`.
+    let cold = timings(&velme(&cache, &[&auto[..], &["-v"]].concat(), b"").stderr).0;
+    let cached = |phases: Vec<String>| {
+        let counts = if cfg!(unix) {
+            "module cache: 1 hit, 0 misses"
+        } else {
+            "module cache: 0 hits, 1 miss"
+        };
+        [phases, vec![counts.to_owned()]].concat()
+    };
+    let ran = phases(&["parse", "check", "load", "run"]);
+    assert_eq!(
+        cold,
+        [ran.clone(), vec!["module cache: 0 hits, 1 miss".to_owned()]].concat()
+    );
+    let cases: [(&[&str], Vec<String>); 6] = [
+        (&["check", add], phases(&["parse", "check", "load"])),
+        (&["build", add, "--locked"], phases(&["parse", "check", "build"])),
+        (&["explain", add, "--goal", "Add"], phases(&["parse", "check"])),
+        (&run[..], ran.clone()),
+        (&auto[..], cached(ran)),
+        (
+            &["test", add, "--backend", "auto", "--jobs", "1"],
+            cached(phases(&["parse", "check", "load", "test"])),
+        ),
+    ];
+    for (args, expected) in cases {
+        for json in [false, true] {
+            let args = if json {
+                [args, &["--json"]].concat()
+            } else {
+                args.to_vec()
+            };
+            let plain = velme(&cache, &args, b"");
+            let loud = velme(&cache, &[&args[..], &["-v"]].concat(), b"");
+            assert_eq!((&loud.stdout, loud.code), (&plain.stdout, plain.code), "{args:?}");
+            let (timed, rest) = timings(&loud.stderr);
+            assert_eq!(rest, plain.stderr, "{args:?}");
+            assert_eq!(timed, expected, "{args:?}");
+            assert!(
+                !plain.stdout.contains("timing:") && !plain.stderr.contains("timing:"),
+                "{args:?}"
+            );
+        }
+    }
 }
 
 /// A user-level cache directory inside the project is refused at the seam: the disk cache is off, nothing is

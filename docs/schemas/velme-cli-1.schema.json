@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://velme.dev/schemas/velme-cli-1.schema.json",
   "title": "velme-cli/1",
-  "description": "The envelope `velme --json` prints on standard output (tooling/40 R-CLI-15, R-CLI-27, D-108). Changes within velme-cli/1 only add optional properties, so no object here forbids extra ones, but the enum values (goalStatus, severity, kind, the trace version) are closed: a new value needs velme-cli/2 (D-111). A diagnostic with no place in a source file has span 0,0,1,1 (\"no place\") and in `file` the file it is about (velme.toml, the user config path, velme.lock, or the empty string); a breaking change ships as velme-cli/2.",
+  "description": "The envelope `velme --json` prints on standard output (tooling/40 R-CLI-15, R-CLI-27, D-108). Changes within velme-cli/1 only add optional properties, or new kinds of line in `notices`, so no object here forbids extra ones, but the enum values (goalStatus, severity, kind, the trace version) are closed: a new value needs velme-cli/2 (D-111). A diagnostic with no place in a source file has span 0,0,1,1 (\"no place\") and in `file` the file it is about (velme.toml, the user config path, velme.lock, or the empty string); a breaking change ships as velme-cli/2.",
   "type": "object",
   "required": ["format", "status", "results", "diagnostics", "notices"],
   "properties": {
@@ -17,7 +17,7 @@
     "notices": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "The R-SEC-12 notice lines, in place of stderr."
+      "description": "Plain-text lines that would otherwise go to stderr: first the R-SEC-12 notice lines of a build, in the order given; then the WASM backend's bug notes (D-136), sorted by UTF-8 bytes with no repeats: a leaf `--backend auto` ran on the interpreter because of a bug in Velme (D-123), or a backstop fired (runtime/31 R-SBX-12). Each bug note ends with the VL0607 report link. The text is for display, not parsing. Added within velme-cli/1: nothing else in the envelope changes."
     },
     "summary": {
       "type": "object",

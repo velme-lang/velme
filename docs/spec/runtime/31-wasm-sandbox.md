@@ -48,7 +48,8 @@ the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801
 `--json` in `notices[]` (D-136), of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123). Timings and
 `VL0603` are excluded, and `--verbose` notes are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts
 against the run's wall clock, so `VL0603` can come earlier on WASM. Neither `velme-cli/1` nor the trace has a `backend`
-field (D-117, D-121).
+field (D-117, D-121). A run on which a backstop fired (R-SBX-12) is a bug in Velme and is outside this rule; its note is
+given as R-SBX-12 says. On a run with neither kind of bug, `notices[]` is byte-identical across backends.
 
 ## 3. Value layout (ABI)
 

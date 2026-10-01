@@ -73,9 +73,9 @@ spelling suggestion.
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14); the provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) are valid only on `build` or together with `--build` (R-CLI-21) |
 | `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` R-RUN-07); results are identical for every value, including 1 (INV-3) |
-| `--backend interp\|wasm\|auto` | `interp` until M8e, then `auto` on each platform that passes D-134's flip test; a platform that fails keeps `interp` for v0.1 (D-122, D-134) | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3), apart from the always-printed note of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123), which `--json` puts in `notices[]` (D-136); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
+| `--backend interp\|wasm\|auto` | `interp` until M8e, then `auto` on each platform that passes D-134's flip test; a platform that fails keeps `interp` for v0.1 (D-122, D-134) | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3), apart from the always-printed note of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123), which `--json` puts in `notices[]` (D-136); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117). A run on which a backstop fired (R-SBX-12) is a bug in Velme and is outside this rule; its note is given as R-SBX-12 says. On a run with neither kind of bug, `notices[]` is byte-identical across backends. |
 | `--config PATH` | nearest `velme.toml` upward from `FILE` | alternative project config: it supplies settings only and does not move the project root (R-CLI-25) |
-| `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds one `timing: <phase> <ms>` line on stderr for each of parse, check, lock/load, build and run/test, and the WASM module cache's hits and misses; never in `--json` or a trace (D-137) |
+| `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds, after everything else on stderr, one `timing: <phase> <ms>` line for each phase the command ran, in the order `parse` (parsing the file), `check`, `build` (`velme build`, `--build`), `load` (reading the lock and loading locked artifacts), `run` (`run`, `trace`), `test`. `<ms>` is milliseconds to one decimal, with a `.` as the decimal point, summed when a phase repeats. Then, if the command made the WASM backend, it adds `module cache: <h> hit(s), <m> miss(es)`, using "hit" and "miss" when the count is 1. A hit is a compiled module read from the disk cache (R-SBX-13, R-SBX-14). A miss is a module compiled, including when there is no disk cache, it is turned off (R-SBX-20, D-120) or its file can't be used. A module reused in memory (D-133) is neither. Like timings, the counts may vary between runs and with `--jobs`, and are outside INV-3 and R-SBX-18. These lines go on stderr only, also under `--json`; never on stdout, in the envelope or in a trace (D-137). `-q` never drops a bug note (D-136). |
 
 ## 3. Inputs, outputs and learner-facing output
 
@@ -120,12 +120,16 @@ is a file outside the project: a diagnostic about the user-level config carries 
 **R-CLI-15** The top-level `status` is the worst of the per-goal `status` values in `results[]`, each one of
 `ok | failed | pending | blocked | skipped` (`pending` = `VL0408`, `blocked` = `VL0409 SynthesisBlocked`), and is
 `failed` whenever the top-level `diagnostics[]` holds an error: that array carries the diagnostics that belong to the
-file rather than to one goal, such as syntax errors and an unreadable file (D-72); `notices[]`
-carries as plain strings, instead of stderr, the R-SEC-12 notice lines and, from M8, the always-printed bug notes of
-the WASM backend (`runtime/31` R-SBX-02, R-SBX-12, D-136). A JSON Schema,
-`docs/schemas/velme-cli-1.schema.json`, is this envelope's contract; M6b writes it from the envelope as it stands, and
-because it is a public contract it gets an architect review. The golden suite is every `--json` snapshot test in
-`velme-cli`, each validated against the schema (AC-CLI-12), so the schema and the real output cannot drift apart (D-108).
+file rather than to one goal, such as syntax errors and an unreadable file (D-72); `notices[]` carries, as plain strings
+and instead of stderr, the R-SEC-12 notice lines in the order they were given, then the always-printed bug notes of the
+WASM backend (`runtime/31` R-SBX-02, R-SBX-12, D-123, D-136): a leaf `auto` ran on the interpreter because of a bug in
+Velme, or a backstop that fired. The bug notes are sorted by their UTF-8 bytes, with no repeats, and each ends with the
+`VL0607` report link. Notice text is for display and is not a contract: a consumer must not parse it, and a non-empty
+`notices[]` does not by itself mean a provider was contacted. `--verbose` notes and `-v` timings never appear in
+`notices[]`. A JSON Schema, `docs/schemas/velme-cli-1.schema.json`, is this envelope's contract; M6b writes it from the
+envelope as it stands, and because it is a public contract it gets an architect review. The golden suite is every
+`--json` snapshot test in `velme-cli`, each validated against the schema (AC-CLI-12), so the schema and the real output
+cannot drift apart (D-108).
 **R-CLI-27** A `results[]` entry describes the goal that was asked for. When that goal calls others, the entry may also
 hold `calls[]`: one `{binding, goal, status}` per child call, in source order (D-9), with `status` as above. Child results
 and traces are not repeated there; the human output lists the same calls (§3.3). The enum values (`goalStatus`, `severity`, `kind`, the trace `version`) are closed within `velme-cli/1`: a new value needs

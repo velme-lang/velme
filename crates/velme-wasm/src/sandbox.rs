@@ -5,6 +5,7 @@
 use std::any::Any;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SendError, Sender};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread;
@@ -478,6 +479,9 @@ pub struct Sandbox {
     /// [`MAX_KEPT`](crate::kept::MAX_KEPT) compiled from at most [`MAX_KEPT_BYTES`](crate::kept::MAX_KEPT_BYTES):
     /// code only, never a goal's signature or data, which two goals with the same bytes need not share.
     linked: Mutex<Lru<[u8; 32], InstancePre<Host>>>,
+    /// How many modules were read from the disk cache, and how many were compiled, for `-v` (D-137).
+    hits: AtomicUsize,
+    misses: AtomicUsize,
     /// The threads its modules run on.
     threads: Arc<Threads>,
 }
@@ -517,6 +521,8 @@ impl Sandbox {
             linker,
             cache,
             linked: Mutex::new(Lru::default()),
+            hits: AtomicUsize::new(0),
+            misses: AtomicUsize::new(0),
             threads: Arc::new(Threads::default()),
         })
     }
@@ -560,6 +566,12 @@ impl Sandbox {
     pub fn cache_off(&self) -> Option<String> {
         let (dir, why) = self.cache.as_ref()?.off()?;
         Some(crate::cache::cache_off_note(dir, why))
+    }
+
+    /// How many modules this sandbox read from its disk cache, and how many it compiled, with no disk cache too: the
+    /// module cache's hits and misses that `-v` shows (`tooling/40` §2, D-137). A module kept in memory is neither.
+    pub fn cache_counts(&self) -> (usize, usize) {
+        (self.hits.load(Ordering::Relaxed), self.misses.load(Ordering::Relaxed))
     }
 
     /// The emitted `module`, compiled and linked, ready to run any number of times. Only what Cranelift made of the
@@ -606,12 +618,15 @@ impl Sandbox {
     /// What Cranelift makes of `bytes`: from the cache if it is there, else compiled and kept.
     fn compiled(&self, bytes: &[u8]) -> Result<wasmtime::Module, LoadError> {
         let Some(cache) = &self.cache else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
             return wasmtime::Module::from_binary(&self.engine, bytes).map_err(internal);
         };
         let path = cache.path(bytes);
         if let Some(module) = self.cached(cache, &path) {
+            self.hits.fetch_add(1, Ordering::Relaxed);
             return Ok(module);
         }
+        self.misses.fetch_add(1, Ordering::Relaxed);
         let module = wasmtime::Module::from_binary(&self.engine, bytes).map_err(internal)?;
         if let Ok(serialized) = module.serialize() {
             cache.write(&path, &serialized);
