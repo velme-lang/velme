@@ -37,8 +37,8 @@ const NUMBERS: [&str; 18] = [
 ];
 
 /// Numbers at the edges, taken less often since most arithmetic on them fails: of the `Number` range, of its scale,
-/// and of the 64-bit integers `random` takes (R-TYP-07).
-const EDGES: [&str; 8] = [
+/// of the 64-bit integers `random` takes (R-TYP-07), and of the common case WASM adds itself (D-126).
+const EDGES: [&str; 11] = [
     "123.456",
     "1000000",
     "0.0000000000000000000000000001",
@@ -47,6 +47,9 @@ const EDGES: [&str; 8] = [
     "-79228162514264337593543950335",
     "9223372036854775807",
     "-9223372036854775808",
+    "4611686018427387903",
+    "-4611686018427387904",
+    "461168601842738790.3",
 ];
 
 /// Texts a literal or an input may be: empty, multi-byte, escaped, and one long enough to be shown cut short.
