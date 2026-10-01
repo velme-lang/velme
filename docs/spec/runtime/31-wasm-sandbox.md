@@ -25,13 +25,16 @@ modules.
 
 **R-SBX-01** WASM is never produced by an LLM (INV-1); only `velme-wasm` emits it, only from validated IR.
 **R-SBX-02** Backend selection: `--backend interp|wasm|auto`, a flag only, with no `velme.toml` key (D-117). The default
-is `interp` until the M7 gate passes, then `auto`; only the CLI's default flips, never the runtime's own (D-121). `auto`
-runs a leaf goal on WASM when the sandbox can load and start it, and on the interpreter on any failure before its module
-starts: the emitter declines it, or the sandbox can't be made, or can't compile, link or start the module. `--verbose`
-then notes "`G` ran on the interpreter: …" with the reason (D-121). A leaf whose module has started is never run again
-on the interpreter, whatever its outcome: a backstop firing is a backend bug (D-115). `wasm` does the same, except that
-a leaf the WASM backend can't run is `VL0607` (`VL0801` for an import the sandbox refuses), never a silent fallback. On
-a composite goal both run the leaves on WASM and the tail on the interpreter.
+is `interp` until the start of M8, then `auto`, once the per-run cost of WASM is reduced; only the CLI's default flips,
+never the runtime's own (D-121, D-122). `auto` runs a leaf goal on WASM when the sandbox can load and start it, and on
+the interpreter on any failure before its module starts: the emitter declines it, or the sandbox can't be made, or can't
+compile, link or start the module. `--verbose` then notes "`G` ran on the interpreter: …" with the reason (D-121); when
+the reason is a bug in Velme (an emitter bug, or an import the sandbox refuses), stderr says so without `--verbose` and
+asks for a report (D-123). A leaf whose module has started is never run again on the interpreter, whatever its outcome:
+a backstop firing is a backend bug (D-115). `wasm` does the same, except that a leaf the WASM backend can't run is
+`VL0607` (`VL0801` for an import the sandbox refuses), never a silent fallback; a leaf the emitter declines is not a
+bug, and its `VL0607` has its own message with no report link (D-123). On a composite goal both run the leaves on WASM
+and the tail on the interpreter.
 **R-SBX-17** Only leaf goal bodies in `run`, `test` and `trace` use WASM. Under `velme test` the leaf body of each
 example and of each generated input runs on the selected backend, while the examples' expected-value expressions and
 every check evaluate on the interpreter (D-80); a test run changes no artifact, lock or store, and only the derived
@@ -39,8 +42,9 @@ module cache (R-SBX-13) may be written. Call arguments, composite tails, build v
 re-verification stay on the interpreter, whatever `--backend` says (D-80, D-117).
 **R-SBX-18** Output is byte-identical for all three values: stdout, the diagnostics on stderr, the exit code, `--json`,
 and `trace --json` with its fuel and memory figures, for a success and for every deterministic failure, except a leaf
-the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801`. Timings and `VL0603` are excluded,
-and `--verbose` notes are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts against the run's wall
+the WASM backend can't run under `wasm` (R-SBX-02), which is `VL0607` or `VL0801`, and the note on stderr of a leaf
+`auto` ran on the interpreter because of a bug in Velme (D-123). Timings and `VL0603` are excluded, and `--verbose` notes
+are outside this rule. Waiting for one of the `MAX_WASM_RUNS` places counts against the run's wall
 clock, so `VL0603` can come earlier on WASM. Neither `velme-cli/1` nor the trace has a `backend` field (D-117, D-121).
 
 ## 3. Value layout (ABI)

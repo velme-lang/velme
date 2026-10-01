@@ -102,6 +102,9 @@ impl Serialize for Code {
     }
 }
 
+/// Where to report a bug inside Velme: the `{report_url}` of `reference/90` (D-74).
+pub const REPORT_URL: &str = concat!(env!("CARGO_PKG_REPOSITORY"), "/issues");
+
 /// How serious a diagnostic is (`compiler/20` R-CMP-13).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -191,12 +194,22 @@ impl Diagnostic {
         Diagnostic::new(
             Code::InternalError,
             Span::default(),
-            concat!(
-                "Something went wrong inside Velme. Please report it: ",
-                env!("CARGO_PKG_REPOSITORY"),
-                "/issues."
-            ),
+            format!("Something went wrong inside Velme. Please report it: {REPORT_URL}."),
         )
+    }
+
+    /// `VL0607` for the leaf goal `goal` that the WASM backend declines under `--backend wasm`, having no code for
+    /// `why` (R-SBX-02, R-SBX-16): a gap, not a bug, so its own headline and no report link (D-123). It belongs to no
+    /// span.
+    pub fn wasm_declined(goal: &str, why: &str) -> Self {
+        Diagnostic::new(
+            Code::InternalError,
+            Span::default(),
+            format!("The WASM backend can't run `{goal}` yet."),
+        )
+        .with_note(format!(
+            "the backend has no code for {why}; run it without `--backend wasm`"
+        ))
     }
 
     /// Adds a secondary label.

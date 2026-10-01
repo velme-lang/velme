@@ -139,7 +139,9 @@ AC-TYP-06/15, AC-QA-05 and AC-CHK-11 green through the differential harness (D-1
 ### M8 — MVP gate
 
 **Read:** `delivery/50` §success criteria, `delivery/51` §gates, `delivery/52` §release.
-**Build:** close the checklist above; examples across beginner/intermediate/games/professional; README quick start;
-`CHANGELOG`; release workflow dry run.
+**Build:** first reduce the per-run WASM cost in `velme test`, then flip the CLI's `--backend` default to `auto` (D-122);
+`criterion` benchmarks in `benches/` with the WASM ≤ 0.5× interpreter target (`delivery/51` §6, D-118); close the
+checklist above; examples across beginner/intermediate/games/professional; README quick start; `CHANGELOG`; release
+workflow dry run.
 **Exit:** every row in the MVP gate checklist ticked with evidence; AC-CMP-07, AC-QA-04, AC-QA-07, AC-REL-04 green;
 `cargo xtask verify` green; AC coverage audit clean.

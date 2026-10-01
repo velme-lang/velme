@@ -311,8 +311,9 @@ fn ac_rdm_07_on_wasm_fuel_is_vl0601_and_the_watchdog_vl0603() {
     assert!(!timed_out.reproducible());
 }
 
-/// Under an explicit `wasm` a leaf the emitter declines is `VL0607`, saying why and how to run it; under `auto` it
-/// runs on the interpreter, as if `interp` had been asked, with a note for `--verbose` (R-SBX-02, R-SBX-16, D-117).
+/// Under an explicit `wasm` a leaf the emitter declines is `VL0607` with its own headline, saying why and how to run
+/// it; under `auto` it runs on the interpreter, as if `interp` had been asked, with a note for `--verbose` only
+/// (R-SBX-02, R-SBX-16, D-117, D-123).
 #[test]
 fn r_sbx_02_a_declined_leaf_is_vl0607_under_wasm_and_the_interpreters_under_auto() {
     let (project, program) = installed("r_sbx_02");
@@ -329,12 +330,10 @@ fn r_sbx_02_a_declined_leaf_is_vl0607_under_wasm_and_the_interpreters_under_auto
     );
     let diagnostics = declined.result().expect_err("declined");
     assert_eq!(diagnostics[0].code, Code::InternalError);
+    assert_eq!(diagnostics[0].message, "The WASM backend can't run `Hidden` yet.");
     assert_eq!(
         diagnostics[0].notes,
-        [
-            "the WASM backend can't run `Hidden` yet: it has no code for a type that holds Nothing; run it without \
-          `--backend wasm`"
-        ]
+        ["the backend has no code for a type that holds Nothing; run it without `--backend wasm`"]
     );
     assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
     let auto = run(
@@ -349,6 +348,8 @@ fn r_sbx_02_a_declined_leaf_is_vl0607_under_wasm_and_the_interpreters_under_auto
         wasm.notes(),
         ["`Hidden` ran on the interpreter: the WASM backend has no code for a type that holds Nothing"]
     );
+    // A decline is not a bug: nothing is said without `--verbose` (D-123).
+    assert!(wasm.bug_notes().is_empty(), "{:?}", wasm.bug_notes());
 }
 
 /// A cache directory the sandbox refuses turns the disk cache off, and the run goes on the same; `--verbose` has a

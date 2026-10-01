@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use velme_builtins::Value;
-use velme_diagnostics::{Diagnostic, Span};
+use velme_diagnostics::{Diagnostic, REPORT_URL, Span};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::ValidIr;
 use velme_sema::hir::{Goal, GoalKind};
-use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Program, Run, Sandbox, cache_off_note, emit};
+use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Module, Program, Run, Sandbox, cache_off_note, emit};
 
 /// The most leaf bodies running on WASM at once, whatever `--jobs` is: the scheduler's other bodies wait for a slot.
 /// A module's memory is never freed during its run (R-SBX-03), so each running body can hold up to its `max_memory`
@@ -21,8 +21,8 @@ use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Program, Run, Sandbox
 /// what they give (R-RUN-07).
 pub const MAX_WASM_RUNS: usize = 4;
 
-/// What evaluates leaf goal bodies (`--backend`, R-SBX-02). The default is the interpreter, also after the M7 gate,
-/// where only the CLI's default becomes `auto` (D-117, D-121).
+/// What evaluates leaf goal bodies (`--backend`, R-SBX-02). The default is the interpreter, also once only the CLI's
+/// default becomes `auto` at the start of M8 (D-117, D-121, D-122).
 #[derive(Debug, Clone, Default)]
 pub enum Backend {
     /// Every body on the reference interpreter.
@@ -38,8 +38,7 @@ pub enum Backend {
 }
 
 /// The WASM backend of a process: its one sandbox, made the first time a leaf runs on WASM, so a process that never
-/// asks never starts Wasmtime or its epoch ticker; it compiles each module once a process. And the notes `--verbose`
-/// prints.
+/// asks never starts Wasmtime or its epoch ticker; it compiles each module once a process. And its notes for stderr.
 pub struct Wasm {
     /// The directory of the disk cache, passed in: the user-level one from `velme-cli`, a temporary one or none in a
     /// test (R-SBX-20).
@@ -48,8 +47,10 @@ pub struct Wasm {
     /// How many bodies are running on WASM now, at most [`MAX_WASM_RUNS`].
     running: Mutex<usize>,
     freed: Condvar,
-    /// Sorted and without repeats, so they don't depend on the order the scheduler ran things in.
+    /// Sorted and without repeats, so they don't depend on the order the scheduler ran things in: those `--verbose`
+    /// prints, and those of a Velme bug `auto` ran around, printed always (D-123).
     notes: Mutex<BTreeSet<String>>,
+    bugs: Mutex<BTreeSet<String>>,
     /// The stage at which the tests make a module fail before it starts (D-121).
     #[cfg(test)]
     fail: Option<Stage>,
@@ -59,6 +60,8 @@ pub struct Wasm {
 #[cfg(test)]
 #[derive(Debug, Clone)]
 enum Stage {
+    /// Emitting the module: the emitter declines it, or has a bug.
+    Emit(EmitError),
     /// Making the sandbox: its engine, its linker or its epoch ticker.
     Sandbox,
     /// Loading the module: validating, compiling or linking it.
@@ -84,23 +87,27 @@ pub enum Unrun {
     Load(LoadError),
     /// The module was loaded but never started: its thread, its instance or its inputs failed in the host (D-121).
     Unstarted,
-    /// A bug of the backend or of its caller: `VL0607`.
-    Internal,
+    /// A bug of the backend or of its caller, and what it was: `VL0607`.
+    Internal(String),
 }
 
 impl Unrun {
     /// The failure of goal `goal`, declared at `span`, that did not run under an explicit `wasm`.
     pub fn diagnostic(&self, goal: &str, span: Span) -> Diagnostic {
         match self {
-            Unrun::Declined(why) => Diagnostic::internal_error().with_note(format!(
-                "the WASM backend can't run `{goal}` yet: it has no code for {why}; run it without `--backend wasm`"
-            )),
+            Unrun::Declined(why) => Diagnostic::wasm_declined(goal, why),
             Unrun::Load(error) => error.diagnostic(goal, span),
-            Unrun::Unstarted | Unrun::Internal => Diagnostic::internal_error(),
+            Unrun::Unstarted | Unrun::Internal(_) => Diagnostic::internal_error(),
         }
     }
 
-    /// Why, for the `--verbose` note of a leaf that `auto` ran on the interpreter (D-121).
+    /// Whether it is a bug in Velme, not a gap of the emitter or a host that can't run Wasmtime: the emitter or its
+    /// caller broke its own rules, or emitted an import the sandbox refuses. `auto` says so without `--verbose` (D-123).
+    fn is_bug(&self) -> bool {
+        matches!(self, Unrun::Internal(_) | Unrun::Load(LoadError::Denied { .. }))
+    }
+
+    /// Why, for the note of a leaf that `auto` ran on the interpreter (D-121).
     fn why(&self) -> String {
         match self {
             Unrun::Declined(why) => format!("the WASM backend has no code for {why}"),
@@ -110,7 +117,7 @@ impl Unrun {
             Unrun::Load(LoadError::Internal(error)) => format!("the WASM backend could not load its module: {error}"),
             Unrun::Load(_) => "the WASM backend could not load its module".to_owned(),
             Unrun::Unstarted => "the WASM backend could not start its module".to_owned(),
-            Unrun::Internal => "the WASM backend could not run it".to_owned(),
+            Unrun::Internal(error) => format!("the WASM backend could not run it: {error}"),
         }
     }
 }
@@ -139,6 +146,7 @@ impl Wasm {
             running: Mutex::new(0),
             freed: Condvar::new(),
             notes: Mutex::new(BTreeSet::new()),
+            bugs: Mutex::new(BTreeSet::new()),
             #[cfg(test)]
             fail: None,
         }
@@ -176,6 +184,12 @@ impl Wasm {
         lock(&self.notes).iter().cloned().collect()
     }
 
+    /// What stderr says whatever `--verbose` is, in order and once each: a leaf `auto` ran on the interpreter because
+    /// of a bug in Velme, with where to report it (D-123). Never part of `--json` or of a trace.
+    pub fn bug_notes(&self) -> Vec<String> {
+        lock(&self.bugs).iter().cloned().collect()
+    }
+
     fn note(&self, note: String) {
         lock(&self.notes).insert(note);
     }
@@ -186,7 +200,7 @@ impl Wasm {
     /// refused as a bug (D-120).
     pub fn run(&self, ir: &ValidIr, inputs: &[Value], limits: Limits, interrupt: &Interrupt) -> Result<Run, Unrun> {
         if limits.fuel > Limits::SYSTEM.fuel || limits.memory > Limits::SYSTEM.memory {
-            return Err(Unrun::Internal);
+            return Err(Unrun::Internal("its limits are above the system cap".to_owned()));
         }
         let program = self.program(ir)?;
         let _slot = self.slot();
@@ -200,9 +214,10 @@ impl Wasm {
     /// The loaded program of `ir`: emitted each time, compiled once a process by the sandbox, and with this goal's
     /// own signature and data, whichever goal's module had the same bytes first.
     fn program(&self, ir: &ValidIr) -> Result<Program, Unrun> {
-        let module = emit(ir).map_err(|error| match error {
+        let module = self.module(ir).map_err(|error| match error {
             EmitError::Declined(why) => Unrun::Declined(why),
-            _ => Unrun::Internal,
+            EmitError::NotLeaf => Unrun::Internal("it was asked to emit a goal that is not a leaf".to_owned()),
+            EmitError::Internal(error) => Unrun::Internal(error),
         })?;
         let sandbox = self
             .sandbox
@@ -219,6 +234,15 @@ impl Wasm {
             self.note(note);
         }
         loaded.map_err(Unrun::Load)
+    }
+
+    /// The module of `ir`.
+    fn module(&self, ir: &ValidIr) -> Result<Module, EmitError> {
+        #[cfg(test)]
+        if let Some(Stage::Emit(error)) = &self.fail {
+            return Err(error.clone());
+        }
+        emit(ir)
     }
 
     /// The process's sandbox, made on first use.
@@ -285,9 +309,18 @@ pub fn eval_leaf(
             let result = run.result.map_err(|failure| failure.diagnostic(&goal.name, goal.span));
             (result, run.spent)
         }
-        // Nothing of the goal ran on WASM, so the interpreter's run is the whole of it (D-121).
+        // Nothing of the goal ran on WASM, so the interpreter's run is the whole of it (D-121); a bug is said
+        // without `--verbose` (D-123).
         Err(unrun) if !explicit => {
-            wasm.note(format!("`{}` ran on the interpreter: {}", goal.name, unrun.why()));
+            if unrun.is_bug() {
+                lock(&wasm.bugs).insert(format!(
+                    "`{}` ran on the interpreter because of a bug in Velme: {}. Please report it: {REPORT_URL}.",
+                    goal.name,
+                    unrun.why()
+                ));
+            } else {
+                wasm.note(format!("`{}` ran on the interpreter: {}", goal.name, unrun.why()));
+            }
             interpret(goal, ir, inputs, limits, interrupt)
         }
         Err(unrun) => (Err(unrun.diagnostic(&goal.name, goal.span)), Spent::default()),
@@ -347,9 +380,10 @@ mod tests {
         )
     }
 
-    /// Under `auto` a leaf whose module fails before it starts — the sandbox, its load or its start — runs on the
-    /// interpreter with a `--verbose` note saying why; under `wasm` each is reported: `VL0607`, or `VL0801` for an
-    /// import the sandbox refuses (D-121, R-SBX-02).
+    /// Under `auto` a leaf whose module fails before it starts — its emission, the sandbox, its load or its start —
+    /// runs on the interpreter with a `--verbose` note saying why; under `wasm` each is reported: `VL0607`, or `VL0801`
+    /// for an import the sandbox refuses (D-121, R-SBX-02). An emitter bug or a refused import is a bug in Velme, and
+    /// its note is printed without `--verbose` (D-123).
     #[test]
     fn d_121_auto_runs_a_leaf_that_did_not_start_on_the_interpreter_and_wasm_reports_it() {
         let interp = on(&Backend::Interp, 7);
@@ -359,39 +393,97 @@ mod tests {
         };
         let stages = [
             (
+                Stage::Emit(EmitError::Declined("a type that holds Nothing")),
+                Code::InternalError,
+                "the WASM backend has no code for a type that holds Nothing",
+                false,
+            ),
+            (
+                Stage::Emit(EmitError::Internal("it does not validate".to_owned())),
+                Code::InternalError,
+                "the WASM backend could not run it: it does not validate",
+                true,
+            ),
+            (
                 Stage::Sandbox,
                 Code::InternalError,
                 "the WASM backend could not load its module: the tests refused to make a sandbox",
+                false,
             ),
             (
                 Stage::Load(LoadError::Internal("it does not compile".to_owned())),
                 Code::InternalError,
                 "the WASM backend could not load its module: it does not compile",
+                false,
             ),
             (
                 Stage::Load(denied),
                 Code::CapabilityDenied,
                 "the WASM backend refused its module, which imports `wasi.fd_write`",
+                true,
             ),
             (
                 Stage::Start,
                 Code::InternalError,
                 "the WASM backend could not start its module",
+                false,
             ),
         ];
-        for (stage, code, why) in stages {
+        for (stage, code, why, bug) in stages {
             let wasm = Arc::new(Wasm::failing(stage.clone()));
             let explicit = on(&Backend::Wasm(Arc::clone(&wasm)), 7);
             assert_eq!(explicit.0.expect_err("reported").code, code, "{stage:?}");
             assert_eq!(explicit.1, Spent::default(), "{stage:?}");
-            assert!(wasm.notes().is_empty(), "{stage:?}");
+            assert!(wasm.notes().is_empty() && wasm.bug_notes().is_empty(), "{stage:?}");
             assert_eq!(on(&Backend::Auto(Arc::clone(&wasm)), 7), interp, "{stage:?}");
-            assert_eq!(
-                wasm.notes(),
-                [format!("`Half` ran on the interpreter: {why}")],
-                "{stage:?}"
-            );
+            let (verbose, always) = (wasm.notes(), wasm.bug_notes());
+            let (noted, silent) = if bug { (always, verbose) } else { (verbose, always) };
+            assert!(silent.is_empty(), "{stage:?}: {silent:?}");
+            let note = if bug {
+                format!(
+                    "`Half` ran on the interpreter because of a bug in Velme: {why}. Please report it: {REPORT_URL}."
+                )
+            } else {
+                format!("`Half` ran on the interpreter: {why}")
+            };
+            assert_eq!(noted, [note], "{stage:?}");
         }
+        // Limits above the system cap are a bug of the caller: the note names it.
+        let wasm = Arc::new(Wasm::new(None));
+        let (program, ir) = half();
+        let goal = &program.goals[goal_id(&program, "Half").0];
+        let over = Limits {
+            fuel: Limits::SYSTEM.fuel + 1,
+            ..Limits::SYSTEM
+        };
+        let seven = || vec![Value::from(Number::from(7_i64))];
+        let auto = eval_leaf(&Backend::Auto(Arc::clone(&wasm)), goal, &ir, seven(), over, None);
+        assert_eq!(auto.0, interp.0);
+        assert!(wasm.notes().is_empty(), "{:?}", wasm.notes());
+        assert_eq!(
+            wasm.bug_notes(),
+            [format!(
+                "`Half` ran on the interpreter because of a bug in Velme: the WASM backend could not run it: its \
+                 limits are above the system cap. Please report it: {REPORT_URL}."
+            )]
+        );
+    }
+
+    /// Under an explicit `wasm` a declined leaf is `VL0607` with its own headline and no report link, since it is not
+    /// a bug; the note says what the backend has no code for and how to run the goal (D-123, R-SBX-16).
+    #[test]
+    fn d_123_a_declined_leaf_under_wasm_has_its_own_headline() {
+        let wasm = Arc::new(Wasm::failing(Stage::Emit(EmitError::Declined(
+            "a type that holds Nothing",
+        ))));
+        let declined = on(&Backend::Wasm(wasm), 7).0.expect_err("declined");
+        assert_eq!(declined.code, Code::InternalError);
+        assert_eq!(declined.message, "The WASM backend can't run `Half` yet.");
+        assert_eq!(
+            declined.notes,
+            ["the backend has no code for a type that holds Nothing; run it without `--backend wasm`"]
+        );
+        assert!(!declined.message.contains(REPORT_URL));
     }
 
     /// A leaf whose module started is the module's outcome under `auto` too, a failure included: never run again on
