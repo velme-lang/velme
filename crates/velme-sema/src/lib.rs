@@ -23,6 +23,18 @@ pub fn analyze(file: &SourceFile) -> (Option<hir::Program>, Vec<Diagnostic>) {
 /// (`tooling/40` §5.1, D-8). A key the line sets is its own; `defaults` is clamped to the system caps here, so a caller can
 /// lower the caps and never raise them.
 pub fn analyze_with(file: &SourceFile, defaults: hir::Budget) -> (Option<hir::Program>, Vec<Diagnostic>) {
+    let (ast, diags) = velme_syntax::parse(file);
+    analyze_parsed(file, &ast, diags, defaults)
+}
+
+/// [`analyze_with`] of `file` already parsed into `ast`, with the parser's `diags`: phases 3–6 alone, so a caller can
+/// time parsing and checking apart (`tooling/40` §2, D-137).
+pub fn analyze_parsed(
+    file: &SourceFile,
+    ast: &velme_syntax::ast::Program,
+    mut diags: Vec<Diagnostic>,
+    defaults: hir::Budget,
+) -> (Option<hir::Program>, Vec<Diagnostic>) {
     let system = hir::Budget::SYSTEM;
     let defaults = hir::Budget {
         max_fuel: defaults.max_fuel.min(system.max_fuel),
@@ -30,8 +42,7 @@ pub fn analyze_with(file: &SourceFile, defaults: hir::Budget) -> (Option<hir::Pr
         max_goal_calls: defaults.max_goal_calls.min(system.max_goal_calls),
         max_call_depth: defaults.max_call_depth.min(system.max_call_depth),
     };
-    let (ast, mut diags) = velme_syntax::parse(file);
-    let (types, mut goals, scope) = resolve::resolve(&ast, &file.text, &mut diags);
+    let (types, mut goals, scope) = resolve::resolve(ast, &file.text, &mut diags);
     check::check_bodies(&types, &mut goals, &scope, &file.text, defaults, &mut diags);
     graph::check_graph(&goals, &scope.goals, &mut diags);
     velme_diagnostics::sort(&mut diags);

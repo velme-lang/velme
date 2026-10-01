@@ -9,7 +9,8 @@ mod synth;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use velme_builtins::Value;
@@ -98,41 +99,47 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
-/// Reports the bug that stopped the command `args` name, and gives its exit code: under `--json` as the envelope, on
-/// standard output like any other outcome (R-CLI-15), otherwise without source lines, as it belongs to no place in any
-/// file.
+/// Reports the bug that stopped the command `args` name, with the WASM backend's bug notes so far (D-136), and gives
+/// its exit code: under `--json` as the envelope, on standard output like any other outcome (R-CLI-15), otherwise
+/// without source lines, as it belongs to no place in any file.
 fn stopped(args: &[String]) -> u8 {
-    let file = match args::parse(args) {
-        Ok(Parsed::Run(cli)) if cli.json => cli.file,
-        _ => {
-            print_err(&format!("{}\n", Diagnostic::internal_error().message));
-            return EXIT_INTERNAL;
-        }
+    let parsed = args::parse(args);
+    let cli = match &parsed {
+        Ok(Parsed::Run(cli)) => Some(cli),
+        _ => None,
     };
-    let shown = if file.is_empty() {
+    let noted = cli.map_or_else(Noted::default, |cli| wasm_noted(cli));
+    let Some(cli) = cli.filter(|cli| cli.json) else {
+        print_err(&format!("{}\n", Diagnostic::internal_error().message));
+        print_err(&note_lines(&noted.stderr));
+        return EXIT_INTERNAL;
+    };
+    let shown = if cli.file.is_empty() {
         String::new()
     } else {
-        shown_path(&Project::of(Path::new(&file)), &file)
+        shown_path(&Project::of(Path::new(&cli.file)), &cli.file)
     };
-    if let Some(out) = internal_envelope(&shown) {
+    print_err(&note_lines(&noted.stderr));
+    if let Some(out) = internal_envelope(&shown, noted.notices) {
         print_out(&out);
     }
     EXIT_INTERNAL
 }
 
-/// The `--json` envelope of a command on the file shown as `path` that a bug stopped: `VL0607` alone.
-fn internal_envelope(path: &str) -> Option<String> {
-    diagnostic_envelope(Diagnostic::internal_error(), path)
+/// The `--json` envelope of a command on the file shown as `path` that a bug stopped: `VL0607` alone, then `notices`.
+fn internal_envelope(path: &str, notices: Vec<String>) -> Option<String> {
+    diagnostic_envelope(Diagnostic::internal_error(), path, notices)
 }
 
-/// The `--json` envelope of a command that only has `diagnostic` to report, on the file shown as `path`.
-fn diagnostic_envelope(diagnostic: Diagnostic, path: &str) -> Option<String> {
+/// The `--json` envelope of a command that only has `diagnostic` to report, on the file shown as `path`, with
+/// `notices`.
+fn diagnostic_envelope(diagnostic: Diagnostic, path: &str, notices: Vec<String>) -> Option<String> {
     let envelope = Envelope {
         format: JSON_FORMAT,
         status: "failed",
         results: Vec::new(),
         diagnostics: vec![JsonDiagnostic::new(&diagnostic, path, &LineIndex::new(""))],
-        notices: Vec::new(),
+        notices,
         summary: None,
     };
     let out = serde_json::to_string_pretty(&envelope).ok()?;
@@ -149,11 +156,11 @@ fn command(args: &[String]) -> u8 {
         Ok(Parsed::Run(cli)) => match cli.cmd {
             Cmd::Check => check(&cli),
             Cmd::Build => build_command(&cli),
-            Cmd::Run => noted(&cli, run(&cli, false)),
-            Cmd::Trace => noted(&cli, run(&cli, true)),
+            Cmd::Run => run(&cli, false),
+            Cmd::Trace => run(&cli, true),
             Cmd::Explain => explain_goal(&cli),
             Cmd::Artifact => artifact(&cli),
-            Cmd::Test => noted(&cli, test(&cli)),
+            Cmd::Test => test(&cli),
             Cmd::Gc => gc(&cli),
             Cmd::CacheClean => cache_clean(&cli),
         },
@@ -171,7 +178,7 @@ fn usage_error(bad: &Bad) -> u8 {
         .unwrap_or_default();
     if bad.json {
         // A bad command line is about no file (D-111).
-        match diagnostic_envelope(bad.diagnostic.clone(), "") {
+        match diagnostic_envelope(bad.diagnostic.clone(), "", Vec::new()) {
             Some(out) => print_out(&out),
             None => return EXIT_INTERNAL,
         }
@@ -235,7 +242,10 @@ fn analyze(cli: &Cli) -> Analyzed {
         Err(err) => (None, None, vec![SourceFile::unreadable(&path, &err)]),
         Ok(bytes) => match SourceFile::from_bytes(path.clone(), bytes.clone()) {
             // A thread of its own, so a bug in analysis is reported like any other (R-SYN-19).
-            Ok(file) => match on_big_stack(|| velme_sema::analyze_with(&file, defaults)) {
+            Ok(file) => match on_big_stack(|| {
+                let (ast, diags) = timed("parse", || velme_syntax::parse(&file));
+                timed("check", || velme_sema::analyze_parsed(&file, &ast, diags, defaults))
+            }) {
                 Some((program, diagnostics)) => (Some(file.text), program, diagnostics),
                 // Shown without source lines: it belongs to no place in the file.
                 None => (None, None, vec![Diagnostic::internal_error()]),
@@ -354,6 +364,10 @@ fn check(cli: &Cli) -> u8 {
 /// else how many loaded and the goals whose locked IR is unusable. An entry stale only because the source changed
 /// since the last build is left to `velme build`; it isn't locked IR of this source.
 fn locked_ir(project: &Project, program: &Program) -> Result<Option<(usize, Vec<GoalResult>)>, Diagnostic> {
+    timed("load", || locked_ir_untimed(project, program))
+}
+
+fn locked_ir_untimed(project: &Project, program: &Program) -> Result<Option<(usize, Vec<GoalResult>)>, Diagnostic> {
     let Some(lock) = Lock::read(&project.root).map_err(|e| e.diagnostic())? else {
         return Ok(None);
     };
@@ -399,6 +413,10 @@ fn build_stopped(built: &Outcome) -> bool {
 /// a verified artifact and a lock entry. With `--locked` or `--offline` no provider is constructed. With `-v`, every attempt
 /// of a failed goal is listed (`compiler/22` R-SYNTH-13).
 fn build_phase(cli: &Cli, analyzed: &Analyzed, file: (&Program, &str, &Project), settings: &Settings) -> Outcome {
+    timed("build", || build_untimed(cli, analyzed, file, settings))
+}
+
+fn build_untimed(cli: &Cli, analyzed: &Analyzed, file: (&Program, &str, &Project), settings: &Settings) -> Outcome {
     let (program, text, project) = file;
     let json = cli.json;
     let flags = BuildFlags {
@@ -578,7 +596,7 @@ fn run(cli: &Cli, traced: bool) -> u8 {
     let registry = registry(project, program, id);
     let (executed, result) = match (inputs, registry) {
         (Ok(inputs), Ok(registry)) => {
-            let executed = run_goal(program, id, text, &registry, inputs, options);
+            let executed = timed("run", || run_goal(program, id, text, &registry, inputs, options));
             let result = executed.result().map(Some);
             (Some(executed), result)
         }
@@ -714,8 +732,8 @@ fn test(cli: &Cli) -> u8 {
     let mut outcome = Outcome::with(Vec::new());
     for id in ids {
         let Some(g) = program.goals.get(id.0) else { continue };
-        let tested =
-            registry(project, program, id).and_then(|registry| test_goal(program, id, text, &registry, &options));
+        let tested = registry(project, program, id)
+            .and_then(|registry| timed("test", || test_goal(program, id, text, &registry, &options)));
         let line = match &tested {
             Ok(t) => format!("✓ {}", counted(t.examples, t.generated_inputs)),
             Err(_) => "✗".to_owned(),
@@ -924,17 +942,89 @@ fn wasm(root: &Path) -> Arc<Wasm> {
     Arc::clone(made)
 }
 
-/// `code`, after the WASM backend's notes on stderr: always, a leaf `auto` ran on the interpreter because of a bug in
-/// Velme (D-123); under `--verbose` also a backstop that fired, a disk cache that is off, any other leaf `auto` ran on
-/// the interpreter (R-SBX-12, R-SBX-20, D-115, D-121). Never in `--json` or a trace.
-fn noted(cli: &Cli, code: u8) -> u8 {
-    if let Some(wasm) = WASM.get() {
-        let verbose = if cli.verbose { wasm.notes() } else { Vec::new() };
-        for note in wasm.bug_notes().into_iter().chain(verbose) {
-            print_err(&format!("note: {}\n", render::escape(&note)));
+/// Where the WASM backend's notes of a command go.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Noted {
+    /// Each printed on stderr as a `note:` line, after the command's own output.
+    stderr: Vec<String>,
+    /// Added to the envelope's `notices[]`, after the R-SEC-12 lines.
+    notices: Vec<String>,
+}
+
+/// Where the WASM backend's notes go, from its `bugs` and its `verbose` notes, `-v` and `--json` (D-136). A bug note,
+/// a leaf `auto` ran on the interpreter because of a bug in Velme or a backstop that fired, is always given: on stderr,
+/// or under `--json` in `notices[]` (D-123, R-SBX-12). A `--verbose` note, any other leaf `auto` ran on the
+/// interpreter or a disk cache that is off, is on stderr under `-v` only, `--json` or not, and never in `notices[]`
+/// (D-121, R-SBX-20).
+fn noted(bugs: Vec<String>, verbose: Vec<String>, verbose_flag: bool, json: bool) -> Noted {
+    let verbose = if verbose_flag { verbose } else { Vec::new() };
+    if json {
+        Noted {
+            stderr: verbose,
+            notices: bugs,
+        }
+    } else {
+        Noted {
+            stderr: bugs.into_iter().chain(verbose).collect(),
+            notices: Vec::new(),
         }
     }
-    code
+}
+
+/// The `note:` lines of `notes` on stderr, each escaped: text Velme made, but naming goals and paths (R-CLI-17).
+fn note_lines(notes: &[String]) -> String {
+    notes
+        .iter()
+        .map(|note| format!("note: {}\n", render::escape(note)))
+        .collect()
+}
+
+/// The notes of the process's WASM backend, if it made one, for `cli`.
+fn wasm_noted(cli: &Cli) -> Noted {
+    WASM.get().map_or_else(Noted::default, |wasm| {
+        noted(wasm.bug_notes(), wasm.notes(), cli.verbose, cli.json)
+    })
+}
+
+/// The phases `-v` times, in the order their lines are printed (`tooling/40` §2, D-137): parsing the file, checking it,
+/// building it (`velme build`, `--build`), reading the lock and loading locked artifacts, running a goal, testing goals.
+const PHASES: [&str; 6] = ["parse", "check", "build", "load", "run", "test"];
+
+/// The time each phase took so far, summed when a phase runs more than once (a `load` per goal tested).
+static TIMINGS: Mutex<Vec<(&str, Duration)>> = Mutex::new(Vec::new());
+
+/// `work`, its time added to the phase `phase` for `-v` (D-137).
+fn timed<T>(phase: &'static str, work: impl FnOnce() -> T) -> T {
+    let start = Instant::now();
+    let done = work();
+    let took = start.elapsed();
+    let mut timings = TIMINGS.lock().unwrap_or_else(PoisonError::into_inner);
+    match timings.iter_mut().find(|(p, _)| *p == phase) {
+        Some((_, total)) => *total += took,
+        None => timings.push((phase, took)),
+    }
+    done
+}
+
+/// The `-v` lines on stderr (`tooling/40` §2, D-137): `timing: <phase> <ms>` for each phase in `timings`, in the order
+/// of [`PHASES`], then the WASM module cache's hits and misses if the command made the backend. On stderr only, also
+/// under `--json`: never on stdout, in the envelope or in a trace.
+fn timing_lines(timings: &[(&str, Duration)], cache: Option<(usize, usize)>) -> String {
+    let mut out = String::new();
+    for phase in PHASES {
+        if let Some((_, took)) = timings.iter().find(|(p, _)| *p == phase) {
+            out.push_str(&format!("timing: {phase} {:.1}\n", took.as_secs_f64() * 1000.0));
+        }
+    }
+    if let Some((hits, misses)) = cache {
+        let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        out.push_str(&format!(
+            "module cache: {}, {}\n",
+            count(hits, "hit", "hits"),
+            count(misses, "miss", "misses")
+        ));
+    }
+    out
 }
 
 /// The locked artifact of goal `id` of the file of `project` (R-ART-10, R-ART-16): never synthesized here.
@@ -943,15 +1033,19 @@ fn locked_goal(project: &Project, program: &Program, id: GoalId) -> Result<Locke
         .goals
         .get(id.0)
         .ok_or_else(|| vec![Diagnostic::internal_error()])?;
-    let lock = read_lock(project, program)?;
-    load(program, id, &project.file, &lock, &Store::new(&project.root))
-        .map_err(|e| vec![e.diagnostic(&goal.name, goal.span)])
+    timed("load", || {
+        let lock = read_lock(project, program)?;
+        load(program, id, &project.file, &lock, &Store::new(&project.root))
+            .map_err(|e| vec![e.diagnostic(&goal.name, goal.span)])
+    })
 }
 
 /// The locked artifacts of goal `id` and of every goal it calls (R-ART-10, R-ART-16): never synthesized here.
 fn registry(project: &Project, program: &Program, id: GoalId) -> Result<Registry, Vec<Diagnostic>> {
-    let lock = read_lock(project, program)?;
-    Registry::load(program, id, &project.file, &lock, &Store::new(&project.root))
+    timed("load", || {
+        let lock = read_lock(project, program)?;
+        Registry::load(program, id, &project.file, &lock, &Store::new(&project.root))
+    })
 }
 
 /// The text of `--input`: a file, or standard input for `-` (`tooling/40` §3.1), read no further than the input limit.
@@ -1028,8 +1122,22 @@ fn paint(text: &str) -> String {
         .replace('✗', "\u{1b}[31m✗\u{1b}[0m")
 }
 
-/// Prints `outcome` and returns the exit code of every diagnostic in it (R-CLI-16).
+/// Prints `outcome`, then the WASM backend's notes and the `-v` timings (D-136, D-137), and returns the exit code of
+/// every diagnostic in it (R-CLI-16).
 fn finish(analyzed: &Analyzed, outcome: &Outcome, cli: &Cli) -> u8 {
+    let noted = wasm_noted(cli);
+    let exit = print_outcome(analyzed, outcome, cli, noted.notices);
+    print_err(&note_lines(&noted.stderr));
+    if cli.verbose {
+        let timings = TIMINGS.lock().unwrap_or_else(PoisonError::into_inner);
+        let cache = WASM.get().map(|wasm| wasm.cache_counts());
+        print_err(&timing_lines(&timings, cache));
+    }
+    exit
+}
+
+/// Prints `outcome`, with `notices` after its own under `--json`, and returns the exit code of every diagnostic in it.
+fn print_outcome(analyzed: &Analyzed, outcome: &Outcome, cli: &Cli, notices: Vec<String>) -> u8 {
     let path = &analyzed.path;
     let file: Vec<&Diagnostic> = analyzed.diagnostics.iter().chain(&outcome.diagnostics).collect();
     let all: Vec<Diagnostic> = file
@@ -1068,7 +1176,7 @@ fn finish(analyzed: &Analyzed, outcome: &Outcome, cli: &Cli) -> u8 {
             status: if failed { "failed" } else { "ok" },
             results,
             diagnostics: file.iter().map(|d| JsonDiagnostic::new(d, path, &lines)).collect(),
-            notices: outcome.notices.clone(),
+            notices: outcome.notices.iter().cloned().chain(notices).collect(),
             summary: outcome.summary.clone(),
         };
         match serde_json::to_string_pretty(&envelope) {
@@ -1325,13 +1433,143 @@ mod tests {
     /// A bug that stops a `--json` command still ends in the envelope, failed with `VL0607` (R-CLI-15).
     #[test]
     fn a_stopped_json_command_prints_the_envelope() {
-        let out = internal_envelope("game.velme").expect("an envelope");
+        let out = internal_envelope("game.velme", Vec::new()).expect("an envelope");
         let envelope: serde_json::Value = serde_json::from_str(&out).expect("JSON");
         assert_eq!(envelope["format"], JSON_FORMAT);
         assert_eq!(envelope["status"], "failed");
         assert_eq!(envelope["results"], serde_json::json!([]));
         assert_eq!(envelope["diagnostics"][0]["code"], "VL0607");
         assert_eq!(envelope["diagnostics"][0]["file"], "game.velme");
+    }
+
+    /// A bug that stops a `--json` command after the WASM backend gave bug notes keeps them in `notices[]` (D-136).
+    #[test]
+    fn d_136_a_stopped_json_command_keeps_its_bug_notes() {
+        let out = internal_envelope("game.velme", bug_notes()).expect("an envelope");
+        let envelope: serde_json::Value = serde_json::from_str(&out).expect("JSON");
+        assert_eq!(envelope["diagnostics"][0]["code"], "VL0607");
+        assert_eq!(envelope["notices"], serde_json::json!(bug_notes()));
+    }
+
+    /// The two bug notes of the WASM backend (D-123, D-136): a leaf `auto` ran on the interpreter, a backstop that fired.
+    fn bug_notes() -> Vec<String> {
+        vec![
+            format!(
+                "`Half` ran on the interpreter because of a bug in Velme: the WASM backend could not run it: it does not \
+                 validate. Please report it: {}.",
+                velme_diagnostics::REPORT_URL
+            ),
+            format!(
+                "`Half` was stopped on WASM by a backstop before its own limit: its Wasmtime fuel ran out, which is a bug \
+                 in Velme's WASM backend. Please report it: {}.",
+                velme_diagnostics::REPORT_URL
+            ),
+        ]
+    }
+
+    /// A `--verbose` note of the WASM backend (D-121).
+    fn verbose_notes() -> Vec<String> {
+        vec!["`Hidden` ran on the interpreter: the WASM backend has no code for a type that holds Nothing".to_owned()]
+    }
+
+    /// A bug note is given whatever `-v` is, on stderr or under `--json` in `notices[]`; a `--verbose` note is on
+    /// stderr under `-v` only, `--json` or not (D-136, D-123, D-121).
+    #[test]
+    fn d_136_which_notes_print_and_where() {
+        let (bugs, verbose) = (bug_notes(), verbose_notes());
+        let noted = |v, json| super::noted(bug_notes(), verbose_notes(), v, json);
+        let both: Vec<String> = bugs.iter().chain(&verbose).cloned().collect();
+        assert_eq!(
+            noted(false, false),
+            Noted {
+                stderr: bugs.clone(),
+                notices: Vec::new()
+            }
+        );
+        assert_eq!(
+            noted(true, false),
+            Noted {
+                stderr: both,
+                notices: Vec::new()
+            }
+        );
+        assert_eq!(
+            noted(false, true),
+            Noted {
+                stderr: Vec::new(),
+                notices: bugs.clone()
+            }
+        );
+        assert_eq!(
+            noted(true, true),
+            Noted {
+                stderr: verbose,
+                notices: bugs
+            }
+        );
+        assert_eq!(super::noted(Vec::new(), Vec::new(), true, true), Noted::default());
+    }
+
+    /// Each bug note as printed on stderr in human mode (D-136).
+    #[test]
+    fn d_136_bug_notes_on_stderr() {
+        let noted = noted(bug_notes(), verbose_notes(), false, false);
+        insta::assert_snapshot!(note_lines(&noted.stderr), @r"
+        note: `Half` ran on the interpreter because of a bug in Velme: the WASM backend could not run it: it does not validate. Please report it: https://github.com/velme-lang/velme/issues.
+        note: `Half` was stopped on WASM by a backstop before its own limit: its Wasmtime fuel ran out, which is a bug in Velme's WASM backend. Please report it: https://github.com/velme-lang/velme/issues.
+        ");
+    }
+
+    /// Each bug note in `notices[]` under `--json`, after the R-SEC-12 line, in an envelope the schema accepts
+    /// (D-136, R-CLI-15, AC-CLI-12).
+    #[test]
+    fn d_136_bug_notes_in_notices() {
+        let noted = noted(bug_notes(), verbose_notes(), true, true);
+        let envelope = Envelope {
+            format: JSON_FORMAT,
+            status: "ok",
+            results: Vec::new(),
+            diagnostics: Vec::new(),
+            notices: ["Sending your plans, types, checks and examples to Anthropic to write the code.".to_owned()]
+                .into_iter()
+                .chain(noted.notices)
+                .collect(),
+            summary: None,
+        };
+        let value = serde_json::to_value(&envelope).expect("JSON");
+        velme_test_support::schema::assert_cli_envelope(&value);
+        insta::assert_snapshot!(serde_json::to_string_pretty(&value["notices"]).expect("JSON"), @r#"
+        [
+          "Sending your plans, types, checks and examples to Anthropic to write the code.",
+          "`Half` ran on the interpreter because of a bug in Velme: the WASM backend could not run it: it does not validate. Please report it: https://github.com/velme-lang/velme/issues.",
+          "`Half` was stopped on WASM by a backstop before its own limit: its Wasmtime fuel ran out, which is a bug in Velme's WASM backend. Please report it: https://github.com/velme-lang/velme/issues."
+        ]
+        "#);
+    }
+
+    /// `-v` prints a `timing:` line for each phase that ran, in a fixed order, and the module cache's counts when the
+    /// command made the WASM backend (D-137).
+    #[test]
+    fn d_137_timing_lines() {
+        let ms = Duration::from_micros;
+        let timings = [
+            ("load", ms(2_340)),
+            ("parse", ms(150)),
+            ("test", ms(12_000)),
+            ("check", ms(600)),
+        ];
+        insta::assert_snapshot!(timing_lines(&timings, Some((1, 0))), @"
+        timing: parse 0.1
+        timing: check 0.6
+        timing: load 2.3
+        timing: test 12.0
+        module cache: 1 hit, 0 misses
+        ");
+        insta::assert_snapshot!(timing_lines(&timings[1..2], Some((0, 2))), @"
+        timing: parse 0.1
+        module cache: 0 hits, 2 misses
+        ");
+        assert_eq!(timing_lines(&[], None), "");
     }
 
     #[test]
