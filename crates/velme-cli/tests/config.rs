@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use serde_json::{Value, json};
 use velme_test_support::mock::{MockResponse, MockServer};
@@ -69,7 +69,7 @@ fn user_config(dir: &Path, text: &str) {
 /// `velme` in `dir` with the user-level config in `dir/home` and `envs` set.
 fn velme(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Out {
     let home = dir.join("home");
-    let out = Command::new(env!("CARGO_BIN_EXE_velme"))
+    let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
         .args(args)
         .current_dir(dir)
         .env_remove("NO_COLOR")

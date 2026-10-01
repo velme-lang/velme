@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use velme_test_support::backend::{Config, Server};
 use velme_test_support::differential::EXAMPLES;
@@ -29,7 +29,7 @@ struct Out {
 }
 
 fn velme(dir: &Path, args: &[&str]) -> Out {
-    let out = Command::new(env!("CARGO_BIN_EXE_velme"))
+    let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
         .args(args)
         .current_dir(dir)
         .env_remove("NO_COLOR")
@@ -142,7 +142,7 @@ fn record_all() -> Recorded {
         let name = format!("{}-record", stem(example));
         let (dir, file) = project(example, &name);
         let server = Server::start(Config::replying(replies(ir, &name)));
-        let out = Command::new(env!("CARGO_BIN_EXE_velme"))
+        let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
             .args(["build", &file, "--provider", "external", "--external-url", server.url()])
             .current_dir(&dir)
             .env("VELME_SYNTH_RECORD", "1")

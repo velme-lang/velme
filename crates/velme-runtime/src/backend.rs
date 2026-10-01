@@ -15,8 +15,8 @@ use velme_sema::hir::{Goal, GoalKind};
 pub use velme_wasm::MAX_WASM_RUNS;
 use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Module, Modules, Program, Run, Sandbox, cache_off_note};
 
-/// What evaluates leaf goal bodies (`--backend`, R-SBX-02). The default is the interpreter, also once only the CLI's
-/// default becomes `auto` at the start of M8 (D-117, D-121, D-122).
+/// What evaluates leaf goal bodies (`--backend`, R-SBX-02). The default is the interpreter; the CLI's default is `interp`
+/// too for v0.1 (D-117, D-121, D-122, D-134).
 #[derive(Debug, Clone, Default)]
 pub enum Backend {
     /// Every body on the reference interpreter.

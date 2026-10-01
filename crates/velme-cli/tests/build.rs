@@ -6,7 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use serde_json::{Value, json};
 
@@ -71,7 +71,7 @@ fn velme(dir: &Path, args: &[&str], script: Option<&Path>) -> Out {
 
 /// `velme` with `envs` set. The user's own provider settings are removed first, so no test can reach a real provider.
 fn velme_with(dir: &Path, args: &[&str], script: Option<&Path>, envs: &[(&str, &str)]) -> Out {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_velme"));
+    let mut command = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"));
     command
         .args(args)
         .current_dir(dir)

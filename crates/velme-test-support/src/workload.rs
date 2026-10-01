@@ -202,7 +202,15 @@ pub fn best_of(runs: usize, mut run: impl FnMut()) -> Duration {
 /// The ratios `b / a` of `pairs` paired timings of `a` and `b`, sorted, after two runs of each to warm up. Each pair runs
 /// back to back, the first going first in even pairs and second in odd ones, so drift in the machine's state (clock,
 /// heap, caches) falls on both alike: what the `delivery/51` §6 WASM row is held to, by the median (D-130).
-pub fn paired_ratios(pairs: usize, mut a: impl FnMut(), mut b: impl FnMut()) -> Vec<f64> {
+pub fn paired_ratios(pairs: usize, a: impl FnMut(), b: impl FnMut()) -> Vec<f64> {
+    let mut ratios: Vec<f64> = paired(pairs, a, b).into_iter().map(|(ta, tb)| tb / ta).collect();
+    ratios.sort_by(f64::total_cmp);
+    ratios
+}
+
+/// The timings in seconds of `a` and `b` in `pairs` pairs, in the order run, after two runs of each to warm up; each pair
+/// runs back to back, the first going first in even pairs and second in odd ones, as [`paired_ratios`] says.
+pub fn paired(pairs: usize, mut a: impl FnMut(), mut b: impl FnMut()) -> Vec<(f64, f64)> {
     for _ in 0..2 {
         a();
         b();
@@ -212,20 +220,17 @@ pub fn paired_ratios(pairs: usize, mut a: impl FnMut(), mut b: impl FnMut()) -> 
         run();
         start.elapsed().as_secs_f64()
     };
-    let mut ratios: Vec<f64> = (0..pairs)
+    (0..pairs)
         .map(|i| {
-            let (ta, tb) = if i % 2 == 0 {
+            if i % 2 == 0 {
                 let ta = time(&mut a);
                 (ta, time(&mut b))
             } else {
                 let tb = time(&mut b);
                 (time(&mut a), tb)
-            };
-            tb / ta
+            }
         })
-        .collect();
-    ratios.sort_by(f64::total_cmp);
-    ratios
+        .collect()
 }
 
 /// Fails unless this is a release build: the targets are for one (`delivery/51` §6), and a debug build would miss them.
@@ -238,17 +243,23 @@ pub fn assert_release(test: &str) {
 /// The `find_badge` example's project, with its lock and artifact (D-131), copied to a fresh `dir`: the input of the
 /// `velme run --locked` target, with an empty [`user_cache`].
 pub fn find_badge(dir: &Path) -> PathBuf {
+    fixture_project("find_badge", dir)
+}
+
+/// The committed project `tests/fixtures/run/<name>`, one example with its lock and artifacts, copied to a fresh `dir`
+/// with an empty [`user_cache`]: `name.velme` is its file.
+pub fn fixture_project(name: &str, dir: &Path) -> PathBuf {
     for old in [dir.to_path_buf(), user_cache(dir)] {
         match fs::remove_dir_all(&old) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => panic!("{}: {e}", old.display()),
             _ => {}
         }
     }
-    let fixture = crate::repo("tests/fixtures/run/find_badge");
+    let fixture = crate::repo(&format!("tests/fixtures/run/{name}"));
     let artifacts = Path::new(".velme").join("artifacts");
     fs::create_dir_all(dir.join(&artifacts)).expect("project directory");
-    for file in ["find_badge.velme", "velme.lock"] {
-        fs::copy(fixture.join(file), dir.join(file)).expect("copied");
+    for file in [format!("{name}.velme"), "velme.lock".to_owned()] {
+        fs::copy(fixture.join(&file), dir.join(&file)).expect("copied");
     }
     for entry in fs::read_dir(fixture.join(&artifacts)).expect("artifacts") {
         let path = entry.expect("entry").path();
@@ -282,6 +293,11 @@ pub fn user_cache(dir: &Path) -> PathBuf {
 /// The `velme` binary `exe` run in `dir` with `args`, no provider setting from the environment, its user-level config
 /// under `dir/home` and its caches at [`user_cache`] (AC-QA-02, R-SBX-20); it must exit 0.
 pub fn velme(exe: &Path, dir: &Path, args: &[String]) {
+    velme_stderr(exe, dir, args);
+}
+
+/// [`velme`], giving back what the run printed on stderr.
+pub fn velme_stderr(exe: &Path, dir: &Path, args: &[String]) -> String {
     let (home, cache) = (dir.join("home"), user_cache(dir));
     fs::create_dir_all(&home).expect("home directory");
     let mut command = std::process::Command::new(exe);
@@ -298,4 +314,5 @@ pub fn velme(exe: &Path, dir: &Path, args: &[String]) {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
+    String::from_utf8_lossy(&out.stderr).into_owned()
 }

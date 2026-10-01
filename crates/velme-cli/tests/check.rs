@@ -3,7 +3,7 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use velme_test_support::velme_command;
 
 use serde_json::Value;
 
@@ -19,7 +19,7 @@ struct Run {
 
 /// Runs `velme` from the repository root, so paths in its output are the relative ones given here.
 fn velme(args: &[&str]) -> Run {
-    let out = Command::new(env!("CARGO_BIN_EXE_velme"))
+    let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
         .args(args)
         .current_dir(repo_root())
         .env_remove("NO_COLOR")
