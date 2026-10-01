@@ -2,14 +2,16 @@
 //! and run once per invocation in a fresh store under the run's limits. The module's own meters decide a run
 //! (R-SBX-05); Wasmtime's fuel, its resource limiter and the epoch watchdog stand behind them (R-SBX-12, INV-5).
 
-use std::collections::HashMap;
+use std::any::Any;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-use std::sync::{Mutex, PoisonError};
+use std::sync::mpsc::{self, Receiver, SendError, Sender};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use velme_builtins::execution::{Error, Failure, Interrupt, Limits, Spent};
-use velme_builtins::limits::{MAX_GOAL_CALLS, MAX_LIST_SIZE, MAX_MEMORY, MIB};
+use velme_builtins::limits::{MAX_LIST_SIZE, MAX_MEMORY, MIB};
 use velme_builtins::{Function, Number, TEXT_BLOCK_BYTES, Value, range_length};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use wasmparser::{Parser, Payload};
@@ -22,6 +24,7 @@ use crate::abi::{self, FRAME_BYTES, FRAME_MARSHAL, FRAME_VISITING, FRAMES, Impor
 use crate::cache::{Cache, CacheDir};
 use crate::code::PAGE_BYTES;
 use crate::codec::{Image, Reader};
+use crate::kept::Lru;
 use crate::ty::Signature;
 use crate::validate::{FEATURES, validate};
 use crate::{Literals, Module, abi::SCRATCH_BYTES};
@@ -72,6 +75,13 @@ const WASM_STACK_BYTES: usize = 4 * MIB as usize;
 /// that uses all of its own meets Wasmtime's limit and never the end of the thread's stack, on any host.
 const THREAD_STACK_BYTES: usize = WASM_STACK_BYTES + 2 * MIB as usize;
 
+/// The most leaf bodies the runtime runs on WASM at once, whatever `--jobs` is, and so the run threads a sandbox keeps
+/// (D-133): the scheduler's other bodies wait for a place. A module's memory is never freed during its run (R-SBX-03),
+/// so each running body can hold up to its `max_memory` (at most 64 MiB) plus its inputs, data and scratch: four keep
+/// the process under about 300 MiB of module memory on any machine, while a run of the examples still overlaps its
+/// independent calls. It changes when bodies run, never what they give (R-RUN-07).
+pub const MAX_WASM_RUNS: usize = 4;
+
 /// Fixed room in a run's memory beyond what it is charged for (`runtime/31` §6, D-53).
 const MEMORY_OVERHEAD_BYTES: u64 = MIB;
 
@@ -96,11 +106,6 @@ const MEMORY_RESERVATION_BYTES: u64 = memory_limit(MAX_MEMORY, 0, 0);
 
 /// How often the ticker moves the epoch on (`runtime/31` §6).
 const EPOCH_TICK: Duration = Duration::from_millis(10);
-
-/// Compiled and linked modules a sandbox keeps in memory, the least recently used dropped first: twice the leaves one
-/// run can call (`max_goal_calls`), so a run never compiles a module twice, while a process that loads many, a fuzz run
-/// or a long test, stays near 100 MB at some 400 KB a module. Dropping one only means compiling it again.
-pub(crate) const MAX_LINKED: usize = 2 * MAX_GOAL_CALLS as usize;
 
 /// Why a module was not loaded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -393,41 +398,12 @@ pub struct Sandbox {
     engine: Engine,
     linker: Linker<Host>,
     cache: Option<Cache>,
-    /// What each module loaded so far was compiled and linked to, by BLAKE3 of its bytes: code only, never a goal's
-    /// signature or data, which two goals with the same bytes need not share.
-    linked: Mutex<Linked>,
-}
-
-/// The modules kept in memory, by BLAKE3 of their bytes, each with when it was last used; at most [`MAX_LINKED`].
-#[derive(Default)]
-struct Linked {
-    modules: HashMap<[u8; 32], (InstancePre<Host>, u64)>,
-    clock: u64,
-}
-
-impl Linked {
-    /// The module `key`, if it is kept, marked as just used.
-    fn get(&mut self, key: &[u8; 32]) -> Option<InstancePre<Host>> {
-        self.clock += 1;
-        let (pre, used) = self.modules.get_mut(key)?;
-        *used = self.clock;
-        Some(pre.clone())
-    }
-
-    /// Keeps `pre` as the module `key`, or what another thread kept first, dropping the least recently used if full.
-    fn keep(&mut self, key: [u8; 32], pre: InstancePre<Host>) -> InstancePre<Host> {
-        if let Some(kept) = self.get(&key) {
-            return kept;
-        }
-        if self.modules.len() >= MAX_LINKED {
-            let oldest = self.modules.iter().min_by_key(|(_, (_, used))| *used).map(|(k, _)| *k);
-            if let Some(oldest) = oldest {
-                self.modules.remove(&oldest);
-            }
-        }
-        self.modules.insert(key, (pre.clone(), self.clock));
-        pre
-    }
+    /// What each module loaded so far was compiled and linked to, by BLAKE3 of its bytes, at most
+    /// [`MAX_KEPT`](crate::kept::MAX_KEPT) compiled from at most [`MAX_KEPT_BYTES`](crate::kept::MAX_KEPT_BYTES):
+    /// code only, never a goal's signature or data, which two goals with the same bytes need not share.
+    linked: Mutex<Lru<[u8; 32], InstancePre<Host>>>,
+    /// The threads its modules run on.
+    threads: Arc<Threads>,
 }
 
 impl std::fmt::Debug for Sandbox {
@@ -464,14 +440,15 @@ impl Sandbox {
             engine,
             linker,
             cache,
-            linked: Mutex::new(Linked::default()),
+            linked: Mutex::new(Lru::default()),
+            threads: Arc::new(Threads::default()),
         })
     }
 
-    /// How many compiled modules are kept in memory, for the test of [`MAX_LINKED`].
+    /// How many compiled modules are kept in memory, for the test of [`MAX_KEPT`](crate::kept::MAX_KEPT).
     #[cfg(test)]
     pub(crate) fn linked(&self) -> usize {
-        self.linked.lock().unwrap_or_else(PoisonError::into_inner).modules.len()
+        self.linked.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
     /// Whether the module `bytes` is kept in memory, without marking it used, for the test of which one is dropped.
@@ -481,8 +458,19 @@ impl Sandbox {
         self.linked
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .modules
-            .contains_key(key.as_bytes())
+            .contains(key.as_bytes())
+    }
+
+    /// How many run threads are kept idle, for the tests of D-133.
+    #[cfg(test)]
+    pub(crate) fn idle_threads(&self) -> usize {
+        self.threads.idle()
+    }
+
+    /// Keeps a run thread that has ended, as if it were idle, for the tests of D-133.
+    #[cfg(test)]
+    pub(crate) fn keep_ended_thread(&self) {
+        self.threads.keep_ended();
     }
 
     /// The disk cache, for the tests of what it reads.
@@ -498,18 +486,24 @@ impl Sandbox {
         Some(crate::cache::cache_off_note(dir, why))
     }
 
-    /// The emitted `module`, compiled and linked, ready to run any number of times. Emission always runs first;
-    /// only what Cranelift made of the module is cached (R-SBX-13), and in memory only its code: the program takes
-    /// the signature, data and literals of `module` itself.
+    /// The emitted `module`, compiled and linked, ready to run any number of times. Only what Cranelift made of the
+    /// module is cached on disk (R-SBX-13), and in memory only its code: the program takes the signature, data and
+    /// literals of `module` itself.
     pub fn load(&self, module: &Module) -> Result<Program, LoadError> {
-        self.load_bytes(module.bytes(), module)
+        self.load_keyed(module.hash, module.bytes(), module)
     }
 
     /// The module `bytes`, with the signature and data segment of `like`. It takes any bytes, so it stays private to
     /// the crate (R-SBX-09): they are validated (R-SBX-07), then their imports are held against the whitelist, and
     /// only then compiled.
+    #[cfg(test)]
     pub(crate) fn load_bytes(&self, bytes: &[u8], like: &Module) -> Result<Program, LoadError> {
-        let key = *blake3::hash(bytes).as_bytes();
+        self.load_keyed(*blake3::hash(bytes).as_bytes(), bytes, like)
+    }
+
+    /// The module `bytes`, whose BLAKE3 is `key`: validated, held against the whitelist, and only then compiled, the
+    /// first time this sandbox sees it.
+    fn load_keyed(&self, key: [u8; 32], bytes: &[u8], like: &Module) -> Result<Program, LoadError> {
         let known = self.linked.lock().unwrap_or_else(PoisonError::into_inner).get(&key);
         let pre = match known {
             Some(pre) => pre,
@@ -519,12 +513,13 @@ impl Sandbox {
                 let compiled = self.compiled(bytes)?;
                 let pre = self.linker.instantiate_pre(&compiled).map_err(internal)?;
                 let mut linked = self.linked.lock().unwrap_or_else(PoisonError::into_inner);
-                linked.keep(key, pre)
+                linked.keep(key, pre, bytes.len())
             }
         };
         Ok(Program {
             pre,
-            signature: like.signature.clone(),
+            threads: Arc::clone(&self.threads),
+            signature: Arc::clone(&like.signature),
             data_bytes: like.data_bytes(),
             literals: like.literals,
             #[cfg(test)]
@@ -601,16 +596,122 @@ fn whitelisted(bytes: &[u8]) -> Result<(), LoadError> {
 }
 
 /// A loaded module: compiled once, run in a fresh store and instance each time, so no state passes between two
-/// invocations (`runtime/31` §6).
+/// invocations (`runtime/31` §6). A clone is the same program.
+#[derive(Clone)]
 pub struct Program {
     pre: InstancePre<Host>,
-    signature: Signature,
+    /// The sandbox's run threads.
+    threads: Arc<Threads>,
+    signature: Arc<Signature>,
     data_bytes: u32,
     literals: Literals,
     /// Ticks of the epoch the tests force between instantiating the module and calling it, so the host's own setup
     /// meets a deadline whatever the ticker does.
     #[cfg(test)]
     ticks_before_call: u64,
+}
+
+/// What a run thread gives back: the run, or the panic of the host that ended it.
+type Outcome = Result<Run, Box<dyn Any + Send>>;
+
+/// One invocation, sent to a run thread: whether the thread may take another.
+type Job = Box<dyn FnOnce() -> bool + Send>;
+
+/// How long a run thread, or its caller, polls for what the other sends before it sleeps: a thread woken from sleep
+/// costs more than most runs take, so a run finishes, and the next one starts, while the other side still looks.
+const POLL: Duration = Duration::from_micros(200);
+
+/// Whether polling can pay: only with a second CPU to run the other side meanwhile. On one, or under a CPU quota of
+/// one, the poll would take the time of the thread it waits for.
+fn polls() -> bool {
+    static POLLS: OnceLock<bool> = OnceLock::new();
+    *POLLS.get_or_init(|| thread::available_parallelism().is_ok_and(|cpus| cpus.get() >= 2))
+}
+
+/// The next message on `channel`, polled for [`POLL`] before waiting where that can pay.
+fn soon<T>(channel: &Receiver<T>) -> Result<T, mpsc::RecvError> {
+    if !polls() {
+        return channel.recv();
+    }
+    let start = std::time::Instant::now();
+    loop {
+        match channel.try_recv() {
+            Ok(message) => return Ok(message),
+            Err(mpsc::TryRecvError::Disconnected) => return Err(mpsc::RecvError),
+            Err(mpsc::TryRecvError::Empty) if start.elapsed() < POLL => std::hint::spin_loop(),
+            Err(mpsc::TryRecvError::Empty) => return channel.recv(),
+        }
+    }
+}
+
+/// The threads modules run on, each with the stack of [`THREAD_STACK_BYTES`]: made when a run finds none idle, and at
+/// most [`MAX_WASM_RUNS`] kept for the next runs, so a run does not pay for a thread (D-133). A thread holds nothing
+/// of a run once it is done, since each run has a store of its own (`runtime/31` §6); one whose run panicked is not
+/// kept (D-120).
+///
+/// How many run at once is bounded by the runtime, which lets at most [`MAX_WASM_RUNS`] bodies run on WASM at a time;
+/// the sandbox makes a thread for each run that finds none idle, however many that is, and keeps only that many.
+#[derive(Default)]
+struct Threads {
+    idle: Mutex<Vec<Sender<Job>>>,
+}
+
+impl Threads {
+    /// The thread `job` was handed to: an idle one, or a new one, also when the idle one has ended; `None` if no new
+    /// one can be made.
+    fn hand(&self, job: Job) -> Option<Sender<Job>> {
+        let idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner).pop();
+        let job = match idle {
+            Some(thread) => match thread.send(job) {
+                Ok(()) => return Some(thread),
+                Err(SendError(job)) => job,
+            },
+            None => job,
+        };
+        let thread = Threads::spawn()?;
+        thread.send(job).ok()?;
+        Some(thread)
+    }
+
+    /// A new thread, waiting for its first job.
+    fn spawn() -> Option<Sender<Job>> {
+        let (send, jobs) = mpsc::channel::<Job>();
+        let work = move || {
+            // It ends with its sender, once the sandbox and every program of it are dropped, or after a panic.
+            while let Ok(job) = soon(&jobs) {
+                if !job() {
+                    break;
+                }
+            }
+        };
+        thread::Builder::new()
+            .name("velme-wasm".to_owned())
+            .stack_size(THREAD_STACK_BYTES)
+            .spawn(work)
+            .ok()?;
+        Some(send)
+    }
+
+    /// Keeps `thread`, whose run is done, unless [`MAX_WASM_RUNS`] are kept already.
+    fn give_back(&self, thread: Sender<Job>) {
+        let mut idle = self.idle.lock().unwrap_or_else(PoisonError::into_inner);
+        if idle.len() < MAX_WASM_RUNS {
+            idle.push(thread);
+        }
+    }
+
+    /// How many are kept, for the tests.
+    #[cfg(test)]
+    fn idle(&self) -> usize {
+        self.idle.lock().unwrap_or_else(PoisonError::into_inner).len()
+    }
+
+    /// Keeps a thread that has ended, as if it were idle, for the tests.
+    #[cfg(test)]
+    fn keep_ended(&self) {
+        let (send, _) = mpsc::channel::<Job>();
+        self.idle.lock().unwrap_or_else(PoisonError::into_inner).push(send);
+    }
 }
 
 #[cfg(test)]
@@ -665,18 +766,28 @@ impl Program {
     /// Only if the host panics on the run's thread: that panic goes on in the caller's thread.
     pub fn run(&self, inputs: &[Value], limits: Limits, interrupt: &Interrupt) -> Run {
         // A thread of its own, so the module has the whole of its stack whatever thread asks (D-113, D-120).
-        thread::scope(|scope| {
-            let spawned = thread::Builder::new()
-                .name("velme-wasm".to_owned())
-                .stack_size(THREAD_STACK_BYTES)
-                .spawn_scoped(scope, || self.invoke(inputs, limits, interrupt));
-            match spawned.map(thread::ScopedJoinHandle::join) {
-                Ok(Ok(run)) => run,
-                // A bug of the host, not of the module: it is not hidden as `VL0607`.
-                Ok(Err(panic)) => std::panic::resume_unwind(panic),
-                Err(_) => Run::internal(),
+        let (send, outcome): (_, Receiver<Outcome>) = mpsc::channel();
+        let (program, inputs, interrupt) = (self.clone(), inputs.to_vec(), interrupt.clone());
+        let job: Job = Box::new(move || {
+            // The run's store and instance are `invoke`'s own, dropped when it returns: before the outcome is sent,
+            // so nothing of this run is left on the thread when the next one is handed to it (`runtime/31` §6).
+            let run = panic::catch_unwind(AssertUnwindSafe(|| program.invoke(&inputs, limits, &interrupt)));
+            let survived = run.is_ok();
+            let _ = send.send(run);
+            survived
+        });
+        let Some(thread) = self.threads.hand(job) else {
+            return Run::internal();
+        };
+        match soon(&outcome) {
+            Ok(Ok(run)) => {
+                self.threads.give_back(thread);
+                run
             }
-        })
+            // A bug of the host, not of the module: it is not hidden as `VL0607`, and its thread is not kept.
+            Ok(Err(panic)) => panic::resume_unwind(panic),
+            Err(_) => Run::internal(),
+        }
     }
 
     fn invoke(&self, inputs: &[Value], limits: Limits, interrupt: &Interrupt) -> Run {

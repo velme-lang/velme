@@ -12,14 +12,8 @@ use velme_diagnostics::{Diagnostic, REPORT_URL, Span};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::ValidIr;
 use velme_sema::hir::{Goal, GoalKind};
-use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Module, Program, Run, Sandbox, cache_off_note, emit};
-
-/// The most leaf bodies running on WASM at once, whatever `--jobs` is: the scheduler's other bodies wait for a slot.
-/// A module's memory is never freed during its run (R-SBX-03), so each running body can hold up to its `max_memory`
-/// (at most 64 MiB) plus its inputs, data and scratch: four keep the process under about 300 MiB of module memory on
-/// any machine, while a run of the examples still overlaps its independent calls. It changes when bodies run, never
-/// what they give (R-RUN-07).
-pub const MAX_WASM_RUNS: usize = 4;
+pub use velme_wasm::MAX_WASM_RUNS;
+use velme_wasm::{Backstop, CacheDir, EmitError, LoadError, Module, Modules, Program, Run, Sandbox, cache_off_note};
 
 /// What evaluates leaf goal bodies (`--backend`, R-SBX-02). The default is the interpreter, also once only the CLI's
 /// default becomes `auto` at the start of M8 (D-117, D-121, D-122).
@@ -37,13 +31,18 @@ pub enum Backend {
     Auto(Arc<Wasm>),
 }
 
-/// The WASM backend of a process: its one sandbox, made the first time a leaf runs on WASM, so a process that never
-/// asks never starts Wasmtime or its epoch ticker; it compiles each module once a process. And its notes for stderr.
+/// The WASM backend of a process: the modules it emitted, each IR once a process (D-133), and its one sandbox, made in
+/// the background by [`Wasm::start`] or else the first time a leaf runs on WASM, so a process that does neither never
+/// starts Wasmtime or its epoch ticker; it compiles each module once a process. And its notes for stderr.
 pub struct Wasm {
     /// The directory of the disk cache, passed in: the user-level one from `velme-cli`, a temporary one or none in a
     /// test (R-SBX-20).
     cache: Option<CacheDir>,
+    modules: Modules,
     sandbox: OnceLock<Result<Sandbox, LoadError>>,
+    /// Held while [`Wasm::start`] makes the sandbox, so a leaf that asks meanwhile waits for it rather than make
+    /// another.
+    starting: Mutex<()>,
     /// How many bodies are running on WASM now, at most [`MAX_WASM_RUNS`].
     running: Mutex<usize>,
     freed: Condvar,
@@ -142,7 +141,9 @@ impl Wasm {
     pub fn new(cache: Option<CacheDir>) -> Wasm {
         Wasm {
             cache,
+            modules: Modules::new(),
             sandbox: OnceLock::new(),
+            starting: Mutex::new(()),
             running: Mutex::new(0),
             freed: Condvar::new(),
             notes: Mutex::new(BTreeSet::new()),
@@ -167,6 +168,25 @@ impl Wasm {
                 wasm
             }
         }
+    }
+
+    /// Starts making the sandbox on a thread of its own, so Wasmtime's engine, its linker and its disk cache are ready,
+    /// or being made, by the time the first leaf asks (D-133): for `--backend wasm` or `auto`. A leaf that asks sooner
+    /// waits for it. Only a sandbox that was made is kept: if it can't be made, or making it panics, or no thread can
+    /// be made, the first leaf makes it, and fails as it would have without this (D-121).
+    pub fn start(self: &Arc<Self>) {
+        let wasm = Arc::clone(self);
+        let _ = std::thread::Builder::new()
+            .name("velme-wasm-start".to_owned())
+            .spawn(move || {
+                let _starting = lock(&wasm.starting);
+                if wasm.sandbox.get().is_some() {
+                    return;
+                }
+                if let Ok(Ok(sandbox)) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| wasm.sandbox())) {
+                    let _ = wasm.sandbox.set(Ok(sandbox));
+                }
+            });
     }
 
     /// A backend whose modules fail at `stage`, for the tests of D-121.
@@ -211,19 +231,22 @@ impl Wasm {
         Ok(run)
     }
 
-    /// The loaded program of `ir`: emitted each time, compiled once a process by the sandbox, and with this goal's
-    /// own signature and data, whichever goal's module had the same bytes first.
+    /// The loaded program of `ir`: emitted and compiled once a process, and with this goal's own signature and data,
+    /// whichever goal's module had the same bytes first.
     fn program(&self, ir: &ValidIr) -> Result<Program, Unrun> {
         let module = self.module(ir).map_err(|error| match error {
             EmitError::Declined(why) => Unrun::Declined(why),
             EmitError::NotLeaf => Unrun::Internal("it was asked to emit a goal that is not a leaf".to_owned()),
             EmitError::Internal(error) => Unrun::Internal(error),
         })?;
-        let sandbox = self
-            .sandbox
-            .get_or_init(|| self.sandbox())
-            .as_ref()
-            .map_err(|error| Unrun::Load(error.clone()))?;
+        let sandbox = match self.sandbox.get() {
+            Some(sandbox) => sandbox,
+            None => {
+                let _starting = lock(&self.starting);
+                self.sandbox.get_or_init(|| self.sandbox())
+            }
+        };
+        let sandbox = sandbox.as_ref().map_err(|error| Unrun::Load(error.clone()))?;
         #[cfg(test)]
         if let Some(Stage::Load(error)) = &self.fail {
             return Err(Unrun::Load(error.clone()));
@@ -236,13 +259,13 @@ impl Wasm {
         loaded.map_err(Unrun::Load)
     }
 
-    /// The module of `ir`.
-    fn module(&self, ir: &ValidIr) -> Result<Module, EmitError> {
+    /// The module of `ir`, emitted the first time this process asks (R-SBX-13, D-133).
+    fn module(&self, ir: &ValidIr) -> Result<Arc<Module>, EmitError> {
         #[cfg(test)]
         if let Some(Stage::Emit(error)) = &self.fail {
             return Err(error.clone());
         }
-        emit(ir)
+        self.modules.emit(ir)
     }
 
     /// The process's sandbox, made on first use.
@@ -467,6 +490,36 @@ mod tests {
                  limits are above the system cap. Please report it: {REPORT_URL}."
             )]
         );
+    }
+
+    /// A sandbox started in the background is the one the leaves run in, and one that can't be made is the same
+    /// failure as when the first leaf makes it: under `auto` the leaf runs on the interpreter with the same note
+    /// (D-133, D-121).
+    #[test]
+    fn d_133_a_sandbox_started_in_the_background_is_the_one_leaves_use() {
+        let interp = on(&Backend::Interp, 7);
+        let wasm = Arc::new(Wasm::new(None));
+        wasm.start();
+        let asked = std::time::Instant::now();
+        while wasm.sandbox.get().is_none() {
+            assert!(
+                asked.elapsed() < std::time::Duration::from_secs(60),
+                "the sandbox was not started"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(on(&Backend::Wasm(Arc::clone(&wasm)), 7), interp);
+        assert!(matches!(wasm.sandbox.get(), Some(Ok(_))));
+        assert!(wasm.notes().is_empty() && wasm.bug_notes().is_empty());
+        let notes = |started: bool| {
+            let wasm = Arc::new(Wasm::failing(Stage::Sandbox));
+            if started {
+                wasm.start();
+            }
+            assert_eq!(on(&Backend::Auto(Arc::clone(&wasm)), 7), interp);
+            (wasm.notes(), wasm.bug_notes())
+        };
+        assert_eq!(notes(true), notes(false));
     }
 
     /// Under an explicit `wasm` a declined leaf is `VL0607` with its own headline and no report link, since it is not

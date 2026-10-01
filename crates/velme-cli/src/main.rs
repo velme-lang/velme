@@ -566,6 +566,8 @@ fn run(cli: &Cli, traced: bool) -> u8 {
     if let (true, Err(diagnostics)) = (cli.build, &inputs) {
         return finish(&analyzed, &Outcome::with(diagnostics.clone()), cli);
     }
+    // Before the build and the lock are read, so the WASM backend starts meanwhile (D-133).
+    let options = run_options(cli, &project.root);
     let built = cli
         .build
         .then(|| build_phase(cli, &analyzed, (program, text, project), &settings));
@@ -574,7 +576,6 @@ fn run(cli: &Cli, traced: bool) -> u8 {
     }
     // Input and lock problems are both reported, so the exit code follows R-CLI-16's precedence.
     let registry = registry(project, program, id);
-    let options = run_options(cli, &project.root);
     let (executed, result) = match (inputs, registry) {
         (Ok(inputs), Ok(registry)) => {
             let executed = run_goal(program, id, text, &registry, inputs, options);
@@ -702,13 +703,14 @@ fn test(cli: &Cli) -> u8 {
         Ok(None) => (0..program.goals.len()).map(GoalId).collect(),
         Err(diag) => return finish(&analyzed, &Outcome::with(vec![diag]), cli),
     };
+    // Before the build, so the WASM backend starts meanwhile (D-133).
+    let options = run_options(cli, &project.root);
     let built = cli
         .build
         .then(|| build_phase(cli, &analyzed, (program, text, project), &settings));
     if let Some(built) = built.as_ref().filter(|b| build_stopped(b)) {
         return finish(&analyzed, built, cli);
     }
-    let options = run_options(cli, &project.root);
     let mut outcome = Outcome::with(Vec::new());
     for id in ids {
         let Some(g) = program.goals.get(id.0) else { continue };
@@ -904,17 +906,20 @@ fn run_options(cli: &Cli, root: &Path) -> Options {
 }
 
 /// The process's WASM backend, the one sandbox of `runtime/31` §6, with the user-level module cache if it lies
-/// outside the project at `root` (R-SBX-13, R-SBX-20, T-11): made only for `--backend wasm` or `auto`, and Wasmtime
-/// starts only when a leaf runs on it.
+/// outside the project at `root` (R-SBX-13, R-SBX-20, T-11): made only for `--backend wasm` or `auto`, which start
+/// Wasmtime in the background as soon as they are read.
 static WASM: OnceLock<Arc<Wasm>> = OnceLock::new();
 
 fn wasm(root: &Path) -> Arc<Wasm> {
     let made = WASM.get_or_init(|| {
         let get = |name: &str| std::env::var_os(name);
-        Arc::new(Wasm::for_project(
+        let wasm = Arc::new(Wasm::for_project(
             config::wasm_cache_path(&get, config::Platform::current()),
             root,
-        ))
+        ));
+        // Wasmtime starts while the command reads its project (D-133).
+        wasm.start();
+        wasm
     });
     Arc::clone(made)
 }

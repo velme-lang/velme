@@ -174,6 +174,26 @@ fn emission_is_deterministic() {
     assert_eq!(emit(&first), emit(&second));
 }
 
+/// A goal's module is the module of its canonical text, parsed and validated again: what the emitter reads beyond the
+/// document is derived from it by the validator, so modules kept by the IR's fingerprint are the ones it would emit
+/// (R-SBX-13, D-133).
+#[test]
+fn d_133_a_module_is_that_of_its_canonical_text() {
+    let mut leaves: Vec<_> = differential::corpus()
+        .into_iter()
+        .map(|leaf| (leaf.name, leaf.program, leaf.ir))
+        .collect();
+    let everything_program = program(EVERYTHING);
+    let everything = valid_ir(&everything_program, &everything());
+    leaves.push(("Everything".to_owned(), everything_program, everything));
+    for (name, program, ir) in &leaves {
+        let canonical = to_canonical_string(ir.goal()).expect("a canonical form");
+        let again = valid_ir(program, &canonical);
+        assert_eq!(again.fingerprint(), ir.fingerprint(), "{name}");
+        assert_eq!(emit(&again), emit(ir), "{name}");
+    }
+}
+
 /// The `validate` fuzz target's corpus on stable, with the golden IR as `ac_ir_06_*` replays it (AC-IR-06,
 /// R-SBX-01): whatever IR the validator accepts, against any goal of the golden program, emits a module, a decline or `NotLeaf`, and never panics or reports a backend bug.
 #[test]
@@ -689,7 +709,7 @@ fn a_record_is_declined_only_when_no_address_reaches_its_slot() {
 }
 
 /// The IR document of a goal `G(xs: List<Number>)` giving `output`, and its source.
-fn nothing_goal(output: &str, output_ir: &str, body: &str) -> ValidIr {
+pub(super) fn nothing_goal(output: &str, output_ir: &str, body: &str) -> ValidIr {
     let source = format!("language: velme/0.1\n\ngoal G(xs: List<Number>) -> {output}:\n    plan: \"Nothing much.\"\n");
     let document = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
