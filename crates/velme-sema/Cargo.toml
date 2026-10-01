@@ -15,8 +15,14 @@ velme-diagnostics.workspace = true
 velme-syntax.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 insta.workspace = true
 serde_json.workspace = true
+velme-test-support.workspace = true
+
+[[bench]]
+name = "check"
+harness = false
 
 [lints]
 workspace = true

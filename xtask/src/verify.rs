@@ -19,7 +19,7 @@ pub struct Step {
 
 /// The `velme-cli` feature that adds the `scripted` provider (`tooling/40` §5.2, D-94): on for the gate's tests, never for
 /// a release build.
-const TEST_PROVIDER: &str = "velme-cli/test-provider";
+pub(crate) const TEST_PROVIDER: &str = "velme-cli/test-provider";
 
 fn cargo_step(name: &'static str, args: &[&str]) -> Step {
     Step {
@@ -81,43 +81,10 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
     Ok(steps)
 }
 
-/// The provider settings the gate never lets into a step, so the default suite runs as it does with no key, no provider and
-/// no live tests (`delivery/51` AC-QA-02, D-13); every variable ending in `_API_KEY` goes too.
-const PROVIDER_ENV: [&str; 7] = [
-    "VELME_MODEL",
-    "VELME_EXTERNAL_URL",
-    "VELME_OLLAMA_URL",
-    "VELME_EXTERNAL_TOKEN",
-    "VELME_SYNTH_RECORD",
-    "VELME_SYNTH_SCRIPT",
-    "VELME_LIVE_LLM",
-];
-
-/// Removes from `command`'s environment everything a provider could be reached with, and points the user-level config
-/// (`$XDG_CONFIG_HOME`, `%APPDATA%`, and `HOME` for the platform equivalent) at `home`, an empty directory, so a step never
-/// reads the developer's own settings (AC-QA-02). The toolchain keeps the homes it had.
-pub fn scrub_provider_env(command: &mut Command, home: &Path) {
-    let old_home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    for (var, dir) in [("CARGO_HOME", ".cargo"), ("RUSTUP_HOME", ".rustup")] {
-        if std::env::var_os(var).is_none()
-            && let Some(old) = &old_home
-        {
-            command.env(var, old.join(dir));
-        }
-    }
-    command
-        .env("HOME", home)
-        .env("XDG_CONFIG_HOME", home)
-        .env("APPDATA", home);
-    for name in PROVIDER_ENV {
-        command.env_remove(name);
-    }
-    for (name, _) in std::env::vars_os() {
-        if name.to_string_lossy().to_ascii_uppercase().ends_with("_API_KEY") {
-            command.env_remove(name);
-        }
-    }
-}
+// The provider settings no step sees (AC-QA-02), kept with the release-mode targets' copy in one file.
+#[path = "../../crates/velme-test-support/src/scrub.rs"]
+mod scrub;
+pub use scrub::scrub_provider_env;
 
 /// Numbers the homes of [`run_steps`].
 static HOMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

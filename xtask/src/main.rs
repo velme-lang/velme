@@ -1,9 +1,9 @@
-//! `cargo xtask <verify [--quick] | layering | features | ac-audit [--strict] [--list]>`.
+//! `cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list]>`.
 
 use std::process::ExitCode;
 
 use anyhow::{Result, bail};
-use xtask::{ac_audit, features, layering, verify, workspace_root};
+use xtask::{ac_audit, features, gate, layering, verify, workspace_root};
 
 fn main() -> ExitCode {
     match run() {
@@ -28,6 +28,25 @@ fn run() -> Result<ExitCode> {
                 Ok(ExitCode::SUCCESS)
             } else {
                 println!("verify: FAILED: {}", failed.join(", "));
+                Ok(ExitCode::FAILURE)
+            }
+        }
+        Some("gate") => {
+            let mut failed = verify::run_steps(&root, &gate::perf_steps());
+            // An error in the `ac_rdm` step is its failure, never one that hides the perf results.
+            match gate::rdm(&root) {
+                Ok(true) => {}
+                Ok(false) => failed.push("ac_rdm"),
+                Err(error) => {
+                    eprintln!("ac_rdm: {error:#}");
+                    failed.push("ac_rdm");
+                }
+            }
+            if failed.is_empty() {
+                println!("gate: all steps passed");
+                Ok(ExitCode::SUCCESS)
+            } else {
+                println!("gate: FAILED: {}", failed.join(", "));
                 Ok(ExitCode::FAILURE)
             }
         }
@@ -78,6 +97,6 @@ fn run() -> Result<ExitCode> {
                 ExitCode::FAILURE
             })
         }
-        _ => bail!("usage: cargo xtask <verify [--quick] | layering | features | ac-audit [--strict] [--list]>"),
+        _ => bail!("usage: cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list]>"),
     }
 }

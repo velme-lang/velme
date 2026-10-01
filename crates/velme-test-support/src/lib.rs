@@ -10,6 +10,8 @@ pub mod differential;
 pub mod generate;
 pub mod ir_json;
 pub mod schema;
+pub mod scrub;
+pub mod workload;
 
 use std::path::{Path, PathBuf};
 
