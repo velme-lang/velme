@@ -532,6 +532,33 @@ fn ac_sec_01_only_the_whitelist_is_linked() {
     assert_eq!(Import::ALL.len(), 14);
 }
 
+#[test]
+fn r_sbx_07_a_module_with_a_start_section_is_refused_before_it_compiles() {
+    // A valid module whose start function would run when it is instantiated, before the call of `velme_run`.
+    let mut module = wasm_encoder::Module::new();
+    let mut types = TypeSection::new();
+    types.ty().function([], []);
+    module.section(&types);
+    let mut functions = wasm_encoder::FunctionSection::new();
+    functions.function(0);
+    module.section(&functions);
+    module.section(&wasm_encoder::StartSection { function_index: 0 });
+    let mut code = wasm_encoder::CodeSection::new();
+    let mut function = wasm_encoder::Function::new([]);
+    function.instruction(&I::End);
+    code.function(&function);
+    module.section(&code);
+    let bytes = module.finish();
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let sandbox = sandbox();
+    let Err(LoadError::Internal(why)) = sandbox.load_bytes(&bytes, &like) else {
+        panic!("a start section is refused");
+    };
+    assert!(why.contains("start function"), "{why}");
+    assert!(!sandbox.is_kept(&bytes));
+    assert_eq!(sandbox.linked(), 0);
+}
+
 // ---- failures and limits ----
 
 #[test]
@@ -1332,6 +1359,24 @@ fn ac_sbx_08_the_watchdog_is_asked_at_every_tick_until_it_stops_the_module() {
     assert_eq!(stopped.result, Err(Error::Interrupted.into()));
     assert_eq!(stopped.backstop, None);
     assert_eq!(asked.load(Ordering::SeqCst), 3);
+}
+
+#[test]
+fn ac_sbx_08_a_watchdog_out_of_time_during_the_hosts_setup_is_vl0603_not_vl0607() {
+    // The epoch passes its deadline while the host instantiates the module and writes its inputs, as it does when the
+    // ticker fires then: the watchdog is first asked at the call, so the run started and is stopped by it there.
+    let asked = Arc::new(AtomicU64::new(0));
+    let count = Arc::clone(&asked);
+    let watchdog = Interrupt::new(move || {
+        count.fetch_add(1, Ordering::SeqCst);
+        true
+    });
+    let program = sandbox().load(&squares()).expect("loads").with_ticks_before_call(2);
+    let late = program.run(&[num(100)], Limits::SYSTEM, &watchdog);
+    assert!(late.started);
+    let failure = late.result.expect_err("stopped");
+    assert_eq!(failure.code(), Code::Timeout);
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
 }
 
 // ---- the cache ----

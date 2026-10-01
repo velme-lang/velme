@@ -203,8 +203,11 @@ impl Run {
 /// What a store holds for one invocation.
 struct Host {
     guard: Guard,
-    /// The run's watchdog, asked at each epoch deadline (D-115).
+    /// The run's watchdog, asked at each epoch deadline from the call of `velme_run` on (D-115).
     interrupt: Interrupt,
+    /// Whether `velme_run` has been called. Until then a deadline only moves on: the watchdog stopping the host's own
+    /// setup would leave a run that never started, `VL0607`, where the goal ran out of time, `VL0603` (D-115, D-121).
+    started: bool,
 }
 
 /// The resource limiter of one invocation: one instance with one memory, which may grow to `memory` bytes, and no
@@ -524,6 +527,8 @@ impl Sandbox {
             signature: like.signature.clone(),
             data_bytes: like.data_bytes(),
             literals: like.literals,
+            #[cfg(test)]
+            ticks_before_call: 0,
         })
     }
 
@@ -602,6 +607,20 @@ pub struct Program {
     signature: Signature,
     data_bytes: u32,
     literals: Literals,
+    /// Ticks of the epoch the tests force between instantiating the module and calling it, so the host's own setup
+    /// meets a deadline whatever the ticker does.
+    #[cfg(test)]
+    ticks_before_call: u64,
+}
+
+#[cfg(test)]
+impl Program {
+    pub(crate) fn with_ticks_before_call(self, ticks: u64) -> Program {
+        Program {
+            ticks_before_call: ticks,
+            ..self
+        }
+    }
 }
 
 impl std::fmt::Debug for Program {
@@ -672,11 +691,13 @@ impl Program {
                 memory: usize::try_from(memory).unwrap_or(usize::MAX),
             },
             interrupt: interrupt.clone(),
+            started: false,
         };
         let mut store = Store::new(self.pre.module().engine(), host);
         store.limiter(|host| &mut host.guard);
         store.epoch_deadline_callback(|context| {
-            Ok(if context.data().interrupt.stopped() {
+            let host = context.data();
+            Ok(if host.started && host.interrupt.stopped() {
                 UpdateDeadline::Interrupt
             } else {
                 UpdateDeadline::Continue(1)
@@ -689,6 +710,10 @@ impl Program {
         let Ok(instance) = self.pre.instantiate(&mut store) else {
             return run;
         };
+        #[cfg(test)]
+        for _ in 0..self.ticks_before_call {
+            store.engine().increment_epoch();
+        }
         let Some(exports) = Exports::of(&instance, &mut store) else {
             return run;
         };
@@ -705,6 +730,7 @@ impl Program {
         };
         // The first deadline is the call itself: a run that starts past its time is stopped before it runs, and from
         // then on the watchdog is asked at every tick (D-115).
+        store.data_mut().started = true;
         store.set_epoch_deadline(0);
         run.started = true;
         let called = exports.run.call(&mut store, base);
