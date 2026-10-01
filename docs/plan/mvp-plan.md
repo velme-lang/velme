@@ -138,10 +138,29 @@ AC-TYP-06/15, AC-QA-05 and AC-CHK-11 green through the differential harness (D-1
 
 ### M8 — MVP gate
 
-**Read:** `delivery/50` §success criteria, `delivery/51` §gates, `delivery/52` §release.
-**Build:** first reduce the per-run WASM cost in `velme test`, then flip the CLI's `--backend` default to `auto` (D-122);
-`criterion` benchmarks in `benches/` with the WASM ≤ 0.5× interpreter target (`delivery/51` §6, D-118); close the
-checklist above; examples across beginner/intermediate/games/professional; README quick start; `CHANGELOG`; release
-workflow dry run.
-**Exit:** every row in the MVP gate checklist ticked with evidence; AC-CMP-07, AC-QA-04, AC-QA-07, AC-REL-04 green;
-`cargo xtask verify` green; AC coverage audit clean.
+**Read:** `delivery/50` §success criteria, `delivery/51` §gates, `delivery/52` §release; D-125..D-148.
+**Slices:**
+- **S0** spec commit: the M8 decisions D-125..D-148, Q-28 and Q-29 closed, the timeout carry (D-129).
+- **M8a** performance harness before any optimisation: per-crate `criterion` benches, a seeded 1 000-line generator,
+  ignored `ac_cmp_07_*`/`ac_qa_07_*` tests, `cargo xtask gate` (20 fresh-process runs of each `ac_rdm_*`), baseline
+  numbers (D-130, D-131).
+- **M8b** cut the per-run WASM cost, measured with M8a's harness: modules kept per process, reused run threads,
+  background sandbox start (D-133).
+- **M8c** only if WASM is still over 0.5× after M8b: inline add, subtract and compare in emitted code, K re-derived,
+  differential and fuzz run locally (D-126); if it still misses, D-125 applies.
+- **M8d** the bug and backstop notes in `notices[]`, the backstop note always printed, `-v` timings (D-136, D-137).
+- **M8e** flip the CLI's default to `auto` per platform, test cache isolation, verify time before and after (D-134,
+  D-135).
+- **M8f** the 9 criteria with no test of their own name, strict audit, fixture-scrub test (D-138, D-139).
+- **M8g** a human and a JSON snapshot for each diagnostic code, `ac_qa_04_*` (D-140).
+- **M8h** example locks and artifacts, examples-as-tests step, README quick start, CHANGELOG (D-141, D-142).
+- **M8i** release dry run, signing, reproducibility, dependabot, CodeQL, `ac_rel_04_*` (D-143..D-147).
+- **M8j** attended: the live run (D-148) and the checklist evidence.
+
+**Order:** S0 → M8a → M8b → (M8c) → M8d → M8e. M8f, M8g and M8h don't depend on that chain; M8h lands before M8i;
+M8j is attended, last. M8d's `notices[]`, M8c's emitter and K, M8i's workflow permissions and artifact format, and M8b
+if it changes D-120 get an architect review before commit.
+**Exit:** every row in the MVP gate checklist ticked with evidence; AC-CMP-07, AC-QA-04, AC-QA-07 (the WASM row per
+D-125), AC-REL-04 green; `cargo xtask verify` green; `cargo xtask gate` green; AC coverage audit clean in strict mode.
+**User verifies:** the gate report's numbers and live-run transcripts; the dry run's workflow run; turns on secret
+scanning and push protection (D-147); then bumps to `0.1.0-alpha.1` and tags it (D-146).

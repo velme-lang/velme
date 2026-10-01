@@ -103,12 +103,12 @@ would contact no provider prints nothing (D-92).
 |---|---|
 | `SECURITY.md` with private reporting address and supported versions | repo root |
 | `CODEOWNERS` covering the paths listed in `delivery/52` §4 | `.github/` |
-| Dependency scanning (Dependabot + `cargo-deny advisories`) | CI, `delivery/52` |
-| Secret scanning + push protection | GitHub settings |
-| Code scanning (CodeQL for workflows; `cargo clippy` in gate) | CI |
-| Reproducible build check (two builds, same checksum) | release workflow |
-| Signed release artifacts + checksums (Sigstore/cosign or GitHub attestations) | release workflow |
-| Fuzz targets for parser, IR validator, runtime boundary with a smoke run in CI | `delivery/51` |
+| Dependency scanning (Dependabot for cargo and GitHub Actions + `cargo-deny advisories`, D-147) | CI, `delivery/52` |
+| Secret scanning + push protection | GitHub settings, turned on by the owner (D-147) |
+| Code scanning (CodeQL for workflows, D-147; `cargo clippy` in gate) | CI |
+| Reproducible build check (two builds on fresh runners, same checksum, D-145) | release workflow |
+| Signed release artifacts + checksums (GitHub attestations; a throwaway key in a dry run, D-144) | release workflow |
+| Fuzz targets `parse`, `validate` and `differential` (D-118) with a smoke run in CI | `delivery/51` |
 
 ## 7. Acceptance criteria
 

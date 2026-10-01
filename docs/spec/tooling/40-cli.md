@@ -73,9 +73,9 @@ spelling suggestion.
 | `--offline` | off | see R-CLI-05 |
 | `--build` | off | let `run`/`test`/`trace` synthesize stale goals and update the lock first (D-28); together with `--locked` is a usage error (R-CLI-14); the provider flags (`--provider`, `--model`, `--external-url`, `--ollama-url`) are valid only on `build` or together with `--build` (R-CLI-21) |
 | `--jobs N` | available CPUs | worker count for the DAG scheduler (`runtime/30` R-RUN-07); results are identical for every value, including 1 (INV-3) |
-| `--backend interp\|wasm\|auto` | `interp` until the start of M8, then `auto` (D-122) | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3), apart from the always-printed note of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
+| `--backend interp\|wasm\|auto` | `interp` until M8e, then `auto` on each platform that passes D-134's flip test; a platform that fails keeps `interp` for v0.1 (D-122, D-134) | execution backend for leaf goal bodies in `run`/`test`/`trace` (`runtime/31` R-SBX-02, R-SBX-17); output is byte-identical (INV-3), apart from the always-printed note of a leaf `auto` ran on the interpreter because of a bug in Velme (D-123), which `--json` puts in `notices[]` (D-136); a flag only, with no `velme.toml` key; any other value is `VL0902` (R-CLI-21, D-117) |
 | `--config PATH` | nearest `velme.toml` upward from `FILE` | alternative project config: it supplies settings only and does not move the project root (R-CLI-25) |
-| `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds phase timings and cache hits |
+| `-q` / `-v` | normal | `-q` drops progress lines only, never diagnostics, results or the R-SEC-12 notice; `-v` adds one `timing: <phase> <ms>` line on stderr for each of parse, check, lock/load, build and run/test, and the WASM module cache's hits and misses; never in `--json` or a trace (D-137) |
 
 ## 3. Inputs, outputs and learner-facing output
 
@@ -121,7 +121,8 @@ is a file outside the project: a diagnostic about the user-level config carries 
 `ok | failed | pending | blocked | skipped` (`pending` = `VL0408`, `blocked` = `VL0409 SynthesisBlocked`), and is
 `failed` whenever the top-level `diagnostics[]` holds an error: that array carries the diagnostics that belong to the
 file rather than to one goal, such as syntax errors and an unreadable file (D-72); `notices[]`
-carries the R-SEC-12 notice lines as plain strings instead of stderr. A JSON Schema,
+carries as plain strings, instead of stderr, the R-SEC-12 notice lines and, from M8, the always-printed bug notes of
+the WASM backend (`runtime/31` R-SBX-02, R-SBX-12, D-136). A JSON Schema,
 `docs/schemas/velme-cli-1.schema.json`, is this envelope's contract; M6b writes it from the envelope as it stands, and
 because it is a public contract it gets an architect review. The golden suite is every `--json` snapshot test in
 `velme-cli`, each validated against the schema (AC-CLI-12), so the schema and the real output cannot drift apart (D-108).
@@ -333,7 +334,7 @@ stderr when it is a TTY, and `NO_COLOR` set to any value disables both. `always`
 | `VELME_MODEL` | model id override |
 | `VELME_EXTERNAL_URL` | the `external` backend's base URL (R-CLI-13) |
 | `VELME_EXTERNAL_TOKEN` | optional bearer token for the `external` backend, sent as `Authorization: Bearer` to the configured URL only; never logged or recorded (`tooling/41` R-SEC-13) |
-| `VELME_LIVE_LLM=1` | enables live-provider tests (`delivery/51`, D-13); ignored by the CLI itself |
+| `VELME_LIVE_LLM=1` | reserved for live-provider tests after v0.1, which has none: its live evidence is a manual CLI run (`delivery/51` §2, D-13, D-148); ignored by the CLI itself |
 | `VELME_SYNTH_RECORD=1` | with a live provider, records every exchange as replay fixtures in `replay_dir` (`compiler/22` R-SYNTH-43) |
 | `VELME_SYNTH_SCRIPT` | path of the `scripted` provider's script file: a JSON array of entries, each a reply document or `{"error": "<variant>"}`, consumed in order across the build. Read, and `--provider scripted` accepted, only by a `velme-cli` built with the `test-provider` Cargo feature, which release builds leave off; elsewhere `scripted` is an unknown provider (`VL0902`) (D-94) |
 | `VELME_OLLAMA_URL` | the Ollama server's base URL (R-CLI-13) |

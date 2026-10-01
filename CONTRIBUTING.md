@@ -59,7 +59,7 @@ Available from M0 (`delivery/51` §4, `tooling/40`):
 | Inner loop | `cargo xtask verify --quick`, or `cargo test -p <crate> [filter]` |
 | Snapshots | `cargo insta test -p <crate>`, then `cargo insta review` |
 | CLI | `cargo run -p velme-cli -- check examples/beginner/hello.velme` |
-| Live LLM tests (opt-in, cost money, never in the gate) | `VELME_LIVE_LLM=1 cargo test -p velme-synth --test live` |
+| Live LLM evidence (by hand, costs money, never in the gate) | `velme build` against `anthropic` in a scratch directory, once per synthesis criterion (D-148) |
 
 Install the snapshot and dependency tools once: `cargo install cargo-insta cargo-deny --locked`.
 

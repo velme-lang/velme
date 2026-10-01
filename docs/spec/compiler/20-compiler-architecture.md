@@ -173,5 +173,5 @@ takes the whole candidate goal and runs it through `velme-runtime`'s scheduler, 
 | AC-CMP-04 | `--json` diagnostics (`tooling/40` R-CLI-08) for every golden error file match their snapshots. |
 | AC-CMP-05 | Editing only a leaf goal's `plan` changes that goal's synthesis key and no ancestor's (D-11). |
 | AC-CMP-06 | A `wired` goal (D-4) builds and runs with no provider configured. |
-| AC-CMP-07 | `analyze` on a generated 1 000-line program completes in < 50 ms on the reference machine (bench). |
+| AC-CMP-07 | `analyze` on a 1 000-line program from a seeded generator completes in < 50 ms on the reference machine (`delivery/51` §6), asserted by an ignored release-mode test that `cargo xtask gate` runs (D-130, D-131). |
 | AC-CMP-08 | `velme-synth`'s public API takes no `&dyn ArtifactStore`; a `cargo xtask deps` check confirms no new dependency edge outside §2 (D-54). |
