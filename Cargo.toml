@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
@@ -12,18 +12,18 @@ authors = ["The Velme contributors"]
 
 [workspace.dependencies]
 # Workspace crates; edges must follow INV-9 (`xtask layering`).
-velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0" }
-velme-syntax = { path = "crates/velme-syntax", version = "0.1.0" }
-velme-builtins = { path = "crates/velme-builtins", version = "0.1.0" }
-velme-sema = { path = "crates/velme-sema", version = "0.1.0" }
-velme-ir = { path = "crates/velme-ir", version = "0.1.0" }
-velme-interp = { path = "crates/velme-interp", version = "0.1.0" }
-velme-check = { path = "crates/velme-check", version = "0.1.0" }
+velme-diagnostics = { path = "crates/velme-diagnostics", version = "0.1.0-alpha.1" }
+velme-syntax = { path = "crates/velme-syntax", version = "0.1.0-alpha.1" }
+velme-builtins = { path = "crates/velme-builtins", version = "0.1.0-alpha.1" }
+velme-sema = { path = "crates/velme-sema", version = "0.1.0-alpha.1" }
+velme-ir = { path = "crates/velme-ir", version = "0.1.0-alpha.1" }
+velme-interp = { path = "crates/velme-interp", version = "0.1.0-alpha.1" }
+velme-check = { path = "crates/velme-check", version = "0.1.0-alpha.1" }
 # No default features: the provider SDKs (`ureq`) come only where a crate asks for them, so the core crates never carry one
 # (AC-REL-03).
-velme-synth = { path = "crates/velme-synth", version = "0.1.0", default-features = false }
-velme-wasm = { path = "crates/velme-wasm", version = "0.1.0" }
-velme-runtime = { path = "crates/velme-runtime", version = "0.1.0" }
+velme-synth = { path = "crates/velme-synth", version = "0.1.0-alpha.1", default-features = false }
+velme-wasm = { path = "crates/velme-wasm", version = "0.1.0-alpha.1" }
+velme-runtime = { path = "crates/velme-runtime", version = "0.1.0-alpha.1" }
 # Never published (`publish = false`) and only ever a dev-dependency: no `version`, so `cargo publish` drops the edge.
 velme-test-support = { path = "crates/velme-test-support" }
 

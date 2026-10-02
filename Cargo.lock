@@ -1571,7 +1571,7 @@ checksum = "b8c0a043c9540bae7c578c88f91dda8bd82e59ae27c21baca69c8b191aaf5a6e"
 
 [[package]]
 name = "velme-builtins"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "proptest",
  "velme-diagnostics",
@@ -1579,7 +1579,7 @@ dependencies = [
 
 [[package]]
 name = "velme-check"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "insta",
  "serde_json",
@@ -1593,7 +1593,7 @@ dependencies = [
 
 [[package]]
 name = "velme-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "async-trait",
  "criterion",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "velme-diagnostics"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "ariadne",
  "insta",
@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "velme-interp"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "insta",
  "serde_json",
@@ -1634,7 +1634,7 @@ dependencies = [
 
 [[package]]
 name = "velme-ir"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "criterion",
@@ -1651,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "velme-runtime"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "arbitrary",
  "async-trait",
@@ -1675,7 +1675,7 @@ dependencies = [
 
 [[package]]
 name = "velme-sema"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "criterion",
  "insta",
@@ -1689,7 +1689,7 @@ dependencies = [
 
 [[package]]
 name = "velme-syntax"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "chumsky",
  "insta",
@@ -1701,7 +1701,7 @@ dependencies = [
 
 [[package]]
 name = "velme-synth"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "async-trait",
  "insta",
@@ -1722,7 +1722,7 @@ dependencies = [
 
 [[package]]
 name = "velme-test-support"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "arbitrary",
  "async-trait",
@@ -1740,7 +1740,7 @@ dependencies = [
 
 [[package]]
 name = "velme-wasm"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "blake3",
  "insta",
@@ -2141,7 +2141,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "serde_json",

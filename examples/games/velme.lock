@@ -7,39 +7,39 @@ file          = "level_summary.velme"
 name          = "CalculateLevelScore"
 signature     = "b3:e434c3348d9b4175ecc0edcf8483f3103fca085f23ac0653259a4a0b78f18545"
 contract_key  = "b3:5c16d6abcbe63439733c829e99c726cd91d99514b9c6bde6b5e7d956b6517e72"
-artifact      = "b3:3612642c4dca0cdffc1b457ef4571e8a780c84cf6979c56d8451f879f998c574"
+artifact      = "b3:73f7761de92987c56d1b999c47d2deb3c06a3f6115210dbf20d65840b522ee15"
 
 [[goal]]
 file          = "level_summary.velme"
 name          = "CalculateReward"
 signature     = "b3:ac6eb91f9492ca8c6f8029049c205a1f4ca970488ff81f1ebcb28e50f0759cd4"
 contract_key  = "b3:d8a244f192489c54fd8ab82b5aa650f0ed9c5c455c9161e6bac5a1d9677f721d"
-artifact      = "b3:82b7b5b0ad65f63ce67df399412d2b102921eb75672a1e00acd76c0abb1cf709"
+artifact      = "b3:636b54000703724c4ea2262dfbcf6296cc26915395dd739ccef51ceae2535c0f"
 
 [[goal]]
 file          = "level_summary.velme"
 name          = "CountEnemies"
 signature     = "b3:d06e8804f0f490c9597d2536924a46b516ca2185b07eb08d22dde13991a21c4f"
 contract_key  = "b3:b317e456bb5ebd329fa8edc47b684c76667617aacea8e41bc15e2711f464d8c2"
-artifact      = "b3:f35f76f0a9bf1fa8af0c3548716a5014a22cdea225f5256f047aa1267f0b0c75"
+artifact      = "b3:286802d16344cfd3e87a1151594da7be5f085a1905ffeb42657c94ac76ee9d0a"
 
 [[goal]]
 file          = "level_summary.velme"
 name          = "CountTreasures"
 signature     = "b3:f058050e7a15e0ac5b39b279c913938ddca63535a94af03bab34d1ba9e81cc38"
 contract_key  = "b3:394d9dff0477137c469d445c0e3e1ddf7f646ee3f1ca7117c56ffa496220bb8a"
-artifact      = "b3:7e44d4269e73ea684aed248c629470b91d283d49f3515abddbac7ed888099c84"
+artifact      = "b3:f25daf53ffc8b3bb3ac1a0889a726ec4fb8016eedfdf0261393ffdca39716a92"
 
 [[goal]]
 file          = "level_summary.velme"
 name          = "CreateLevelSummary"
 signature     = "b3:73aea5438962c2eba8eda6ecf5e2aa3e02a453644a1b7a7ad38439e504cf5f99"
 contract_key  = "b3:30b47101ce494e617426a969fa9b0984fd7c21b7d18d10e2b84fe296b6af2860"
-artifact      = "b3:6548f72a5a864036a9c8d08d1b3a0b24352b87b7edb9f4a3754c6cb7785a4ca3"
+artifact      = "b3:3887a3d0fe24e923d85022281944cc6d0ea3814ef03bde3093fe1197a1a9dddb"
 
 [[goal]]
 file          = "level_summary.velme"
 name          = "RateDifficulty"
 signature     = "b3:e7c29912e8edbaed8b6b830041e68bd833566eaf666166ae3e306a9781900428"
 contract_key  = "b3:3d80c03fece64ebe7112c4e158e2458852b3836af40df78cb43355cce010b872"
-artifact      = "b3:a17ce6c92f7a73ad40d790c1d1a084d14531bf02b8f6fe955438f4ec8169bc50"
+artifact      = "b3:412beae5e563dedd83319ab21eb8195430d9fecddb086bed511b001386762aa2"
