@@ -42,9 +42,11 @@ $ at $3 / $15 per million input / output tokens.
 
 ## Cost, had it built
 
-About 7–8k input tokens per goal, almost all of it the fixed prompt, so a 10-goal program sends about 10 times what
-the baseline sends once. Prompt caching would cut most of the input, but Velme's output alone (8.8k against 6.2k) is
-already past the 1.5× go threshold. Cost per goal is the second risk after expressiveness.
+About 8k input tokens per goal, so a 10-goal program sends about 15 times the baseline's input. Most of it is fixed:
+the reply schema in the tool definition (about 3k tokens) and the prompt prefix (about 2k), which caching would bill at
+0.1×. Output is the harder part: 8.8k tokens for 9 goals, about $0.13, already more than the baseline's whole first-run
+cost ($0.11). With caching on, a 10-goal build projects to about $0.22: about 2× the baseline's first run, about level
+with its $0.25 second run. Cost per goal is the second risk after expressiveness.
 
 ## What the full P1 needs first
 
