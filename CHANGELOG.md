@@ -6,8 +6,10 @@ Versions follow semver (`delivery/52` §5). Version bumps that change a fingerpr
 
 ## [Unreleased]
 
-Nothing is released yet; the first release is to be `0.1.0-alpha.1`, with language `velme/0.1`, IR `0.1` and builtins
-`0.1` (D-146).
+## [0.1.0-alpha.1] - 2026-10-02
+
+The first release, with language `velme/0.1`, IR `0.1` and builtins `0.1` (D-146). Invalidates locks: no (the keys
+hold only the compiler's MAJOR.MINOR; committed artifacts are re-blessed with the new `compiler_version`).
 
 ### Added
 

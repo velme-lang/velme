@@ -2,7 +2,7 @@
 source: crates/velme-cli/tests/locked.rs
 expression: head
 ---
-b3:eb3bdbf705b664b9710a629c28bf70bd19c330c5d02a0b4d01ffe0144fee6dec
+b3:27e0d330aefe3e5ed537d0a7d8eccbcf64b0801b3617d50c649e3dab31887374
 format: velme-artifact/1
 goal: Add
 kind: leaf
@@ -10,7 +10,7 @@ signature: b3:678ccec2a045f67022d91f8236b3d8f802baa08611aa6ea6caed4c95f35e97e7
 contract_key: b3:23cffede3a021067e8a31c602953bb9b15f965876a507b3480749ff6b6ca0ffd
 synthesis_key: b3:378f333d30433132a454d0cd8f5960a53163143fa8b683f99367bc8db18fc78e
 language_version: 0.1
-compiler_version: 0.1.0
+compiler_version: 0.1.0-alpha.1
 ir_version: 0.1
 builtins_version: 0.1
 prompt_version: hand-written

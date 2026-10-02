@@ -7,18 +7,18 @@ file          = "double_then_add_one.velme"
 name          = "AddOne"
 signature     = "b3:888c4a6a609473d2d3f073a1fd90f7bc40115c694ea79f0a36dad08a8a919893"
 contract_key  = "b3:1c35e605cfced26f8dca8d0de178ced7ab62db0c01aed246844f9d9900066231"
-artifact      = "b3:a669dd4c494b42468499dc7ac312f64a72ed06a509519d655811048d59dc20c0"
+artifact      = "b3:8df4e5cdf0f38e1df598db0122b8b45e9ed3462418e0f9902cb2e0fda79af49e"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Double"
 signature     = "b3:a332dbb7cb1dc93349879b4110c117ab31464865a035805932fcf7226847d9f3"
 contract_key  = "b3:259ea3c977c74527bde8a20363a9f82a17280c86664995988d201c0ef9aafe36"
-artifact      = "b3:d68d299a94ad6f5ff04c592065fe5f40bdd4d2ef0694842320832f7850873b84"
+artifact      = "b3:22c1edfca1e0efaabbbd895688b4a02e70b24c029bea5f671ddc8b18e10c20bf"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Main"
 signature     = "b3:8e5521ed45c05724e315850b21fe5060192047626329f20661bf62fe8aaf2d7a"
 contract_key  = "b3:4d7f39c1ee3045db73dbd12e4f14daac3b048738fd7d31d93b58cabbc3221929"
-artifact      = "b3:1fc7b6881656f4961cfb62ba811dc6faf76f5abbfa31004e9a3bb4f47e3ec20c"
+artifact      = "b3:87c9b12814241ed8a1e2d0a8b2163e21af870ba57bb815875f1ce154b401f42f"

@@ -1385,7 +1385,7 @@ mod tests {
 
     #[test]
     fn version_line_is_snapshotted() {
-        insta::assert_snapshot!(version_line(), @"velme 0.1.0");
+        insta::assert_snapshot!(version_line(), @"velme 0.1.0-alpha.1");
     }
 
     #[test]
