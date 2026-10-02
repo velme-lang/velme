@@ -36,7 +36,8 @@ D-103, D-104.
   most 40% of IR JSON's, projected cost per 10-goal build at most $0.11 with caching.
 
 **Order:** S0 → P0a → P0b → P0c → P0d → P0e. P0b's log format gets an architect review before commit (public
-contract); P0d's grammar and lowering get one before commit.
+contract); P0d's grammar and lowering get one before commit. Every review of the IR or a reply format judges token cost
+(input per request, output per goal) as well as correctness.
 **Exit:** `cargo xtask verify` green; the P0e report committed with a pass or fail against its bar.
 **User verifies:** the P0e report; then one live confirmation run (≤ $1) before the notation becomes the default.
 
