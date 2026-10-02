@@ -110,7 +110,8 @@ impl SynthProvider for Recording {
 
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
         let result = self.inner.complete(request, limits).await;
-        // Only what reached the provider's reply is an exchange: a transport failure is not (R-SYNTH-43).
+        // Only what reached the provider's reply is an exchange: a transport failure or a request the provider rejected is
+        // not (R-SYNTH-43).
         let (reply, error, text, usage) = match &result {
             Ok(reply) => (Some(reply.reply_json.clone()), None, None, reply.usage.into()),
             Err(

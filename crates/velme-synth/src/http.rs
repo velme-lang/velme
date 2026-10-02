@@ -1,6 +1,7 @@
 //! What the HTTP providers (`anthropic`, `ollama`, `external`) share: the body cap, the depth allowance for a response envelope, the
 //! agent, and how a failed exchange maps to a [`ProviderError`] (`compiler/22` R-SYNTH-12, D-98). No error text here holds
-//! an address or anything the server sent (R-SYNTH-22).
+//! an address or anything the server sent (R-SYNTH-22), except the API's own message on a rejected request, cleaned and
+//! bounded (R-SYNTH-07, D-150).
 
 use std::time::Duration;
 
@@ -8,6 +9,14 @@ use crate::provider::ProviderError;
 
 /// The most a response body may hold: far above `max_output_tokens` of text, far below a memory problem.
 pub(crate) const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The most of a rejected request's body that is read for its message.
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+const REJECTION_BODY_BYTES: u64 = 64 * 1024;
+
+/// How deeply a rejection's error envelope may nest; the two known ones nest two levels.
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+const REJECTION_DEPTH: usize = 8;
 
 /// The most that resolving a name, and then connecting, may each take.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -79,6 +88,45 @@ pub(crate) fn read_body(response: &mut ureq::http::Response<ureq::Body>) -> Resu
         })
 }
 
+/// A `4xx` that no other variant names (R-SYNTH-07, D-150): `Rejected`, with the string at `pointer` in the body's JSON
+/// (`/error/message` in Anthropic's envelope, `/error` in Ollama's) as its message. `secret` is taken out of it first, so
+/// the cut that bounds it can't leave part of a key; then it is cleaned as one line. A body that can't be read, isn't
+/// JSON or has no string there leaves the message empty.
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+pub(crate) fn rejected(
+    status: u16,
+    response: &mut ureq::http::Response<ureq::Body>,
+    pointer: &str,
+    secret: Option<&str>,
+) -> ProviderError {
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(REJECTION_BODY_BYTES)
+        .read_to_string()
+        .unwrap_or_default();
+    ProviderError::Rejected {
+        status: Some(status),
+        message: rejection_message(&body, pointer, secret),
+    }
+}
+
+/// The cleaned message of a rejection's `body`, as [`rejected`] describes.
+#[cfg(any(feature = "provider-anthropic", feature = "provider-ollama"))]
+fn rejection_message(body: &str, pointer: &str, secret: Option<&str>) -> String {
+    let Ok(doc) = velme_ir::from_json_str_within::<serde_json::Value>(body, REJECTION_DEPTH) else {
+        return String::new();
+    };
+    let Some(text) = doc.pointer(pointer).and_then(serde_json::Value::as_str) else {
+        return String::new();
+    };
+    let text = match secret.filter(|secret| !secret.is_empty()) {
+        Some(secret) => text.replace(secret, "***"),
+        None => text.to_owned(),
+    };
+    crate::attempt::clean_line(&text)
+}
+
 /// A timeout while resolving or connecting is a failure to reach the server; any later one is a [`ProviderError::Timeout`].
 fn connect_phase_timeout(kind: &ureq::Timeout) -> ProviderError {
     match kind {
@@ -103,8 +151,29 @@ pub(crate) fn transport_error(error: ureq::Error) -> ProviderError {
 
 #[cfg(test)]
 mod tests {
-    use super::{connect_phase_timeout, host_of, root_set};
+    use super::{connect_phase_timeout, host_of, rejection_message, root_set};
     use crate::provider::ProviderError;
+
+    /// A rejection's message is the API's own, with the key taken out, cleaned and bounded; anything else is empty
+    /// (R-SYNTH-07, D-150).
+    #[test]
+    fn a_rejection_message_is_the_cleaned_api_message() {
+        let anthropic =
+            r#"{"type":"error","error":{"type":"invalid_request_error","message":"bad\n\u001b[31m  sk-KEY\tthing"}}"#;
+        assert_eq!(
+            rejection_message(anthropic, "/error/message", Some("sk-KEY")),
+            "bad *** thing"
+        );
+        assert_eq!(
+            rejection_message(r#"{"error":"no such thing"}"#, "/error", None),
+            "no such thing"
+        );
+        let long = format!(r#"{{"error":"{}"}}"#, "x".repeat(1000));
+        assert_eq!(rejection_message(&long, "/error", None).chars().count(), 281);
+        for body in ["<html>", r#"{"error":{"type":"x"}}"#, r#"{"error":3}"#, ""] {
+            assert_eq!(rejection_message(body, "/error/message", None), "", "{body}");
+        }
+    }
 
     /// Only a timeout after the request was sent is a `Timeout` (R-SYNTH-12, D-110).
     #[test]

@@ -477,6 +477,20 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             format!("I can't write `{name}` because the external backend wants a token."),
         )
         .with_help("set `VELME_EXTERNAL_TOKEN` to the token the backend expects"),
+        ProviderError::Rejected { status, message } => {
+            let status = status.map(|status| format!(" (HTTP {status})")).unwrap_or_default();
+            let mut d = Diagnostic::new(
+                Code::ProviderNotConfigured,
+                span,
+                format!("I can't write `{name}` because the provider rejected the request{status}."),
+            )
+            .with_help("check that the model takes this kind of request, or choose another model with `--model`");
+            let message = clean_line(message);
+            if !message.is_empty() {
+                d = d.with_note(format!("The provider said: \"{message}\""));
+            }
+            d
+        }
         ProviderError::Unavailable(why) => unavailable(name, span, Some(why)),
         ProviderError::Timeout => unavailable(name, span, Some("the request timed out")),
         ProviderError::RateLimited { .. } => unavailable(name, span, Some("the provider is rate limiting requests")),

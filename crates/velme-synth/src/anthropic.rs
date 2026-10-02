@@ -1,7 +1,9 @@
-//! The `anthropic` provider (`compiler/22` R-SYNTH-05, R-SYNTH-44, D-14, D-98): the Messages API at temperature 0, with
-//! the reply returned through two forced tools, `write_goal` and `ask_question`. The key comes from the environment at
-//! request time and lives in a wrapper that prints `***` (`tooling/41` R-SEC-05, R-SEC-06); no error, `Debug` output or
-//! diagnostic this module makes holds it, or any text the provider sent back (R-SYNTH-22, D-93).
+//! The `anthropic` provider (`compiler/22` R-SYNTH-05, R-SYNTH-44, D-14, D-98, D-150): the Messages API, with the reply
+//! returned through one of two tools, `write_goal` and `ask_question`, which the system prompt tells the model to call;
+//! `tool_choice` is `auto` and no `temperature` is sent, since current models refuse both settings otherwise. The key
+//! comes from the environment at request time and lives in a wrapper that prints `***` (`tooling/41` R-SEC-05,
+//! R-SEC-06); no error, `Debug` output or diagnostic this module makes holds it, or any text the provider sent back but
+//! the cleaned message of a rejected request (R-SYNTH-07, R-SYNTH-22, D-93).
 
 use std::fmt;
 use std::sync::Arc;
@@ -11,7 +13,7 @@ use async_trait::async_trait;
 use serde_json::{Map, Value, json};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
-use crate::http::{agent, read_body, transport_error};
+use crate::http::{agent, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
@@ -27,6 +29,9 @@ const API_VERSION: &str = "2023-06-01";
 /// The tool whose input is a goal's body, and the one whose input is a question (R-SYNTH-44).
 const WRITE_GOAL: &str = "write_goal";
 const ASK_QUESTION: &str = "ask_question";
+
+/// The system prompt: `tool_choice` can't force a tool on current models, so the request asks for one (R-SYNTH-44).
+const SYSTEM: &str = "Answer only by calling exactly one of the two tools, `write_goal` or `ask_question`, once.";
 
 /// An API key. Its `Debug` and `Display` print `***` (R-SEC-06); the text leaves it only into the request header.
 #[derive(Clone, PartialEq, Eq)]
@@ -211,7 +216,7 @@ impl Anthropic {
         }
     }
 
-    /// The request body: the conversation of R-SYNTH-11 and the two tools, one of which the model must call.
+    /// The request body: the conversation of R-SYNTH-11, the two tools and the system prompt asking for one of them.
     fn body(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<String, ProviderError> {
         let prompt = render_with(request, &self.config.options.prompt())
             .map_err(|_| ProviderError::Internal("the prompt could not be rendered".to_owned()))?;
@@ -225,20 +230,44 @@ impl Anthropic {
         }
         let first = [prefix, json!({"type": "text", "text": prompt.task})];
         messages.push(json!({"role": "user", "content": first}));
-        for turn in &prompt.retries {
-            let role = match turn.role {
-                Role::User => "user",
-                Role::Assistant => "assistant",
+        // An earlier reply goes back as the tool call it was and its feedback as that call's result; a reply that isn't
+        // a JSON object, and its feedback, stay text (R-SYNTH-11, D-150).
+        let mut call: Option<String> = None;
+        for (n, turn) in prompt.retries.iter().enumerate() {
+            let message = match turn.role {
+                Role::Assistant => match from_json_str_within::<Value>(&turn.text, MAX_JSON_DEPTH) {
+                    Ok(input @ Value::Object(_)) => {
+                        let name = if input.get("question").is_some() && input.get("body").is_none() {
+                            ASK_QUESTION
+                        } else {
+                            WRITE_GOAL
+                        };
+                        let id = format!("toolu_retry_{n}");
+                        let block = json!({"type": "tool_use", "id": id, "name": name, "input": input});
+                        call = Some(id);
+                        json!({"role": "assistant", "content": [block]})
+                    }
+                    _ => {
+                        call = None;
+                        json!({"role": "assistant", "content": [{"type": "text", "text": turn.text}]})
+                    }
+                },
+                Role::User => match call.take() {
+                    Some(id) => json!({"role": "user", "content": [
+                        {"type": "tool_result", "tool_use_id": id, "content": turn.text},
+                    ]}),
+                    None => json!({"role": "user", "content": [{"type": "text", "text": turn.text}]}),
+                },
             };
-            messages.push(json!({"role": role, "content": [{"type": "text", "text": turn.text}]}));
+            messages.push(message);
         }
         let body = json!({
             "model": self.model_for(limits.attempt),
             "max_tokens": limits.max_output_tokens,
-            "temperature": 0,
+            "system": SYSTEM,
             "messages": messages,
             "tools": tools(request, self.config.options.reply_format)?,
-            "tool_choice": {"type": "any"},
+            "tool_choice": {"type": "auto"},
         });
         to_canonical_string(&body).map_err(|_| ProviderError::Internal("the request could not be written".to_owned()))
     }
@@ -270,9 +299,7 @@ impl Anthropic {
             300..=399 | 408 | 500..=599 => Err(ProviderError::Unavailable(format!(
                 "the provider answered with status {status}"
             ))),
-            _ => Err(ProviderError::Internal(format!(
-                "the provider rejected the request with status {status}"
-            ))),
+            _ => Err(rejected(status, &mut response, "/error/message", Some(key.0.as_str()))),
         }
     }
 }
