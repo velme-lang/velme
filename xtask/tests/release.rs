@@ -224,6 +224,8 @@ fn ac_rel_04_builds_are_reproducible_on_fresh_runners() {
     }
     // Git Bash rewrites a leading `/` (D-145): no flag uses the slash form.
     assert!(!build.contains("/Brepro") && !build.contains("=/velme"));
+    // ThinLTO between codegen units named symbols by a hash that differed between the two directories (R-REL-13).
+    assert!(read("Cargo.toml").contains("[profile.release]\ncodegen-units = 1\n"));
 }
 
 /// Every action in the release and CodeQL workflows is pinned by a full commit SHA, as in `ci.yml`.

@@ -79,7 +79,8 @@ log. Each target is built on two fresh runners with no build cache, the second i
 home, and build paths remapped so neither the workspace nor the cargo home appears in the binary: Rust code by
 `--remap-path-prefix`, C code by `-ffile-prefix-map` on Linux and macOS, while on Windows, where `cl.exe` has no prefix
 map, a check that the binary contains neither path enforces it. Also `-Brepro` on Windows, `SOURCE_DATE_EPOCH` set and
-`--locked`; the two builds' binaries must have the same checksum. The dry run builds the version given as its input
+`--locked`, and the release profile builds each crate as one codegen unit (ThinLTO's symbol suffixes between units
+differed between the two directories); the two builds' binaries must have the same checksum. The dry run builds the version given as its input
 (`0.1.0` for M8); the first real release is `0.1.0-alpha.1`, tagged by the owner after the M8 gate (D-146).
 `.github/dependabot.yml` covers cargo and GitHub Actions (D-147).
 
