@@ -294,6 +294,11 @@ fn d_137_verbose_timings_are_on_stderr_only() {
             let loud = velme(&cache, &[&args[..], &["-v"]].concat(), b"");
             assert_eq!((&loud.stdout, loud.code), (&plain.stdout, plain.code), "{args:?}");
             let (timed, rest) = timings(&loud.stderr);
+            // `-v` also says why the disk cache is off, which it always is on Windows (R-SBX-12, R-SBX-13).
+            let rest: String = rest
+                .split_inclusive('\n')
+                .filter(|line| !line.starts_with("note: the compiled-module cache in "))
+                .collect();
             assert_eq!(rest, plain.stderr, "{args:?}");
             assert_eq!(timed, expected, "{args:?}");
             assert!(
