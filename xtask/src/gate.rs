@@ -9,7 +9,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-use crate::verify::{Step, TEST_PROVIDER, scrub_provider_env};
+use crate::verify::{Step, TEST_PROVIDER, in_fresh_home};
 
 /// How many times each `ac_rdm_*` test runs (`delivery/50` R-RDM-04).
 pub const RUNS: usize = 20;
@@ -107,13 +107,7 @@ pub fn ran_one(stdout: &str) -> bool {
 
 /// Runs `command` with the provider settings scrubbed and a fresh, empty home (AC-QA-02), as `verify` runs a step.
 fn scrubbed(mut command: Command) -> Result<std::process::Output> {
-    let home = std::env::temp_dir().join(format!("velme-gate-rdm-home-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).context("creating a home")?;
-    scrub_provider_env(&mut command, &home);
-    let output = command.output().context("running a test binary");
-    let _ = std::fs::remove_dir_all(&home);
-    output
+    in_fresh_home(&mut command, Command::output).context("running a test binary")
 }
 
 /// Builds the default suite, then runs each `ac_rdm_*` test [`RUNS`] times, each in a fresh process, printing its pass

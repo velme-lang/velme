@@ -338,38 +338,10 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
     for import in Import::ALL {
         let (module, name) = (abi::IMPORT_MODULE, import.name());
         match import {
-            Import::NumAdd => linker.func_wrap(
-                module,
-                name,
-                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
-                    called(&mut caller, import);
-                    arithmetic(Number::checked_add, (a, b), (c, d))
-                },
-            ),
-            Import::NumSub => linker.func_wrap(
-                module,
-                name,
-                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
-                    called(&mut caller, import);
-                    arithmetic(Number::checked_sub, (a, b), (c, d))
-                },
-            ),
-            Import::NumMul => linker.func_wrap(
-                module,
-                name,
-                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
-                    called(&mut caller, import);
-                    arithmetic(Number::checked_mul, (a, b), (c, d))
-                },
-            ),
-            Import::NumDiv => linker.func_wrap(
-                module,
-                name,
-                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
-                    called(&mut caller, import);
-                    arithmetic(Number::checked_div, (a, b), (c, d))
-                },
-            ),
+            Import::NumAdd => binary(&mut linker, import, Number::checked_add),
+            Import::NumSub => binary(&mut linker, import, Number::checked_sub),
+            Import::NumMul => binary(&mut linker, import, Number::checked_mul),
+            Import::NumDiv => binary(&mut linker, import, Number::checked_div),
             Import::NumNeg => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
                 called(&mut caller, import);
                 Ok(bits(-number(a, b)?))
@@ -387,22 +359,10 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
                     })
                 },
             ),
-            Import::Abs => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
-                called(&mut caller, import);
-                unary(Function::Abs, a, b)
-            }),
-            Import::Floor => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
-                called(&mut caller, import);
-                unary(Function::Floor, a, b)
-            }),
-            Import::Ceil => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
-                called(&mut caller, import);
-                unary(Function::Ceil, a, b)
-            }),
-            Import::Round => linker.func_wrap(module, name, move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
-                called(&mut caller, import);
-                unary(Function::Round, a, b)
-            }),
+            Import::Abs => monadic(&mut linker, import, Function::Abs),
+            Import::Floor => monadic(&mut linker, import, Function::Floor),
+            Import::Ceil => monadic(&mut linker, import, Function::Ceil),
+            Import::Round => monadic(&mut linker, import, Function::Round),
             Import::Clamp => linker.func_wrap(
                 module,
                 name,
@@ -436,6 +396,30 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
         }?;
     }
     Ok(linker)
+}
+
+/// The import `import`, a checked operation on two numbers (four `i64`s in, one number out).
+fn binary(linker: &mut Linker<Host>, import: Import, op: Arithmetic) -> wasmtime::Result<&mut Linker<Host>> {
+    linker.func_wrap(
+        abi::IMPORT_MODULE,
+        import.name(),
+        move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+            called(&mut caller, import);
+            arithmetic(op, (a, b), (c, d))
+        },
+    )
+}
+
+/// The import `import`, `function` on one number.
+fn monadic(linker: &mut Linker<Host>, import: Import, function: Function) -> wasmtime::Result<&mut Linker<Host>> {
+    linker.func_wrap(
+        abi::IMPORT_MODULE,
+        import.name(),
+        move |mut caller: Caller<'_, Host>, a: i64, b: i64| {
+            called(&mut caller, import);
+            unary(function, a, b)
+        },
+    )
 }
 
 /// Counts a call of `import` in tests, which check which path a run took (D-126); nothing otherwise.

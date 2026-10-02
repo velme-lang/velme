@@ -91,37 +91,45 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
 mod scrub;
 pub use scrub::scrub_provider_env;
 
-/// Numbers the homes of [`run_steps`].
+/// Numbers the homes of [`in_fresh_home`].
 static HOMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Runs `run` on `command` with the provider settings scrubbed and a fresh, empty home (AC-QA-02), removed afterwards.
+pub fn in_fresh_home<T>(command: &mut Command, run: impl FnOnce(&mut Command) -> T) -> T {
+    // Unique within the process too, so two runs at once (tests) never share one.
+    let n = HOMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let home = std::env::temp_dir().join(format!("velme-gate-home-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::create_dir_all(&home);
+    scrub_provider_env(command, &home);
+    let done = run(command);
+    let _ = std::fs::remove_dir_all(&home);
+    done
+}
+
 /// Runs every step (a failure does not stop the rest) and returns the names of the steps that failed. Each step gets a
-/// fresh, empty home of its own, removed afterwards, so no step sees what an earlier one left in it.
+/// fresh, empty home of its own, so no step sees what an earlier one left in it.
 pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<&'static str> {
     let mut failed = Vec::new();
     for step in steps {
         println!("==> {}", step.name);
-        // Unique within the process too, so two runs at once (tests) never share one.
-        let n = HOMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let home = std::env::temp_dir().join(format!("velme-gate-home-{}-{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&home);
-        let _ = std::fs::create_dir_all(&home);
         let mut command = Command::new(&step.program);
         command
             .args(&step.args)
             .envs(step.envs.iter().copied())
             .current_dir(root);
-        scrub_provider_env(&mut command, &home);
-        let passed = if step.one_test {
-            // Captured to count what ran, then shown as it would have been.
-            command.output().is_ok_and(|out| {
-                print!("{}", String::from_utf8_lossy(&out.stdout));
-                eprint!("{}", String::from_utf8_lossy(&out.stderr));
-                out.status.success() && crate::gate::ran_one(&String::from_utf8_lossy(&out.stdout))
-            })
-        } else {
-            command.status().is_ok_and(|s| s.success())
-        };
-        let _ = std::fs::remove_dir_all(&home);
+        let passed = in_fresh_home(&mut command, |command| {
+            if step.one_test {
+                // Captured to count what ran, then shown as it would have been.
+                command.output().is_ok_and(|out| {
+                    print!("{}", String::from_utf8_lossy(&out.stdout));
+                    eprint!("{}", String::from_utf8_lossy(&out.stderr));
+                    out.status.success() && crate::gate::ran_one(&String::from_utf8_lossy(&out.stdout))
+                })
+            } else {
+                command.status().is_ok_and(|s| s.success())
+            }
+        });
         if !passed {
             failed.push(step.name);
         }
