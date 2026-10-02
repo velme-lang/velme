@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import subprocess
+import shutil
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,8 @@ def trial(args, k):
         toml = f'[synthesis]\nprovider = "anthropic"\nmodel = "{args.model}"\n'
         if args.no_prompt_cache:
             toml += "prompt_cache = false\n"
+        if args.reply_format:
+            toml += f'reply_format = "{args.reply_format}"\n'
         (project / "velme.toml").write_text(toml)
         env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"), "XDG_CACHE_HOME": str(home / ".cache")}
 
@@ -71,6 +74,13 @@ def trial(args, k):
             b = subprocess.CompletedProcess([], -1)  # a build that never finished is a failed build
         meta = {"arm": "velme", "model": args.model, "trial": k, "build_ok": b.returncode == 0, "build_exit": b.returncode,
                 "wall_s": round(time.monotonic() - t0, 2), **read_synth_log(project)}
+        keep = Path(args.out) / f"trial-{k}" / "build"  # what the build said, for diagnosing a failed trial
+        keep.mkdir(parents=True, exist_ok=True)
+        (keep / "stdout.json").write_text(b.stdout or "")
+        (keep / "stderr.txt").write_text(b.stderr or "")
+        for f in (project / ".velme" / "synth-log.jsonl", project / "velme.lock"):
+            if f.is_file():
+                shutil.copy(f, keep / f.name)
         if not meta["build_ok"]:
             rows = [{"id": c["id"], "output": None, "error": "build failed"} for c in cases]
             return rows, meta
@@ -98,6 +108,7 @@ def main():
     ap.add_argument("--velme", type=Path, default=DEFAULT_VELME)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--no-prompt-cache", action="store_true", help="velme.toml prompt_cache = false, so the log's tokens_in is the full input")
+    ap.add_argument("--reply-format", choices=["ir-json", "compact"], help="velme.toml reply_format (default: Velme's own)")
     args = ap.parse_args()
     for k in range(1, args.trials + 1):
         rows, meta = trial(args, k)
