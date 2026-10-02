@@ -31,6 +31,8 @@ One decision record with ten fields, computed as below. All arithmetic is exact 
    - Monthly fee: 20.00 for `"STANDARD LOAN"`, 25.00 for `"SPECIAL LOAN"`.
    - Monthly repayment, with `r` = annual rate / 12 and `n` = term:
      `(amount × r) / (1 − (1 + r)^(−n))`.
+   - A product whose rate is not above 0 or above 1, or whose term is not a whole number from 1 to 600, has no
+     repayment: its installment is the monthly fee alone.
 4. **Pre-bureau affordability** (true or false), using the pre-bureau risk category:
    - Disposable income = monthly income − (monthly repayments + monthly expenses).
    - Credit contingency factor by risk category: `"HIGH"` or `"DECLINE"` → 0.6; `"MEDIUM"` → 0.7; `"LOW"` or
