@@ -299,7 +299,10 @@ impl Anthropic {
             300..=399 | 408 | 500..=599 => Err(ProviderError::Unavailable(format!(
                 "the provider answered with status {status}"
             ))),
-            _ => Err(rejected(status, &mut response, "/error/message", Some(key.0.as_str()))),
+            400..=499 => Err(rejected(status, &mut response, "/error/message", Some(key.0.as_str()))),
+            _ => Err(ProviderError::Internal(format!(
+                "the provider answered with status {status}"
+            ))),
         }
     }
 }

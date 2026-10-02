@@ -81,8 +81,11 @@ fn ac_qa_03_audit_counts_an_ignored_test_only_in_a_gate_perf_file() {
     common::write(&dir, "crates/velme-ir/tests/perf.rs", &ignored("xyz_01_timed")).expect("write fixture");
     common::write(&dir, "crates/a/tests/perf.rs", &ignored("xyz_02_not_a_gate_crate")).expect("write fixture");
     common::write(&dir, "crates/velme-ir/tests/t.rs", &ignored("xyz_02_not_perf")).expect("write fixture");
+    // `#[ignore]` before `#[test]` is the same function's; it doesn't reach the next one.
+    let before = "#[ignore]\n#[test]\nfn ac_xyz_03_ignore_first() {}\n#[test]\nfn ac_xyz_02_plain() {}\n";
+    common::write(&dir, "crates/velme-ir/tests/u.rs", before).expect("write fixture");
     let report = ac_audit::audit(&dir).expect("audit");
-    assert_eq!(report.covered.iter().collect::<Vec<_>>(), ["AC-XYZ-01"]);
+    assert_eq!(report.covered.iter().collect::<Vec<_>>(), ["AC-XYZ-01", "AC-XYZ-02"]);
     let ignored: Vec<(String, String)> = report
         .ignored
         .iter()
@@ -96,6 +99,10 @@ fn ac_qa_03_audit_counts_an_ignored_test_only_in_a_gate_perf_file() {
                 "ac_xyz_02_not_a_gate_crate".to_owned()
             ),
             ("crates/velme-ir/tests/t.rs".to_owned(), "ac_xyz_02_not_perf".to_owned()),
+            (
+                "crates/velme-ir/tests/u.rs".to_owned(),
+                "ac_xyz_03_ignore_first".to_owned()
+            ),
         ]
     );
     assert!(!report.passes(false));

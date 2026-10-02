@@ -95,9 +95,15 @@ fn test_criteria(source: &str, ignored_runs: bool) -> (BTreeSet<String>, Vec<Str
     let code = code_only(source);
     let (mut ids, mut misplaced) = (BTreeSet::new(), Vec::new());
     for (at, attribute) in code.match_indices("#[test]") {
-        let Some((name, ignored)) = code.get(at + attribute.len()..).and_then(function_after_attributes) else {
+        let Some((name, ignored_after)) = code.get(at + attribute.len()..).and_then(function_after_attributes) else {
             continue;
         };
+        // The attributes before `#[test]` belong to the same function: the run back to the previous item's end.
+        let before = code.get(..at).unwrap_or_default();
+        let run = before
+            .get(before.rfind([';', '{', '}']).map_or(0, |i| i + 1)..)
+            .unwrap_or_default();
+        let ignored = ignored_after || run.contains("#[ignore");
         let mut parts = name.split('_');
         if let (Some("ac"), Some(area), Some(num)) = (parts.next(), parts.next(), parts.next())
             && !area.is_empty()
