@@ -35,10 +35,10 @@ type Decision:
     routing: Text
 
 goal ApplicationRiskScore(applicant: Applicant) -> Number:
-    plan: "Sum three point values. Age: under 18 gives 0; 18 up to but not including 22 gives 32; 22 up to but not including 26 gives 35; 26 up to but not including 36 gives 40; 36 up to but not including 50 gives 43; 50 or over gives 48. Marital status: \"S\" gives 25, \"M\" gives 45. Employment status: \"UNEMPLOYED\" gives 15, \"STUDENT\" gives 18, \"EMPLOYED\" gives 45, \"SELF-EMPLOYED\" gives 36."
+    plan: "Sum three point values. Age: 18 up to but not including 22 gives 32; 22 up to but not including 26 gives 35; 26 up to but not including 36 gives 40; 36 up to but not including 50 gives 43; 50 or over gives 48. Marital status: \"S\" gives 25, \"M\" gives 45. Employment status: \"UNEMPLOYED\" gives 15, \"STUDENT\" gives 18, \"EMPLOYED\" gives 45, \"SELF-EMPLOYED\" gives 36."
     examples:
         - ApplicationRiskScore(Applicant(age: 51, marital_status: "M", employment_status: "EMPLOYED", existing_customer: false, monthly_income: 10000, monthly_repayments: 2500, monthly_expenses: 3000)) == 138
-        - ApplicationRiskScore(Applicant(age: 17, marital_status: "S", employment_status: "STUDENT", existing_customer: false, monthly_income: 500, monthly_repayments: 0, monthly_expenses: 100)) == 43
+        - ApplicationRiskScore(Applicant(age: 18, marital_status: "S", employment_status: "STUDENT", existing_customer: false, monthly_income: 500, monthly_repayments: 0, monthly_expenses: 100)) == 75
         - ApplicationRiskScore(Applicant(age: 30, marital_status: "S", employment_status: "SELF-EMPLOYED", existing_customer: true, monthly_income: 4000, monthly_repayments: 300, monthly_expenses: 1200)) == 101
 
 goal PreBureauRiskCategory(existing_customer: Boolean, score: Number) -> Text:

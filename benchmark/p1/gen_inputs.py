@@ -17,10 +17,10 @@ import reference as ref  # noqa: E402
 from common import dumps  # noqa: E402
 
 CENT = D("0.01")
-AGE_PTS = [(16, 0), (17, 0), (18, 32), (21, 32), (22, 35), (25, 35), (26, 40), (35, 40), (36, 43), (49, 43), (50, 48), (80, 48)]
+AGE_PTS = [(18, 32), (21, 32), (22, 35), (25, 35), (26, 40), (35, 40), (36, 43), (49, 43), (50, 48), (80, 48)]
 MARITAL = ["S", "M"]
 EMPLOYMENT = ["UNEMPLOYED", "STUDENT", "EMPLOYED", "SELF-EMPLOYED"]
-AGE_EDGES = [17, 18, 21, 22, 25, 26, 35, 36, 49, 50]
+AGE_EDGES = [18, 19, 21, 22, 25, 26, 35, 36, 49, 50]
 # Score edges: the first score of the next band and the last of the one below, per table (new, existing).
 PRE_EDGES = {False: [100, 120, 130, 131], True: [80, 90, 110, 111]}
 POST_EDGES = {False: [120, 130, 131], True: [100, 101]}
@@ -32,7 +32,7 @@ def points(age, marital, emp):
     return int(ref.application_risk_score({"age": age, "marital_status": marital, "employment_status": emp}))
 
 
-COMBOS = [(a, m, e, points(a, m, e)) for a in range(16, 81) for m in MARITAL for e in EMPLOYMENT]
+COMBOS = [(a, m, e, points(a, m, e)) for a in range(18, 81) for m in MARITAL for e in EMPLOYMENT]
 REACHABLE = sorted({c[3] for c in COMBOS})
 
 
@@ -48,7 +48,7 @@ def cents(rng, lo=0, hi=50000):
 
 
 def rand_applicant(rng, **fix):
-    a = {"age": rng.randint(16, 80), "marital_status": rng.choice(MARITAL), "employment_status": rng.choice(EMPLOYMENT),
+    a = {"age": rng.randint(18, 80), "marital_status": rng.choice(MARITAL), "employment_status": rng.choice(EMPLOYMENT),
          "existing_customer": rng.random() < 0.5, "monthly_income": cents(rng), "monthly_repayments": cents(rng),
          "monthly_expenses": cents(rng)}
     a.update(fix)

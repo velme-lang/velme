@@ -1,6 +1,6 @@
 [
 {"function": "application_risk_score", "args": [{"age": 51, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 10000, "monthly_repayments": 2500, "monthly_expenses": 3000}], "expected": 138},
-{"function": "application_risk_score", "args": [{"age": 17, "marital_status": "S", "employment_status": "STUDENT", "existing_customer": false, "monthly_income": 500, "monthly_repayments": 0, "monthly_expenses": 100}], "expected": 43},
+{"function": "application_risk_score", "args": [{"age": 18, "marital_status": "S", "employment_status": "STUDENT", "existing_customer": false, "monthly_income": 500, "monthly_repayments": 0, "monthly_expenses": 100}], "expected": 75},
 {"function": "application_risk_score", "args": [{"age": 30, "marital_status": "S", "employment_status": "SELF-EMPLOYED", "existing_customer": true, "monthly_income": 4000, "monthly_repayments": 300, "monthly_expenses": 1200}], "expected": 101},
 {"function": "pre_bureau_risk_category", "args": [false, 138], "expected": "VERY LOW"},
 {"function": "pre_bureau_risk_category", "args": [false, 110], "expected": "MEDIUM"},

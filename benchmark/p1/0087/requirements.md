@@ -6,7 +6,7 @@ sees the DMN model, the oracle or the held-out inputs.
 
 ## Inputs
 
-- **Applicant:** age (whole years), marital status (`"S"` or `"M"`), employment status (`"EMPLOYED"`,
+- **Applicant:** age (whole years, 18 to 120), marital status (`"S"` or `"M"`), employment status (`"EMPLOYED"`,
   `"SELF-EMPLOYED"`, `"STUDENT"` or `"UNEMPLOYED"`), whether they are an existing customer, and their monthly income,
   monthly repayments and monthly expenses.
 - **Requested product:** product type (`"STANDARD LOAN"` or `"SPECIAL LOAN"`), annual interest rate as a fraction
@@ -18,7 +18,7 @@ sees the DMN model, the oracle or the held-out inputs.
 One decision record with ten fields, computed as below. All arithmetic is exact decimal; nothing is rounded.
 
 1. **Application risk score:** the sum of three point values.
-   - Age: under 18 → 0; 18 up to but not including 22 → 32; 22 up to but not including 26 → 35; 26 up to but not
+   - Age: 18 up to but not including 22 → 32; 22 up to but not including 26 → 35; 26 up to but not
      including 36 → 40; 36 up to but not including 50 → 43; 50 or over → 48.
    - Marital status: `"S"` → 25; `"M"` → 45.
    - Employment status: `"UNEMPLOYED"` → 15; `"STUDENT"` → 18; `"EMPLOYED"` → 45; `"SELF-EMPLOYED"` → 36.
