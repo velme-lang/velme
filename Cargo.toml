@@ -76,10 +76,11 @@ indexing_slicing = "warn"
 panic = "warn"
 unreachable = "warn"
 
-# One codegen unit per crate, so no ThinLTO pass between units: its `.llvm.<hash>` symbol suffixes differed between two
-# builds of the same commit in different directories, so release binaries weren't byte-identical (R-REL-13).
+# Fat LTO, so no ThinLTO pass between codegen units: its `.llvm.<hash>` symbol suffixes differed between two builds of
+# the same commit in different directories, so release binaries weren't byte-identical (R-REL-13). One codegen unit per
+# crate fixed that too, but ran the interpreter and the WASM host up to twice as slowly.
 [profile.release]
-codegen-units = 1
+lto = "fat"
 
 # Wasmtime and Cranelift built at `opt-level = 2` in the dev profile, which the test profile inherits: the CLI's tests
 # compile WASM modules on every backend run, and unoptimised Cranelift makes that the slow part of a debug test (D-135).
