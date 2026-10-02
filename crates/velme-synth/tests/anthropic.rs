@@ -63,10 +63,11 @@ fn complete(provider: &Anthropic, request: &SynthRequest) -> Result<SynthReply, 
     block_on(provider.complete(request, &limits()))
 }
 
-/// The request sets temperature 0, forces one of the two tools, carries the goal schema and the question object as
-/// their inputs, and the tool's input comes back as the reply, with usage (R-SYNTH-05, R-SYNTH-44).
+/// The request leaves `tool_choice` to the model and sends no temperature, asks in its system prompt for one of the two
+/// tools, carries the goal schema and the question object as their inputs, and the tool's input comes back as the reply,
+/// with usage (R-SYNTH-05, R-SYNTH-44, D-150, AC-SYNTH-46).
 #[test]
-fn a_request_forces_one_of_two_tools_and_the_tool_input_is_the_reply() {
+fn ac_synth_46_a_request_asks_for_one_of_two_tools_and_the_tool_input_is_the_reply() {
     let (provider, server, sleeper) = mock(
         AnthropicConfig::new("claude-test"),
         [MockResponse::tool_call("write_goal", &goal_reply())],
@@ -91,9 +92,11 @@ fn a_request_forces_one_of_two_tools_and_the_tool_input_is_the_reply() {
     assert_eq!(sent[0].headers["anthropic-version"], "2023-06-01");
     let body = sent[0].json();
     assert_eq!(body["model"], "claude-test");
-    assert_eq!(body["temperature"], 0);
+    assert!(body.get("temperature").is_none(), "no temperature is sent: {body}");
     assert_eq!(body["max_tokens"], 8192);
-    assert_eq!(body["tool_choice"], json!({"type": "any"}));
+    assert_eq!(body["tool_choice"], json!({"type": "auto"}));
+    let system = body["system"].as_str().expect("a system prompt");
+    assert!(system.contains("exactly one") && system.contains("`write_goal`") && system.contains("`ask_question`"));
     let tools = body["tools"].as_array().expect("tools");
     assert_eq!(tools.len(), 2);
     assert_eq!(tools[0]["name"], "write_goal");
@@ -110,6 +113,56 @@ fn a_request_forces_one_of_two_tools_and_the_tool_input_is_the_reply() {
     assert!(goal["$defs"].get("RecordType").is_none() && goal["$defs"].get("CallNode").is_none());
     assert_eq!(tools[1]["input_schema"]["required"], json!(["question"]));
     assert_eq!(body["messages"].as_array().expect("messages").len(), 1);
+}
+
+/// In a retry, an earlier reply goes back as the tool call it was and its feedback as that call's `tool_result`, the ids
+/// paired; a reply that isn't a JSON object, and its feedback, stay text (R-SYNTH-11, D-95, D-150, AC-SYNTH-46).
+#[test]
+fn ac_synth_46_retries_send_earlier_replies_as_tool_calls_and_feedback_as_their_results() {
+    let (provider, server, _) = mock(
+        AnthropicConfig::new("m"),
+        [MockResponse::tool_call("write_goal", &goal_reply())],
+    );
+    let mut request = requests().0;
+    for reply in [
+        r#"{"body":{"kind":"input","name":"n"}}"#,
+        r#"{"question":"Which way?"}"#,
+        "not JSON",
+    ] {
+        request.attempts.push(velme_synth::AttemptFeedback {
+            reply: reply.to_owned(),
+            diagnostics: Vec::new(),
+        });
+    }
+    let mut retry = limits();
+    retry.attempt = 3;
+    block_on(provider.complete(&request, &retry)).expect("a reply");
+    let body = server.requests()[0].json();
+    let messages = body["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 7, "{body}");
+    for (i, (name, input)) in [
+        ("write_goal", json!({"body": {"kind": "input", "name": "n"}})),
+        ("ask_question", json!({"question": "Which way?"})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (call, result) = (&messages[1 + 2 * i], &messages[2 + 2 * i]);
+        assert_eq!(call["role"], "assistant");
+        let block = &call["content"][0];
+        assert_eq!(
+            (&block["type"], &block["name"], &block["input"]),
+            (&json!("tool_use"), &json!(name), &input)
+        );
+        assert_eq!(result["role"], "user");
+        let answer = &result["content"][0];
+        assert_eq!(answer["type"], "tool_result");
+        assert_eq!(answer["tool_use_id"], block["id"], "the ids pair");
+        assert!(answer["content"].as_str().is_some_and(|text| !text.is_empty()));
+    }
+    assert_ne!(messages[1]["content"][0]["id"], messages[3]["content"][0]["id"]);
+    assert_eq!(messages[5]["content"][0], json!({"type": "text", "text": "not JSON"}));
+    assert_eq!(messages[6]["content"][0]["type"], "text");
 }
 
 /// `ask_question`'s input is the question object, returned as the reply (R-SYNTH-44).
@@ -162,14 +215,31 @@ fn a_refusal_or_a_reply_that_is_not_one_tool_call_is_a_failed_attempt() {
     }
 }
 
-/// A rejected key is `KeyRejected` and a missing model `NotConfigured` (both `VL0405`), a request Velme got wrong is
-/// `Internal`, and the provider's body, which here echoes the key, reaches no error (R-SEC-06).
+/// Anthropic's error envelope around `message`, as a `status` response.
+fn api_error(status: u16, message: &str) -> MockResponse {
+    MockResponse::status(
+        status,
+        json!({"type": "error", "error": {"type": "invalid_request_error", "message": message}}).to_string(),
+    )
+}
+
+/// A rejected key is `KeyRejected` and a missing model `NotConfigured` (both `VL0405`), with no body text; any other
+/// `4xx` is `Rejected` (`VL0405`, not retried) with the API's own message, the key taken out of it, cleaned and bounded,
+/// or with none when the body isn't the error envelope (R-SYNTH-07, R-SEC-06, D-150, AC-SYNTH-46).
 #[test]
 fn status_codes_map_to_provider_errors_without_the_body() {
-    let echo = |status| MockResponse::status(status, format!("{{\"error\": \"bad key {KEY}\"}}"));
-    let (provider, _server, sleeper) = mock(
+    let echo = |status| api_error(status, &format!("bad key {KEY}"));
+    let (provider, server, sleeper) = mock(
         AnthropicConfig::new("m"),
-        [echo(401), echo(403), echo(404), echo(400), echo(413)],
+        [
+            echo(401),
+            echo(403),
+            echo(404),
+            api_error(400, "`temperature` is deprecated for this model."),
+            api_error(413, &format!("too\nlarge:\u{1b}[31m {KEY}\t{}", "x".repeat(400))),
+            MockResponse::status(400, format!("<html>bad key {KEY}</html>")),
+            MockResponse::status(422, json!({"error": "not the envelope"}).to_string()),
+        ],
     );
     let request = requests().0;
     for expected in [
@@ -179,12 +249,74 @@ fn status_codes_map_to_provider_errors_without_the_body() {
     ] {
         assert_eq!(complete(&provider, &request), Err(expected));
     }
-    for _ in 0..2 {
-        let error = complete(&provider, &request).expect_err("rejected");
-        assert!(matches!(&error, ProviderError::Internal(_)), "{error:?}");
-        assert!(!format!("{error:?}").contains(KEY));
+    assert_eq!(
+        complete(&provider, &request),
+        Err(ProviderError::Rejected {
+            status: Some(400),
+            message: "`temperature` is deprecated for this model.".to_owned(),
+        })
+    );
+    let Err(ProviderError::Rejected { status, message }) = complete(&provider, &request) else {
+        panic!("rejected")
+    };
+    assert_eq!(status, Some(413));
+    assert!(
+        message.starts_with("too large: *** xxx") && message.ends_with('…'),
+        "{message}"
+    );
+    assert_eq!(message.chars().count(), 281);
+    for status in [400, 422] {
+        assert_eq!(
+            complete(&provider, &request),
+            Err(ProviderError::Rejected {
+                status: Some(status),
+                message: String::new(),
+            })
+        );
     }
+    assert_eq!(server.requests().len(), 7, "a rejected request is not retried");
     assert!(sleeper.waits().is_empty(), "these are not transport failures");
+}
+
+/// The shape a 2026 model answers with, holding fields Velme doesn't read (a tool call's `caller`, more `usage`,
+/// `stop_details`, `container`, `diagnostics`), is read as before (R-SYNTH-44, D-150).
+#[test]
+fn a_reply_with_fields_velme_does_not_read_is_still_the_tool_input() {
+    let response = json!({
+        "model": "claude-sonnet-5-5",
+        "id": "msg_01",
+        "type": "message",
+        "role": "assistant",
+        "content": [{
+            "type": "tool_use",
+            "id": "toolu_01",
+            "name": "write_goal",
+            "input": goal_reply(),
+            "caller": {"type": "direct"},
+        }],
+        "stop_reason": "tool_use",
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+            "input_tokens": 3065,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0},
+            "output_tokens": 93,
+            "output_tokens_details": {"thinking_tokens": 0},
+            "service_tier": "standard",
+            "inference_geo": "not_available",
+        },
+        "container": null,
+        "diagnostics": null,
+    });
+    let (provider, _server, _) = mock(
+        AnthropicConfig::new("claude-sonnet-5-5"),
+        [MockResponse::ok(response.to_string())],
+    );
+    let reply = complete(&provider, &requests().0).expect("a reply");
+    assert_eq!(reply.reply_json, r#"{"body":{"kind":"input","name":"n"},"note":1.5}"#);
+    assert_eq!((reply.usage.input_tokens, reply.usage.output_tokens), (3065, 93));
 }
 
 /// A 429 waits its `retry_after` (at most 30 s) and a 5xx waits 1 s then 2 s, on the injected clock, inside one call

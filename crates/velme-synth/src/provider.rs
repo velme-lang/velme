@@ -133,6 +133,13 @@ pub enum ProviderError {
         /// Whether a token was sent; if not, the backend wants one.
         sent: bool,
     },
+    /// The provider rejected the request with a `4xx` that no other variant names (`VL0405`, not retried, R-SYNTH-07).
+    Rejected {
+        /// The HTTP status; `None` from a replay fixture or script, which keep no status.
+        status: Option<u16>,
+        /// The API's own error message, with any key taken out, cleaned as one line and bounded; empty if it gave none.
+        message: String,
+    },
     /// Unreachable, or a transport failure that outlived its retries (`VL0404`).
     Unavailable(String),
     /// Rate limited, after the allowed waits (`VL0404`).
@@ -175,6 +182,7 @@ impl ProviderError {
             ProviderError::KeyRejected => "key_rejected",
             ProviderError::TokenRejected { sent: true } => "token_rejected",
             ProviderError::TokenRejected { sent: false } => "token_required",
+            ProviderError::Rejected { .. } => "rejected",
             ProviderError::Unavailable(_) => "unavailable",
             ProviderError::RateLimited { .. } => "rate_limited",
             ProviderError::Refused(_) => "refused",
@@ -195,6 +203,10 @@ impl ProviderError {
             "key_rejected" => ProviderError::KeyRejected,
             "token_rejected" => ProviderError::TokenRejected { sent: true },
             "token_required" => ProviderError::TokenRejected { sent: false },
+            "rejected" => ProviderError::Rejected {
+                status: None,
+                message: String::new(),
+            },
             "unavailable" => ProviderError::Unavailable(String::new()),
             "rate_limited" => ProviderError::RateLimited { retry_after: None },
             "refused" => ProviderError::Refused(String::new()),

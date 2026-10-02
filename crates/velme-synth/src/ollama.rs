@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
-use crate::http::{agent_config_trusting, read_body, transport_error};
+use crate::http::{agent_config_trusting, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
@@ -196,9 +196,7 @@ impl Ollama {
             status @ (300..=399 | 408 | 500..=599) => Err(ProviderError::Unavailable(format!(
                 "the server answered with status {status}"
             ))),
-            status => Err(ProviderError::Internal(format!(
-                "the server rejected the request with status {status}"
-            ))),
+            status => Err(rejected(status, &mut response, "/error", None)),
         }
     }
 

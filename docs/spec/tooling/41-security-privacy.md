@@ -67,7 +67,8 @@ D-124).
 **R-SEC-05** Provider API keys come only from environment variables (`tooling/40` §5.2). They are never read from
 `velme.toml`, flags, or files in the project directory.
 **R-SEC-06** Keys are held in a redacting wrapper type whose `Debug`/`Display` print `***`; they never enter
-artifacts, manifests, traces, diagnostics, logs, `--json` output, replay fixtures or panic messages.
+artifacts, manifests, traces, diagnostics, logs, `--json` output, replay fixtures or panic messages; a key the API
+echoes in a rejected request's message is replaced by `***` before the message is shown (`compiler/22` R-SYNTH-07, D-150).
 **R-SEC-07** Recording replay fixtures (`compiler/22` R-SYNTH-43) strips request headers; fixture files contain only
 a hash of each request, the reply body and usage — never the prompt body (D-94). A fixture-scrub test fails the gate
 if a key-shaped string appears in `tests/fixtures`.

@@ -856,6 +856,47 @@ fn ac_synth_39_after_one_vl0404_the_provider_is_not_contacted_again() {
     );
 }
 
+/// A rejected request is `VL0405` naming the status, with the API's message as a note, not `VL0607`; it ends that goal
+/// only, so the next goal still makes its request (R-SYNTH-07, R-SYNTH-45, D-150, AC-SYNTH-46).
+#[test]
+fn r_synth_07_a_rejected_request_is_vl0405_with_the_api_message() {
+    let program = program(SOURCE);
+    let provider = Scripted::new([
+        Step::Error(ProviderError::Rejected {
+            status: Some(400),
+            message: "`temperature` is deprecated\nfor this model.".to_owned(),
+        }),
+        Step::Error(ProviderError::Rejected {
+            status: None,
+            message: String::new(),
+        }),
+    ]);
+    let mut session = Session::new(SynthOptions::default());
+    let runner = LeafRunner::new();
+    let mut diagnostics = Vec::new();
+    for _ in 0..2 {
+        let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task(&program), &runner)) else {
+            panic!("it fails")
+        };
+        assert_eq!(failure.diagnostic.code, Code::ProviderNotConfigured);
+        diagnostics.push(failure.diagnostic);
+    }
+    assert_eq!(provider.calls(), 2);
+    assert_eq!(
+        diagnostics[0].message,
+        "I can't write `Double` because the provider rejected the request (HTTP 400)."
+    );
+    assert_eq!(
+        diagnostics[0].notes,
+        ["The provider said: \"`temperature` is deprecated for this model.\""]
+    );
+    assert_eq!(
+        diagnostics[1].message,
+        "I can't write `Double` because the provider rejected the request."
+    );
+    assert!(diagnostics[1].notes.is_empty());
+}
+
 /// A rejected key is `VL0405` in its own words, and, like `VL0404`, ends all contact: the next goal gets the same
 /// diagnostic with no request (R-SYNTH-45, R-SYNTH-07).
 #[test]

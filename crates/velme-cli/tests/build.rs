@@ -445,6 +445,61 @@ fn a_warm_store_builds_with_no_api_key() {
     );
 }
 
+/// A request the Anthropic API rejects with a `400` ends each goal that sends one with `VL0405`, the status and the API's
+/// own message, quoted, never `VL0607`; the key the mock echoes is taken out (R-SYNTH-07, R-SEC-06, D-150, AC-SYNTH-46,
+/// AC-SEC-05, AC-SYNTH-09).
+#[test]
+fn a_request_the_api_rejects_is_vl0405_with_its_message() {
+    use velme_synth::{AnthropicConfig, SynthOptions};
+    use velme_test_support::mock::{MockResponse, MockServer};
+    use velme_test_support::{RecordingSleeper, mock_anthropic, program};
+
+    const KEY: &str = "sk-ant-mock-0123456789";
+    let dir = project("rejected-request");
+    let parsed = program(SOURCE);
+    let rejection = || {
+        let message = format!("tool_choice: type \"any\" is not supported for this model. {KEY}");
+        let body = serde_json::json!({"type": "error", "error": {"type": "invalid_request_error", "message": message}});
+        MockResponse::status(400, body.to_string())
+    };
+    let server = MockServer::start([rejection(), rejection()]);
+    let anthropic = mock_anthropic(
+        AnthropicConfig::new("claude-test"),
+        &server,
+        KEY,
+        &RecordingSleeper::default(),
+    );
+    let report = velme_runtime::build(
+        &velme_runtime::BuildInput {
+            mode: velme_runtime::Mode::Build,
+            program: &parsed,
+            source: SOURCE,
+            project: &dir,
+            file: "game.velme",
+            backend: Some(&anthropic),
+            options: SynthOptions::default(),
+            run: velme_runtime::Options::default(),
+        },
+        &mut || {},
+    );
+    assert_eq!(server.requests().len(), 2, "each leaf goal sends its request");
+    for name in ["Double", "AddOne"] {
+        let goal = report.goals.iter().find(|g| g.goal == name).expect("the goal");
+        let [diagnostic] = goal.diagnostics.as_slice() else {
+            panic!("one diagnostic: {goal:?}")
+        };
+        assert_eq!(diagnostic.code.as_str(), "VL0405", "{diagnostic:?}");
+        assert_eq!(
+            diagnostic.message,
+            format!("I can't write `{name}` because the provider rejected the request (HTTP 400).")
+        );
+        assert_eq!(
+            diagnostic.notes,
+            ["The provider said: \"tool_choice: type \"any\" is not supported for this model. ***\""]
+        );
+    }
+}
+
 /// `language/12` §8.3 as `examples/beginner/double_then_add_one.velme` has it.
 const WIRED_EXAMPLE: &str = include_str!("../../../examples/beginner/double_then_add_one.velme");
 

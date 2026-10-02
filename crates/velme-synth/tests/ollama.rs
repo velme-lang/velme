@@ -206,7 +206,9 @@ fn a_reply_that_is_not_a_bounded_object_is_malformed() {
     }
 }
 
-/// A 429 and a 5xx wait on the injected clock inside one call, and a 400 is a bug of Velme's (R-SYNTH-12, D-95).
+/// A 429 and a 5xx wait on the injected clock inside one call, and a 400 is `Rejected` with the server's `{"error"}`
+/// text, or none, and not retried; so is a 401 from a proxy in front of it, since Ollama takes no key (R-SYNTH-07,
+/// R-SYNTH-12, D-95, D-150).
 #[test]
 fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
     let (backend, server, sleeper) = mock(
@@ -216,7 +218,9 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
             MockResponse::status(429, ""),
             MockResponse::status(503, ""),
             MockResponse::ollama_chat(&goal_reply()),
+            MockResponse::status(400, r#"{"error":"invalid\noptions"}"#),
             MockResponse::status(400, "bad"),
+            MockResponse::status(401, ""),
         ],
     );
     let provider = backend
@@ -225,8 +229,23 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
     block_on(provider.complete(&request(), &limits())).expect("a reply after two waits");
     assert_eq!(sleeper.waits(), [Duration::from_secs(1), Duration::from_secs(2)]);
     assert_eq!(server.requests().len(), 4);
-    let error = block_on(provider.complete(&request(), &limits())).expect_err("rejected");
-    assert!(matches!(error, ProviderError::Internal(_)), "{error:?}");
+    for message in ["invalid options", ""] {
+        assert_eq!(
+            block_on(provider.complete(&request(), &limits())),
+            Err(ProviderError::Rejected {
+                status: Some(400),
+                message: message.to_owned(),
+            })
+        );
+    }
+    assert_eq!(
+        block_on(provider.complete(&request(), &limits())),
+        Err(ProviderError::Rejected {
+            status: Some(401),
+            message: String::new(),
+        })
+    );
+    assert_eq!(server.requests().len(), 7, "a rejected request is not retried");
 }
 
 /// A chat that gets no answer within `timeout` is `Timeout` at once, not retried (R-SYNTH-12, D-110).

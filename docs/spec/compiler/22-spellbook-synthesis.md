@@ -60,7 +60,9 @@ pub struct SynthRequest { pub request_version: String, pub ir_version: String, p
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
                           pub output_schema: serde_json::Value }             // reply schema: goal body or question (R-SYNTH-10)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
-pub enum  ProviderError { NotConfigured, KeyRejected, TokenRejected, Unavailable(String), RateLimited { retry_after: Option<Duration> },
+pub enum  ProviderError { NotConfigured, ModelMissing(String), KeyRejected, TokenRejected,
+                          Rejected { status: Option<u16>, message: String },     // R-SYNTH-07, D-150: a 4xx no other variant names
+                          Unavailable(String), RateLimited { retry_after: Option<Duration> },
                           Refused(String), Timeout, Malformed(String),
                           BackendFailed { reason: String, body: String },        // R-SYNTH-28: body = cleaned last 4 KiB of the reply
                           Pending(String), File { path: String, reason: String }, // R-SYNTH-43
@@ -77,7 +79,7 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 
 | Provider | Use | Behaviour |
 |---|---|---|
-| `anthropic` | hosted LLM (D-14) | Messages API, temperature 0; output through two tools, `write_goal` (input: `{"body": <expression>}`, D-103) and `ask_question` (input: the question object), with the model forced to call one (R-SYNTH-44) |
+| `anthropic` | hosted LLM (D-14) | Messages API, no `temperature` sent (D-150); output through two tools, `write_goal` (input: `{"body": <expression>}`, D-103) and `ask_question` (input: the question object), with `tool_choice` `auto` and a system prompt telling the model to call exactly one (R-SYNTH-44) |
 | `ollama` | local LLM (D-41) | Ollama chat API at the configured URL, `format` set to the reply JSON Schema (R-SYNTH-10), temperature 0, no streaming; no API key |
 | `external` | human- or tool-written goal bodies (D-42) | speaks the §3.2 protocol over HTTP and JSON to a standalone service the user starts, at the URL the user configures (D-101); Velme starts no process |
 | `replay` | integration tests, golden builds, CI | reads `<replay_dir>/b3-<hex>.json`, named from the synthesis key as store files are (R-SYNTH-43); missing fixture → `VL0404` naming the key; `VELME_SYNTH_RECORD=1` with a live provider writes fixtures |
@@ -102,10 +104,17 @@ text never lands in a fixture. On replay, an entry whose `request` differs from 
 or a request after the last entry, is `VL0404` naming the key and the attempt, with the help "re-record the fixture
 with `VELME_SYNTH_RECORD=1`".
 The recorder (`VELME_SYNTH_RECORD=1` with a live provider) writes every exchange that reached the provider's reply —
-rejected candidates, questions, pending and refused replies included; transport retries are not exchanges — as
-canonical JSON, overwrites the goal's whole fixture file each time it synthesizes that goal, and writes `replay.json`.
-**R-SYNTH-44** `anthropic` sets `tool_choice` so the model must call `write_goal` or `ask_question`; the tool's input
-is the reply (R-SYNTH-10), and a reply with no tool call, both tools or anything else is `Malformed`. Tests reach a
+candidates that failed validation, questions, pending and refused replies included; transport retries are not exchanges,
+and neither is a request the provider rejects (`Rejected`, like `KeyRejected` and `NotConfigured`), so its goal replays
+as the missing-entry `VL0404` — as canonical JSON, overwrites the goal's whole fixture file each time it synthesizes that
+goal, and writes `replay.json`.
+**R-SYNTH-44** `anthropic` sends `tool_choice: {"type": "auto"}` and a system prompt telling the model to answer only
+by calling exactly one of `write_goal` and `ask_question`, since current models reject a forced `tool_choice` and a
+`temperature` (D-150); the tool's input is the reply (R-SYNTH-10), text blocks beside the one tool call are ignored, and
+a reply with no tool call, both tools or anything else is `Malformed`. In a retry, each carried reply that is a JSON
+object goes back as the `tool_use` block it was (`ask_question` for a question object, else `write_goal`), and the user
+turn after it starts with the matching `tool_result` block holding the feedback; a carried reply that isn't one stays a
+text turn, and so does its feedback (R-SYNTH-11, D-150). Tests reach a
 mock server through a base URL set only by the test-only constructor in `velme-test-support`, never by a config key
 or environment variable (D-98).
 **R-SYNTH-07** `ProviderError` mapping: `NotConfigured` → `VL0405`; `KeyRejected` (the API answered 401 or 403 to a key
@@ -113,10 +122,17 @@ that is set) → `VL0405` worded "the API key was rejected" (`reference/90`); `T
 answered 401 or 403) → `VL0405` worded "the external backend rejected the token", with a hint naming `VELME_EXTERNAL_TOKEN`; `File` (a replay file that is a link, is
 not a regular file, is too large or can't be read or written) → `VL0901`; `Unavailable`/`Timeout`/`RateLimited` after
 transport retries → `VL0404`; `Refused`/`Malformed` count as a failed attempt (§5) with `VL0401`, in Velme's own
-wording, never the provider's text (R-SYNTH-22, D-93); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
+wording, never the provider's text (R-SYNTH-22, D-93); `Rejected` (`anthropic` or `ollama` answered a generation
+request, `/v1/messages` or `/api/chat`, with a `4xx` that provider maps to no other variant: for `anthropic` any but
+401/403 `KeyRejected`, 404 `NotConfigured`, 408 and 429; for `ollama`, which sends no key, any but 404 `ModelMissing`,
+408 and 429, so a 401 or 403 from a proxy in front of it is `Rejected`; a `4xx` to Ollama's `/api/tags` stays
+`Unavailable`) → `VL0405` worded "the provider rejected the request (HTTP {status})", not retried, with the API's own
+error message (`error.message` of Anthropic's error envelope, `error` of Ollama's) as a quoted note, the key taken out,
+cleaned and bounded as `BackendFailed`'s reason is, and no note when the body has none: the one provider error text a
+diagnostic shows besides `external`'s (a question, R-SYNTH-33, is shown too) (D-150); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
 not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
 **R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key or a model the API
-doesn't know) or `VL0901` from a replay file, the build contacts the provider no more: every later goal that reaches
+doesn't know; not a `Rejected` request, which may be that goal's alone, D-150) or `VL0901` from a replay file, the build contacts the provider no more: every later goal that reaches
 R-SYNTH-02 step 3 ends with the same code without a request (D-93). A build whose store answers a goal needs no key:
 the Anthropic provider is built without one, its identity step contacts nothing, and only a request ends with `VL0405`.
 **R-SYNTH-24** `ollama` resolves the configured model's digest from the server's `/api/tags` **on the first lock miss in
@@ -206,7 +222,8 @@ The prompt is rendered from `SynthRequest` (§3) with a versioned template in `c
 per task kind (`leaf`, `composite`), each holding its retry-turn text too. `prompt_version` is one value covering every template: their
 ids + BLAKE3 of all the template bytes (an edit to one re-keys every goal), the compact alias table (R-SYNTH-36) and the schema summary lines (R-SYNTH-35), so
 an edit to any of them, or to an option that shapes the prompt (R-SYNTH-40), changes synthesis keys (D-11, D-97). It does
-not cover the code that renders a template or the providers' tool descriptions: like any compiler code change, an edit
+not cover the code that renders a template or the providers' tool descriptions and request settings (the `anthropic`
+system prompt, `tool_choice`, `temperature`, the shape of retry turns): like any compiler code change, an edit
 there re-keys nothing (`runtime/32` R-ART-04). Both LLM providers share the templates. The table below is also the content of `SynthRequest`; the external protocol (§3.2)
 sends the same fields as structured JSON.
 
@@ -225,7 +242,8 @@ sends the same fields as structured JSON.
 | Budget | effective budget (runtime/30 §7) | HIR + system caps |
 
 **R-SYNTH-08** The prompt contains nothing outside this table: no file paths, no other goals' plans, no environment,
-no user identity (tooling/41).
+no user identity (tooling/41). The one fixed text beside it is `anthropic`'s system prompt asking for one tool call
+(R-SYNTH-44), which holds nothing from the request and, like the tool descriptions, is not hashed (§4, D-150).
 **R-SYNTH-09** Output is constrained to the reply schema (a `{"body"}` object over the IR expression schema, or a question object, R-SYNTH-10) where
 the provider supports it; Velme still runs its own full validator on every reply — a provider's schema
 guarantee is never trusted.
@@ -283,7 +301,8 @@ attempt 0 ─► validate (21 §6) ─► verify (§6) ─► accepted
 failures the input, the assertion and the actual values) are appended as a new turn and the provider is asked again
 (which earlier replies the turn carries, and when the loop stops early: R-SYNTH-37). For LLM providers the turns are
 real conversation turns: each carried reply as an assistant turn, then one user turn with the diagnostics, rendered
-by the template's retry text (D-95).
+by the template's retry text (D-95); `anthropic` sends a carried reply as the tool call it was and the diagnostics as
+that call's result (R-SYNTH-44, D-150).
 At most `max_retries` (default and cap: 3) retries follow the first attempt.
 **R-SYNTH-12** Transport errors (`RateLimited`, `Unavailable`, `Timeout`) are retried up to 2 times per attempt and do
 not consume a synthesis retry, except that the LLM providers (`anthropic`, `ollama`) never retry a `Timeout` that struck
@@ -573,3 +592,4 @@ leaves the machine (tooling/41).
 | AC-SYNTH-43 | After a reply that reads an input as a `local`, uses a dotted name, names a field or an input that isn't there, the next request's diagnostic lists the goal's inputs (and fields of the record) with types and the node that reads them, and repeats none of the reply's text (R-SYNTH-49, D-104); a composite lists its call results too, `add` on Text points to `concat` and `gt` on Text does not, a built-in named like an operator points to the `binary` or `unary` node and any other unknown built-in gets the callable built-ins, and in `compact` the nodes are named as that format spells them. |
 | AC-SYNTH-44 | A build with a scripted provider appends exactly one line per `complete()` call to `.velme/synth-log.jsonl`, none for a lock or store hit, each with the R-SYNTH-23 keys in order and an injected time; the line holds no plan text, prompt or reply; a log path that is a link, or a write that fails, gives a `-v` notice and the build still succeeds; `.velme/.gitignore` is created with the directory and never overwritten. |
 | AC-SYNTH-45 | The request an `ollama` provider sends carries `max_output_tokens` 2048 and an `anthropic` one 8192 unless configured, and a `Timeout` after the request was sent is not retried by either (one request, `VL0404`), while a refused connection still is (R-SYNTH-12, D-110). |
+| AC-SYNTH-46 | The request an `anthropic` provider sends has `tool_choice` `auto`, a system prompt asking for exactly one of the two tools and no `temperature`; in a retry each earlier reply is a `tool_use` block whose id the next user turn's `tool_result` names; an unnamed `4xx` (a 400) is `VL0405` with the status and the API's message, cleaned, with the key replaced by `***`, and quoted, not retried, and the next goal still sends its request (R-SYNTH-07, R-SYNTH-44, R-SYNTH-45, D-150). |
