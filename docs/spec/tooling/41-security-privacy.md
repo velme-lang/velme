@@ -105,9 +105,11 @@ would contact no provider prints nothing (D-92).
 | `CODEOWNERS` covering the paths listed in `delivery/52` §4 | `.github/` |
 | Dependency scanning (Dependabot for cargo and GitHub Actions + `cargo-deny advisories`, D-147) | CI, `delivery/52` |
 | Secret scanning + push protection | GitHub settings, turned on by the owner (D-147) |
+| `CARGO_REGISTRY_TOKEN` as a secret of the `crates-io` environment, deployable only from `v*` tags (D-149) | GitHub settings, set by the owner |
+| A tag ruleset protecting `v*` tags (D-149) | GitHub settings, set by the owner |
 | Code scanning (CodeQL for workflows, D-147; `cargo clippy` in gate) | CI |
 | Reproducible build check (two builds on fresh runners, same checksum, D-145) | release workflow |
-| Signed release artifacts + checksums (GitHub attestations; a throwaway key in a dry run, D-144) | release workflow |
+| Signed release archives + checksums (GitHub attestations, verified with `gh attestation verify`; a throwaway key in a dry run, D-144, D-149) | release workflow |
 | Fuzz targets `parse`, `validate` and `differential` (D-118) with a smoke run in CI | `delivery/51` |
 
 ## 7. Acceptance criteria

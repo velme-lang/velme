@@ -30,13 +30,13 @@ fn cargo_step(name: &'static str, args: &[&str]) -> Step {
     }
 }
 
-/// This binary re-run with a subcommand, so in-process checks report like any other step.
-fn self_step(name: &'static str, subcommand: &str) -> Result<Step> {
+/// This binary re-run with a subcommand and its arguments, so in-process checks report like any other step.
+fn self_step(name: &'static str, args: &[&str]) -> Result<Step> {
     let exe = std::env::current_exe().context("locating the xtask binary")?;
     Ok(Step {
         name,
         program: exe.to_string_lossy().into_owned(),
-        args: vec![subcommand.to_owned()],
+        args: args.iter().map(|a| (*a).to_owned()).collect(),
         envs: Vec::new(),
     })
 }
@@ -74,9 +74,10 @@ pub fn steps(quick: bool) -> Result<Vec<Step>> {
         doc.envs.push(("RUSTDOCFLAGS", "-D warnings"));
         steps.push(doc);
         steps.push(cargo_step("deny", &["deny", "check"]));
-        steps.push(self_step("layering", "layering")?);
-        steps.push(self_step("features", "features")?);
-        steps.push(self_step("ac-audit", "ac-audit")?);
+        steps.push(self_step("layering", &["layering"])?);
+        steps.push(self_step("features", &["features"])?);
+        // Every criterion needs a test (D-139).
+        steps.push(self_step("ac-audit", &["ac-audit", "--strict"])?);
     }
     Ok(steps)
 }

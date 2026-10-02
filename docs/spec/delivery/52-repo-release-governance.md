@@ -62,15 +62,25 @@ no force-push. `CODEOWNERS` covers `docs/spec/`, `crates/velme-ir/`, `crates/vel
 |---|---|---|
 | `ci.yml` | every PR and push to `main` | `cargo xtask verify` on Linux; test job on macOS + Windows; fuzz smoke job on a pinned nightly toolchain, 60 s per target (from M7, D-118); `cargo check --all-targets` on MSRV |
 | `codeql.yml` | every PR and push to `main` | CodeQL code scanning of the workflows (D-147) |
-| `release.yml` | tag `vX.Y.Z[-pre]`; manual dispatch with a `dry_run` input, default true (D-143) | full verify → build Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows x86_64 → release tests → reproducibility check → checksums (`SHA256SUMS`) + signatures → GitHub Release → `cargo publish`. A dry run stops before the GitHub Release: it uploads the binaries, checksums and signatures to the workflow run and runs `cargo publish --workspace --dry-run` |
+| `release.yml` | push of tag `v<version>` (releases); manual dispatch, always a dry run (D-143, D-149) | full verify → build Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows x86_64 → release tests (each binary, on its own platform, prints its version and passes `velme test --locked` on every example) → reproducibility check → archives + checksums (`SHA256SUMS`) + signatures → GitHub Release → `cargo publish`. A dry run stops before the GitHub Release: it uploads the archives, checksums and signatures to the workflow run and runs `cargo publish --workspace --dry-run` |
 | `nightly.yml`, `live-llm.yml` | — | deferred until after v0.1.0-alpha (D-132); the live synthesis evidence is a manual run by the owner (D-148) |
 
-**R-REL-13** Release signing and reproducibility (D-144, D-145). A real release signs with GitHub artifact attestations,
-and only its job is granted `id-token: write`; a dry run signs with a throwaway key and writes nothing to a public
-transparency log. Each target is built on two fresh runners with no build cache, build paths remapped so neither the
-workspace nor the cargo home appears in the binary (Rust and C dependencies), `/Brepro` on Windows, `SOURCE_DATE_EPOCH`
-set and `--locked`; the two builds' checksums must match. The dry run builds the version given as its input (`0.1.0`
-for M8); the first real release is `0.1.0-alpha.1`, tagged by the owner after the M8 gate (D-146).
+**R-REL-13** Release signing and reproducibility (D-144, D-145, D-149). Only a push of the tag `v<version>`, where
+`<version>` matches `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, equals the workspace version and names a commit on
+`main`, releases; a manual run is always a dry run. A release is one archive per target,
+`velme-<version>-<target>.tar.gz` (Linux, macOS) or `.zip` (Windows), holding `velme[.exe]`, `LICENSE-MIT`,
+`LICENSE-APACHE`, `README.md` and a generated `THIRD-PARTY-LICENSES.txt`, built with fixed file order, times and owners;
+`SHA256SUMS` (`sha256sum` format) lists the archives. The Linux binaries are built on Ubuntu 22.04 and need glibc 2.35 or
+later. A real release signs with GitHub artifact attestations over the archives, and only its job is granted
+`id-token: write`; the Sigstore bundle is attached as `velme-<version>.sigstore.json`, and a user verifies an archive with
+`gh attestation verify <file> --repo velme-lang/velme --signer-workflow velme-lang/velme/.github/workflows/release.yml
+--source-ref refs/tags/v<version>`. A dry run signs with a throwaway key and writes nothing to a public transparency
+log. Each target is built on two fresh runners with no build cache, the second in another directory with another cargo
+home, and build paths remapped so neither the workspace nor the cargo home appears in the binary: Rust code by
+`--remap-path-prefix`, C code by `-ffile-prefix-map` on Linux and macOS, while on Windows, where `cl.exe` has no prefix
+map, a check that the binary contains neither path enforces it. Also `-Brepro` on Windows, `SOURCE_DATE_EPOCH` set and
+`--locked`; the two builds' binaries must have the same checksum. The dry run builds the version given as its input
+(`0.1.0` for M8); the first real release is `0.1.0-alpha.1`, tagged by the owner after the M8 gate (D-146).
 `.github/dependabot.yml` covers cargo and GitHub Actions (D-147).
 
 **R-REL-12** Git flow (trunk-based; applies now, before CI exists):
@@ -109,7 +119,7 @@ schema count as public API.
 
 | Channel | When | Source of truth |
 |---|---|---|
-| GitHub Releases (binaries + checksums + signatures) | v0.1 | release workflow |
+| GitHub Releases (archives + `SHA256SUMS` + attestation bundle, R-REL-13) | v0.1 | release workflow |
 | crates.io (`velme-cli`, library crates) | v0.1 | same tag |
 | `cargo install velme-cli` | v0.1 | crates.io |
 | Homebrew, winget, Scoop, npm installer, OCI image | later | downstream of GitHub Releases only |
@@ -184,5 +194,5 @@ then filings in the US, EU and target markets.
 | AC-REL-01 | The workspace builds with exactly the D-15 crates and `xtask`; `rust-toolchain.toml` pins the toolchain. |
 | AC-REL-02 | `xtask layering` fails when a test crate edge violating INV-9 is added (e.g. `velme-syntax → velme-runtime`). |
 | AC-REL-03 | Core crates (all but `velme-cli`) build with `--no-default-features` and no provider SDK in their dependency tree. |
-| AC-REL-04 | A release dry run produces binaries for the five targets, checksums and signatures, and two builds of the same commit have identical checksums (R-REL-13); `ac_rel_04_*` checks that `release.yml` has these steps and the dry-run guard (D-143). |
+| AC-REL-04 | A release dry run produces archives for the five targets, checksums and signatures, and two builds of the same commit give binaries with identical checksums (R-REL-13); `ac_rel_04_*` checks that `release.yml` has these steps and the dry-run guard (D-143, D-149). |
 | AC-REL-05 | Every artifact manifest records language, compiler, IR, builtins, prompt and model versions. |

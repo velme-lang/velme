@@ -1,0 +1,25 @@
+# tooling/41 §6 (D-147): dependency updates for cargo and GitHub Actions, each ecosystem's updates in one weekly PR, and
+# only for releases at least 7 days old. `cargo deny check` in the gate covers advisories between updates; a security
+# update ignores the cooldown and the group.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
