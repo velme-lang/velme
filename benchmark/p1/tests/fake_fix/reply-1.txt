@@ -1,0 +1,139 @@
+Here are the files.
+
+```python
+from decimal import Decimal
+
+D = Decimal
+
+
+def application_risk_score(applicant):
+    age = applicant["age"]
+    pts = 0 if age < 18 else 32 if age < 22 else 35 if age < 26 else 40 if age < 36 else 43 if age < 50 else 48
+    pts += {"S": 25, "M": 45}[applicant["marital_status"]]
+    pts += {"UNEMPLOYED": 15, "STUDENT": 18, "EMPLOYED": 45, "SELF-EMPLOYED": 36}[applicant["employment_status"]]
+    return D(pts)
+
+
+def pre_bureau_risk_category(existing_customer, score):
+    if existing_customer:
+        return "DECLINE" if score < 80 else "HIGH" if score < 90 else "MEDIUM" if score <= 110 else "LOW"
+    return "HIGH" if score < 100 else "MEDIUM" if score <= 120 else "LOW" if score <= 130 else "VERY LOW"
+
+
+def required_monthly_installment(product):
+    fee = {"STANDARD LOAN": D("20.00"), "SPECIAL LOAN": D("25.00")}[product["product_type"]]
+    r = product["rate"] / 12
+    return (product["amount"] * r) / (1 - (1 + r) ** (-product["term"])) + fee
+
+
+FACTOR = {"HIGH": D("0.6"), "DECLINE": D("0.6"), "MEDIUM": D("0.7"), "LOW": D("0.8"), "VERY LOW": D("0.8")}
+
+
+def affordability(applicant, risk_category, installment):
+    disposable = applicant["monthly_income"] - (applicant["monthly_repayments"] + applicant["monthly_expenses"])
+    return disposable * FACTOR[risk_category] > installment
+
+
+def eligibility(risk_category, affordable, age):
+    return "INELIGIBLE" if risk_category == "DECLINE" or not affordable or age < 18 else "ELIGIBLE"
+
+
+def bureau_call_type(risk_category):
+    return {"HIGH": "FULL", "MEDIUM": "FULL", "LOW": "MINI", "VERY LOW": "NONE", "DECLINE": "NONE"}[risk_category]
+
+
+def strategy(eligibility, bureau_call_type):
+    if eligibility == "INELIGIBLE":
+        return "DECLINE"
+    return "BUREAU" if bureau_call_type == "NONE" else "THROUGH"
+
+
+def post_bureau_risk_category(existing_customer, score, credit_score):
+    if existing_customer:
+        lo, hi = (580, 600) if score <= 100 else (590, 615)
+    elif score > 130:
+        return "VERY LOW"
+    else:
+        lo, hi = (590, 610) if score < 120 else (600, 625)
+    return "HIGH" if credit_score < lo else "MEDIUM" if credit_score <= hi else "LOW"
+
+
+def routing(risk_category, affordable, bankrupt, credit_score):
+    if not affordable or bankrupt:
+        return "DECLINE"
+    return "REFER" if risk_category == "HIGH" or credit_score < 580 else "ACCEPT"
+
+
+def decide_loan(applicant, product, bureau):
+    score = application_risk_score(applicant)
+    pre = pre_bureau_risk_category(applicant["existing_customer"], score)
+    inst = required_monthly_installment(product)
+    pre_aff = affordability(applicant, pre, inst)
+    elig = eligibility(pre, pre_aff, applicant["age"])
+    call = bureau_call_type(pre)
+    post = post_bureau_risk_category(applicant["existing_customer"], score, bureau["credit_score"])
+    post_aff = affordability(applicant, post, inst)
+    return {
+        "application_risk_score": score,
+        "pre_bureau_risk_category": pre,
+        "required_monthly_installment": inst,
+        "pre_bureau_affordability": pre_aff,
+        "eligibility": elig,
+        "bureau_call_type": call,
+        "strategy": strategy(elig, call),
+        "post_bureau_risk_category": post,
+        "post_bureau_affordability": post_aff,
+        "routing": routing(post, post_aff, bureau["bankrupt"], bureau["credit_score"]),
+    }
+```
+
+```python
+import json
+from decimal import Decimal
+
+import pytest
+
+import solution
+
+EXAMPLES = json.loads(r'''[
+{"function": "application_risk_score", "args": [{"age": 51, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 10000, "monthly_repayments": 2500, "monthly_expenses": 3000}], "expected": 138},
+{"function": "application_risk_score", "args": [{"age": 17, "marital_status": "S", "employment_status": "STUDENT", "existing_customer": false, "monthly_income": 500, "monthly_repayments": 0, "monthly_expenses": 100}], "expected": 43},
+{"function": "application_risk_score", "args": [{"age": 30, "marital_status": "S", "employment_status": "SELF-EMPLOYED", "existing_customer": true, "monthly_income": 4000, "monthly_repayments": 300, "monthly_expenses": 1200}], "expected": 101},
+{"function": "pre_bureau_risk_category", "args": [false, 138], "expected": "VERY LOW"},
+{"function": "pre_bureau_risk_category", "args": [false, 110], "expected": "MEDIUM"},
+{"function": "pre_bureau_risk_category", "args": [true, 75], "expected": "DECLINE"},
+{"function": "pre_bureau_risk_category", "args": [true, 100], "expected": "MEDIUM"},
+{"function": "required_monthly_installment", "args": [{"product_type": "STANDARD LOAN", "rate": 0.08, "term": 36, "amount": 0}], "expected": 20},
+{"function": "required_monthly_installment", "args": [{"product_type": "SPECIAL LOAN", "rate": 0.05, "term": 12, "amount": 0}], "expected": 25},
+{"function": "affordability", "args": [{"age": 40, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 5000, "monthly_repayments": 500, "monthly_expenses": 1500}, "LOW", 2000], "expected": true},
+{"function": "affordability", "args": [{"age": 40, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 5000, "monthly_repayments": 500, "monthly_expenses": 1500}, "HIGH", 2000], "expected": false},
+{"function": "affordability", "args": [{"age": 40, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 5000, "monthly_repayments": 500, "monthly_expenses": 1500}, "MEDIUM", 2100], "expected": false},
+{"function": "eligibility", "args": ["LOW", true, 30], "expected": "ELIGIBLE"},
+{"function": "eligibility", "args": ["DECLINE", true, 30], "expected": "INELIGIBLE"},
+{"function": "eligibility", "args": ["LOW", true, 17], "expected": "INELIGIBLE"},
+{"function": "eligibility", "args": ["LOW", false, 40], "expected": "INELIGIBLE"},
+{"function": "bureau_call_type", "args": ["MEDIUM"], "expected": "FULL"},
+{"function": "bureau_call_type", "args": ["LOW"], "expected": "MINI"},
+{"function": "bureau_call_type", "args": ["DECLINE"], "expected": "NONE"},
+{"function": "strategy", "args": ["INELIGIBLE", "FULL"], "expected": "DECLINE"},
+{"function": "strategy", "args": ["ELIGIBLE", "MINI"], "expected": "BUREAU"},
+{"function": "strategy", "args": ["ELIGIBLE", "NONE"], "expected": "THROUGH"},
+{"function": "post_bureau_risk_category", "args": [false, 110, 600], "expected": "MEDIUM"},
+{"function": "post_bureau_risk_category", "args": [false, 125, 650], "expected": "LOW"},
+{"function": "post_bureau_risk_category", "args": [false, 140, 300], "expected": "VERY LOW"},
+{"function": "post_bureau_risk_category", "args": [true, 90, 570], "expected": "HIGH"},
+{"function": "post_bureau_risk_category", "args": [true, 105, 620], "expected": "LOW"},
+{"function": "routing", "args": ["LOW", true, false, 650], "expected": "ACCEPT"},
+{"function": "routing", "args": ["LOW", false, false, 650], "expected": "DECLINE"},
+{"function": "routing", "args": ["MEDIUM", true, true, 650], "expected": "DECLINE"},
+{"function": "routing", "args": ["LOW", true, false, 560], "expected": "REFER"},
+{"function": "routing", "args": ["HIGH", true, false, 700], "expected": "REFER"},
+{"function": "decide_loan", "args": [{"age": 51, "marital_status": "M", "employment_status": "EMPLOYED", "existing_customer": false, "monthly_income": 10000, "monthly_repayments": 2500, "monthly_expenses": 3000}, {"product_type": "STANDARD LOAN", "rate": 0.08, "term": 36, "amount": 0}, {"bankrupt": false, "credit_score": 650}], "expected": {"application_risk_score": 138, "pre_bureau_risk_category": "VERY LOW", "required_monthly_installment": 20, "pre_bureau_affordability": true, "eligibility": "ELIGIBLE", "bureau_call_type": "NONE", "strategy": "THROUGH", "post_bureau_risk_category": "VERY LOW", "post_bureau_affordability": true, "routing": "ACCEPT"}}
+]
+''', parse_float=Decimal, parse_int=Decimal)
+
+
+@pytest.mark.parametrize("ex", EXAMPLES)
+def test_example(ex):
+    assert getattr(solution, ex["function"])(*ex["args"]) == ex["expected"]
+```
