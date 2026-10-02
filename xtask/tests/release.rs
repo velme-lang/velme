@@ -112,6 +112,8 @@ fn ac_rel_04_a_dry_run_verifies_builds_tests_compares_checksums_signs_and_publis
     }
     assert!(build.contains("cargo build --release --locked --target \"$TARGET\" -p velme-cli"));
     assert!(tests.contains("needs: [verify, build]"));
+    // The builds run alongside `verify` (they take nothing from it); what ships waits for both.
+    assert!(!build.contains("needs:") && !build.contains("needs.verify"));
     assert!(tests.contains("find examples -type f -name '*.velme'") && tests.contains("\"$BIN\" test --locked"));
 
     // Never vacuous: all five targets are compared.

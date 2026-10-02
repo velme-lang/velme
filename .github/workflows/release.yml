@@ -71,10 +71,10 @@ jobs:
 
   # D-145: every target is built twice, each time on a fresh runner (`build: [1, 2]`), and `reproducible` compares them.
   # The second build checks out to another directory and uses another cargo home, so the comparison also shows that
-  # neither path reaches the binary.
+  # neither path reaches the binary. The builds start alongside `verify` rather than after it: everything that ships waits
+  # for both, and they need nothing from it.
   build:
     name: build ${{ matrix.build }} (${{ matrix.target }})
-    needs: verify
     strategy:
       fail-fast: false
       matrix:
