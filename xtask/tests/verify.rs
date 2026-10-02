@@ -22,6 +22,14 @@ fn ac_qa_01_verify_runs_every_gate_step() {
     );
 }
 
+/// From M8's exit the audit fails on a criterion with no test (D-139).
+#[test]
+fn ac_qa_03_verify_runs_the_audit_strict() {
+    let steps = verify::steps(false).expect("steps");
+    let audit = steps.iter().find(|s| s.name == "ac-audit").expect("an ac-audit step");
+    assert_eq!(audit.args, ["ac-audit", "--strict"]);
+}
+
 #[test]
 fn ac_qa_01_quick_verify_skips_the_slow_steps() {
     let names: Vec<&str> = verify::steps(true).expect("steps").iter().map(|s| s.name).collect();
