@@ -196,7 +196,10 @@ impl Ollama {
             status @ (300..=399 | 408 | 500..=599) => Err(ProviderError::Unavailable(format!(
                 "the server answered with status {status}"
             ))),
-            status => Err(rejected(status, &mut response, "/error", None)),
+            status @ 400..=499 => Err(rejected(status, &mut response, "/error", None)),
+            status => Err(ProviderError::Internal(format!(
+                "the server answered with status {status}"
+            ))),
         }
     }
 

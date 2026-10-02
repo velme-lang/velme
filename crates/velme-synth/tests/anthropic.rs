@@ -240,6 +240,7 @@ fn status_codes_map_to_provider_errors_without_the_body() {
             MockResponse::status(400, format!("<html>bad key {KEY}</html>")),
             MockResponse::status(422, json!({"error": "not the envelope"}).to_string()),
             api_error(400, "hid\u{200b}den\u{e0041}tag\u{202e}bidi"),
+            api_error(600, "not a 4xx"),
         ],
     );
     let request = requests().0;
@@ -284,7 +285,9 @@ fn status_codes_map_to_provider_errors_without_the_body() {
             message: "hid den tag\u{202e}bidi".to_owned(),
         })
     );
-    assert_eq!(server.requests().len(), 8, "a rejected request is not retried");
+    // Only a `4xx` is the provider rejecting the request; a status outside every class is ours to report (VL0607).
+    assert!(matches!(complete(&provider, &request), Err(ProviderError::Internal(_))));
+    assert_eq!(server.requests().len(), 9, "a rejected request is not retried");
     assert!(sleeper.waits().is_empty(), "these are not transport failures");
 }
 
