@@ -128,7 +128,8 @@ request, `/v1/messages` or `/api/chat`, with a `4xx` that provider maps to no ot
 408 and 429, so a 401 or 403 from a proxy in front of it is `Rejected`; a `4xx` to Ollama's `/api/tags` stays
 `Unavailable`) → `VL0405` worded "the provider rejected the request (HTTP {status})", not retried, with the API's own
 error message (`error.message` of Anthropic's error envelope, `error` of Ollama's) as a quoted note, the key taken out,
-cleaned and bounded as `BackendFailed`'s reason is, and no note when the body has none: the one provider error text a
+its control and format (`Cf`) characters other than bidi controls made spaces, bidi controls kept and escaped when
+shown (R-CLI-17, D-108), and bounded as `BackendFailed`'s reason is (R-SYNTH-33), and no note when the body has none: the one provider error text a
 diagnostic shows besides `external`'s (a question, R-SYNTH-33, is shown too) (D-150); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
 not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
 **R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key or a model the API
@@ -343,8 +344,9 @@ example that shows it or else in the `plan` (language/12 §8.4). Either changes 
 §2), so the next build synthesizes it again and the choice stays in reviewed source (INV-3); an example is also
 verified. Other goals in the build continue. A question is never written to the store or the lock
 and is never cached.
-**R-SYNTH-33** The question is untrusted text (R-SYNTH-22). Control characters, newlines and ANSI escapes included,
-become spaces and whitespace runs collapse to one; the result must then be 1..=280 Unicode scalar values, or the reply
+**R-SYNTH-33** The question is untrusted text (R-SYNTH-22). Control and format (`Cf`) characters other than bidi
+controls, newlines and ANSI escapes included, become spaces and whitespace runs collapse to one; bidi controls are
+kept and escaped when shown (R-CLI-17, D-108). The result must then be 1..=280 Unicode scalar values, or the reply
 is a failed attempt with `VL0401`. It is shown only as a note, quoted and labelled as the AI helper's question, and as
 a plain string in `--json`.
 

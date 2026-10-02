@@ -239,6 +239,7 @@ fn status_codes_map_to_provider_errors_without_the_body() {
             api_error(413, &format!("too\nlarge:\u{1b}[31m {KEY}\t{}", "x".repeat(400))),
             MockResponse::status(400, format!("<html>bad key {KEY}</html>")),
             MockResponse::status(422, json!({"error": "not the envelope"}).to_string()),
+            api_error(400, "hid\u{200b}den\u{e0041}tag\u{202e}bidi"),
         ],
     );
     let request = requests().0;
@@ -274,7 +275,16 @@ fn status_codes_map_to_provider_errors_without_the_body() {
             })
         );
     }
-    assert_eq!(server.requests().len(), 7, "a rejected request is not retried");
+    // Format (`Cf`) characters become spaces, like controls; a bidi control is kept, to be shown escaped (R-SYNTH-33,
+    // R-CLI-17).
+    assert_eq!(
+        complete(&provider, &request),
+        Err(ProviderError::Rejected {
+            status: Some(400),
+            message: "hid den tag\u{202e}bidi".to_owned(),
+        })
+    );
+    assert_eq!(server.requests().len(), 8, "a rejected request is not retried");
     assert!(sleeper.waits().is_empty(), "these are not transport failures");
 }
 

@@ -981,6 +981,25 @@ fn r_sbx_12_the_backstops_fire_behind_the_deterministic_limits() {
     assert_eq!((hoarded.backstop, hoarded.spent.memory), (Some(Backstop::Memory), 0));
 }
 
+/// The setup before `velme_run` has Wasmtime fuel of its own, not the run's backstop: a `velme_alloc` that never
+/// returns stops there, before the module starts and before the watchdog is asked, as `VL0607` (R-SBX-07).
+#[test]
+fn r_sbx_07_the_setup_runs_on_fuel_of_its_own() {
+    let mut assembly = Assembly::default();
+    runtime::define(&mut assembly);
+    let mut spin = Func::new(&[V::I32], &[V::I32]);
+    spin.ops([I::Loop(Empty), I::Br(0), I::End, I::I32Const(0)]);
+    let alloc = assembly.push(spin);
+    let mut f = Func::new(&[V::I32], &[V::I32]);
+    f.op(I::LocalGet(0));
+    let run = assembly.push(f);
+    let bytes = assembly.finish(&[], alloc, run).expect("a module");
+    let like = goal("x: Number -> Number", "", &input("x"));
+    let stuck = run_hostile(&bytes, &like, &[num(1)], Limits::SYSTEM);
+    assert!(!stuck.started);
+    assert_eq!(stuck.result, internal());
+}
+
 #[test]
 fn the_memory_a_run_may_have_is_its_limit_in_pages_under_4_gib() {
     use crate::code::PAGE_BYTES;

@@ -77,7 +77,8 @@ the pass counts as `delivery/50` R-RDM-04's evidence; `cargo xtask verify` does 
 
 `xtask ac-audit` greps every `AC-[A-Z]+-\d+` defined in `docs/spec/**` (the acceptance tables) and every `#[test]`
 function name under `crates/**` and `tests/**`, lowercasing ids. It fails when a criterion has no test, and lists tests
-citing unknown criteria, which always fail. Without `--strict` it lists the criteria with no test but does not fail;
+citing unknown criteria, which always fail. An `#[ignore]`d test counts only in a `crates/<c>/tests/perf.rs` that
+`cargo xtask gate` runs; one anywhere else is listed with its file and always fails (D-139). Without `--strict` it lists the criteria with no test but does not fail;
 from M8's exit `cargo xtask verify` runs it with `--strict`, so a new criterion ships with its test (D-139).
 
 ## 6. Performance targets
@@ -105,7 +106,7 @@ numbers go in the gate report (D-132).
 |---|---|
 | AC-QA-01 | `cargo xtask verify` runs all §4 steps and exits non-zero if any step fails. |
 | AC-QA-02 | The default test suite passes with networking disabled and no API key set. |
-| AC-QA-03 | `xtask ac-audit` fails when an `AC-*` id is added to a spec with no matching test. |
+| AC-QA-03 | `xtask ac-audit` fails when an `AC-*` id is added to a spec with no matching test, and when an ignored `ac_*` test is outside the perf files `cargo xtask gate` runs (D-139). |
 | AC-QA-04 | Every `VLnnnn` code in `reference/90` is triggered by a golden test. |
 | AC-QA-05 | The determinism tests in §3 pass on Linux, macOS and Windows. |
 | AC-QA-06 | Each fuzz target runs a 60-second smoke without crash in the pinned-nightly CI job; on stable, `ac_qa_06_*` replays the committed corpora without crash and fails if the workflow omits a target (D-118). |

@@ -86,6 +86,12 @@ fn run() -> Result<ExitCode> {
             for id in &report.unknown {
                 println!("ac-audit: a test cites unknown criterion {id}");
             }
+            for (file, test) in &report.ignored {
+                println!(
+                    "ac-audit: {} ignores {test}, which no gate runs (only a perf file's may be ignored)",
+                    file.display()
+                );
+            }
             if flag("--list") || flag("--strict") {
                 for id in &uncovered {
                     println!("ac-audit: no test for {id}");

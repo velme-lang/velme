@@ -1,7 +1,7 @@
 //! Coverage audit (`delivery/51` §5): every spec `AC-*` has a `#[test]` function named for it.
 //!
-//! Uncovered criteria are listed, and fail only under `--strict` (AC-QA-03, D-139); tests citing an unknown criterion
-//! always fail.
+//! Uncovered criteria are listed, and fail only under `--strict` (AC-QA-03, D-139); tests citing an unknown criterion,
+//! and ignored tests outside the perf files `cargo xtask gate` runs, always fail.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -21,6 +21,9 @@ pub struct Report {
     pub covered: BTreeSet<String>,
     /// Criteria cited by a test but defined nowhere in the spec.
     pub unknown: BTreeSet<String>,
+    /// Ignored `ac_*` tests outside a [`crate::gate::PERF_CRATES`] `tests/perf.rs`, which no gate runs: (file relative
+    /// to the root, test name).
+    pub ignored: BTreeSet<(PathBuf, String)>,
 }
 
 impl Report {
@@ -31,7 +34,7 @@ impl Report {
 
     /// Whether the audit passes; `strict` also requires every criterion to be covered.
     pub fn passes(&self, strict: bool) -> bool {
-        self.unknown.is_empty() && (!strict || self.covered.len() == self.defined.len())
+        self.unknown.is_empty() && self.ignored.is_empty() && (!strict || self.covered.len() == self.defined.len())
     }
 }
 
@@ -42,11 +45,14 @@ pub fn audit(root: &Path) -> Result<Report> {
         let text = fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
         defined.extend(text.lines().filter_map(criterion_in_table_row));
     }
-    let mut cited = BTreeSet::new();
+    let (mut cited, mut ignored) = (BTreeSet::new(), BTreeSet::new());
     for dir in TEST_ROOTS {
         for file in files_with_extension(&root.join(dir), "rs")? {
             let text = fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
-            cited.extend(test_criteria(&text));
+            let relative = file.strip_prefix(root).unwrap_or(&file).to_path_buf();
+            let (ids, misplaced) = test_criteria(&text, is_perf_file(&relative));
+            cited.extend(ids);
+            ignored.extend(misplaced.into_iter().map(|name| (relative.clone(), name)));
         }
     }
     let covered = defined.intersection(&cited).cloned().collect();
@@ -55,7 +61,15 @@ pub fn audit(root: &Path) -> Result<Report> {
         defined,
         covered,
         unknown,
+        ignored,
     })
+}
+
+/// Whether `file` is `crates/<c>/tests/perf.rs` for a crate whose perf tests `cargo xtask gate` runs, ignored ones
+/// included (D-139).
+fn is_perf_file(file: &Path) -> bool {
+    let parts: Vec<_> = file.iter().filter_map(|p| p.to_str()).collect();
+    matches!(parts.as_slice(), ["crates", c, "tests", "perf.rs"] if crate::gate::PERF_CRATES.contains(c))
 }
 
 /// `| AC-REL-02 | … |` → `AC-REL-02`.
@@ -75,12 +89,13 @@ fn criterion_in_table_row(line: &str) -> Option<String> {
 
 /// Criteria named by `#[test] fn ac_<area>_<nn>…` functions (R-QA-01, CC-TEST-01). Only a function under a `#[test]`
 /// attribute counts, and comments and string literals are blanked first, so neither a helper `fn ac_…` nor an id quoted
-/// in a doc comment or a string covers a criterion (D-139).
-fn test_criteria(source: &str) -> BTreeSet<String> {
+/// in a doc comment or a string covers a criterion (D-139). An `#[ignore]`d one counts only where `ignored_runs` (a perf
+/// file the gate runs); elsewhere its name is returned second, as an error.
+fn test_criteria(source: &str, ignored_runs: bool) -> (BTreeSet<String>, Vec<String>) {
     let code = code_only(source);
-    let mut ids = BTreeSet::new();
+    let (mut ids, mut misplaced) = (BTreeSet::new(), Vec::new());
     for (at, attribute) in code.match_indices("#[test]") {
-        let Some(name) = code.get(at + attribute.len()..).and_then(function_after_attributes) else {
+        let Some((name, ignored)) = code.get(at + attribute.len()..).and_then(function_after_attributes) else {
             continue;
         };
         let mut parts = name.split('_');
@@ -89,15 +104,20 @@ fn test_criteria(source: &str) -> BTreeSet<String> {
             && !num.is_empty()
             && num.chars().all(|c| c.is_ascii_digit())
         {
-            ids.insert(format!("AC-{}-{num}", area.to_ascii_uppercase()));
+            if ignored && !ignored_runs {
+                misplaced.push(name.clone());
+            } else {
+                ids.insert(format!("AC-{}-{num}", area.to_ascii_uppercase()));
+            }
         }
     }
-    ids
+    (ids, misplaced)
 }
 
 /// The name of the `fn` that `code` starts with once any further attributes (`#[ignore]`, `#[cfg(…)]`) and qualifiers
-/// are skipped.
-fn function_after_attributes(mut code: &str) -> Option<String> {
+/// are skipped, and whether one of them was `#[ignore]`.
+fn function_after_attributes(mut code: &str) -> Option<(String, bool)> {
+    let mut ignored = false;
     loop {
         code = code.trim_start();
         let Some(attribute) = code.strip_prefix("#[") else {
@@ -112,6 +132,10 @@ fn function_after_attributes(mut code: &str) -> Option<String> {
             }
             (depth == 0).then_some(i)
         })?;
+        let inner = attribute.get(..end)?.trim_start();
+        ignored |= inner
+            .strip_prefix("ignore")
+            .is_some_and(|r| r.trim_start().is_empty() || r.trim_start().starts_with('='));
         code = attribute.get(end + 1..)?;
     }
     // Qualifiers before `fn`: `pub`, `pub(crate)`, `async`, `const`, `unsafe`, `extern` (its ABI string is blanked).
@@ -137,12 +161,12 @@ fn function_after_attributes(mut code: &str) -> Option<String> {
     if !rest.starts_with(char::is_whitespace) {
         return None;
     }
-    Some(
-        rest.trim_start()
-            .chars()
-            .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
-            .collect(),
-    )
+    let name = rest
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+        .collect();
+    Some((name, ignored))
 }
 
 /// `source` with every comment and every string, raw string and character literal replaced by spaces.

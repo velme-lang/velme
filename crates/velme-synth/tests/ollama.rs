@@ -221,6 +221,7 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
             MockResponse::status(400, r#"{"error":"invalid\noptions"}"#),
             MockResponse::status(400, "bad"),
             MockResponse::status(401, ""),
+            MockResponse::status(422, r#"{"error":"hid\u200bden\udb40\udc41tag\u202ebidi"}"#),
         ],
     );
     let provider = backend
@@ -245,7 +246,16 @@ fn rate_limits_and_server_errors_are_retried_on_the_injected_clock() {
             message: String::new(),
         })
     );
-    assert_eq!(server.requests().len(), 7, "a rejected request is not retried");
+    // Format (`Cf`) characters become spaces, like controls; a bidi control is kept, to be shown escaped (R-SYNTH-33,
+    // R-CLI-17).
+    assert_eq!(
+        block_on(provider.complete(&request(), &limits())),
+        Err(ProviderError::Rejected {
+            status: Some(422),
+            message: "hid den tag\u{202e}bidi".to_owned(),
+        })
+    );
+    assert_eq!(server.requests().len(), 8, "a rejected request is not retried");
 }
 
 /// A chat that gets no answer within `timeout` is `Timeout` at once, not retried (R-SYNTH-12, D-110).
