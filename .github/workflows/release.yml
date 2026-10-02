@@ -1,0 +1,442 @@
+# delivery/52 §4, R-REL-13, AC-REL-04 (D-143..D-146, D-149). Only a push of the tag `v<workspace version>`, on a commit
+# on `main`, releases; a manual run is always a dry run. A dry run builds, tests, checks reproducibility, packages,
+# checksums and signs with a throwaway key, and uploads it all to this run; it creates no GitHub Release and publishes
+# nothing. `ac_rel_04_*` (xtask/tests/release.rs) checks the guard. Actions are pinned by commit SHA; the toolchain
+# comes from rust-toolchain.toml. No job uses a build cache (D-145).
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to build; must equal the workspace version (D-146). A manual run is always a dry run.
+        type: string
+        default: "0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  verify:
+    name: verify (linux)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # The full history, so a tag can be checked against `main`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # A tag names its version; a manual run gives it as an input. Either way it must be a release version and the
+      # version the crates carry, and a tag must be on `main`. The messages are fixed: no input is echoed.
+      - id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+          if [ "$GITHUB_EVENT_NAME" = push ]; then version="${GITHUB_REF_NAME#v}"; else version="$INPUT_VERSION"; fi
+          crates=$(cargo metadata --no-deps --format-version 1 --locked |
+            jq -r '.packages[] | select(.name == "velme-cli") | .version')
+          if ! [[ "$version" =~ $re ]]; then
+            echo "::error::the release version is not MAJOR.MINOR.PATCH[-PRE]"
+            exit 1
+          fi
+          if [ "$version" != "$crates" ]; then
+            echo "::error::the release version is not the workspace version"
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = push ] && ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::the tagged commit is not on main"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-deny
+      - run: cargo xtask verify
+
+  # D-145: every target is built twice, each time on a fresh runner (`build: [1, 2]`), and `reproducible` compares them.
+  # The second build checks out to another directory and uses another cargo home, so the comparison also shows that
+  # neither path reaches the binary.
+  build:
+    name: build ${{ matrix.build }} (${{ matrix.target }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [1, 2]
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
+        include:
+          # Linux builds on Ubuntu 22.04, so the binaries need glibc 2.35 or later (D-149).
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, exe: .exe }
+          - { build: 1, dir: velme }
+          - { build: 2, dir: elsewhere/velme-second }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.dir }}
+    env:
+      BUILD: ${{ matrix.build }}
+      TARGET: ${{ matrix.target }}
+      EXE: ${{ matrix.exe }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: ${{ matrix.dir }}
+          persist-credentials: false
+      # Neither the workspace nor the cargo home may end up in the binary, from Rust or from C dependencies; on Windows
+      # the linker writes no timestamp (`-Brepro`) and names the PDB without its directory. cl.exe has no prefix map,
+      # so for Windows C code the path check below is what holds. Flags use the dash form and the remapped paths have
+      # no leading slash, so Git Bash rewrites none of them.
+      - name: reproducible build settings
+        run: |
+          if [ "$BUILD" = 2 ]; then
+            cargo_home="$RUNNER_TEMP/cargo-home-second"
+            if [ "$RUNNER_OS" = Windows ]; then cargo_home=$(cygpath -w "$cargo_home"); fi
+            echo "CARGO_HOME=$cargo_home" >> "$GITHUB_ENV"
+          else
+            cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          fi
+          workspace="$PWD"
+          if [ "$RUNNER_OS" = Windows ]; then
+            workspace=$(cygpath -w "$workspace")
+            cargo_home=$(cygpath -w "$cargo_home")
+          fi
+          flags=("--remap-path-prefix=$workspace=velme" "--remap-path-prefix=$cargo_home=cargo")
+          if [ "$RUNNER_OS" = Windows ]; then
+            flags+=(-Clink-arg=-Brepro "-Clink-arg=-PDBALTPATH:%_PDB%")
+            cflags="-Brepro"
+          else
+            cflags="-ffile-prefix-map=$workspace=velme -ffile-prefix-map=$cargo_home=cargo"
+          fi
+          {
+            printf 'CARGO_ENCODED_RUSTFLAGS=%s\n' "$(IFS=$'\x1f'; echo "${flags[*]}")"
+            echo "CFLAGS=$cflags"
+            echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
+            echo "WORKSPACE_PATH=$workspace"
+            echo "CARGO_HOME_PATH=$cargo_home"
+          } >> "$GITHUB_ENV"
+      # The default features: `test-provider` is never in a release build (D-94).
+      - run: cargo build --release --locked --target "$TARGET" -p velme-cli
+      - name: stage
+        run: |
+          mkdir dist
+          cp "target/$TARGET/release/velme$EXE" dist/
+          for path in "$WORKSPACE_PATH" "$CARGO_HOME_PATH"; do
+            if grep -qF -e "$path" -e "${path//\\//}" "dist/velme$EXE"; then
+              echo "::error::the binary contains a build path"
+              exit 1
+            fi
+          done
+          {
+            echo "image: ${ImageOS:-} ${ImageVersion:-}"
+            rustc -vV
+            case "$RUNNER_OS" in
+              Linux) cc --version | sed -n 1p; ld --version | sed -n 1p; ldd --version | sed -n 1p ;;
+              macOS) xcodebuild -version; cc --version | sed -n 1p; ld -v 2>&1 | sed -n 1p ;;
+              Windows)
+                "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest \
+                  -property catalog_productDisplayVersion || true ;;
+            esac
+            sha256sum "dist/velme$EXE"
+          } > dist/build-info.txt
+          cat dist/build-info.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-${{ matrix.build }}-${{ matrix.target }}
+          path: ${{ matrix.dir }}/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Each first build, on its own platform: it reports its version and every example's tests pass on the committed locks.
+  release-tests:
+    name: release tests (${{ matrix.target }})
+    needs: [verify, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025, exe: .exe }
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-1-${{ matrix.target }}
+          path: dist
+      - env:
+          BIN: dist/velme${{ matrix.exe }}
+        run: |
+          chmod +x "$BIN"
+          test "$("$BIN" --version)" = "velme $VERSION"
+          find examples -type f -name '*.velme' | sort | while read -r program; do
+            echo "==> $program"
+            "$BIN" test --locked "$program"
+          done
+
+  reproducible:
+    name: reproducibility check
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: build-*
+          path: builds
+      - shell: bash
+        run: |
+          shopt -s nullglob
+          compared=0
+          status=0
+          for first in builds/build-1-*/velme builds/build-1-*/velme.exe; do
+            second="builds/build-2-${first#builds/build-1-}"
+            a=$(sha256sum < "$first" | cut -d' ' -f1)
+            b=$(sha256sum < "$second" | cut -d' ' -f1)
+            echo "$a $b $first"
+            if [ "$a" != "$b" ]; then
+              echo "::error::the two builds of $first differ"
+              diff "$(dirname "$first")/build-info.txt" "$(dirname "$second")/build-info.txt" || true
+              status=1
+            fi
+            compared=$((compared + 1))
+          done
+          if [ "$compared" -ne 5 ]; then
+            echo "::error::compared $compared targets, not 5"
+            exit 1
+          fi
+          exit $status
+
+  # D-149: one archive per target, built here on Linux so it is byte for byte the same on a re-run: the binary, the
+  # licences, the README and the third-party licences, with fixed order, times and owners.
+  package:
+    name: archives and checksums
+    needs: [verify, build, release-tests, reproducible]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: build-1-*
+          path: builds
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: cargo-about@0.9.2
+      - run: |
+          cargo about generate --locked -c .github/release/about.toml -m crates/velme-cli/Cargo.toml \
+            -o THIRD-PARTY-LICENSES.txt .github/release/about.hbs
+      - shell: bash
+        run: |
+          shopt -s nullglob
+          epoch=$(git log -1 --format=%ct)
+          export TZ=UTC
+          mkdir dist
+          for dir in builds/build-1-*; do
+            target="${dir#builds/build-1-}"
+            exe=; [ -f "$dir/velme.exe" ] && exe=.exe
+            name="velme-$VERSION-$target"
+            mkdir "$name"
+            cp "$dir/velme$exe" LICENSE-MIT LICENSE-APACHE README.md THIRD-PARTY-LICENSES.txt "$name/"
+            chmod 0644 "$name"/*
+            chmod 0755 "$name" "$name/velme$exe"
+            find "$name" -exec touch -h -d "@$epoch" {} +
+            if [ -n "$exe" ]; then
+              find "$name" -type f | LC_ALL=C sort | zip -X -D -q -@ "dist/$name.zip"
+            else
+              tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner --format=gnu -cf - "$name" |
+                gzip -n -9 > "dist/$name.tar.gz"
+            fi
+          done
+          cd dist
+          if [ "$(ls | wc -l)" -ne 5 ]; then
+            echo "::error::expected 5 archives"
+            exit 1
+          fi
+          LC_ALL=C sha256sum velme-* | LC_ALL=C sort -k2 > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # D-144: a dry run signs with a key made here and thrown away, and writes nothing to a public transparency log. The
+  # signatures are SSH signatures (`ssh-keygen -Y sign`, Ed25519, namespace `velme-release`, identity `velme-dry-run`),
+  # one `<file>.sig` per archive and for `SHA256SUMS`, each checked before upload with the public key and an
+  # `allowed_signers` file. They show the step works; nobody should verify a release against that key.
+  sign-dry-run:
+    name: signatures (dry run, throwaway key)
+    needs: package
+    if: ${{ !(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: dist
+      - run: |
+          key="$RUNNER_TEMP/throwaway"
+          ssh-keygen -q -t ed25519 -N '' -C velme-dry-run -f "$key"
+          mkdir signatures
+          cp "$key.pub" signatures/dry-run-key.pub
+          echo "velme-dry-run namespaces=\"velme-release\" $(cut -d' ' -f1,2 "$key.pub")" > signatures/allowed_signers
+          for file in dist/*; do
+            ssh-keygen -q -Y sign -f "$key" -n velme-release "$file"
+            mv "$file.sig" signatures/
+            ssh-keygen -Y verify -f signatures/allowed_signers -I velme-dry-run -n velme-release \
+              -s "signatures/$(basename "$file").sig" < "$file"
+          done
+          rm -f "$key"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signatures
+          path: signatures/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-dry-run:
+    name: cargo publish --dry-run
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo publish --workspace --dry-run --locked
+
+  # Real release only. D-144: GitHub artifact attestations over every archive in `SHA256SUMS`; this is the one job
+  # granted `id-token: write`. The Sigstore bundle is attached to the release as `velme-<version>.sigstore.json`.
+  attest:
+    name: attest (release)
+    needs: [verify, package, publish-dry-run]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: dist
+      - id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: mkdir attestation && cp "$BUNDLE" "attestation/velme-$VERSION.sigstore.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attestation
+          path: attestation/
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    needs: [verify, attest]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: attestation
+          path: dist
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          (cd dist && sha256sum -c SHA256SUMS)
+          prerelease=; case "$VERSION" in *-*) prerelease=--prerelease;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Velme $VERSION" --generate-notes $prerelease
+
+  # `publish-dry-run` already built every package, so this does not again. A re-run after a partial failure skips the
+  # crates whose version is already on crates.io (a publish can only be yanked, D-143).
+  publish:
+    name: cargo publish
+    needs: [verify, github-release]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          mapfile -t crates < <(cargo metadata --no-deps --format-version 1 --locked |
+            jq -r '.packages[] | select(.publish == null) | .name')
+          excluded=()
+          for name in "${crates[@]}"; do
+            if curl -sf -o /dev/null -A "velme-release (https://github.com/velme-lang/velme)" \
+              "https://crates.io/api/v1/crates/$name/$VERSION"; then
+              excluded+=("--exclude=$name")
+            fi
+          done
+          if [ "${#excluded[@]}" -eq "${#crates[@]}" ]; then
+            echo "every crate is already published"
+            exit 0
+          fi
+          cargo publish --workspace --locked --no-verify "${excluded[@]}"
