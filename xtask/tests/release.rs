@@ -216,6 +216,9 @@ fn ac_rel_04_builds_are_reproducible_on_fresh_runners() {
         "cflags=\"-ffile-prefix-map=$workspace=velme -ffile-prefix-map=$cargo_home=cargo\"",
         "-Clink-arg=-Brepro",
         "cflags=\"-Brepro\"",
+        // ld64 hashes the debug map's object paths and mtimes into LC_UUID before the strip (R-REL-13).
+        "flags+=(\"-Clink-arg=-Wl,-oso_prefix,$workspace/\")",
+        "echo \"ZERO_AR_DATE=1\" >> \"$GITHUB_ENV\"",
         "echo \"SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)\"",
         "grep -qF -e \"$path\" -e \"${path//\\\\//}\"",
         "> dist/build-info.txt",

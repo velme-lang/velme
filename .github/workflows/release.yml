@@ -135,6 +135,12 @@ jobs:
           else
             cflags="-ffile-prefix-map=$workspace=velme -ffile-prefix-map=$cargo_home=cargo"
           fi
+          # ld64 hashes the debug map (each object file's path and mtime) into LC_UUID before the strip removes it, so
+          # it drops the workspace from those paths and writes a zero mtime.
+          if [ "$RUNNER_OS" = macOS ]; then
+            flags+=("-Clink-arg=-Wl,-oso_prefix,$workspace/")
+            echo "ZERO_AR_DATE=1" >> "$GITHUB_ENV"
+          fi
           {
             printf 'CARGO_ENCODED_RUSTFLAGS=%s\n' "$(IFS=$'\x1f'; echo "${flags[*]}")"
             echo "CFLAGS=$cflags"

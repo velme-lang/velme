@@ -78,7 +78,8 @@ later. A real release signs with GitHub artifact attestations over the archives,
 log. Each target is built on two fresh runners with no build cache, the second in another directory with another cargo
 home, and build paths remapped so neither the workspace nor the cargo home appears in the binary: Rust code by
 `--remap-path-prefix`, C code by `-ffile-prefix-map` on Linux and macOS, while on Windows, where `cl.exe` has no prefix
-map, a check that the binary contains neither path enforces it. Also `-Brepro` on Windows, `SOURCE_DATE_EPOCH` set and
+map, a check that the binary contains neither path enforces it. Also `-Brepro` on Windows, on macOS `-oso_prefix` and
+`ZERO_AR_DATE=1` (ld64 hashes the debug map's object paths and mtimes into `LC_UUID`), `SOURCE_DATE_EPOCH` set and
 `--locked`, and the release profile builds each crate as one codegen unit (ThinLTO's symbol suffixes between units
 differed between the two directories); the two builds' binaries must have the same checksum. The dry run builds the version given as its input
 (`0.1.0` for M8); the first real release is `0.1.0-alpha.1`, tagged by the owner after the M8 gate (D-146).
