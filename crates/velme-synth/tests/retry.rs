@@ -616,15 +616,15 @@ fn r_synth_32_a_question_ends_synthesis_at_once() {
     assert_eq!(run.provider.remaining(), 1);
 }
 
-/// A question's newline and ANSI escape become spaces; an empty one and a 281-character one are failed attempts
-/// (AC-SYNTH-23, R-SYNTH-33).
+/// A question's newline, ANSI escape and format (`Cf`) characters become spaces, and a bidi control is kept for the
+/// renderer to escape (R-CLI-17); an empty one and a 281-character one are failed attempts (AC-SYNTH-23, R-SYNTH-33).
 #[test]
 fn ac_synth_23_a_question_is_cleaned_and_bounded() {
-    let messy = json!({"question": "Round\nup\u{1b}[31m red\u{1b}[0m or\tdown?"}).to_string();
+    let messy = json!({"question": "Round\nup\u{1b}[31m red\u{1b}[0m or\tdown\u{200b}\u{e0041}\u{202e}?"}).to_string();
     let run = run(SynthOptions::default(), vec![messy]);
     let d = failure(&run);
     assert!(
-        d.notes.iter().any(|n| n.contains("\"Round up red or down?\"")),
+        d.notes.iter().any(|n| n.contains("\"Round up red or down \u{202e}?\"")),
         "{:?}",
         d.notes
     );

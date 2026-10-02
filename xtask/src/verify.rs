@@ -15,6 +15,8 @@ pub struct Step {
     pub args: Vec<String>,
     /// Extra environment variables.
     pub envs: Vec<(&'static str, &'static str)>,
+    /// Whether the step runs one test with `--exact`, which passes with none found, so it must also report one passed.
+    pub one_test: bool,
 }
 
 /// The `velme-cli` feature that adds the `scripted` provider (`tooling/40` §5.2, D-94): on for the gate's tests, never for
@@ -27,6 +29,7 @@ fn cargo_step(name: &'static str, args: &[&str]) -> Step {
         program: crate::cargo_program(),
         args: args.iter().map(|a| (*a).to_owned()).collect(),
         envs: Vec::new(),
+        one_test: false,
     }
 }
 
@@ -38,6 +41,7 @@ fn self_step(name: &'static str, args: &[&str]) -> Result<Step> {
         program: exe.to_string_lossy().into_owned(),
         args: args.iter().map(|a| (*a).to_owned()).collect(),
         envs: Vec::new(),
+        one_test: false,
     })
 }
 
@@ -107,9 +111,18 @@ pub fn run_steps(root: &Path, steps: &[Step]) -> Vec<&'static str> {
             .envs(step.envs.iter().copied())
             .current_dir(root);
         scrub_provider_env(&mut command, &home);
-        let status = command.status();
+        let passed = if step.one_test {
+            // Captured to count what ran, then shown as it would have been.
+            command.output().is_ok_and(|out| {
+                print!("{}", String::from_utf8_lossy(&out.stdout));
+                eprint!("{}", String::from_utf8_lossy(&out.stderr));
+                out.status.success() && crate::gate::ran_one(&String::from_utf8_lossy(&out.stdout))
+            })
+        } else {
+            command.status().is_ok_and(|s| s.success())
+        };
         let _ = std::fs::remove_dir_all(&home);
-        if !status.is_ok_and(|s| s.success()) {
+        if !passed {
             failed.push(step.name);
         }
     }

@@ -231,6 +231,8 @@ fn ac_rel_04_builds_are_reproducible_on_fresh_runners() {
     assert!(!build.contains("/Brepro") && !build.contains("=/velme"));
     // ThinLTO between codegen units named symbols by a hash that differed between the two directories (R-REL-13).
     assert!(read("Cargo.toml").contains("[profile.release]\ncodegen-units = 1\n"));
+    // `CARGO_ENCODED_RUSTFLAGS` replaces any `rustflags` set in config, so one there would build locally but not here.
+    assert!(!read(".cargo/config.toml").contains("rustflags"));
 }
 
 /// Every action in the release and CodeQL workflows is pinned by a full commit SHA, as in `ci.yml`.

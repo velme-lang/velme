@@ -49,6 +49,11 @@ pub(crate) const SUM_ITEM_INSTRUCTIONS: u64 = 128;
 /// Instructions that run unpaid besides: `velme_alloc` for the inputs, and storing the result.
 const FIXED_INSTRUCTIONS: u64 = 1024;
 
+/// The Wasmtime fuel the setup before `velme_run` gets, `velme_alloc` and the limits' globals, besides a unit a byte of
+/// the run's memory for growing it (D-120), so it never runs on the run's backstop with no watchdog (R-SBX-07, D-115):
+/// 4 × what runs unpaid besides `sum`.
+pub(crate) const SETUP_FUEL: u64 = 4 * FIXED_INSTRUCTIONS;
+
 /// A of the Wasmtime fuel backstop (`runtime/31` §6, D-115): 4 × what runs unpaid.
 pub const FUEL_ALLOWANCE: u64 = 4 * (MAX_LIST_SIZE * SUM_ITEM_INSTRUCTIONS + FIXED_INSTRUCTIONS);
 
@@ -908,7 +913,9 @@ impl Program {
             })
         });
         store.set_epoch_deadline(1);
-        if store.set_fuel(run.wasmtime_fuel.given).is_err() {
+        // The setup has a bound of its own, and what it uses comes out of the run's backstop (R-SBX-07).
+        let setup_fuel = SETUP_FUEL.saturating_add(memory);
+        if store.set_fuel(setup_fuel).is_err() {
             return run;
         }
         let Ok(instance) = self.pre.instantiate(&mut store) else {
@@ -929,9 +936,14 @@ impl Program {
             .saturating_add(self.literals.bytes)
             .saturating_add(RESULT_SLACK_BYTES);
         let sizeless = image.sizeless().saturating_add(self.literals.sizeless);
+        // A setup out of its fuel is a Velme bug, as any other setup failure is (`VL0607`).
         let Ok(base) = prepare(&exports, &mut store, image, limits) else {
             return run;
         };
+        let setup = setup_fuel.saturating_sub(store.get_fuel().unwrap_or(0));
+        if store.set_fuel(run.wasmtime_fuel.given.saturating_sub(setup)).is_err() {
+            return run;
+        }
         // The first deadline is the call itself: a run that starts past its time is stopped before it runs, and from
         // then on the watchdog is asked at every tick (D-115).
         store.data_mut().started = true;

@@ -27,7 +27,17 @@ fn r_qa_07_gate_runs_every_perf_test_in_release_one_at_a_time() {
             gate::WASM_RATIO_TEST
         )
     );
+    assert_eq!(steps.iter().map(|s| s.one_test).collect::<Vec<_>>(), [false, true]);
     assert_eq!(RUNS, 20);
+}
+
+/// `--exact` with a name it doesn't find passes with no test run, which is not a pass (R-QA-07).
+#[test]
+fn r_qa_07_a_one_test_step_needs_one_test_passed() {
+    assert!(gate::ran_one("test result: ok. 1 passed; 0 failed; 0 ignored"));
+    assert!(!gate::ran_one(
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 1 filtered out"
+    ));
 }
 
 #[test]

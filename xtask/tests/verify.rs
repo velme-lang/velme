@@ -44,6 +44,7 @@ fn ac_qa_01_verify_reports_a_failing_step_and_still_runs_the_rest() {
         program: cargo.clone(),
         args: vec![arg.to_owned()],
         envs: Vec::new(),
+        one_test: false,
     };
     let steps = [step("bad", "--no-such-flag"), step("good", "--version")];
     let failed = verify::run_steps(&workspace_root().expect("root"), &steps);
@@ -127,6 +128,7 @@ fn ac_qa_02_each_step_gets_a_fresh_empty_home_removed_afterwards() {
         program: "sh".to_owned(),
         args: vec!["-c".to_owned(), script.clone()],
         envs: Vec::new(),
+        one_test: false,
     };
     let failed = verify::run_steps(&workspace_root().expect("root"), &[step("one"), step("two")]);
     assert!(failed.is_empty(), "{failed:?}");

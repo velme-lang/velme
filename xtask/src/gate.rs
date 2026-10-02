@@ -22,7 +22,7 @@ pub const PERF_CRATES: &[&str] = &["velme-sema", "velme-ir", "velme-runtime", "v
 pub const WASM_RATIO_TEST: &str = "ac_qa_07_wasm_runs_the_same_workload_in_at_most_half_the_interpreters_time";
 
 /// A `cargo test --release` of the ignored target tests, the `perf` test target of `crates`, one test at a time.
-fn perf_test(name: &'static str, crates: &[&str], filter: &[&str]) -> Step {
+fn perf_test(name: &'static str, crates: &[&str], filter: &[&str], one_test: bool) -> Step {
     let mut args = ["test", "--release", "--no-fail-fast"].map(str::to_owned).to_vec();
     for name in crates {
         args.extend(["-p".to_owned(), (*name).to_owned()]);
@@ -35,6 +35,7 @@ fn perf_test(name: &'static str, crates: &[&str], filter: &[&str]) -> Step {
         program: crate::cargo_program(),
         args,
         envs: Vec::new(),
+        one_test,
     }
 }
 
@@ -42,8 +43,13 @@ fn perf_test(name: &'static str, crates: &[&str], filter: &[&str]) -> Step {
 /// shares the machine with another, and every crate's even when an earlier one fails; then [`WASM_RATIO_TEST`] alone.
 pub fn perf_steps() -> Vec<Step> {
     vec![
-        perf_test("perf", PERF_CRATES, &["--skip", WASM_RATIO_TEST]),
-        perf_test("perf-wasm-ratio", &["velme-runtime"], &["--exact", WASM_RATIO_TEST]),
+        perf_test("perf", PERF_CRATES, &["--skip", WASM_RATIO_TEST], false),
+        perf_test(
+            "perf-wasm-ratio",
+            &["velme-runtime"],
+            &["--exact", WASM_RATIO_TEST],
+            true,
+        ),
     ]
 }
 
@@ -91,6 +97,12 @@ pub fn rdm_tests(list: &str) -> Vec<String> {
         .filter(|name| name.rsplit("::").next().is_some_and(|last| last.starts_with("ac_rdm_")))
         .map(str::to_owned)
         .collect()
+}
+
+/// Whether a test run's output reports exactly one test passed: `--exact` with a name it doesn't find passes with no
+/// test run.
+pub fn ran_one(stdout: &str) -> bool {
+    stdout.contains(" 1 passed")
 }
 
 /// Runs `command` with the provider settings scrubbed and a fresh, empty home (AC-QA-02), as `verify` runs a step.
@@ -152,9 +164,8 @@ pub fn rdm(root: &Path) -> Result<bool> {
                 run.args(["--exact", &test, "--test-threads=1"])
                     .current_dir(&binary.dir);
                 let out = scrubbed(run)?;
-                // `--exact` with a name it doesn't find passes with no test run.
                 let stdout = String::from_utf8_lossy(&out.stdout);
-                if out.status.success() && stdout.contains(" 1 passed") {
+                if out.status.success() && ran_one(&stdout) {
                     passed += 1;
                 } else if first_failure.is_none() {
                     first_failure = Some(format!(

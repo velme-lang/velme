@@ -384,15 +384,17 @@ fn safe_path(path: &str) -> String {
         .join("/")
 }
 
-/// `text` as an untrusted line (R-SYNTH-33): control characters, newlines and ANSI escapes become spaces, whitespace
-/// runs collapse to one, and the ends are trimmed. `None` unless what is left is 1..=280 Unicode scalar values.
+/// `text` as an untrusted line (R-SYNTH-33): control and format (`Cf`) characters other than bidi controls, newlines
+/// and ANSI escapes become spaces, whitespace runs collapse to one, and the ends are trimmed. Bidi controls are kept,
+/// for the renderer to show escaped (R-CLI-17). `None` unless what is left is 1..=280 Unicode scalar values.
 pub(crate) fn clean_text(text: &str) -> Option<String> {
     let collapsed = collapse(text);
     let length = collapsed.chars().count();
     (1..=MAX_TEXT_CHARS).contains(&length).then_some(collapsed)
 }
 
-/// `text` with escape sequences and control characters replaced by spaces and whitespace runs collapsed, in any length.
+/// `text` with escape sequences and control and non-bidi format characters replaced by spaces and whitespace runs
+/// collapsed, in any length.
 fn collapse(text: &str) -> String {
     let mut spaced = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -426,7 +428,7 @@ fn collapse(text: &str) -> String {
                 _ => {}
             }
             spaced.push(' ');
-        } else if c.is_control() {
+        } else if c.is_control() || (is_format(c) && !velme_diagnostics::is_bidi_control(c)) {
             spaced.push(' ');
         } else {
             spaced.push(c);
