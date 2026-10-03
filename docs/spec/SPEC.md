@@ -74,7 +74,7 @@ These hold for the life of the language. A change that breaks one is an architec
 
 | ID | Invariant |
 |---|---|
-| **INV-1** | The LLM never produces executable code. It produces Velme IR, and nothing executes until that IR passes the deterministic validator (`compiler/21`). The validator — not the prompt — is the trust boundary. |
+| **INV-1** | The LLM never produces executable code. It produces Velme IR, as JSON or a reply notation that `velme-synth` lowers deterministically to IR before the validator (D-152), and nothing executes until that IR passes the deterministic validator (`compiler/21`). The validator — not the prompt — is the trust boundary. |
 | **INV-2** | `check` assertions are evaluated by the runtime with deterministic semantics; an LLM never decides whether a result passes. |
 | **INV-3** | Same source + same inputs + same locked artifacts + same seed ⇒ same result and same trace, on every backend. The reference interpreter defines the semantics; any other backend must match it. |
 | **INV-4** | Goals have no ambient authority: no filesystem, network, environment, clock or process access. A goal can use only its inputs, its declared calls and whitelisted built-ins/host functions. |
@@ -136,7 +136,7 @@ Full MVP list and exclusions: `delivery/50`.
 
 | Decision | Choice | Ref |
 |---|---|---|
-| LLM output boundary | typed Velme IR (JSON), never WASM | INV-1, `compiler/21` |
+| LLM output boundary | typed Velme IR (JSON, or a reply notation lowered to IR), never WASM | INV-1, `compiler/21`, D-152 |
 | Implementation language | Rust (stable toolchain pinned) | `compiler/20` |
 | Parser | Chumsky + hand-written indentation-aware lexer; Tree-sitter later, sharing the golden corpus | D-25 |
 | Semantics owner | reference interpreter; WASM must match (differential tests) | P-4, `delivery/51` |

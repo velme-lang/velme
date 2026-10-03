@@ -87,7 +87,7 @@ environment or user-level config only, never the project's (the local machine by
 telemetry (timings, cache hits) is written only under `.velme/` and only with `-v`/`--json` or when the user opts in.
 This governs what is *displayed or aggregated*, not what is logged: `compiler/22` R-SYNTH-23 still appends one line
 per synthesis attempt to `.velme/synth-log.jsonl` unconditionally, since that log is what a failed build's `-v`
-diagnosis and Coach (Future) read from — it never leaves the machine either way (R-SEC-08). The log holds no plan text, prompt, reply or value, is written only through a regular file (never a link), and `.velme/.gitignore` keeps it out of version control (`compiler/22` R-SYNTH-23, D-109).
+diagnosis and Coach (Future) read from — it never leaves the machine either way (R-SEC-08). The log holds no plan text, prompt, reply or value (of a reply only its shape: content block kinds and known top-level keys, D-154), is written only through a regular file (never a link), and `.velme/.gitignore` keeps it out of version control (`compiler/22` R-SYNTH-23, D-109).
 **R-SEC-10** Before any hosted, classroom or child-directed product ships, a consent and retention policy (COPPA,
 GDPR-K) must be approved after legal review (D-37); not a v0.1 CLI concern beyond R-SEC-08/09/12.
 **R-SEC-12** Every `velme build` that contacts a provider prints one line to stderr before the first contact of any kind
