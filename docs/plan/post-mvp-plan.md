@@ -21,7 +21,8 @@ D-103, D-104.
   several goals per request).
 - **P0a** compact replies fixed: the contract names `body` by its alias, earlier replies are shown as received,
   aliases are disjoint from canonical names, template wording is provider-neutral, a `Malformed` reply keeps its
-  reason; tests feed `{"body": <compact>}` and a compact retry turn.
+  reason (a closed id; all `Malformed` attempts are one cause); tests feed a compact reply under the alias, a reply
+  under the canonical `body` key (a failed attempt with a clear `VL0401` cause, D-153), and a compact retry turn.
 - **P0b** synth log v2: `cause`, `stop_reason`, the reply's shape (content block kinds and top-level keys, IR keys
   only) and cache-read and cache-write tokens; never plan or reply text (R-SYNTH-23).
 - **P0c** agent bridge, dev tooling only: `cargo xtask render-prompt` renders the exact provider request for a goal
