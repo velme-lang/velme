@@ -291,7 +291,8 @@ is the small `{"body": string}` one.
 **R-SYNTH-36** `reply_format = "ir-json"` (default) asks for canonical IR JSON, `{"body": …}`. `"compact"`
 (experimental, D-153) asks for the same tree with every property name and node `kind` tag, the reply's `body` key
 included, replaced by a short alias from a fixed table in `velme-synth`, generated together with the reply schema and
-versioned with it. The aliases are pairwise distinct and none equals a canonical property name or `kind` tag, so no key
+versioned with it. An alias is always shorter than its name, and a name with no shorter free alias keeps its own
+spelling. The aliases are pairwise distinct and none equals another canonical property name or `kind` tag, so no key
 of a reply reads two ways (an alias table where `args` becomes `arg` while `arg` becomes `ar` is a defect). The output
 contract, the reply schema and the parser all spell the body key by its alias, and the parser reads only that
 spelling: a compact reply keyed `body` is a reply with no body (`VL0401`). `velme-synth` expands a compact reply into

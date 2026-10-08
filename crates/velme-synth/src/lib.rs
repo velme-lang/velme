@@ -48,7 +48,8 @@ pub use ollama::{
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{
-    DEFAULT_MAX_OUTPUT_TOKENS, Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+    DEFAULT_MAX_OUTPUT_TOKENS, Identity, MalformedReason, ProviderError, SynthBackend, SynthLimits, SynthProvider,
+    SynthReply, Usage,
 };
 pub use record::Recorder;
 pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path, read_replay_identity};

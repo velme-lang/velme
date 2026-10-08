@@ -151,8 +151,9 @@ pub enum ProviderError {
     Refused(String),
     /// The request outlived its time (`VL0404`).
     Timeout,
-    /// The reply was not a reply (a failed attempt, `VL0401`).
-    Malformed(String),
+    /// The reply was not a reply (a failed attempt, `VL0401`), for the reason given; a replayed or scripted one has none
+    /// (R-SYNTH-07, D-153).
+    Malformed(Option<MalformedReason>),
     /// An external backend failed (`VL0406`, R-SYNTH-28).
     BackendFailed {
         /// Why, in one cleaned line: Velme's wording, or the backend's own `{"error"}` text, collapsed and bounded.
@@ -172,6 +173,58 @@ pub enum ProviderError {
     },
     /// A bug in Velme itself, such as a request that has no hash (`VL0607`); never a verdict on the candidate.
     Internal(String),
+}
+
+/// Why a reply was malformed: the closed list of R-SYNTH-07, each with an id and Velme's own words, never the provider's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MalformedReason {
+    /// The response passed the size limit.
+    TooLarge,
+    /// The response wasn't JSON, was nested too deeply or repeated a key.
+    ResponseNotJson,
+    /// The reply stopped at the output limit.
+    CutOff,
+    /// The response had no tool call, or more than one.
+    NotOneTool,
+    /// The tool called was neither of the two, or its input wasn't an object.
+    UnknownTool,
+    /// An `ollama` response without a message.
+    NoMessage,
+    /// The tool input or `ollama` reply wasn't JSON, was nested too deeply or repeated a key.
+    ReplyNotJson,
+    /// An `ollama` reply that isn't an object.
+    ReplyNotObject,
+}
+
+impl MalformedReason {
+    /// The reason's id, as the learner's cause and the synth log spell it (R-SYNTH-07, R-SYNTH-23).
+    pub fn id(self) -> &'static str {
+        match self {
+            MalformedReason::TooLarge => "too-large",
+            MalformedReason::ResponseNotJson => "response-not-json",
+            MalformedReason::CutOff => "cut-off",
+            MalformedReason::NotOneTool => "not-one-tool",
+            MalformedReason::UnknownTool => "unknown-tool",
+            MalformedReason::NoMessage => "no-message",
+            MalformedReason::ReplyNotJson => "reply-not-json",
+            MalformedReason::ReplyNotObject => "reply-not-object",
+        }
+    }
+
+    /// Velme's words for it, a clause with its own subject: a fault of the HTTP response is "the response …", the rest
+    /// "the reply …" (R-SYNTH-07).
+    pub fn words(self) -> &'static str {
+        match self {
+            MalformedReason::TooLarge => "the response was too large",
+            MalformedReason::ResponseNotJson => "the response wasn't JSON, or was nested too deeply or repeated a key",
+            MalformedReason::CutOff => "the reply was cut off",
+            MalformedReason::NotOneTool => "the reply didn't call exactly one tool",
+            MalformedReason::UnknownTool => "the reply called a tool that isn't one of the two, or gave it no object",
+            MalformedReason::NoMessage => "the response had no message",
+            MalformedReason::ReplyNotJson => "the reply wasn't JSON, or was nested too deeply or repeated a key",
+            MalformedReason::ReplyNotObject => "the reply wasn't an object",
+        }
+    }
 }
 
 impl ProviderError {
@@ -211,7 +264,7 @@ impl ProviderError {
             "rate_limited" => ProviderError::RateLimited { retry_after: None },
             "refused" => ProviderError::Refused(String::new()),
             "timeout" => ProviderError::Timeout,
-            "malformed" => ProviderError::Malformed(String::new()),
+            "malformed" => ProviderError::Malformed(None),
             "backend_failed" => ProviderError::BackendFailed {
                 reason: String::new(),
                 body: String::new(),

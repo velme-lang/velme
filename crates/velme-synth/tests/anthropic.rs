@@ -10,11 +10,12 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use velme_ir::{Synthesis, contract_key, synthesis_key};
 use velme_synth::{
-    Anthropic, AnthropicConfig, ApiKey, ProviderError, ReplyFormat, SynthBackend, SynthLimits, SynthProvider,
-    SynthReply, SynthRequest, build_request, prompt_version, render_with,
+    Anthropic, AnthropicConfig, ApiKey, MalformedReason, Outcome, ProviderError, ReplyFormat, Session, SynthBackend,
+    SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, alias_table, build_request,
+    prompt_version, render_with, synthesize,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
-use velme_test_support::{RecordingSleeper, goal_id, mock_anthropic, program};
+use velme_test_support::{LeafRunner, RecordingSleeper, goal_id, mock_anthropic, program};
 
 const SOURCE: &str = "language: velme/0.1
 
@@ -208,11 +209,92 @@ fn a_refusal_or_a_reply_that_is_not_one_tool_call_is_a_failed_attempt() {
         complete(&provider, &request).expect_err("refused"),
         ProviderError::Refused(String::new())
     );
-    for _ in 0..6 {
+    // Each keeps its reason, a closed id, and nothing the provider wrote (AC-SYNTH-48, R-SYNTH-07, D-153).
+    let reasons = [
+        MalformedReason::NotOneTool,
+        MalformedReason::NotOneTool,
+        MalformedReason::UnknownTool,
+        MalformedReason::UnknownTool,
+        MalformedReason::CutOff,
+        MalformedReason::ResponseNotJson,
+    ];
+    for reason in reasons {
         let error = complete(&provider, &request).expect_err("malformed");
-        assert!(matches!(&error, ProviderError::Malformed(_)), "{error:?}");
+        assert_eq!(error, ProviderError::Malformed(Some(reason)), "{error:?}");
         assert!(!format!("{error:?}").contains("PROVIDER-WORDS"));
     }
+    assert_eq!(MalformedReason::NotOneTool.id(), "not-one-tool");
+}
+
+/// A reply of text and no tool call fails the attempt as `VL0401` in Velme's words, and what the provider wrote appears
+/// in no output (AC-SYNTH-48, R-SYNTH-07, D-153).
+#[test]
+fn ac_synth_48_a_text_only_reply_is_a_vl0401_attempt_in_velmes_words() {
+    let (provider, _server, _sleeper) = mock(
+        AnthropicConfig::new("m"),
+        [message(
+            "end_turn",
+            &json!([{"type": "text", "text": "PROVIDER-SENTINEL-7"}]),
+        )],
+    );
+    let program = program(SOURCE);
+    let id = goal_id(&program, "Rank");
+    let task = Task {
+        program: &program,
+        goal: id,
+        source: SOURCE,
+        contract_key: contract_key(&program, id).expect("a key"),
+        synthesis_key: velme_ir::Fingerprint::of_bytes(b"synthesis"),
+        feedback: Vec::new(),
+    };
+    let mut session = Session::new(SynthOptions {
+        max_retries: 0,
+        ..SynthOptions::default()
+    });
+    let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task, &LeafRunner::new())) else {
+        panic!("it was built");
+    };
+    let attempts = failure.attempts.join("\n");
+    assert!(attempts.contains("VL0401"), "{attempts}");
+    assert!(attempts.contains(MalformedReason::NotOneTool.words()), "{attempts}");
+    assert!(
+        failure.diagnostic.message.contains(MalformedReason::NotOneTool.words()),
+        "{}",
+        failure.diagnostic.message
+    );
+    assert!(!format!("{failure:?}").contains("PROVIDER-SENTINEL-7"));
+}
+
+/// In `compact` the `write_goal` tool takes the body under its alias and nothing deeper, and says so (AC-SYNTH-47, R-SYNTH-36, D-153).
+#[test]
+fn ac_synth_47_the_compact_tool_names_the_body_key_by_its_alias() {
+    let alias = alias_table().keys["body"].clone();
+    let config = AnthropicConfig {
+        options: SynthOptions {
+            reply_format: ReplyFormat::Compact,
+            ..SynthOptions::default()
+        },
+        ..AnthropicConfig::new("m")
+    };
+    let (provider, server, _) = mock(
+        config,
+        [MockResponse::tool_call("write_goal", &json!({ alias.clone(): {} }))],
+    );
+    complete(&provider, &requests().0).expect("a reply");
+    let body = server.requests()[0].json();
+    let goal = &body["tools"][0];
+    assert_eq!(goal["input_schema"]["required"], json!([alias]));
+    assert!(goal["input_schema"]["properties"].get(&alias).is_some());
+    let description = goal["description"].as_str().expect("a description");
+    assert!(
+        description.contains(&format!("{{\"{alias}\":")) && !description.contains("\"body\""),
+        "{description}"
+    );
+    let first = body["messages"][0]["content"].to_string();
+    assert!(
+        first.contains(&format!("Return {{\\\"{alias}\\\": <expression>}}")),
+        "{first}"
+    );
 }
 
 /// Anthropic's error envelope around `message`, as a `status` response.
@@ -511,19 +593,6 @@ fn ac_synth_30_retries_use_the_retry_model_and_the_options_change_only_the_synth
     );
     let identity = block_on(Anthropic::new(config).identify()).expect("identity");
     assert!(identity.input_version.starts_with(&prompt_version()));
-}
-
-/// A compact reply format leaves the goal tool unconstrained, as the schema's names are not the compact ones (R-SYNTH-36).
-#[test]
-fn a_compact_reply_leaves_the_goal_tool_unconstrained() {
-    let mut config = AnthropicConfig::new("m");
-    config.options.reply_format = ReplyFormat::Compact;
-    let (provider, server, _) = mock(config, [MockResponse::tool_call("write_goal", &goal_reply())]);
-    complete(&provider, &requests().0).expect("a reply");
-    assert_eq!(
-        server.requests()[0].json()["tools"][0]["input_schema"],
-        json!({"type": "object"})
-    );
 }
 
 /// The identity step contacts nothing (R-SYNTH-25).

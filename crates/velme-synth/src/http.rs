@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use crate::provider::ProviderError;
+use crate::provider::{MalformedReason, ProviderError};
 
 /// The most a response body may hold: far above `max_output_tokens` of text, far below a memory problem.
 pub(crate) const MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
@@ -83,7 +83,7 @@ pub(crate) fn read_body(response: &mut ureq::http::Response<ureq::Body>) -> Resu
         .limit(MAX_BODY_BYTES)
         .read_to_string()
         .map_err(|error| match error {
-            ureq::Error::BodyExceedsLimit(_) => ProviderError::Malformed("the response was too large".to_owned()),
+            ureq::Error::BodyExceedsLimit(_) => ProviderError::Malformed(Some(MalformedReason::TooLarge)),
             other => transport_error(other),
         })
 }

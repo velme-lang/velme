@@ -3,8 +3,8 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use velme_synth::{
-    AttemptDiagnostic, AttemptFeedback, PromptOptions, ReplyFormat, Role, SynthRequest, alias_table, build_request,
-    expand, prompt_version, render, render_with,
+    AttemptDiagnostic, AttemptFeedback, PromptOptions, ReplyFormat, Role, SchemaInPrompt, SynthRequest, alias_table,
+    build_request, expand, prompt_version, render, render_with,
 };
 use velme_test_support::{goal_id, program, read, repo};
 
@@ -237,6 +237,121 @@ goal Total(items: List<Item>) -> Number:
             };
             if let Err(found) = velme_ir::validate(&ir, &asked) {
                 panic!("{format:?}: the worked example for {goal} is not valid: {found:#?}");
+            }
+        }
+    }
+}
+
+fn options(format: ReplyFormat) -> PromptOptions {
+    PromptOptions {
+        reply_format: format,
+        ..PromptOptions::default()
+    }
+}
+
+/// In `compact` the output contract names the body key by its alias, in the first turn and in the retry turn, and an
+/// earlier reply goes back byte-identical to the one received, never compressed again (AC-SYNTH-47, R-SYNTH-36,
+/// R-SYNTH-37, D-153).
+#[test]
+fn ac_synth_47_compact_prompts_name_the_alias_and_show_earlier_replies_as_received() {
+    let alias = alias_table().keys["body"].clone();
+    assert_ne!(alias, "body");
+    // Not canonical (spacing, key order) and not valid compact either: shown as is, whatever it is.
+    let received = format!(r#" {{ "zz": 1, "{alias}": {{"ki": "input", "n": "player"}} }} "#);
+    for task in ["Rank", "Summary"] {
+        let mut request = request(SOURCE, task);
+        request.attempts.push(AttemptFeedback {
+            reply: received.clone(),
+            diagnostics: vec![AttemptDiagnostic {
+                code: "VL0402".to_owned(),
+                message: "A candidate may not do that.".to_owned(),
+                path: Some("/body/args".to_owned()),
+                detail: None,
+            }],
+        });
+        let prompt = render_with(&request, &options(ReplyFormat::Compact)).expect("rendered");
+        let first = prompt.first_turn();
+        assert!(
+            first.contains(&format!("Return {{\"{alias}\": <expression>}}")),
+            "{first}"
+        );
+        assert!(first.contains(&format!("the whole `{alias}`")) || first.contains(&format!("the tail `{alias}`")));
+        assert!(!first.contains(r#"{"body""#), "{first}");
+        let turns = prompt.turns();
+        assert_eq!(
+            (turns[1].role, turns[1].text.as_str()),
+            (Role::Assistant, received.as_str())
+        );
+        let retry = &turns[2].text;
+        assert!(
+            retry.contains(&format!("Return the corrected {{\"{alias}\": <expression>}}")),
+            "{retry}"
+        );
+        assert!(!retry.contains(r#"{"body""#), "{retry}");
+        // The path is spelled with the aliases (R-SYNTH-36).
+        let arg = &alias_table().keys["args"];
+        assert!(retry.contains(&format!("at /{alias}/{arg}:")), "{retry}");
+    }
+    // In `ir-json` the key stays `body`.
+    let plain = render(&request(SOURCE, "Rank")).expect("rendered").first_turn();
+    assert!(plain.contains(r#"Return {"body": <expression>}"#), "{plain}");
+}
+
+/// With `schema_in_prompt = "full"` the compact prompt shows the aliased body schema, never the canonical `body` key
+/// (AC-SYNTH-47, R-SYNTH-36, D-153).
+#[test]
+fn ac_synth_47_the_full_schema_in_a_compact_prompt_has_the_aliased_body_key() {
+    let alias = alias_table().keys["body"].clone();
+    let mut options = options(ReplyFormat::Compact);
+    options.schema_in_prompt = SchemaInPrompt::Full;
+    let prompt = render_with(&request(SOURCE, "Rank"), &options).expect("rendered");
+    let first = prompt.first_turn();
+    assert!(first.contains(&format!(r#""required":["{alias}"]"#)), "{first}");
+    assert!(!first.contains(r#""required":["body"]"#), "{first}");
+    assert!(!first.contains(r#""body":{"#), "{first}");
+}
+
+/// The aliases are pairwise distinct and none is a canonical property name or `kind` tag, and no prompt tells the model
+/// how its reply is delivered, which the provider's own request does (AC-SYNTH-48, R-SYNTH-36, R-SYNTH-44, D-153).
+#[test]
+fn ac_synth_48_aliases_are_disjoint_and_the_prompt_names_no_delivery() {
+    let table = alias_table();
+    let canonical: Vec<&String> = table.keys.keys().chain(table.kinds.keys()).collect();
+    let aliases: Vec<&String> = table.keys.values().chain(table.kinds.values()).collect();
+    let mut sorted = aliases.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), aliases.len(), "two names share an alias: {table:?}");
+    // An alias is shorter than its name; a name with no shorter free alias keeps its own spelling.
+    for (name, alias) in table.keys.iter().chain(&table.kinds) {
+        assert!(alias.len() < name.len() || alias == name, "`{name}` -> `{alias}`");
+        assert!(
+            alias == name || !canonical.contains(&alias),
+            "`{alias}` is a canonical name: {table:?}"
+        );
+    }
+    assert!(!sorted.iter().any(|alias| alias.as_str() == "question"), "{table:?}");
+    for format in [ReplyFormat::IrJson, ReplyFormat::Compact] {
+        for task in ["FindBadge", "Summary"] {
+            let mut request = request(SOURCE, task);
+            request.attempts.push(AttemptFeedback {
+                reply: "{}".to_owned(),
+                diagnostics: Vec::new(),
+            });
+            let text = render_with(&request, &options(format))
+                .expect("rendered")
+                .turns()
+                .iter()
+                .map(|t| t.text.to_lowercase())
+                .collect::<String>();
+            for delivery in [
+                "reply with",
+                "json document",
+                "call a tool",
+                "call the tool",
+                "markdown",
+            ] {
+                assert!(!text.contains(delivery), "{format:?} {task}: says `{delivery}`");
             }
         }
     }

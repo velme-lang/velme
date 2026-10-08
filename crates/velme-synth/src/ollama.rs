@@ -13,8 +13,11 @@ use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 use crate::http::{agent_config_trusting, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::provider::{
+    Identity, MalformedReason, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 use crate::request::SynthRequest;
+use crate::schema::{compact_body_schema, question_schema};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 use crate::url::{ExternalUrl, LocalResolver};
 
@@ -215,11 +218,12 @@ impl Ollama {
             };
             messages.push(json!({"role": role, "content": turn.text}));
         }
-        // A compact reply (R-SYNTH-36) is not in the schema's names, so it is constrained to JSON only and the validator
-        // alone decides.
+        // A compact reply (R-SYNTH-36) is not in the schema's names, so it is constrained to the body key's alias or
+        // the question object, and the validator alone decides. The question stays allowed: a grammar without it would
+        // forbid asking (R-SYNTH-05).
         let format = match self.config.options.reply_format {
             ReplyFormat::IrJson => request.output_schema.clone(),
-            ReplyFormat::Compact => json!("json"),
+            ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
         };
         let body = json!({
             "model": self.model_for(limits.attempt),
@@ -264,22 +268,22 @@ fn find_digest(text: &str, model: &str) -> Result<String, ProviderError> {
 
 /// The reply and the tokens of a chat response: the message's content, which is itself the reply document.
 fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
-    let malformed = |why: &str| ProviderError::Malformed(why.to_owned());
+    let malformed = |why: MalformedReason| ProviderError::Malformed(Some(why));
     let doc: Value = from_json_str_within(text, MAX_JSON_DEPTH + ENVELOPE_DEPTH)
-        .map_err(|_| malformed("the response wasn't JSON, or nested too deeply or repeated a key"))?;
+        .map_err(|_| malformed(MalformedReason::ResponseNotJson))?;
     if doc.get("done_reason").and_then(Value::as_str) == Some("length") {
-        return Err(malformed("the reply was cut off"));
+        return Err(malformed(MalformedReason::CutOff));
     }
     let content = doc
         .pointer("/message/content")
         .and_then(Value::as_str)
-        .ok_or_else(|| malformed("the response had no message"))?;
-    let reply: Value = from_json_str_within(content, MAX_JSON_DEPTH)
-        .map_err(|_| malformed("the reply wasn't JSON, or nested too deeply or repeated a key"))?;
+        .ok_or_else(|| malformed(MalformedReason::NoMessage))?;
+    let reply: Value =
+        from_json_str_within(content, MAX_JSON_DEPTH).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
     if !reply.is_object() {
-        return Err(malformed("the reply wasn't an object"));
+        return Err(malformed(MalformedReason::ReplyNotObject));
     }
-    let reply = to_canonical_string(&reply).map_err(|_| malformed("the reply wasn't JSON"))?;
+    let reply = to_canonical_string(&reply).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
     let count = |name: &str| doc.get(name).and_then(Value::as_u64).unwrap_or(0);
     let usage = Usage {
         input_tokens: count("prompt_eval_count"),

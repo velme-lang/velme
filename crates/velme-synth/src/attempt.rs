@@ -9,6 +9,7 @@ use velme_ir::{Invalid, ParseError, Subject};
 use crate::compact;
 use crate::options::ReplyFormat;
 use crate::prompt::type_name;
+use crate::provider::MalformedReason;
 use crate::request::{AttemptDiagnostic, AttemptFeedback, SynthRequest};
 
 /// The most Unicode scalar values of a question or pending text (R-SYNTH-33).
@@ -44,14 +45,30 @@ pub struct Rejection {
 impl Rejection {
     /// A reply that isn't a goal body or a question, or no reply at all: `VL0401` in Velme's own wording (R-SYNTH-10).
     pub(crate) fn not_a_reply(reply: &str, why: &str) -> Rejection {
-        let message = format!("The reply wasn't a goal body or a question: {why}.");
+        Self::reply_problem(reply, &format!("the reply {why}"), why)
+    }
+
+    /// A provider error that is a `Malformed` reply (R-SYNTH-07): the reason's words are the learner's line, and every
+    /// such attempt is one cause, whatever its reason (R-SYNTH-31, D-153). A replayed or scripted one has no reason.
+    pub(crate) fn malformed(reason: Option<MalformedReason>) -> Rejection {
+        Self::reply_problem(
+            "",
+            reason.map_or("the reply was not a usable reply", MalformedReason::words),
+            "malformed",
+        )
+    }
+
+    /// `clause` is a whole sentence part with its own subject ("the reply …", "the response …"): a response-level fault
+    /// is not a fault of the reply.
+    fn reply_problem(reply: &str, clause: &str, cause: &str) -> Rejection {
+        let message = format!("Velme got no goal body or question: {clause}.");
         Rejection {
             cause: Cause {
                 code: Code::IRSchemaInvalid,
-                name: why.to_owned(),
+                name: cause.to_owned(),
             },
-            line: format!("the reply {why}"),
-            verbose: format!("{}: the reply {why}", Code::IRSchemaInvalid.as_str()),
+            line: clause.to_owned(),
+            verbose: format!("{}: {clause}", Code::IRSchemaInvalid.as_str()),
             input: String::new(),
             reply: reply.to_owned(),
             diagnostics: vec![AttemptDiagnostic {

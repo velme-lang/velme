@@ -5,8 +5,32 @@ use std::sync::LazyLock;
 
 use serde_json::{Map, Value, json};
 
+use crate::options::ReplyFormat;
+use crate::prompt::body_key;
+
 /// The IR schema, generated once.
 static IR_SCHEMA: LazyLock<Value> = LazyLock::new(velme_ir::schema);
+
+/// The schema of a compact reply's body (R-SYNTH-36): the body key spelled by its alias, whose value is the expression
+/// object in the compact names. Nothing deeper is constrained, since the validator judges the expanded IR.
+pub(crate) fn compact_body_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {(body_key(ReplyFormat::Compact)): {"type": "object"}},
+        "required": [body_key(ReplyFormat::Compact)],
+    })
+}
+
+/// The question object of the reply schema (R-SYNTH-10), self-contained.
+pub(crate) fn question_schema() -> Value {
+    json!({
+        "description": "A question, only when the plan leaves open a choice that changes the result (R-SYNTH-32).",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {"question": {"type": "string", "description": "The question, in plain words."}},
+        "required": ["question"],
+    })
+}
 
 /// The JSON Schema a reply must satisfy: `{"body": <expression>}` or one question object (R-SYNTH-10, D-103). Only the
 /// definitions an expression reaches are kept, so the model is shown nothing of the envelope Velme writes itself.
@@ -44,16 +68,7 @@ pub fn reply_schema() -> Value {
             "required": ["body"],
         }),
     );
-    defs.insert(
-        "Question".to_owned(),
-        json!({
-            "description": "A question, only when the plan leaves open a choice that changes the result (R-SYNTH-32).",
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {"question": {"type": "string", "description": "The question, in plain words."}},
-            "required": ["question"],
-        }),
-    );
+    defs.insert("Question".to_owned(), question_schema());
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "SynthReply",

@@ -22,6 +22,9 @@ pub struct AliasTable {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnknownAlias;
 
+/// The member of a reply that asks a question, which no alias may spell (R-SYNTH-10).
+const QUESTION: &str = "question";
+
 static TABLE: LazyLock<AliasTable> = LazyLock::new(build);
 
 /// The alias table (R-SYNTH-36), part of `prompt_version` (D-97).
@@ -34,9 +37,13 @@ fn build() -> AliasTable {
     let mut keys = BTreeSet::new();
     let mut kinds = BTreeSet::new();
     collect(&schema, &mut keys, &mut kinds);
+    // No alias is a canonical name (a reply key would read two ways), nor the `question` member of a reply, and no two
+    // names share one (R-SYNTH-36, D-153).
+    let mut taken: BTreeSet<String> = keys.iter().chain(&kinds).cloned().collect();
+    taken.insert(QUESTION.to_owned());
     AliasTable {
-        keys: aliases(&keys),
-        kinds: aliases(&kinds),
+        keys: aliases(&keys, &mut taken),
+        kinds: aliases(&kinds, &mut taken),
     }
 }
 
@@ -67,14 +74,23 @@ fn collect(schema: &Value, keys: &mut BTreeSet<String>, kinds: &mut BTreeSet<Str
     }
 }
 
-/// Each name in sorted order takes its shortest prefix that no earlier name took.
-fn aliases(names: &BTreeSet<String>) -> BTreeMap<String, String> {
-    let mut taken = BTreeSet::new();
+/// Each name in sorted order takes the first free alias that is shorter than it: its shortest proper prefix, else any
+/// single letter, else any two letters, and adds it to `taken`. A name with no shorter free alias keeps its own
+/// spelling (R-SYNTH-36, D-153).
+fn aliases(names: &BTreeSet<String>, taken: &mut BTreeSet<String>) -> BTreeMap<String, String> {
+    let letters: Vec<char> = ('a'..='z').collect();
     let mut table = BTreeMap::new();
     for name in names {
         let chars: Vec<char> = name.chars().collect();
-        let alias = (1..=chars.len())
-            .map(|n| chars.iter().take(n).collect::<String>())
+        let prefixes = (1..chars.len()).map(|n| chars.iter().take(n).collect::<String>());
+        let singles = letters.iter().map(char::to_string);
+        let pairs = letters
+            .iter()
+            .flat_map(|a| letters.iter().map(move |b| format!("{a}{b}")));
+        let alias = prefixes
+            .chain(singles)
+            .chain(pairs)
+            .filter(|candidate| candidate.chars().count() < chars.len())
             .find(|candidate| !taken.contains(candidate))
             .unwrap_or_else(|| name.clone());
         taken.insert(alias.clone());
@@ -108,11 +124,24 @@ pub fn compress(value: &Value) -> Value {
     })
 }
 
-/// A JSON Pointer or path of canonical names, written with aliases.
+/// A JSON Pointer or path of canonical names, written with aliases. It follows [`walk`]: the name right after a
+/// `fields` or `types` segment is the program's own, and nothing under a literal's `value` is renamed.
 pub fn compress_path(path: &str) -> String {
     let table = table();
+    let (mut own_next, mut raw_rest) = (false, false);
     path.split('/')
-        .map(|segment| table.keys.get(segment).map_or(segment, String::as_str))
+        .map(|segment| {
+            if raw_rest {
+                return segment;
+            }
+            if own_next {
+                own_next = false;
+                return segment;
+            }
+            own_next = matches!(segment, "types" | "fields");
+            raw_rest = segment == "value";
+            table.keys.get(segment).map_or(segment, String::as_str)
+        })
         .collect::<Vec<_>>()
         .join("/")
 }
@@ -221,9 +250,52 @@ pub fn describe() -> String {
     };
     format!(
         "Write the reply in the compact format: the same tree, with each property name and each node kind replaced by \
-         its short name. Property names: {}. Node kinds: {}. Everything else, including the `t` tags of types, \
-         is written as usual.",
+         its short name. Property names: {}. Node kinds: {}. Everything else, the values of type tags such as \
+         `{{\"{}\":\"Number\"}}` included, is written as usual.",
         list(&table.keys),
-        list(&table.kinds)
+        list(&table.kinds),
+        table.keys.get("t").map_or("t", String::as_str)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A compact reply reads back to the IR it was written from, and a canonical key is no alias.
+    #[test]
+    fn compress_and_expand_round_trip_and_canonical_keys_are_refused() {
+        let ir = serde_json::json!({"kind": "builtin", "name": "sum", "args": [
+            {"kind": "literal", "type": {"t": "Number"}, "value": 1}]});
+        let compact = compress(&ir);
+        assert_eq!(expand(&compact), Ok(ir.clone()));
+        assert_eq!(expand(&ir), Err(UnknownAlias));
+    }
+
+    /// A path's aliases follow `walk`: a record field or type named like a canonical key, and anything under a
+    /// literal's `value`, stay as written (R-SYNTH-36).
+    #[test]
+    fn a_path_keeps_a_programs_own_names_unaliased() {
+        let table = table();
+        let (kind, fields, value) = (&table.keys["kind"], &table.keys["fields"], &table.keys["value"]);
+        for name in ["name", "value", "kind", "args"] {
+            assert_eq!(
+                compress_path(&format!("/body/fields/{name}/kind")),
+                format!("/{}/{fields}/{name}/{kind}", table.keys["body"])
+            );
+            assert_eq!(
+                compress_path(&format!("/types/{name}/fields/{name}")),
+                format!("/{}/{name}/{fields}/{name}", table.keys["types"])
+            );
+        }
+        // The program's own `fields` name, under the `fields` key, is kept (a record field named like the key).
+        assert_eq!(
+            compress_path("/body/fields/fields/kind"),
+            format!("/{}/{fields}/fields/{kind}", table.keys["body"])
+        );
+        assert_eq!(
+            compress_path("/body/args/0/value/kind"),
+            format!("/{}/{}/0/{value}/kind", table.keys["body"], table.keys["args"])
+        );
+    }
 }
