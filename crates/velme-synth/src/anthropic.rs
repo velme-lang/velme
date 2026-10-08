@@ -21,7 +21,7 @@ use crate::provider::{
     SynthReply, Usage,
 };
 use crate::request::SynthRequest;
-use crate::schema::compact_body_schema;
+use crate::schema::reply_schema_for;
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries};
 
 /// Where the Messages API is, unless a test says otherwise (D-98).
@@ -220,8 +220,10 @@ impl Anthropic {
         }
     }
 
-    /// The request body: the conversation of R-SYNTH-11, the two tools and the system prompt asking for one of them.
-    fn body(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<String, ProviderError> {
+    /// The request body: the conversation of R-SYNTH-11, the two tools and the system prompt asking for one of them. It is
+    /// what `call` sends, built with no network and no key, so a tool can show exactly what the model would be asked.
+    #[doc(hidden)]
+    pub fn request_body(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<String, ProviderError> {
         let prompt = render_with(request, &self.config.options.prompt())
             .map_err(|_| ProviderError::Internal("the prompt could not be rendered".to_owned()))?;
         let mut messages = Vec::new();
@@ -316,20 +318,29 @@ impl Anthropic {
 /// in the schema's names, so its tool takes only the body key's alias and the validator alone decides.
 fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderError> {
     let bad = || ProviderError::Internal("the reply schema has no goal or question".to_owned());
-    let mut defs: Map<String, Value> = request
-        .output_schema
-        .get("$defs")
-        .and_then(Value::as_object)
-        .cloned()
-        .ok_or_else(bad)?;
-    let goal = defs.remove("Body").ok_or_else(bad)?;
-    let question = defs.remove("Question").ok_or_else(bad)?;
-    let goal = match (format, goal) {
-        (ReplyFormat::IrJson, Value::Object(mut goal)) => {
+    let (goal, question) = match format {
+        ReplyFormat::IrJson => {
+            let mut defs: Map<String, Value> = request
+                .output_schema
+                .get("$defs")
+                .and_then(Value::as_object)
+                .cloned()
+                .ok_or_else(bad)?;
+            let Value::Object(mut goal) = defs.remove("Body").ok_or_else(bad)? else {
+                return Err(bad());
+            };
+            let question = defs.remove("Question").ok_or_else(bad)?;
             goal.insert("$defs".to_owned(), Value::Object(defs));
-            Value::Object(goal)
+            (Value::Object(goal), question)
         }
-        _ => compact_body_schema(),
+        format => match reply_schema_for(format)
+            .get("anyOf")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+        {
+            Some([goal, question]) => (goal.clone(), question.clone()),
+            _ => return Err(bad()),
+        },
     };
     let key = body_key(format);
     let description = format!("Return the goal's body: {{\"{key}\": <expression>}}.");
@@ -453,7 +464,7 @@ impl SynthProvider for Anthropic {
         let Some(key) = self.key.get() else {
             return unsent(ProviderError::NotConfigured);
         };
-        let body = match self.body(request, limits) {
+        let body = match self.request_body(request, limits) {
             Ok(body) => body,
             Err(error) => return unsent(error),
         };

@@ -1,9 +1,9 @@
-//! `cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list]>`.
+//! `cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list] | render-prompt ...>`.
 
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use anyhow::{Result, bail};
-use xtask::{ac_audit, features, gate, layering, verify, workspace_root};
+use xtask::{ac_audit, cargo_program, features, gate, layering, verify, workspace_root};
 
 fn main() -> ExitCode {
     match run() {
@@ -103,6 +103,23 @@ fn run() -> Result<ExitCode> {
                 ExitCode::FAILURE
             })
         }
-        _ => bail!("usage: cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list]>"),
+        // Dev tooling (P0c): the providers' own request builders run from an example of `velme-synth`, which already
+        // depends on the compiler crates, so xtask itself keeps its two dependencies (INV-9).
+        Some("render-prompt") => {
+            let status = Command::new(cargo_program())
+                .args(["run", "--quiet", "--manifest-path"])
+                .arg(root.join("Cargo.toml"))
+                .args(["-p", "velme-synth", "--example", "render_prompt", "--"])
+                .args(args.iter().skip(1))
+                .status()?;
+            Ok(if status.success() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
+        }
+        _ => bail!(
+            "usage: cargo xtask <verify [--quick] | gate | layering | features | ac-audit [--strict] [--list] | render-prompt <file> <Goal> [options]>"
+        ),
     }
 }

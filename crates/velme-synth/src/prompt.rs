@@ -11,7 +11,7 @@ use velme_ir::{Fingerprint, Type, to_canonical_string};
 use crate::compact;
 use crate::options::{PromptOptions, ReplyFormat, SchemaInPrompt};
 use crate::request::{AttemptDiagnostic, RecordType, Signature, SynthRequest, TaskKind};
-use crate::schema::{compact_body_schema, operators, question_schema, reply_schema, schema_summary};
+use crate::schema::{operators, reply_schema_for, schema_summary};
 
 /// A template's id: the task kind and the template's own version. Editing a template's text keeps its id and changes
 /// its bytes, which `prompt_version` hashes.
@@ -216,11 +216,7 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
     let mut notes = String::new();
     if options.schema_in_prompt == SchemaInPrompt::Full {
         // In `compact` the schema shown is the one the reply is held to: the aliased body key, never `body` (R-SYNTH-36).
-        let schema = match options.reply_format {
-            ReplyFormat::IrJson => reply_schema(),
-            ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
-        };
-        let schema = canonical(&schema)?;
+        let schema = canonical(&reply_schema_for(options.reply_format))?;
         notes.push_str(&format!("\nThe reply schema, as JSON Schema:\n{schema}"));
     }
     if options.reply_format == ReplyFormat::Compact {

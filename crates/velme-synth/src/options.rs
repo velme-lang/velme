@@ -2,6 +2,7 @@
 //! them changes which IR is accepted (INV-1, INV-2); the ones that change what is sent enter `input_version`
 //! (R-SYNTH-40).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use velme_ir::Fingerprint;
 
@@ -17,7 +18,7 @@ pub enum SchemaInPrompt {
 }
 
 /// How a reply spells the IR (R-SYNTH-36).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReplyFormat {
     /// Canonical IR JSON.
@@ -34,6 +35,13 @@ impl ReplyFormat {
             ReplyFormat::IrJson => "ir-json",
             ReplyFormat::Compact => "compact",
         }
+    }
+
+    /// The format called `name`, or `None` for a name Velme doesn't know.
+    pub fn from_name(name: &str) -> Option<Self> {
+        [ReplyFormat::IrJson, ReplyFormat::Compact]
+            .into_iter()
+            .find(|format| format.name() == name)
     }
 }
 

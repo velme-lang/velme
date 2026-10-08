@@ -169,6 +169,24 @@ fn external(project: &Path, replies: &Path, tune: impl FnOnce(Config) -> Config,
     }
 }
 
+/// [`external`] told to ask for `compact` replies.
+fn compact_external(project: &Path, replies: &Path) -> Held {
+    let server = Server::start(
+        Config::replying(replies)
+            .logging(project.join("backend.log"))
+            .listing(json!(["ir-json", "compact"])),
+    );
+    let mut config = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
+    config.reply_format = velme_synth::ReplyFormat::Compact;
+    let sleeper = RecordingSleeper::default();
+    let backend = External::new(config).with_sleeper(Arc::new(sleeper.clone()));
+    Held {
+        _server: server,
+        backend,
+        sleeper,
+    }
+}
+
 const PATIENT: Duration = Duration::from_secs(30);
 
 /// What the backend was asked, one entry per line: `describe` or `synthesize <Goal>`.
@@ -237,24 +255,35 @@ fn assert_nothing_stored(dir: &Path) {
     assert!(!dir.join(".velme/artifacts").exists(), "an artifact was written");
 }
 
-/// `reply_format = "compact"` is a setting of the LLM providers: an external backend answers in canonical IR, which the
-/// loop reads as it is, whatever the build's options say (R-SYNTH-34..40).
+/// `reply_format = "compact"` applies to an external backend too (D-156): a reply under the alias builds, and canonical IR
+/// under `body` is a failed attempt, as for an LLM (R-SYNTH-36, D-153).
 #[test]
-fn r_synth_36_the_compact_format_does_not_apply_to_an_external_backend() {
-    let project = scratch("compact-external");
-    let replies = replies("compact-external", &[("Double.json", &double())]);
-    let backend = external(&project, &replies, |c| c, PATIENT);
-    let options = SynthOptions {
+fn r_synth_36_the_compact_format_applies_to_an_external_backend() {
+    let options = || SynthOptions {
         reply_format: velme_synth::ReplyFormat::Compact,
         ..no_retries()
     };
-    let built = build_with(&project, ONE, &backend, options);
+    let compact = velme_synth::compress(&json!({ "body": double()["body"] }));
+    let project = scratch("compact-external");
+    let files = replies("compact-external", &[("Double.json", &compact)]);
+    let backend = compact_external(&project, &files);
+    let built = build_with(&project, ONE, &backend, options());
     assert_eq!(
         status(&built, "Double"),
         Status::Built(Source::Synthesized),
         "{:?}",
         built.report.goals
     );
+
+    let project = scratch("compact-external-canonical");
+    let files = replies("compact-external-canonical", &[("Double.json", &double())]);
+    let backend = compact_external(&project, &files);
+    let built = build_with(&project, ONE, &backend, options());
+    assert_eq!(status(&built, "Double"), Status::Failed);
+    let d = diagnostic(&built, "Double");
+    // A failed attempt, not a backend failure; the rule is the missing alias (D-153).
+    assert_eq!(d.code, Code::SynthesisFailed, "{}", d.message);
+    assert!(d.message.contains("bo"), "{}", d.message);
 }
 
 /// A backend replying with hostile IR, a `call` node or a builtin that isn't there, is rejected with `VL0402` both times,

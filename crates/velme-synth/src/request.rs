@@ -13,7 +13,8 @@ use velme_diagnostics::{Diagnostic, Span};
 use velme_ir::{CheckScope, Fingerprint, IR_VERSION, Type, encode_value, ir_type, to_canonical_string};
 use velme_sema::hir::{self, GoalId, GoalKind, Program, Type as HirType, TypeId};
 
-use crate::schema::reply_schema;
+use crate::options::ReplyFormat;
+use crate::schema::{reply_schema, reply_schema_for};
 
 /// The version of the request document and of the external protocol (`compiler/22` §3.2). A change to either changes
 /// the `input_version` of `external` backends and so every synthesis key.
@@ -186,8 +187,33 @@ pub struct SynthRequest {
     pub builtins: Vec<BuiltinSig>,
     /// Earlier attempts at this goal, oldest first.
     pub attempts: Vec<AttemptFeedback>,
-    /// The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103).
+    /// The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103), in the names of
+    /// `reply_format`: the schema of that format's reply (R-SYNTH-36, D-156).
     pub output_schema: Value,
+    /// The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend
+    /// (R-SYNTH-36, D-156): the default leaves the request's bytes as they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "reply_format_schema")]
+    pub reply_format: Option<ReplyFormat>,
+}
+
+/// The `input_version` of an `external` backend asked for `format` (R-SYNTH-40, D-156): the request version, then for a
+/// format other than `ir-json` `+reply_format=<name>@<version>`, the version being the alias table's for `compact`. A
+/// format changes the requests and how replies are read, so it re-keys.
+pub(crate) fn external_input_version(format: ReplyFormat) -> String {
+    match format {
+        ReplyFormat::IrJson => REQUEST_VERSION.to_owned(),
+        ReplyFormat::Compact => format!(
+            "{REQUEST_VERSION}+reply_format={}@{}",
+            format.name(),
+            crate::compact::version()
+        ),
+    }
+}
+
+/// `reply_format` is absent or one of the names, never `null`: the request leaves the member out for `ir-json`.
+fn reply_format_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    generator.subschema_for::<ReplyFormat>()
 }
 
 /// The JSON Schema of [`SynthRequest`] at [`REQUEST_VERSION`], the body of an `external` `synthesize` request
@@ -198,6 +224,14 @@ pub fn request_schema() -> Value {
 }
 
 impl SynthRequest {
+    /// This request as an `external` backend gets it for a reply in `format` (`compiler/22` §3.2, D-156): the format
+    /// named unless it is `ir-json`, and `output_schema` that format's reply schema.
+    pub fn for_external(mut self, format: ReplyFormat) -> Self {
+        self.reply_format = Some(format).filter(|f| *f != ReplyFormat::IrJson);
+        self.output_schema = reply_schema_for(format);
+        self
+    }
+
     /// The IR goal a reply's `body` completes, as canonical JSON for the validator (D-103): the versions, the goal's name,
     /// its `types`, `inputs` and `output` all come from the request, never from the reply. `calls` is left out: the
     /// validator joins the compiler's in (`compiler/21` R-IR-02).
@@ -323,6 +357,7 @@ pub fn build_request(program: &Program, goal: GoalId, source: &str) -> Result<Sy
         builtins: builtins(),
         attempts: Vec::new(),
         output_schema: reply_schema(),
+        reply_format: None,
     })
 }
 

@@ -63,6 +63,8 @@ pub struct Config {
     pub describe: (String, String),
     /// Whether `describe` also carries a key Velme doesn't know.
     pub describe_extra: bool,
+    /// The `reply_formats` member of `describe`, as written; none leaves the member out.
+    pub describe_formats: Option<Value>,
     /// The bearer token every request must carry; a request without it is `401`.
     pub token: Option<String>,
     /// How to misbehave, and on which request.
@@ -80,6 +82,7 @@ impl Default for Config {
             auth_dump: None,
             describe: ("velme-test-support".to_owned(), "hand-written".to_owned()),
             describe_extra: false,
+            describe_formats: None,
             token: None,
             mode: None,
             port: 0,
@@ -121,6 +124,13 @@ impl Config {
     #[must_use]
     pub fn wanting_token(mut self, token: &str) -> Self {
         self.token = Some(token.to_owned());
+        self
+    }
+
+    /// The backend whose `describe` carries `"reply_formats": formats`, whatever `formats` is.
+    #[must_use]
+    pub fn listing(mut self, formats: Value) -> Self {
+        self.describe_formats = Some(formats);
         self
     }
 
@@ -254,6 +264,12 @@ fn log(config: &Config, line: &str) {
 fn describe(config: &Config) -> Value {
     let (name, version) = &config.describe;
     let mut reply = json!({"backend": name, "backend_version": version});
+    if let Some(formats) = &config.describe_formats {
+        reply
+            .as_object_mut()
+            .expect("an object")
+            .insert("reply_formats".to_owned(), formats.clone());
+    }
     if config.describe_extra {
         reply
             .as_object_mut()

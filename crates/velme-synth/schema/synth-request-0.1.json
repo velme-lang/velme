@@ -243,6 +243,21 @@
       ],
       "type": "object"
     },
+    "ReplyFormat": {
+      "description": "How a reply spells the IR (R-SYNTH-36).",
+      "oneOf": [
+        {
+          "const": "ir-json",
+          "description": "Canonical IR JSON.",
+          "type": "string"
+        },
+        {
+          "const": "compact",
+          "description": "The same tree with every property name and node `kind` tag replaced by a short alias.",
+          "type": "string"
+        }
+      ]
+    },
     "Signature": {
       "additionalProperties": false,
       "description": "A goal's signature: `Name(params) -> Output`.",
@@ -460,11 +475,15 @@
       "type": "array"
     },
     "output_schema": {
-      "description": "The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103)."
+      "description": "The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103), in the names of\n`reply_format`: the schema of that format's reply (R-SYNTH-36, D-156)."
     },
     "plan": {
       "description": "The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).",
       "type": "string"
+    },
+    "reply_format": {
+      "$ref": "#/$defs/ReplyFormat",
+      "description": "The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend\n(R-SYNTH-36, D-156): the default leaves the request's bytes as they were."
     },
     "request_version": {
       "description": "[`REQUEST_VERSION`].",

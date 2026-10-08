@@ -15,10 +15,12 @@ use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::attempt::{clean_line, clean_name, clean_tail};
 use crate::http::{agent_config_trusting, transport_error};
+use crate::options::ReplyFormat;
+use crate::prompt::body_key;
 use crate::provider::{
     Identity, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
 };
-use crate::request::{REQUEST_VERSION, SynthRequest};
+use crate::request::{SynthRequest, external_input_version};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
 use crate::url::{ExternalUrl, LocalResolver};
 
@@ -98,6 +100,9 @@ pub struct ExternalConfig {
     pub timeout: Duration,
     /// The PEM certificates of `external_ca_file` (D-105), trusted for this backend's connections only.
     pub ca_pem: Option<Vec<u8>>,
+    /// The format the backend's replies are written in (`reply_format`, R-SYNTH-36, D-156). A format other than `ir-json`
+    /// is named in each request and enters `input_version`.
+    pub reply_format: ReplyFormat,
 }
 
 impl ExternalConfig {
@@ -111,6 +116,7 @@ impl ExternalConfig {
             token: None,
             timeout: Self::DEFAULT_TIMEOUT,
             ca_pem: None,
+            reply_format: ReplyFormat::IrJson,
         }
     }
 }
@@ -344,10 +350,38 @@ impl SynthBackend for External {
                 &tail,
             ));
         };
+        // `reply_formats` lists the names the backend answers in; absent, it answers in `ir-json` only. A name Velme
+        // doesn't know is ignored; a list that isn't a list of names is a backend that failed (R-SYNTH-26, D-156).
+        let offered: Vec<ReplyFormat> = match doc.get("reply_formats") {
+            None => vec![ReplyFormat::IrJson],
+            Some(Value::Array(names)) => names
+                .iter()
+                .map(|name| name.as_str().ok_or(()))
+                .collect::<Result<Vec<_>, ()>>()
+                .map_err(|()| failed("its `describe` reply's `reply_formats` wasn't a list of names", &tail))?
+                .into_iter()
+                .filter_map(ReplyFormat::from_name)
+                .collect(),
+            Some(_) => {
+                return Err(failed(
+                    "its `describe` reply's `reply_formats` wasn't a list of names",
+                    &tail,
+                ));
+            }
+        };
+        let asked = self.config.reply_format;
+        // A format the backend doesn't list is never sent: the format would then depend on the backend (D-156).
+        if asked != ReplyFormat::IrJson && !offered.contains(&asked) {
+            return Err(ProviderError::FormatUnsupported {
+                backend,
+                offered: offered.iter().map(|format| format.name()).collect(),
+                asked: asked.name(),
+            });
+        }
         Ok(Identity {
             provider: PROVIDER.to_owned(),
             model: format!("{backend}@{version}"),
-            input_version: REQUEST_VERSION.to_owned(),
+            input_version: external_input_version(asked),
             backend: Some(backend),
         })
     }
@@ -391,7 +425,9 @@ impl SynthProvider for ExternalProvider {
         let body = to_canonical_string(request)
             .map_err(|_| ProviderError::Internal("the request could not be written".to_owned()))?;
         let (doc, tail) = self.backend.exchange(&Call::Synthesize(&body)).await?;
-        let reply = self.backend.read_reply(doc, &tail)?;
+        let reply = self
+            .backend
+            .read_reply(doc, &tail, request.reply_format.unwrap_or_default())?;
         Ok(SynthReply {
             reply_json: reply,
             usage: Usage::default(),
@@ -403,19 +439,31 @@ impl SynthProvider for ExternalProvider {
 
 impl External {
     /// The reply document of a `synthesize` request: exactly one of `body`, `question`, `pending` or `error` (R-SYNTH-28),
-    /// as the reply text the retry loop reads (R-SYNTH-10). Any other key is ignored (R-SYNTH-26). The token is taken out
-    /// of message texts; a `body` that holds it is refused, never rewritten (D-102, D-103).
-    fn read_reply(&self, mut doc: Map<String, Value>, tail: &str) -> Result<String, ProviderError> {
+    /// as the reply text the retry loop reads (R-SYNTH-10). In a format other than `ir-json` the body is spelled as that
+    /// format spells it (`bo` in `compact`, R-SYNTH-36); a reply keyed `body` there is passed on as it is, to be the failed
+    /// attempt D-153 makes it. Any other key is ignored (R-SYNTH-26). The token is taken out of message texts; a `body` that
+    /// holds it is refused, never rewritten (D-102, D-103).
+    fn read_reply(
+        &self,
+        mut doc: Map<String, Value>,
+        tail: &str,
+        format: ReplyFormat,
+    ) -> Result<String, ProviderError> {
+        let body_key = body_key(format);
         let unknown = || {
             failed(
-                "its reply wasn't exactly one of `body`, `question`, `pending` or `error`",
+                &format!("its reply wasn't exactly one of `{body_key}`, `question`, `pending` or `error`"),
                 tail,
             )
         };
-        let kinds: Vec<&str> = ["body", "question", "pending", "error"]
-            .into_iter()
-            .filter(|kind| doc.contains_key(*kind))
-            .collect();
+        // Under a format with its own body key a canonical `body` is still told apart: it is passed on to be the failed
+        // attempt D-153 makes it, not a reply of no known kind.
+        let mut keys = vec![body_key];
+        if body_key != "body" {
+            keys.push("body");
+        }
+        keys.extend(["question", "pending", "error"]);
+        let kinds: Vec<&str> = keys.into_iter().filter(|kind| doc.contains_key(*kind)).collect();
         let (&[kind], Some(value)) = (kinds.as_slice(), kinds.first().and_then(|kind| doc.remove(*kind))) else {
             return Err(unknown());
         };
@@ -426,8 +474,11 @@ impl External {
                 .ok_or_else(|| failed("a reply text wasn't a string", tail))
         };
         match (kind, value) {
-            ("body", body @ Value::Object(_)) => {
-                let canonical = to_canonical_string(&serde_json::json!({ "body": body })).map_err(|_| unknown())?;
+            // Whatever the format's key holds is read by the format (an object, or a string in `notation`, R-SYNTH-36).
+            (key, body) if key == body_key || (key == "body" && body.is_object()) => {
+                let mut reply = Map::new();
+                reply.insert(key.to_owned(), body);
+                let canonical = to_canonical_string(&Value::Object(reply)).map_err(|_| unknown())?;
                 if self.holds_token(&canonical) {
                     return Err(failed("the reply contains your token", tail));
                 }

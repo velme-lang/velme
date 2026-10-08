@@ -47,7 +47,7 @@ fails with `VL0702 LockStale` (`--locked`) or `VL0404 ProviderUnavailable` (`--o
 pub trait SynthProvider: Send + Sync {
     fn id(&self) -> &str;                    // "anthropic" | "ollama" | "external" | "replay" | "scripted"
     fn model(&self) -> &str;                 // model id (or model+retry_model, R-SYNTH-39), Ollama digest or external <backend>@<backend_version> → manifest model_version
-    fn input_version(&self) -> &str;         // prompt_version + request options (LLM providers, R-SYNTH-40) or request_version (external)
+    fn input_version(&self) -> &str;         // prompt_version + request options (LLM providers, R-SYNTH-40) or the external `input_version` (R-SYNTH-40)
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits)
         -> Result<SynthReply, ProviderError>;
 }
@@ -58,12 +58,14 @@ pub struct SynthRequest { pub request_version: String, pub ir_version: String, p
                           pub plan: String, pub checks: Vec<CheckItem>, pub examples: Vec<Example>,
                           pub budget: Budget, pub builtins: Vec<BuiltinSig>,
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
-                          pub output_schema: serde_json::Value }             // reply schema: goal body or question (R-SYNTH-10)
+                          pub output_schema: serde_json::Value,              // that format's reply schema: goal body or question (R-SYNTH-10, §3.2)
+                          pub reply_format: Option<ReplyFormat> }            // external only, absent for ir-json (§3.2, D-156)
 pub struct SynthReply  { pub reply_json: String, pub usage: Usage, pub latency: Duration }
 pub enum  ProviderError { NotConfigured, ModelMissing(String), KeyRejected, TokenRejected,
                           Rejected { status: Option<u16>, message: String },     // R-SYNTH-07, D-150: a 4xx no other variant names
                           Unavailable(String), RateLimited { retry_after: Option<Duration> },
                           Refused(String), Timeout, Malformed(String),
+                          FormatUnsupported { backend: String, offered: Vec<String>, asked: String }, // R-SYNTH-26, D-156
                           BackendFailed { reason: String, body: String },        // R-SYNTH-28: body = cleaned last 4 KiB of the reply
                           Pending(String), File { path: String, reason: String }, // R-SYNTH-43
                           Internal(String) }
@@ -140,7 +142,7 @@ request, `/v1/messages` or `/api/chat`, with a `4xx` that provider maps to no ot
 error message (`error.message` of Anthropic's error envelope, `error` of Ollama's) as a quoted note, the key taken out,
 its control and format (`Cf`) characters other than bidi controls made spaces, bidi controls kept and escaped when
 shown (R-CLI-17, D-108), and bounded as `BackendFailed`'s reason is (R-SYNTH-33), and no note when the body has none: the one provider error text a
-diagnostic shows besides `external`'s (a question, R-SYNTH-33, is shown too) (D-150); `BackendFailed` → `VL0406`, not retried; `Pending` → `VL0408`,
+diagnostic shows besides `external`'s (a question, R-SYNTH-33, is shown too) (D-150); `BackendFailed` and `FormatUnsupported` (R-SYNTH-26) → `VL0406`, not retried; `Pending` → `VL0408`,
 not retried (R-SYNTH-41); `Internal` (a Velme bug, such as a request with no hash) → `VL0607`, not retried.
 **R-SYNTH-45** After one goal ends with `VL0404`, or with `VL0405` from a call (a rejected key or a model the API
 doesn't know; not a `Rejected` request, which may be that goal's alone, D-150) or `VL0901` from a replay file, the build contacts the provider no more: every later goal that reaches
@@ -170,27 +172,39 @@ committed `velme-synth-request` JSON Schema, generated from the Rust types like 
 
 | Endpoint | Velme sends | Backend replies |
 |---|---|---|
-| `GET /v1/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}` |
-| `POST /v1/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"body": <expression>}`, `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
+| `GET /v1/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}`, and optionally `"reply_formats": ["<name>", ...]` (R-SYNTH-26) |
+| `POST /v1/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"body": <expression>}` (`{"bo": ...}` in `compact`, R-SYNTH-36), `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
 
-The endpoints are relative to the base URL, so a service may live under a path prefix. A service may add fields to its
+When `reply_format` (R-SYNTH-36) is not `ir-json`, the request holds one more member, `"reply_format": "<name>"`, and the backend
+answers in that format (the `body` key spelled as the format spells it); with `ir-json` the member is left out, so the
+request is the same bytes as without the option (D-156). `output_schema` is that format's reply schema, so a `compact`
+request does not carry the IR schema: its body is the object under the alias of `body`, or a question. Within
+`request_version` `0.1` Velme adds only optional members, absent by default and sent only to a backend that advertises
+support for them (`reply_formats` is how a backend does it for `reply_format`), so a backend written against the first
+`0.1` keeps working (D-156). The endpoints are relative to the base URL, so a service may live under a path prefix. A service may add fields to its
 replies (unknown keys are ignored, as in `describe`); a change that isn't compatible with this protocol goes to `/v2`. `SynthRequest` carries its own
 `request_version` (`"0.1"`); the `/v1/` prefix versions the endpoints.
 
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
-cached build; its `model()` is `<backend>@<backend_version>` (as Ollama's is `<model>@<digest>`) and enters `synthesis_key`, so a new
+cached build; its `reply_formats`, when present, is a list of reply-format names (R-SYNTH-36) the backend answers in, and
+when absent means `["ir-json"]`; a name Velme doesn't know is ignored, a `reply_formats` that is not a list of strings is `VL0406`,
+and the list is part of neither the identity nor any key. When `[synthesis] reply_format` is not `ir-json` and the list
+lacks it, `describe` ends the goal with `VL0406` before any `synthesize` request: "The backend `X` couldn't build `Goal`: it answers
+only in `ir-json`, and velme.toml asks for `reply_format = "compact"`.", help "remove `reply_format` from `[synthesis]`, or use a backend
+that lists it" (`VL0406`, not `VL0902`: the settings are valid, it is the backend that cannot do what they ask). Velme never
+falls back to another format (D-156). Its `model()` is `<backend>@<backend_version>` (as Ollama's is `<model>@<digest>`) and enters `synthesis_key`, so a new
 backend or version is a cache miss but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version` must each be 1..=128 Unicode scalar
 values after whitespace runs collapse to one space, and must hold no control character, Unicode format (`Cf`) character
 or bidi control (D-47): those are refused, not cleaned away. Any other key of the reply is ignored, so services may add fields; a `describe` that
 fails in any R-SYNTH-28 way or breaks this is `VL0406` (D-98).
-**R-SYNTH-27** A `synthesize` reply's `body` is handled exactly like an LLM reply: Velme completes it into an IR goal
+**R-SYNTH-27** A `synthesize` reply's `body` is handled exactly like an LLM reply, in the request's `reply_format` (a `compact` body is expanded, and one keyed `body` is a failed attempt with `VL0401`, R-SYNTH-36; D-156): Velme completes it into an IR goal
 (R-SYNTH-10), then full validation (21 §6) and verification (§6). The backend gets no trust the LLM doesn't get (INV-1). A `question` reply follows
 R-SYNTH-32..33, as an LLM's does.
 **R-SYNTH-28** Transport uses the same HTTP client and transport retries as `ollama` (R-SYNTH-12, D-101). A refused
 connection, a DNS failure or a timeout is `Unavailable` or `Timeout` → `VL0404` after those retries, and the build then
 contacts the provider no more (R-SYNTH-45); so does a body that stalls after its headers. A `429` is `RateLimited` → `VL0404` and a `408` is retried like a `5xx` (then `VL0406` if it persists). A `401` or `403` is `TokenRejected` → `VL0405` (R-SYNTH-07), not retried: "rejected the token" when a token was sent, "wants a token" (hint: set `VELME_EXTERNAL_TOKEN`) when none was.
 A `5xx` after the retries, any other non-2xx status (a redirect included: redirects are never followed), a body above
-2 MiB, a body that is not one JSON document, a reply that does not hold exactly one of the four kinds above (any other key is ignored), a reply whose `body` holds the
+2 MiB, a body that is not one JSON document, a reply that does not hold exactly one of the four kinds above (any other key is ignored; in `compact` the body kind is `bo`, and `bo` and `body` count as two kinds, so a reply holding both is of no known kind, while one holding only `body` is the failed attempt of R-SYNTH-27), a reply whose `body` holds the
 bearer token ("the reply contains your token"), or an `{"error"}` reply is `BackendFailed` → `VL0406` naming the goal and backend, with the last 4 KiB of the response body in the notes,
 cleaned and escaped like any untrusted text (T-13). Proxies and TLS: for a host that isn't loopback, the client honours
 `ALL_PROXY`, `HTTPS_PROXY` and `HTTP_PROXY` from the environment through a CONNECT tunnel; a loopback host is never
@@ -274,8 +288,8 @@ result as a `local`).
 
 ### 4.1 Token cost (D-44)
 
-The options below live in `[synthesis]` (`tooling/40` §5.1) and apply to the LLM providers only; `external` always
-gets the full request (§3.2, R-SYNTH-30). None of them changes which IR is accepted: every reply still passes the full
+The options below live in `[synthesis]` (`tooling/40` §5.1) and apply to the LLM providers only, except `reply_format`, which
+`external` takes too (D-156); `external` always gets the full request (§3.2, R-SYNTH-30). None of them changes which IR is accepted: every reply still passes the full
 validator and verification (INV-1, INV-2).
 
 **R-SYNTH-34** The template renders the sections in the order of the §4 table. Header, output contract and allowed
@@ -300,7 +314,8 @@ canonical IR (a pure renaming; an unknown alias is `VL0401`) before validation, 
 artifacts and lock only ever see canonical IR (D-21). Retry turns carry each earlier reply exactly as it was received,
 never compressed again from the expanded IR, and spell diagnostic JSON paths with the aliases. `"notation"`
 (experimental, D-152) asks for the body as notation text and lowers it to IR (§4.2). Compact is removed in `0.2` if
-the notation becomes the default (D-153).
+the notation becomes the default (D-153). An `external` backend is asked for the format the same way: the request names it
+(§3.2) and the reply is read by the same code (D-156).
 **R-SYNTH-37** `retry_history = "latest"` (default): a retry turn carries only the latest failed reply plus the primary
 diagnostic (R-SYNTH-31) of every earlier attempt, so later attempts cost about as much as the second. `"all"` carries
 every earlier reply, as R-SYNTH-11 describes. With `stop_on_repeat = true` (default), the loop stops when two attempts
@@ -312,7 +327,10 @@ in a row share a cause (R-SYNTH-31), and the goal fails with `VL0403` at once.
 **R-SYNTH-40** For LLM providers, `input_version` is `prompt_version` + BLAKE3 of `schema_in_prompt`,
 `reply_format`, `retry_history` and `max_prompt_examples`, because they change what is sent, and with `reply_format =
 "notation"` the notation's grammar version too (R-SYNTH-55), because it changes the IR a reply gives. Changing an option only
-changes `synthesis_key`; lock staleness uses `contract_key` (D-26), so it never re-synthesizes a locked goal.
+changes `synthesis_key`; lock staleness uses `contract_key` (D-26), so it never re-synthesizes a locked goal. For `external`,
+`input_version` is `request_version`, followed by `+reply_format=<name>@<format version>` when the format is not `ir-json` (D-156). The
+format version of `compact` is the first 12 hex digits of the BLAKE3 of its alias table (R-SYNTH-36), the table `prompt_version` hashes
+(D-97); that of `notation` is the notation's grammar version (R-SYNTH-55). A change to either re-keys every build that asks for the format.
 
 ### 4.2 Reply notation (experimental, D-152)
 
@@ -321,7 +339,7 @@ With `reply_format = "notation"` the model writes the goal's body as text in a s
 validator, which judges it like any other body (INV-1). The notation is defined only by the tables below, never by
 Python's semantics: a form with no row is rejected, and a form with a row means that row's IR. So numbers are exact
 decimals (R-TYP-08), `/` is Velme's division (D-36), `round` rounds ties away from zero (AC-BLT-04), and the prompt's
-notation lines say so. It applies to the LLM providers only; an `external` reply stays IR (§3.2). Artifacts, the lock,
+notation lines say so. An `external` backend may be asked for it too (§3.2, D-156). Artifacts, the lock,
 fingerprints and `--emit ir` keep canonical IR, and no command shows the notation to a user in v0.x.
 
 **R-SYNTH-50** Text. The body is at most 64 KiB of UTF-8. Names are ASCII letters, digits and `_`, not starting with
@@ -724,9 +742,8 @@ blocks in order (`text`, `tool_use`, `thinking`, `redacted_thinking`; any other 
 followed by one `"…"` if there were more, or is `null` for a
 provider without blocks, and `keys` lists the reply object's top-level keys that are an IR property name, a compact
 alias of one, `body`, `question`, `pending` or `error`, sorted and without repeats, then one `"…"` if any other key was there
-(`[]` when the reply is not a JSON object). `reply_bytes` is the byte length of the reply as received, `null` when no reply
-came back, and `reply_format` the reply format the request used by its `[synthesis]` name (`ir-json`, `compact`;
-`ir-json` for `external`). `tokens_in` is uncached input; `cache_read_tokens` and
+(`[]` when the reply is not a JSON object). `reply_bytes` is the byte length of the reply as received (for `external`, the canonical reply document Velme reads, §3.2), `null` when no reply
+came back, and `reply_format` the reply format the request used by its `[synthesis]` name (`ir-json`, `compact`, `notation`). `tokens_in` is uncached input; `cache_read_tokens` and
 `cache_write_tokens` are what the provider reports as read from and written to its prompt cache, `0` included (a
 cache miss is information), and `null` when the provider doesn't report cache use at all (`ollama`, `external`,
 `replay`, `scripted`), an exception to the token-count rule above. A file may hold lines of both formats; each line names its own. Within
@@ -799,3 +816,4 @@ leaves the machine (tooling/41).
 | AC-SYNTH-54 | Changing the notation's grammar version changes the `synthesis_key` of a `notation` build, not of an `ir-json` one and no `contract_key`, and a build with an up-to-date lock makes zero calls; a recorded `notation` build replays byte-for-byte, with `reply_format` in `replay.json` (R-SYNTH-40, R-SYNTH-43, D-152). |
 | AC-SYNTH-55 | For the leaf golden goal of AC-SYNTH-07 in `notation` with default options, the `anthropic` request body is at most 7,168 bytes and its fixed prefix (system prompt, tool definitions and the prompt through the allowed builtins) at most 5,120 bytes, about 1.5k tokens. Chosen from the same goal's `ir-json` request today: a 6,698-byte prompt (5,874 of it the fixed prefix) plus a reply schema of about 10 KB (about 3k tokens) in the tool definition; 7 KiB is that request without the schema, with about 0.5 KB for system prompt, tools and JSON framing, and the prefix bound makes the notation reference and its examples smaller than the node lines and JSON examples they replace (R-SYNTH-56, D-152). |
 | AC-SYNTH-56 | In `notation`, the `anthropic` and `ollama` request bodies hold no IR schema: no `$defs` and no definition name of the IR schema, and `write_goal`'s input schema and `ollama`'s `format` are the `{"body": string}` reply schema, with either `schema_in_prompt` (R-SYNTH-56, D-152). |
+| AC-SYNTH-57 | With `reply_format = "compact"`, the `external` request names the format and a compact reply builds an artifact; a default build's request has no `reply_format` member; a compact build whose backend answers under `body` is a failed attempt (`VL0401`, then `VL0403` naming the alias), not `VL0406`; the request's `output_schema` is the compact reply schema (no IR `$defs`); the format enters the external `input_version` (`<request_version>+reply_format=compact@<version>`, the version a 12-digit hash of the alias table), re-keying the build; and a backend whose `describe` lacks `reply_formats` (or does not list `compact`) ends the goal with `VL0406` naming the setting before any `synthesize` request (R-SYNTH-26, R-SYNTH-27, R-SYNTH-36, R-SYNTH-40, D-153, D-156). |
