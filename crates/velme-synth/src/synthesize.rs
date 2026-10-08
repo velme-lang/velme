@@ -401,7 +401,7 @@ fn failed_call(
 ) -> Result<Rejection, Failure> {
     match error {
         ProviderError::Refused(_) => Ok(Rejection::not_a_reply("", "was refused by the provider")),
-        ProviderError::Malformed(_) => Ok(Rejection::not_a_reply("", "was not a usable reply")),
+        ProviderError::Malformed(reason) => Ok(Rejection::malformed(reason)),
         ProviderError::Pending(text) => Err(Failure::of(pending(name, span, backend, &text, history))),
         other => {
             if reaches_no_further(&other) {
@@ -553,6 +553,15 @@ fn question_diagnostic(name: &str, span: Span, question: &str) -> Diagnostic {
     .with_note(format!("The AI helper asked: \"{question}\""))
 }
 
+/// Why a reply has no body: in `compact` it names the spelling asked for, since the canonical `body` isn't read (D-153).
+fn no_body(body_key: &str) -> String {
+    if body_key == "body" {
+        "had no `body`".to_owned()
+    } else {
+        format!("had no `{body_key}`, the compact spelling of `body`")
+    }
+}
+
 /// What a reply document is.
 enum Reply {
     Question(String),
@@ -571,11 +580,8 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
         Err(error) => return Reply::Bad(Rejection::unparsable(reply, &error)),
     };
     // The reply's own member names: a compact reply spells `body` with its alias (R-SYNTH-36).
-    let body_key = match format {
-        ReplyFormat::IrJson => Some("body"),
-        ReplyFormat::Compact => compact::table().keys.get("body").map(String::as_str),
-    };
-    let body = body_key.and_then(|key| value.get(key));
+    let body_key = crate::prompt::body_key(format);
+    let body = value.get(body_key);
     if let Some(map) = value.as_object()
         && map.contains_key("question")
     {
@@ -594,7 +600,7 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
         };
     }
     let Some(body) = body else {
-        return Reply::Bad(Rejection::not_a_reply(reply, "had no `body`"));
+        return Reply::Bad(Rejection::not_a_reply(reply, &no_body(body_key)));
     };
     let body = if format == ReplyFormat::IrJson {
         body.clone()

@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use velme_synth::{
-    Identity, Ollama, OllamaConfig, ProviderError, SynthBackend, SynthLimits, SynthRequest, build_request,
+    Identity, Ollama, OllamaConfig, ProviderError, ReplyFormat, SynthBackend, SynthLimits, SynthRequest, build_request,
     prompt_version, render_with,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
@@ -279,4 +279,36 @@ fn a_chat_that_gets_no_answer_times_out_without_a_retry() {
         Err(ProviderError::Timeout)
     );
     assert!(sleeper.waits().is_empty());
+}
+
+/// A compact reply's `format` allows the body under its alias and a question, so a compact question is not forbidden by
+/// the grammar, and both kinds of reply come back (R-SYNTH-05, R-SYNTH-36).
+#[test]
+fn a_compact_format_allows_a_body_and_a_question() {
+    let question = json!({"question": "Round up?"});
+    let body = json!({"b": {"k": "x"}});
+    let server = MockServer::start([
+        MockResponse::ollama_tags(&[("llama3:latest", DIGEST)]),
+        MockResponse::ollama_chat(&question),
+        MockResponse::ollama_chat(&body),
+    ]);
+    let mut config = OllamaConfig::new("llama3");
+    config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
+    config.options.reply_format = ReplyFormat::Compact;
+    let backend = Ollama::new(config).with_sleeper(Arc::new(RecordingSleeper::default()));
+    let identity = identify(&backend).expect("identity");
+    let provider = backend.open(&identity).expect("a provider");
+    let request = request();
+    for expected in [&question, &body] {
+        let reply = block_on(provider.complete(&request, &limits())).expect("a reply");
+        let got: Value = serde_json::from_str(&reply.reply_json).expect("json");
+        assert_eq!(&got, expected);
+    }
+    let sent = server.requests();
+    let format = &sent[1].json()["format"];
+    let any_of = format["anyOf"].as_array().expect("anyOf");
+    assert_eq!(any_of.len(), 2);
+    let key = any_of[0]["required"][0].as_str().expect("a body key");
+    assert!(any_of[0]["properties"].get(key).is_some());
+    assert_eq!(any_of[1]["required"], json!(["question"]));
 }

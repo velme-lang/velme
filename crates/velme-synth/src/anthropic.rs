@@ -15,9 +15,12 @@ use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::http::{agent, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
-use crate::prompt::{Role, prompt_version, render_with};
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::prompt::{Role, body_key, prompt_version, render_with};
+use crate::provider::{
+    Identity, MalformedReason, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 use crate::request::SynthRequest;
+use crate::schema::compact_body_schema;
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries};
 
 /// Where the Messages API is, unless a test says otherwise (D-98).
@@ -309,7 +312,7 @@ impl Anthropic {
 
 /// The two tools of R-SYNTH-44. `write_goal` takes the body object (D-103), `ask_question` the question object; the reply
 /// schema's shared definitions move under the goal's, where its `$ref`s resolve. A compact reply (R-SYNTH-36) is not
-/// in the schema's names, so its tool is left unconstrained and the validator alone decides.
+/// in the schema's names, so its tool takes only the body key's alias and the validator alone decides.
 fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderError> {
     let bad = || ProviderError::Internal("the reply schema has no goal or question".to_owned());
     let mut defs: Map<String, Value> = request
@@ -325,12 +328,14 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
             goal.insert("$defs".to_owned(), Value::Object(defs));
             Value::Object(goal)
         }
-        _ => json!({"type": "object"}),
+        _ => compact_body_schema(),
     };
+    let key = body_key(format);
+    let description = format!("Return the goal's body: {{\"{key}\": <expression>}}.");
     Ok(json!([
         {
             "name": WRITE_GOAL,
-            "description": "Return the goal's body as IR JSON: {\"body\": <expression>}.",
+            "description": description,
             "input_schema": goal,
         },
         {
@@ -344,13 +349,13 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
 /// The reply and the tokens of a successful response (R-SYNTH-44): the input of the one tool called. A refusal is
 /// `Refused`; no tool call, a second one, an unknown tool or a cut-off reply is `Malformed`.
 fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
-    let malformed = |why: &str| ProviderError::Malformed(why.to_owned());
+    let malformed = |why: MalformedReason| ProviderError::Malformed(Some(why));
     // The envelope adds a few levels around a reply, which is itself held to the IR depth limit.
     let doc: Value = from_json_str_within(text, MAX_JSON_DEPTH + ENVELOPE_DEPTH)
-        .map_err(|_| malformed("the response wasn't JSON, or nested too deeply or repeated a key"))?;
+        .map_err(|_| malformed(MalformedReason::ResponseNotJson))?;
     match doc.get("stop_reason").and_then(Value::as_str) {
         Some("refusal") => return Err(ProviderError::Refused(String::new())),
-        Some("max_tokens") => return Err(malformed("the reply was cut off")),
+        Some("max_tokens") => return Err(malformed(MalformedReason::CutOff)),
         _ => {}
     }
     let mut calls = doc
@@ -361,14 +366,14 @@ fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
         .iter()
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"));
     let (Some(call), None) = (calls.next(), calls.next()) else {
-        return Err(malformed("the response didn't call exactly one tool"));
+        return Err(malformed(MalformedReason::NotOneTool));
     };
     let name = call.get("name").and_then(Value::as_str);
     let input = call.get("input").filter(|input| input.is_object());
     let (true, Some(input)) = (matches!(name, Some(WRITE_GOAL | ASK_QUESTION)), input) else {
-        return Err(malformed("the tool call wasn't one of the two tools with an object"));
+        return Err(malformed(MalformedReason::UnknownTool));
     };
-    let reply = to_canonical_string(input).map_err(|_| malformed("the tool input wasn't JSON"))?;
+    let reply = to_canonical_string(input).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
     let count = |name: &str| {
         doc.pointer(&format!("/usage/{name}"))
             .and_then(Value::as_u64)

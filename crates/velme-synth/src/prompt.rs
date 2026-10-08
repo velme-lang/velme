@@ -11,7 +11,7 @@ use velme_ir::{Fingerprint, Type, to_canonical_string};
 use crate::compact;
 use crate::options::{PromptOptions, ReplyFormat, SchemaInPrompt};
 use crate::request::{AttemptDiagnostic, RecordType, Signature, SynthRequest, TaskKind};
-use crate::schema::{operators, reply_schema, schema_summary};
+use crate::schema::{compact_body_schema, operators, question_schema, reply_schema, schema_summary};
 
 /// A template's id: the task kind and the template's own version. Editing a template's text keeps its id and changes
 /// its bytes, which `prompt_version` hashes.
@@ -152,12 +152,14 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
         }
         retries.push(Turn {
             role: Role::Assistant,
-            text: shown_reply(&attempt.reply, options),
+            // Exactly as received, never compressed again (R-SYNTH-37, D-153).
+            text: attempt.reply.clone(),
         });
         let mut own = BTreeMap::new();
         let mut found = std::mem::take(&mut earlier);
         found.push(diagnostics(&attempt.diagnostics, options));
         own.insert("diagnostics", found.join("\n"));
+        own.insert("body_key", body_key(options.reply_format).to_owned());
         retries.push(Turn {
             role: Role::User,
             text: fill(retry, &own)?,
@@ -169,6 +171,7 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
     if !earlier.is_empty() {
         let mut own = BTreeMap::new();
         own.insert("diagnostics", earlier.join("\n"));
+        own.insert("body_key", body_key(options.reply_format).to_owned());
         let text = fill(retry, &own)?;
         match retries.last_mut() {
             Some(last) if last.role == Role::User => {
@@ -200,23 +203,24 @@ fn fill(template: &str, fields: &BTreeMap<&str, String>) -> Result<String, Diagn
     Ok(out)
 }
 
-/// An earlier reply as the provider is shown it: in the compact format when that is what it was asked for, if the reply
-/// is JSON at all (R-SYNTH-36).
-fn shown_reply(reply: &str, options: &PromptOptions) -> String {
-    if options.reply_format == ReplyFormat::Compact
-        && let Ok(value) = velme_ir::from_json_str::<Value>(reply)
-        && let Ok(text) = to_canonical_string(&compact::compress(&value))
-    {
-        return text;
+/// The reply's `body` key as the requested format spells it (R-SYNTH-36): its alias in `compact`.
+pub(crate) fn body_key(format: ReplyFormat) -> &'static str {
+    match format {
+        ReplyFormat::IrJson => "body",
+        ReplyFormat::Compact => compact::table().keys.get("body").map_or("body", String::as_str),
     }
-    reply.to_owned()
 }
 
 fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'static str, String>, Diagnostic> {
     let mut fields = BTreeMap::new();
     let mut notes = String::new();
     if options.schema_in_prompt == SchemaInPrompt::Full {
-        let schema = canonical(&reply_schema())?;
+        // In `compact` the schema shown is the one the reply is held to: the aliased body key, never `body` (R-SYNTH-36).
+        let schema = match options.reply_format {
+            ReplyFormat::IrJson => reply_schema(),
+            ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
+        };
+        let schema = canonical(&schema)?;
         notes.push_str(&format!("\nThe reply schema, as JSON Schema:\n{schema}"));
     }
     if options.reply_format == ReplyFormat::Compact {
@@ -224,6 +228,7 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
         notes.push_str(&compact::describe());
     }
     fields.insert("format_notes", notes);
+    fields.insert("body_key", body_key(options.reply_format).to_owned());
     let (binary, unary) = operators();
     fields.insert("binary_ops", binary.join(", "));
     fields.insert("unary_ops", unary.join(", "));

@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 use velme_diagnostics::Code;
 use velme_ir::{Fingerprint, contract_key};
 use velme_synth::{
-    AttemptDiagnostic, AttemptFeedback, Outcome, ProviderError, ReplyFormat, RetryHistory, Scripted, Session, Sleeper,
-    Step, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, alias_table, compress, render_with,
-    synthesize, unavailable, with_transport_retries,
+    AttemptDiagnostic, AttemptFeedback, MalformedReason, Outcome, ProviderError, ReplyFormat, RetryHistory, Scripted,
+    Session, Sleeper, Step, SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, alias_table,
+    compress, render_with, synthesize, unavailable, with_transport_retries,
 };
 use velme_test_support::{LeafRunner, RecordingSleeper, goal_id, program};
 
@@ -991,7 +991,7 @@ fn r_synth_41_pending_ends_the_goal_and_names_an_earlier_failure() {
 fn r_synth_07_refused_and_malformed_are_failed_attempts() {
     let steps = vec![
         Step::Error(ProviderError::Refused("SENTINEL refusal".to_owned())),
-        Step::Error(ProviderError::Malformed("SENTINEL malformed".to_owned())),
+        Step::Error(ProviderError::Malformed(None)),
         Step::Reply(good()),
     ];
     let run = run_with(SynthOptions::default(), steps, &LeafRunner::new());
@@ -1107,4 +1107,141 @@ fn r_synth_11_feedback_of_a_reply_less_attempt_is_rendered() {
     );
     // With `latest`, the request already carries reply-less earlier attempts and a reply-less last one.
     check(vec![attempt("", "OLD"), attempt("", "NEWER")], &["OLD", "NEWER"]);
+}
+
+fn compact_options() -> SynthOptions {
+    SynthOptions {
+        reply_format: ReplyFormat::Compact,
+        ..SynthOptions::default()
+    }
+}
+
+/// A compact reply under the alias builds the same IR, byte for byte, as `ir-json`; the same reply under the canonical
+/// `body` key is a failed attempt whose `VL0401` cause says what to spell; and a compact retry turn carries the earlier
+/// reply exactly as received (AC-SYNTH-47, R-SYNTH-36, R-SYNTH-37, D-153).
+#[test]
+fn ac_synth_47_a_compact_reply_is_read_under_its_alias_and_retries_carry_it_as_received() {
+    let alias = alias_table().keys["body"].clone();
+    let canonical: Value = serde_json::from_str(&good()).expect("json");
+    let packed = compress(&canonical);
+    assert!(packed.get(&alias).is_some() && packed.get("body").is_none());
+    let (plain, compact) = (
+        run(SynthOptions::default(), vec![good()]),
+        run(compact_options(), vec![packed.to_string()]),
+    );
+    let (Outcome::Built(a), Outcome::Built(b)) = (&plain.outcome, &compact.outcome) else {
+        panic!("both build");
+    };
+    assert_eq!(
+        velme_ir::to_canonical_string(a.ir.goal()).expect("text"),
+        velme_ir::to_canonical_string(b.ir.goal()).expect("text")
+    );
+
+    // The same tree keyed `body`: no body, in Velme's words, naming the alias; the parser reads only the alias.
+    let mut wrong = packed.clone();
+    wrong["body"] = wrong[&alias].take();
+    wrong.as_object_mut().expect("an object").remove(&alias);
+    let once = SynthOptions {
+        max_retries: 0,
+        ..compact_options()
+    };
+    let bad = run(once, vec![wrong.to_string()]);
+    let d = failure(&bad);
+    assert_eq!(d.code, Code::SynthesisFailed, "{}", shown(d));
+    assert!(
+        d.message
+            .contains(&format!("had no `{alias}`, the compact spelling of `body`")),
+        "{}",
+        d.message
+    );
+    let Outcome::Failed(failed) = &bad.outcome else {
+        panic!("it fails")
+    };
+    assert!(
+        failed.attempts[0].starts_with("attempt 1: VL0401: "),
+        "{:?}",
+        failed.attempts
+    );
+
+    // A retry turn: the earlier compact reply goes back as it came, not compressed again.
+    let first = format!(
+        " {}  ",
+        compress(&serde_json::from_str::<Value>(&wrong_example_two()).expect("json"))
+    );
+    let retried = run(compact_options(), vec![first.clone(), packed.to_string()]);
+    assert!(matches!(retried.outcome, Outcome::Built(_)));
+    let requests = retried.provider.requests();
+    assert_eq!(requests[1].attempts[0].reply, first);
+    let options = compact_options().prompt();
+    let turns = render_with(&requests[1], &options).expect("rendered").turns();
+    assert_eq!(turns[1].text, first);
+}
+
+/// A `Malformed` reply keeps its reason in the learner's words, whatever the reason; all of them are one cause, so
+/// two in a row with different reasons stop the loop, as a replayed one with no reason does (AC-SYNTH-48, R-SYNTH-07,
+/// R-SYNTH-31, R-SYNTH-37, D-153).
+#[test]
+fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause() {
+    for (reason, words) in [
+        (MalformedReason::NotOneTool, "the reply didn't call exactly one tool"),
+        (MalformedReason::CutOff, "the reply was cut off"),
+        (MalformedReason::TooLarge, "the response was too large"),
+        (MalformedReason::ResponseNotJson, "the response wasn't JSON"),
+        (MalformedReason::NoMessage, "the response had no message"),
+        (MalformedReason::ReplyNotObject, "the reply wasn't an object"),
+    ] {
+        let once = SynthOptions {
+            max_retries: 0,
+            ..SynthOptions::default()
+        };
+        let bad = run_with(
+            once,
+            vec![Step::Error(ProviderError::Malformed(Some(reason)))],
+            &LeafRunner::new(),
+        );
+        let d = failure(&bad);
+        assert_eq!(d.code, Code::SynthesisFailed, "{}", shown(d));
+        assert!(d.message.contains(words), "{}", d.message);
+    }
+    // Two different reasons, one cause: stopped after the second, with no third call.
+    let steps = || {
+        vec![
+            Step::Error(ProviderError::Malformed(Some(MalformedReason::NotOneTool))),
+            Step::Error(ProviderError::Malformed(Some(MalformedReason::CutOff))),
+            Step::Reply(good()),
+        ]
+    };
+    let stopped = run_with(SynthOptions::default(), steps(), &LeafRunner::new());
+    let d = failure(&stopped);
+    assert_eq!(stopped.session.calls(), 2);
+    assert!(d.message.contains("stopped after 2 attempts"), "{}", d.message);
+    // A replayed `Malformed` has no reason and stops where the live build stopped.
+    let replayed = run_with(
+        SynthOptions::default(),
+        vec![
+            Step::Error(ProviderError::Malformed(Some(MalformedReason::CutOff))),
+            Step::Error(ProviderError::Malformed(None)),
+            Step::Reply(good()),
+        ],
+        &LeafRunner::new(),
+    );
+    assert_eq!(replayed.session.calls(), 2);
+    // With `stop_on_repeat = false` the same replies are retried.
+    let all = run_with(
+        SynthOptions {
+            stop_on_repeat: false,
+            ..SynthOptions::default()
+        },
+        steps(),
+        &LeafRunner::new(),
+    );
+    assert!(matches!(all.outcome, Outcome::Built(_)));
+    // The retry turn after a `Malformed` carries the reason's words and no reply.
+    let requests = all.provider.requests();
+    assert_eq!(requests[1].attempts[0].reply, "");
+    assert!(
+        requests[1].attempts[0].diagnostics[0]
+            .message
+            .contains("didn't call exactly one tool")
+    );
 }

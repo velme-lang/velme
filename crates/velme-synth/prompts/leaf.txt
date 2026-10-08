@@ -3,10 +3,10 @@ IR version: {{ir_version}}
 Builtins version: {{builtins_version}}
 
 You write the implementation of one goal for Velme, a tool that turns plain-language plans into programs.
-Reply with one JSON document and nothing else: no prose and no markdown fence.
+Give only the reply: no prose around it.
 
 Output contract
-- Return {"body": <expression>}: the goal's `body`, one IR expression node, as JSON. Velme writes the rest of the goal
+- Return {"{{body_key}}": <expression>}: the goal's `{{body_key}}`, one IR expression node. Velme writes the rest of the goal
   (its name, inputs, output and record types), so leave them out. Use only the builtins listed below.
 - Read a goal input with an `input` node, e.g. {{example_input}}. A `local` node is never an input: it
   is only for a lambda's parameter, or a call result when Locals are listed below.
@@ -39,7 +39,7 @@ Allowed builtins:
 
 --- task ---
 
-Task: write the whole `body` of this goal.
+Task: write the whole `{{body_key}}` of this goal.
 Goal: {{signature}}
 
 Types:
@@ -58,4 +58,4 @@ Budget: {{budget}}
 --- retry ---
 Your previous reply was not accepted. What Velme found:
 {{diagnostics}}
-Return one corrected JSON document, {"body": <expression>}, with nothing else.
+Return the corrected {"{{body_key}}": <expression>}, with nothing else.
