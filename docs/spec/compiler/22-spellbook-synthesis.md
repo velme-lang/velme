@@ -679,7 +679,7 @@ candidate, whatever its reply, a `{"pending"}` or `{"question"}` included (D-56)
 Ollama digest lookup and `describe` are not calls and never count toward the cap, but they are provider contact: a
 build that must make none, such as a fully cached one (D-57), makes none of them either (D-92). Each `complete()`
 invocation is exactly one call, even when every transport try inside it failed and it ended in `VL0404`. The build summary reports calls, tokens in/out, prompt-cache tokens read and written
-(R-SYNTH-34) and store/lock hits. A lock hit is verified again on every build, leaves included, on the interpreter with
+(R-SYNTH-34) and store/lock hits; the tokens a refused or cut-off response billed count, as a reply's do (D-155). A lock hit is verified again on every build, leaves included, on the interpreter with
 no provider call; one that no longer passes is stale and synthesized in the ordinary way (runtime/32 R-ART-22, D-100).
 
 ## 9. Untrusted plan text
@@ -691,28 +691,48 @@ validation and runs sandboxed with no capabilities (INV-1, INV-4, tooling/41).
 ## 10. Local synthesis log
 
 **R-SYNTH-23** Each provider request appends one JSON line to `.velme/synth-log.jsonl`, for every provider and never for a
-lock or store hit (D-109, D-154). A request here is one `complete()` call (R-SYNTH-21): transport retries inside it add no line, and
+lock or store hit (D-109, D-154, D-155). A request here is one `complete()` call (R-SYNTH-21): transport retries inside it add no line, and
 its latency covers them. The line is one object, keys in this order, no spaces:
-`{"format":"velme-synth-log/2","time":"2026-10-03T12:00:00.000Z","file":"player.velme","goal":"CalculateScore","key":"b3:…","provider":"anthropic","model":"claude-sonnet-5-5","attempt":1,"outcome":"VL0402","cause":"types-15","stop_reason":"tool_use","reply_shape":{"blocks":["text","tool_use"],"keys":["body"]},"tokens_in":812,"tokens_out":143,"cache_read_tokens":4210,"cache_write_tokens":0,"latency_ms":2041}`.
+`{"format":"velme-synth-log/2","time":"2026-10-03T12:00:00.000Z","file":"player.velme","goal":"CalculateScore","key":"b3:…","provider":"anthropic","model":"claude-sonnet-5-5","attempt":1,"outcome":"VL0402","cause":"types-15","stop_reason":"tool_use","reply_shape":{"blocks":["text","tool_use"],"keys":["body"]},"tokens_in":812,"tokens_out":143,"cache_read_tokens":4210,"cache_write_tokens":0,"latency_ms":2041,"reply_bytes":386,"reply_format":"ir-json"}`.
 `time` is UTC with milliseconds, and the clock is injected so tests are exact. `file` is the project-relative path (R-CLI-19),
 `key` the synthesis key, `attempt` counts from 0, `outcome` is `ok` or the `VL` code the attempt ended with, and the token
 counts are `null` when the provider reports none: a count it doesn't report, or reports as 0, is written as `null`.
-`cause` is `null` for `ok`, else the attempt's cause (R-SYNTH-31) as one token of a closed list, never text from a reply
-or a provider: a validator or notation rule id (`types-15`, `notation-7`); `check-<n>` or `example-<n>` (1-based, in
-the goal's source order); `runtime-<code>` for a run failure on a generated input outside both (`runtime-VL0601`); for
-a reply that isn't a body, `not-json`, `no-body`, `body-and-question`, `bad-question` (empty, too long or not text),
-`unknown-alias` (compact) or `bad-number` (a number canonical JSON refuses); `question` (R-SYNTH-32); another
-`ProviderError` variant as fixtures name it (`timeout`, `refused`, R-SYNTH-43); or `malformed-<reason>` with the
-R-SYNTH-07 reason id, `malformed` when there is none (replayed or scripted). `stop_reason` is the provider's own (`anthropic` `stop_reason`, `ollama` `done_reason`) when it is 1..=32
+`cause` is `null` exactly when `outcome` is `ok`, else the attempt's cause (R-SYNTH-31) as one token of a closed list,
+never text from a reply or a provider (D-155):
+- a validator or notation rule id (`types-15`, `notation-7`), or `schema-1`;
+- for a reply that isn't a body, `not-json`, `no-body`, `body-and-question`, `bad-question` (empty, too long or not
+  text), `unknown-alias` (compact) or `bad-number` (a number canonical JSON refuses);
+- `question` (R-SYNTH-32);
+- `malformed-<reason>` with the R-SYNTH-07 reason id (`too-large`, `response-not-json`, `cut-off`, `not-one-tool`,
+  `unknown-tool`, `no-message`, `reply-not-json`, `reply-not-object`), or `malformed` when there is none (replayed or
+  scripted);
+- `check-<n>` or `example-<n>`, 1-based in the goal's source order;
+- `runtime-<code>`, for a run of the candidate that failed, on an example or a generated input, before its example or
+  checks were judged (`runtime-VL0601`; `runtime-VL0603` when the watchdog stopped it);
+- `internal`, for a bug of Velme's, not of the reply (`VL0607`);
+- a `ProviderError` variant as fixtures name it (R-SYNTH-43): `not_configured`, `key_rejected`, `token_rejected`,
+  `token_required`, `rejected`, `unavailable`, `rate_limited`, `refused`, `timeout`, `backend_failed`, `pending`, `file`,
+  `internal`.
+
+`stop_reason` is the provider's own (`anthropic` `stop_reason`, `ollama` `done_reason`) when it is 1..=32
 characters of `a`–`z` and `_`, `"…"` for any other value, and `null` when there is none (`external`, `replay`,
-`scripted`). `reply_shape` is `null` when no reply came back; else `blocks` lists the kinds of the reply's content
-blocks in order (`text`, `tool_use`, `thinking`, `redacted_thinking`; any other kind as `"…"`), or is `null` for a
+`scripted`). `reply_shape` is `null` when no response came back (`cause` a `ProviderError` variant other than `refused`)
+or the response could not be read (`malformed-too-large`, `malformed-response-not-json`). A response that was read but
+held no reply (`refused`, `malformed-cut-off`, `malformed-not-one-tool`, …) keeps its `stop_reason`, its token counts and
+its `blocks` (`null` for a provider without blocks), with `keys` `[]`. Else `blocks` lists the kinds of the response's content
+blocks in order (`text`, `tool_use`, `thinking`, `redacted_thinking`; any other kind as `"…"`), at most 64 of them
+followed by one `"…"` if there were more, or is `null` for a
 provider without blocks, and `keys` lists the reply object's top-level keys that are an IR property name, a compact
-alias, `body`, `question`, `pending` or `error`, sorted and without repeats, then one `"…"` if any other key was there
-(`[]` when the reply is not a JSON object). `tokens_in` is uncached input; `cache_read_tokens` and
+alias of one, `body`, `question`, `pending` or `error`, sorted and without repeats, then one `"…"` if any other key was there
+(`[]` when the reply is not a JSON object). `reply_bytes` is the byte length of the reply as received, `null` when no reply
+came back, and `reply_format` the reply format the request used by its `[synthesis]` name (`ir-json`, `compact`;
+`ir-json` for `external`). `tokens_in` is uncached input; `cache_read_tokens` and
 `cache_write_tokens` are what the provider reports as read from and written to its prompt cache, `0` included (a
 cache miss is information), and `null` when the provider doesn't report cache use at all (`ollama`, `external`,
-`replay`, `scripted`), an exception to the token-count rule above. A file may hold lines of both formats; each line names its own. Plan text, prompts, replies (beyond
+`replay`, `scripted`), an exception to the token-count rule above. A file may hold lines of both formats; each line names its own. Within
+`velme-synth-log/2` Velme may add members after the last one, add tokens to the `cause` list and add names to the `blocks`
+and `keys` sets. A reader ignores members it doesn't know and treats an unknown cause token as opaque. Removing, renaming
+or reordering a member, or changing its type or when it is `null`, takes a new format number (D-155). Plan text, prompts, replies (beyond
 `reply_shape`) and values are never written, and there is no
 opt-in for them in v0.1. The runtime crate writes the file, refusing a link and anything that is not a regular file as the
 artifact store does (`runtime/32` R-ART-09); a write that fails is a `-v` notice, never a build failure. When Velme creates
@@ -771,7 +791,7 @@ leaves the machine (tooling/41).
 | AC-SYNTH-46 | The request an `anthropic` provider sends has `tool_choice` `auto`, a system prompt asking for exactly one of the two tools and no `temperature`; in a retry each earlier reply is a `tool_use` block whose id the next user turn's `tool_result` names; an unnamed `4xx` (a 400) is `VL0405` with the status and the API's message, cleaned, with the key replaced by `***`, and quoted, not retried, and the next goal still sends its request (R-SYNTH-07, R-SYNTH-44, R-SYNTH-45, D-150). |
 | AC-SYNTH-47 | In `compact`, the rendered output contract and the reply schema spell the body key by its alias; a scripted reply under that alias builds an artifact whose `ir` member is byte-identical to that of the same body sent as `ir-json` (AC-SYNTH-26), and a compact reply keyed `body` is a failed attempt with `VL0401`; the next retry turn carries the earlier reply byte-identical to the one received (R-SYNTH-36, D-153). |
 | AC-SYNTH-48 | The generated alias table has no two equal aliases and no alias equal to a canonical property name or `kind` tag; the prompt rendered in each reply format says neither "reply with JSON" nor to call a tool; a mocked `anthropic` reply with only a text block is a failed attempt with `VL0401` whose message, `VL0403` cause and log `cause` (`malformed-not-one-tool`) carry the `Malformed` reason, and two `Malformed` replies with different reasons share one cause, so `stop_on_repeat` stops after the second, and a sentinel in the text block appears in no output or log (R-SYNTH-07, R-SYNTH-36, D-153). |
-| AC-SYNTH-49 | A build against a mocked `anthropic` writes `velme-synth-log/2` lines with the R-SYNTH-23 keys in order: `cause` `null` on `ok`, the rule id for a validator failure and `check-1` for a check failure; `stop_reason`, `reply_shape` and the cache token counts from the mocked reply and usage; a reply key and a block kind outside the R-SYNTH-23 sets written as `"…"`. With `scripted`, `stop_reason`, `blocks` and the cache counts are `null`; a mocked `anthropic` usage with `cache_read_input_tokens: 0` writes `0`. A sentinel used as a reply key, in a text block and in the body appears nowhere in the log (D-154). |
+| AC-SYNTH-49 | A build against a mocked `anthropic` writes `velme-synth-log/2` lines with the R-SYNTH-23 keys in order: `cause` `null` on `ok`, the rule id for a validator failure and `check-1` for a check failure; `stop_reason`, `reply_shape` and the cache token counts from the mocked reply and usage; a reply key and a block kind outside the R-SYNTH-23 sets written as `"…"`. With `scripted`, `stop_reason`, `blocks` and the cache counts are `null`; a mocked `anthropic` usage with `cache_read_input_tokens: 0` writes `0`. A sentinel used as a reply key, in a text block and in the body appears nowhere in the log (D-154). A sentinel in an unknown tool's name, an external `pending` text, a `backend_failed` body or a `rejected` message appears nowhere in it either. A refusal and a cut-off reply, also through `--record`, keep `stop_reason` and `blocks`, a cut-off's `tokens_out` is logged and counted in the build summary, more than 64 blocks are listed as 64 and `"…"`, and `reply_bytes` and `reply_format` are written (D-155). |
 | AC-SYNTH-50 | Each row of R-SYNTH-51 and R-SYNTH-52 has a golden notation body that lowers to its expected canonical IR; `any(xs) and all(ys)` names their parameters `__v0` and `__v1`, or `__v1` and `__v2` for a goal with an input named `__v0`. The 10 goals of the loan example, written by hand in notation, lower, validate and pass their examples, and each gives an artifact whose `ir` member is byte-identical to that of the same body sent as `ir-json` (AC-SYNTH-26). In `notation`, `write_goal`'s input schema and `ollama`'s `format` take `{"body": string}` (or the question object), and `--emit ir` shows IR (D-152). |
 | AC-SYNTH-51 | Each `notation-N` rule of R-SYNTH-54 has a golden rejected body, each a failed attempt with `VL0401` citing that rule; the retry turn gives its line, column, words and hint and quotes only the failing line, and `VL0403` its words alone. A sentinel on another line of a rejected body appears in no retry feedback, diagnostic, output or log (R-SYNTH-56, D-152). |
 | AC-SYNTH-52 | `[]` takes its item type from each R-SYNTH-53 context in turn (the output type, the other `if` branch, an `==` side, a record field, a catalog parameter, `unwrap_or`'s default, `reduce`'s `init`), and `xs = []` with no context and `len([])` (a generic parameter) are `notation-11` (D-152). |

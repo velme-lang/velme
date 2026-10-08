@@ -63,6 +63,33 @@ pub trait SynthProvider: Send + Sync {
 
     /// Asks for one candidate for `request`.
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError>;
+
+    /// [`SynthProvider::complete`], and what a response that held no reply showed (R-SYNTH-23, D-155). A provider that can
+    /// tell overrides it and makes `complete` call it; the rest have nothing to add.
+    async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
+        Called {
+            result: self.complete(request, limits).await,
+            seen: None,
+        }
+    }
+}
+
+/// One provider call's outcome, with what the synth log keeps of a response that was read but held no reply.
+#[derive(Debug)]
+pub struct Called {
+    /// The reply, or why there was none.
+    pub result: Result<SynthReply, ProviderError>,
+    /// Set only when `result` is an error.
+    pub seen: Option<Seen>,
+}
+
+/// A response that was read but held no reply (a refusal, a cut-off, text only): its shape and the tokens it billed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Seen {
+    /// Its stop reason and block kinds.
+    pub meta: ReplyMeta,
+    /// Its token counts.
+    pub usage: Usage,
 }
 
 /// The default `max_output_tokens` of a provider that has no smaller one (`tooling/40` §5.1).
@@ -103,19 +130,34 @@ pub struct SynthReply {
     pub usage: Usage,
     /// How long the exchange took.
     pub latency: Duration,
+    /// What the synth log keeps of how the reply came (R-SYNTH-23).
+    pub meta: ReplyMeta,
 }
 
-/// Token counts of one exchange; zero where a provider doesn't report them.
+/// What a provider says about a reply besides the reply and the token counts, as it said it. Only the synth log reads
+/// it, and writes only its shape: untrusted values here are cut to closed sets before they leave `velme-synth`
+/// (R-SYNTH-23, D-154). A provider that has none of it leaves the default.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReplyMeta {
+    /// The provider's own stop reason: `anthropic`'s `stop_reason`, `ollama`'s `done_reason`.
+    pub stop_reason: Option<String>,
+    /// The `type` of each content block of the response in order, `""` for a block with none; `None` for a provider
+    /// without blocks.
+    pub blocks: Option<Vec<String>>,
+}
+
+/// Token counts of one exchange; zero where a provider doesn't report them (the cache counts are `None`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     /// Tokens sent.
     pub input_tokens: u64,
     /// Tokens received.
     pub output_tokens: u64,
-    /// Prompt-cache tokens read (R-SYNTH-34).
-    pub cache_read_tokens: u64,
-    /// Prompt-cache tokens written (R-SYNTH-34).
-    pub cache_write_tokens: u64,
+    /// Prompt-cache tokens read (R-SYNTH-34): `None` when the provider doesn't report them, `Some(0)` when it reports 0
+    /// (R-SYNTH-23).
+    pub cache_read_tokens: Option<u64>,
+    /// Prompt-cache tokens written (R-SYNTH-34), reported the same way.
+    pub cache_write_tokens: Option<u64>,
 }
 
 /// Why a provider gave no reply (`compiler/22` R-SYNTH-07 maps each to a diagnostic).

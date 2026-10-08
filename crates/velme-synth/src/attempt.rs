@@ -25,11 +25,54 @@ pub struct Cause {
     pub name: String,
 }
 
+/// Why a request ended as it did, for the synth log (R-SYNTH-23, D-155): one token of a closed list, rendered in
+/// [`LogCause::token`] and nowhere else, and never text from a reply or a provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogCause {
+    /// A validator or notation rule id, such as `schema-1` or `ref-3`.
+    Rule(&'static str),
+    /// The `n`th check of the goal, 1-based, in source order.
+    Check(usize),
+    /// The `n`th example of the goal, 1-based.
+    Example(usize),
+    /// A failed run of the candidate before its example or checks were judged.
+    Runtime(Code),
+    /// A reply that held no body or question: `not-json`, `no-body`, `body-and-question`, `bad-question`,
+    /// `unknown-alias` or `bad-number`.
+    Reply(&'static str),
+    /// The reply was a question.
+    Question,
+    /// A [`ProviderError`](crate::ProviderError) variant by its fixture name.
+    Provider(&'static str),
+    /// A response that was not a reply, with its reason if it had one.
+    Malformed(Option<MalformedReason>),
+    /// A bug of Velme's, not of the reply.
+    Internal,
+}
+
+impl LogCause {
+    /// The token the log writes.
+    pub fn token(self) -> String {
+        match self {
+            LogCause::Rule(id) | LogCause::Reply(id) | LogCause::Provider(id) => id.to_owned(),
+            LogCause::Check(n) => format!("check-{n}"),
+            LogCause::Example(n) => format!("example-{n}"),
+            LogCause::Runtime(code) => format!("runtime-{}", code.as_str()),
+            LogCause::Question => "question".to_owned(),
+            LogCause::Malformed(None) => "malformed".to_owned(),
+            LogCause::Malformed(Some(reason)) => format!("malformed-{}", reason.id()),
+            LogCause::Internal => "internal".to_owned(),
+        }
+    }
+}
+
 /// One failed attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rejection {
     /// What it shares with another attempt of the same cause.
     pub cause: Cause,
+    /// The cause as the synth log has it, finer than [`Cause`] where the spec keeps causes together (R-SYNTH-23).
+    pub log_cause: LogCause,
     /// What the learner reads for this cause, with its details (input, values) from this attempt.
     pub line: String,
     /// What `--verbose` lists for this attempt: Velme's words, with the JSON path or the input.
@@ -44,8 +87,9 @@ pub struct Rejection {
 
 impl Rejection {
     /// A reply that isn't a goal body or a question, or no reply at all: `VL0401` in Velme's own wording (R-SYNTH-10).
-    pub(crate) fn not_a_reply(reply: &str, why: &str) -> Rejection {
-        Self::reply_problem(reply, &format!("the reply {why}"), why)
+    /// `log` is its synth-log cause.
+    pub(crate) fn not_a_reply(reply: &str, why: &str, log: LogCause) -> Rejection {
+        Self::reply_problem(reply, &format!("the reply {why}"), why, log)
     }
 
     /// A provider error that is a `Malformed` reply (R-SYNTH-07): the reason's words are the learner's line, and every
@@ -55,18 +99,20 @@ impl Rejection {
             "",
             reason.map_or("the reply was not a usable reply", MalformedReason::words),
             "malformed",
+            LogCause::Malformed(reason),
         )
     }
 
     /// `clause` is a whole sentence part with its own subject ("the reply …", "the response …"): a response-level fault
     /// is not a fault of the reply.
-    fn reply_problem(reply: &str, clause: &str, cause: &str) -> Rejection {
+    fn reply_problem(reply: &str, clause: &str, cause: &str, log: LogCause) -> Rejection {
         let message = format!("Velme got no goal body or question: {clause}.");
         Rejection {
             cause: Cause {
                 code: Code::IRSchemaInvalid,
                 name: cause.to_owned(),
             },
+            log_cause: log,
             line: clause.to_owned(),
             verbose: format!("{}: {clause}", Code::IRSchemaInvalid.as_str()),
             input: String::new(),
@@ -87,7 +133,7 @@ impl Rejection {
             ParseError::DuplicateKey { pointer } => (pointer.clone(), "this key appears twice".to_owned()),
             ParseError::ReservedKey { pointer } => (pointer.clone(), "this key is reserved".to_owned()),
             ParseError::TooDeep { pointer, limit } => (pointer.clone(), format!("it nests deeper than {limit} levels")),
-            ParseError::Json(_) => return Rejection::not_a_reply(reply, "wasn't JSON"),
+            ParseError::Json(_) => return Rejection::not_a_reply(reply, "wasn't JSON", LogCause::Reply("not-json")),
         };
         let code = Code::IRSchemaInvalid;
         let shown = safe_path(&pointer);
@@ -102,6 +148,7 @@ impl Rejection {
                 code,
                 name: "schema/schema-1".to_owned(),
             },
+            log_cause: LogCause::Rule("schema-1"),
             verbose: format!("{}: {line} (schema-1)", code.as_str()),
             input: String::new(),
             line,
@@ -135,11 +182,17 @@ impl Rejection {
                 sent
             })
             .collect();
+        // A validator that failed with no finding is a bug of Velme's.
         let (code, stage, rule, path) = found
             .first()
             .map_or((Code::IRInvalid, "internal", "internal-1", String::new()), |f| {
                 (f.diagnostic.code, f.stage, f.rule, safe_path(&f.path))
             });
+        let log_cause = if found.is_empty() {
+            LogCause::Internal
+        } else {
+            LogCause::Rule(rule)
+        };
         let at = if path.is_empty() {
             String::new()
         } else {
@@ -153,6 +206,7 @@ impl Rejection {
                 code,
                 name: format!("{stage}/{rule}"),
             },
+            log_cause,
             verbose: format!("{}: {line} ({rule})", code.as_str()),
             input: String::new(),
             line,

@@ -83,7 +83,7 @@ fn ac_synth_46_a_request_asks_for_one_of_two_tools_and_the_tool_input_is_the_rep
             reply.usage.cache_read_tokens,
             reply.usage.cache_write_tokens
         ),
-        (11, 7, 5, 3)
+        (11, 7, Some(5), Some(3))
     );
     assert!(sleeper.waits().is_empty());
     let sent = server.requests();

@@ -8,7 +8,7 @@ use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Fingerprint, ValidIr, display_value};
 use velme_sema::hir::{GoalId, Program};
 
-use crate::attempt::{Cause, Rejection};
+use crate::attempt::{Cause, LogCause, Rejection};
 use crate::generate::{TestInput, test_inputs};
 use crate::request::AttemptDiagnostic;
 
@@ -79,6 +79,7 @@ pub fn verify(
             return Verdict::Rejected(wrap(
                 Code::ExampleFailed,
                 example.given.clone(),
+                LogCause::Example(i + 1),
                 &diagnostic,
                 input,
                 &names,
@@ -88,9 +89,16 @@ pub fn verify(
         max_fuel = max_fuel.max(spent.fuel);
         match checked {
             Ok(checked) => {
-                if let Some(failure) = checked.failures().into_iter().next() {
+                // The first failed item, in source order (R-CHK-09); the log names it by its place.
+                if let Some((n, failure)) = checked
+                    .items
+                    .iter()
+                    .enumerate()
+                    .find_map(|(n, item)| item.failure.clone().map(|f| (n, f)))
+                {
                     let name = text(source, &failure);
-                    return Verdict::Rejected(wrap(Code::CheckFailed, name, &failure, input, &names));
+                    let id = LogCause::Check(n + 1);
+                    return Verdict::Rejected(wrap(Code::CheckFailed, name, id, &failure, input, &names));
                 }
             }
             Err(stop) => return stopped(vec![stop.diagnostic], input, &names),
@@ -126,7 +134,8 @@ fn stopped(found: Vec<Diagnostic>, input: &TestInput, names: &[&str]) -> Verdict
     if first.code == Code::InternalError {
         return Verdict::Internal;
     }
-    Verdict::Rejected(wrap(first.code, String::new(), first, input, names))
+    let id = LogCause::Runtime(first.code);
+    Verdict::Rejected(wrap(first.code, String::new(), id, first, input, names))
 }
 
 /// `name is value, …` for `input`, with what Velme computed (R-SYNTH-19).
@@ -143,8 +152,9 @@ fn given(input: &TestInput, names: &[&str]) -> String {
     }
 }
 
-/// A failed case as a `VL0503` cause (R-SYNTH-15): `inner` is why, `name` the check or example it names.
-fn wrap(code: Code, name: String, inner: &Diagnostic, input: &TestInput, names: &[&str]) -> Rejection {
+/// A failed case as a `VL0503` cause (R-SYNTH-15): `inner` is why, `name` the check or example it names, `id` its
+/// synth-log cause.
+fn wrap(code: Code, name: String, id: LogCause, inner: &Diagnostic, input: &TestInput, names: &[&str]) -> Rejection {
     let line = match code {
         Code::ExampleFailed => inner.message.clone(),
         Code::CheckFailed => format!("your check `{name}` fails when {}", given(input, names)),
@@ -157,6 +167,7 @@ fn wrap(code: Code, name: String, inner: &Diagnostic, input: &TestInput, names: 
     }
     Rejection {
         cause: Cause { code, name },
+        log_cause: id,
         input: given(input, names),
         verbose: format!("{}: {line} (input {})", Code::VerificationFailed.as_str(), input.json),
         line,

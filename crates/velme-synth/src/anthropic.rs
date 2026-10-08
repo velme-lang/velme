@@ -17,7 +17,8 @@ use crate::http::{agent, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, body_key, prompt_version, render_with};
 use crate::provider::{
-    Identity, MalformedReason, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+    Called, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend, SynthLimits, SynthProvider,
+    SynthReply, Usage,
 };
 use crate::request::SynthRequest;
 use crate::schema::compact_body_schema;
@@ -346,16 +347,47 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
     ]))
 }
 
+/// A response that gave no reply: why, and what it showed if it was read (D-155).
+type Unread = (ProviderError, Option<Seen>);
+
 /// The reply and the tokens of a successful response (R-SYNTH-44): the input of the one tool called. A refusal is
 /// `Refused`; no tool call, a second one, an unknown tool or a cut-off reply is `Malformed`.
-fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
+// A response that gave no reply is rare and read once; boxing it would only add noise to every `?`.
+#[allow(clippy::result_large_err)]
+fn read_response(text: &str) -> Result<(String, Usage, ReplyMeta), Unread> {
     let malformed = |why: MalformedReason| ProviderError::Malformed(Some(why));
     // The envelope adds a few levels around a reply, which is itself held to the IR depth limit.
     let doc: Value = from_json_str_within(text, MAX_JSON_DEPTH + ENVELOPE_DEPTH)
-        .map_err(|_| malformed(MalformedReason::ResponseNotJson))?;
+        .map_err(|_| (malformed(MalformedReason::ResponseNotJson), None))?;
+    // Cache use is reported by the fields being there; `0` is a report (R-SYNTH-23).
+    let reported = |name: &str| doc.pointer(&format!("/usage/{name}")).and_then(Value::as_u64);
+    let usage = Usage {
+        input_tokens: reported("input_tokens").unwrap_or(0),
+        output_tokens: reported("output_tokens").unwrap_or(0),
+        cache_read_tokens: reported("cache_read_input_tokens"),
+        cache_write_tokens: reported("cache_creation_input_tokens"),
+    };
+    let blocks = doc.get("content").and_then(Value::as_array).map(|blocks| {
+        blocks
+            .iter()
+            .map(|block| block.get("type").and_then(Value::as_str).unwrap_or_default().to_owned())
+            .collect()
+    });
+    let meta = ReplyMeta {
+        stop_reason: doc.get("stop_reason").and_then(Value::as_str).map(str::to_owned),
+        blocks,
+    };
+    // A failure from here on still shows how the response looked and what it billed.
+    let unread = |why: ProviderError| {
+        let seen = Seen {
+            meta: meta.clone(),
+            usage,
+        };
+        (why, Some(seen))
+    };
     match doc.get("stop_reason").and_then(Value::as_str) {
-        Some("refusal") => return Err(ProviderError::Refused(String::new())),
-        Some("max_tokens") => return Err(malformed(MalformedReason::CutOff)),
+        Some("refusal") => return Err(unread(ProviderError::Refused(String::new()))),
+        Some("max_tokens") => return Err(unread(malformed(MalformedReason::CutOff))),
         _ => {}
     }
     let mut calls = doc
@@ -366,26 +398,15 @@ fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
         .iter()
         .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_use"));
     let (Some(call), None) = (calls.next(), calls.next()) else {
-        return Err(malformed(MalformedReason::NotOneTool));
+        return Err(unread(malformed(MalformedReason::NotOneTool)));
     };
     let name = call.get("name").and_then(Value::as_str);
     let input = call.get("input").filter(|input| input.is_object());
     let (true, Some(input)) = (matches!(name, Some(WRITE_GOAL | ASK_QUESTION)), input) else {
-        return Err(malformed(MalformedReason::UnknownTool));
+        return Err(unread(malformed(MalformedReason::UnknownTool)));
     };
-    let reply = to_canonical_string(input).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
-    let count = |name: &str| {
-        doc.pointer(&format!("/usage/{name}"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
-    };
-    let usage = Usage {
-        input_tokens: count("input_tokens"),
-        output_tokens: count("output_tokens"),
-        cache_read_tokens: count("cache_read_input_tokens"),
-        cache_write_tokens: count("cache_creation_input_tokens"),
-    };
-    Ok((reply, usage))
+    let reply = to_canonical_string(input).map_err(|_| unread(malformed(MalformedReason::ReplyNotJson)))?;
+    Ok((reply, usage, meta.clone()))
 }
 
 #[async_trait]
@@ -421,19 +442,45 @@ impl SynthProvider for Anthropic {
 
     /// One provider call (R-SYNTH-21): the transport tries inside it wait 1 s then 2 s (R-SYNTH-12, D-95).
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
-        let key = self.key.get().ok_or(ProviderError::NotConfigured)?;
-        let body = self.body(request, limits)?;
+        self.call(request, limits).await.result
+    }
+
+    async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
+        let unsent = |error| Called {
+            result: Err(error),
+            seen: None,
+        };
+        let Some(key) = self.key.get() else {
+            return unsent(ProviderError::NotConfigured);
+        };
+        let body = match self.body(request, limits) {
+            Ok(body) => body,
+            Err(error) => return unsent(error),
+        };
         let started = Instant::now();
-        let text = with_generation_retries(self.sleeper.as_ref(), || {
+        let sent = with_generation_retries(self.sleeper.as_ref(), || {
             std::future::ready(self.send(&key, &body, limits.timeout))
         })
-        .await?;
-        let (reply_json, usage) = read_response(&text)?;
-        Ok(SynthReply {
-            reply_json,
-            usage,
-            latency: started.elapsed(),
-        })
+        .await;
+        let text = match sent {
+            Ok(text) => text,
+            Err(error) => return unsent(error),
+        };
+        match read_response(&text) {
+            Ok((reply_json, usage, meta)) => Called {
+                result: Ok(SynthReply {
+                    reply_json,
+                    usage,
+                    latency: started.elapsed(),
+                    meta,
+                }),
+                seen: None,
+            },
+            Err((error, seen)) => Called {
+                result: Err(error),
+                seen,
+            },
+        }
     }
 }
 

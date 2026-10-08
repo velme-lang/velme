@@ -12,7 +12,7 @@ use velme_ir::{Fingerprint, to_canonical_string};
 use crate::attempt::clean_line;
 use crate::fsio::{check_dir, write_file};
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
+use crate::provider::{Called, Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
 use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, file_error, fixture_name};
 use crate::request::SynthRequest;
 
@@ -109,7 +109,24 @@ impl SynthProvider for Recording {
     }
 
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
-        let result = self.inner.complete(request, limits).await;
+        self.call(request, limits).await.result
+    }
+
+    async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
+        let Called { result, seen } = self.inner.call(request, limits).await;
+        let result = self.record(request, limits, result);
+        Called { result, seen }
+    }
+}
+
+impl Recording {
+    /// Writes the exchange for `result`, if it is one (R-SYNTH-43); the result itself, or the error of writing.
+    fn record(
+        &self,
+        request: &SynthRequest,
+        limits: &SynthLimits,
+        result: Result<SynthReply, ProviderError>,
+    ) -> Result<SynthReply, ProviderError> {
         // Only what reached the provider's reply is an exchange: a transport failure or a request the provider rejected is
         // not (R-SYNTH-43).
         let (reply, error, text, usage) = match &result {

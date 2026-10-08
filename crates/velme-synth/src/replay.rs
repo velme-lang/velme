@@ -13,7 +13,9 @@ use velme_ir::{Fingerprint, from_json_str};
 
 use crate::fsio::{read_file, refuse_links};
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::provider::{
+    Identity, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 use crate::request::SynthRequest;
 
 /// The file in `replay_dir` that holds the recorded build's identity.
@@ -93,8 +95,8 @@ impl From<Usage> for FixtureUsage {
         FixtureUsage {
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
-            cache_read_tokens: usage.cache_read_tokens,
-            cache_write_tokens: usage.cache_write_tokens,
+            cache_read_tokens: usage.cache_read_tokens.unwrap_or(0),
+            cache_write_tokens: usage.cache_write_tokens.unwrap_or(0),
         }
     }
 }
@@ -104,8 +106,9 @@ impl From<FixtureUsage> for Usage {
         Usage {
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
-            cache_read_tokens: usage.cache_read_tokens,
-            cache_write_tokens: usage.cache_write_tokens,
+            // A fixture keeps no difference between not reported and 0.
+            cache_read_tokens: Some(usage.cache_read_tokens).filter(|&n| n > 0),
+            cache_write_tokens: Some(usage.cache_write_tokens).filter(|&n| n > 0),
         }
     }
 }
@@ -268,6 +271,7 @@ impl SynthProvider for ReplayProvider {
                 reply_json: reply.clone(),
                 usage: exchange.usage.into(),
                 latency: Duration::ZERO,
+                meta: ReplyMeta::default(),
             }),
             (None, Some(name)) if RECORDED.contains(&name.as_str()) => {
                 match ProviderError::from_variant(name, exchange.text.as_deref()) {
