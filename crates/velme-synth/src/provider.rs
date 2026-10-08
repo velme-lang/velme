@@ -203,6 +203,16 @@ pub enum ProviderError {
         /// The cleaned tail of the last 4 KiB of the backend's reply body, empty if there was none.
         body: String,
     },
+    /// An `external` backend doesn't list the `reply_format` the project asks for in its `describe` reply (`VL0406`,
+    /// R-SYNTH-26, D-156). Found before any request, so nothing was sent in the wrong format.
+    FormatUnsupported {
+        /// The backend's name from `describe`.
+        backend: String,
+        /// The formats it lists that Velme knows, by name.
+        offered: Vec<&'static str>,
+        /// The format `[synthesis] reply_format` asks for.
+        asked: &'static str,
+    },
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),
     /// A replay fixture or `replay.json` couldn't be read or written, or is a link or another file that isn't regular
@@ -283,7 +293,7 @@ impl ProviderError {
             ProviderError::Refused(_) => "refused",
             ProviderError::Timeout => "timeout",
             ProviderError::Malformed(_) => "malformed",
-            ProviderError::BackendFailed { .. } => "backend_failed",
+            ProviderError::BackendFailed { .. } | ProviderError::FormatUnsupported { .. } => "backend_failed",
             ProviderError::Pending(_) => "pending",
             ProviderError::File { .. } => "file",
             ProviderError::Internal(_) => "internal",

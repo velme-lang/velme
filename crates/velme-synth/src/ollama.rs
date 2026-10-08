@@ -18,7 +18,7 @@ use crate::provider::{
     SynthReply, Usage,
 };
 use crate::request::SynthRequest;
-use crate::schema::{compact_body_schema, question_schema};
+use crate::schema::reply_schema_for;
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 use crate::url::{ExternalUrl, LocalResolver};
 
@@ -207,8 +207,10 @@ impl Ollama {
         }
     }
 
-    /// The request body: the conversation of R-SYNTH-11, the reply schema as `format`, temperature 0, no streaming.
-    fn body(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<String, ProviderError> {
+    /// The request body: the conversation of R-SYNTH-11, the reply schema as `format`, temperature 0, no streaming. It is
+    /// what `call` sends, built with no network, so a tool can show exactly what the model would be asked.
+    #[doc(hidden)]
+    pub fn request_body(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<String, ProviderError> {
         let prompt = render_with(request, &self.config.options.prompt())
             .map_err(|_| ProviderError::Internal("the prompt could not be rendered".to_owned()))?;
         let mut messages = vec![json!({"role": "user", "content": prompt.first_turn()})];
@@ -224,7 +226,7 @@ impl Ollama {
         // forbid asking (R-SYNTH-05).
         let format = match self.config.options.reply_format {
             ReplyFormat::IrJson => request.output_schema.clone(),
-            ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
+            format => reply_schema_for(format),
         };
         let body = json!({
             "model": self.model_for(limits.attempt),
@@ -379,7 +381,7 @@ impl SynthProvider for OllamaProvider {
             result: Err(error),
             seen: None,
         };
-        let body = match self.server.body(request, limits) {
+        let body = match self.server.request_body(request, limits) {
             Ok(body) => body,
             Err(error) => return unsent(error),
         };

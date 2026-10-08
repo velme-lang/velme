@@ -62,7 +62,7 @@ fn provider(name: &str, project: &Project, flags: &BuildFlags, options: &SynthOp
         }
         "anthropic" => anthropic(flags, options),
         "ollama" => ollama(flags, options),
-        "external" => external(flags),
+        "external" => external(flags, options),
         _ => Err(unknown_provider(name)),
     }
 }
@@ -416,7 +416,7 @@ pub fn check_flags(name: &str, flags: &BuildFlags) -> Result<(), Diagnostic> {
 /// `external_timeout_secs` and the certificates of `external_ca_file`. A URL that can't be used is `VL0902` before any contact
 /// (`compiler/22` R-SYNTH-29); a token that can't be one is `VL0405`, as a malformed API key is, and is never left out; a CA
 /// file that can't be read, or holds no certificate, is `VL0901`.
-pub fn external(flags: &BuildFlags) -> Result<Chosen, Diagnostic> {
+pub fn external(flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, Diagnostic> {
     let user = &flags.settings.user;
     let text = first_set([
         flags.external_url.map(str::to_owned),
@@ -446,6 +446,7 @@ pub fn external(flags: &BuildFlags) -> Result<Chosen, Diagnostic> {
     let mut config = ExternalConfig::new(url);
     config.token = token;
     config.ca_pem = ca_pem;
+    config.reply_format = options.reply_format;
     if let Some(secs) = user.external_timeout_secs {
         config.timeout = std::time::Duration::from_secs(secs);
     }

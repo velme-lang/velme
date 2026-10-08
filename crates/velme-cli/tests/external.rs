@@ -660,3 +660,122 @@ fn ac_cli_14_a_value_with_terminal_escapes_is_shown_visibly() {
     velme_test_support::schema::assert_cli_envelope(&envelope);
     assert_eq!(envelope["results"][0]["result"], format!("Hello, {hostile}!"));
 }
+
+/// An `external` build follows `reply_format`: a compact reply is accepted and the request names the format, an `ir-json`
+/// request has no such member, and a compact build whose backend answers under the canonical key is a failed attempt
+/// (`VL0401`, then `VL0403`), not a backend failure (AC-SYNTH-57, R-SYNTH-36, R-SYNTH-40, D-153, D-156).
+#[test]
+fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
+    let (dir, replies) = project("reply-format");
+    let capture = dir.join("captured.json");
+    let server = Server::start(
+        Config::replying(&replies)
+            .capturing(&capture)
+            .listing(json!(["ir-json", "compact"])),
+    );
+    let canonical = json!({"body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
+                        "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}});
+    let sent =
+        || serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&capture).expect("capture")).expect("JSON");
+
+    // The default: no `reply_format` member, so the request is what it always was.
+    let plain = build(&dir, server.url(), &[]);
+    assert_eq!(plain.code, 0, "{}", shown(&plain));
+    assert!(sent().get("reply_format").is_none());
+
+    // Compact: the request names it and the reply under the alias builds.
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"compact\"\n").expect("velme.toml");
+    fs::write(
+        replies.join("Double.json"),
+        velme_synth::compress(&canonical).to_string(),
+    )
+    .expect("reply");
+    let _ = fs::remove_file(dir.join("velme.lock"));
+    let compact = build(&dir, server.url(), &[]);
+    assert_eq!(compact.code, 0, "{}", shown(&compact));
+    assert_eq!(sent()["reply_format"], "compact");
+
+    // A compact build whose backend answers under `body` is a failed attempt, as for an LLM.
+    fs::write(replies.join("Double.json"), canonical.to_string()).expect("reply");
+    let _ = fs::remove_file(dir.join("velme.lock"));
+    let _ = fs::remove_dir_all(dir.join(".velme"));
+    let wrong = build(&dir, server.url(), &[]);
+    let text = shown(&wrong);
+    assert_ne!(wrong.code, 0, "{text}");
+    // The failed attempt (VL0401) ends the goal with VL0403 when no retry is left, naming the alias it wanted.
+    assert!(
+        text.contains("VL0403") && text.contains("no `bo`") && !text.contains("VL0406"),
+        "{text}"
+    );
+    // The attempt itself is `VL0401`, and the log says what was asked and what came back (R-SYNTH-23).
+    let log = fs::read_to_string(dir.join(".velme/synth-log.jsonl")).expect("the synth log");
+    let last: serde_json::Value = serde_json::from_str(log.lines().last().expect("a line")).expect("a JSON line");
+    assert_eq!(last["outcome"], "VL0401", "{last}");
+    assert_eq!(
+        (&last["cause"], &last["reply_format"]),
+        (&json!("no-body"), &json!("compact"))
+    );
+    assert_eq!(last["reply_shape"]["keys"], json!(["body"]));
+
+    // A backend that doesn't list the format is never asked: `VL0406` names the setting, and nothing is sent.
+    let plain = Server::start(Config::replying(&replies));
+    let _ = fs::remove_file(dir.join("velme.lock"));
+    let refused = build(&dir, plain.url(), &[]);
+    let text = shown(&refused);
+    assert_ne!(refused.code, 0, "{text}");
+    assert!(
+        text.contains("VL0406")
+            && text.contains("answers only in `ir-json`")
+            && text.contains("reply_format = \"compact\""),
+        "{text}"
+    );
+}
+
+/// A recorded `external` build in `compact` replays byte for byte, from `replay.json` alone: the replay follows the
+/// recording's format and key, with no `velme.toml` setting and no backend (AC-SYNTH-57, R-SYNTH-40, R-SYNTH-43, D-156).
+#[test]
+fn ac_synth_57_a_recorded_external_compact_build_replays_to_the_same_lock_and_artifacts() {
+    let (dir, replies) = project("reply-format-record");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"compact\"\n").expect("velme.toml");
+    let body = json!({"body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
+                      "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}});
+    fs::write(replies.join("Double.json"), velme_synth::compress(&body).to_string()).expect("reply");
+    let server = Server::start(Config::replying(&replies).listing(json!(["ir-json", "compact"])));
+    let recorded = velme(
+        &dir,
+        &[
+            "build",
+            "game.velme",
+            "--provider",
+            "external",
+            "--external-url",
+            server.url(),
+        ],
+        &[("VELME_SYNTH_RECORD", "1")],
+    );
+    assert_eq!(recorded.code, 0, "{}", shown(&recorded));
+    let fixtures = dir.join("tests/fixtures/synth");
+    let identity = fs::read_to_string(fixtures.join("replay.json")).expect("replay.json");
+    assert!(
+        identity.contains(r#""reply_format":"compact""#) && identity.contains("+reply_format=compact@"),
+        "{identity}"
+    );
+
+    // A fresh project: no `velme.toml`, no backend, only the recorded fixtures.
+    let (copy, _) = project("reply-format-replay");
+    let target = copy.join("tests/fixtures/synth");
+    fs::create_dir_all(&target).expect("fixture directory");
+    for entry in fs::read_dir(&fixtures).expect("fixtures").filter_map(Result::ok) {
+        fs::copy(entry.path(), target.join(entry.file_name())).expect("copied");
+    }
+    let replayed = velme(&copy, &["build", "game.velme", "--provider", "replay"], &[]);
+    assert_eq!(replayed.code, 0, "{}", shown(&replayed));
+    assert_eq!(
+        fs::read(copy.join("velme.lock")).expect("lock"),
+        fs::read(dir.join("velme.lock")).expect("lock")
+    );
+    let (mut first, mut second) = (String::new(), String::new());
+    all_text(&dir.join(".velme/artifacts"), &mut first);
+    all_text(&copy.join(".velme/artifacts"), &mut second);
+    assert!(!first.is_empty() && first == second, "the artifacts differ");
+}

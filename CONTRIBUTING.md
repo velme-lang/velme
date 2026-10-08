@@ -63,6 +63,8 @@ Available from M0 (`delivery/51` §4, `tooling/40`):
 
 Install the snapshot and dependency tools once: `cargo install cargo-insta cargo-deny --locked`.
 
+The tests of `tools/agent-bridge` need Python 3 (`python3` or `python` on the PATH; standard library only).
+
 Every change keeps `cargo xtask verify` green (R-QA-07).
 
 ## Branches, commits and PRs

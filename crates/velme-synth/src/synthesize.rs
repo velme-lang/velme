@@ -331,13 +331,13 @@ async fn run(
     let compiler_calls = calls(task.program, task.goal).map_err(Failure::of)?;
     let mut history: Vec<Rejection> = Vec::new();
     let mut earlier: Vec<AttemptFeedback> = task.feedback.clone();
-    // `reply_format` is a setting of the LLM providers (R-SYNTH-34..40): an external backend answers in canonical IR.
+    // An external backend (or a replay of one) is told the format when it is not `ir-json` (R-SYNTH-36, D-156).
     let external = provider.id() == "external";
-    let format = if external {
-        ReplyFormat::IrJson
-    } else {
-        options.reply_format
-    };
+    let format = options.reply_format;
+    // The identity and the setting are one source of the format: a provider keyed for another would be read wrongly.
+    if external && provider.input_version() != crate::request::external_input_version(format) {
+        return Err(internal());
+    }
     for attempt in 0..=options.max_retries {
         if let Some(error) = &session.stopped {
             return Err(Failure::of(stopped_diagnostic(error, name, span)));
@@ -354,7 +354,11 @@ async fn run(
             return Err(Failure::of(d));
         }
         session.calls += 1;
-        let mut request = base.clone();
+        let mut request = if external {
+            base.clone().for_external(format)
+        } else {
+            base.clone()
+        };
         request.attempts = carried(&earlier, external, options.retry_history);
         let mut limits = SynthLimits::new(task.synthesis_key);
         limits.attempt = attempt;
@@ -695,6 +699,25 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
                 d = d.with_note(format!("The backend's reply ended: {body}"));
             }
             d
+        }
+        ProviderError::FormatUnsupported {
+            backend,
+            offered,
+            asked,
+        } => {
+            let only = if offered.is_empty() {
+                "none of the reply formats Velme knows".to_owned()
+            } else {
+                offered.iter().map(|f| format!("`{f}`")).collect::<Vec<_>>().join(", ")
+            };
+            Diagnostic::new(
+                Code::BackendFailed,
+                span,
+                format!(
+                    "The backend `{backend}` couldn't build `{name}`: it answers only in {only}, and velme.toml asks for `reply_format = \"{asked}\"`."
+                ),
+            )
+            .with_help("remove `reply_format` from `[synthesis]`, or use a backend that lists it")
         }
         ProviderError::Pending(text) => pending(name, span, backend, text, &[]),
         ProviderError::File { path, reason } => {

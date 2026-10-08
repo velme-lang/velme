@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
+use velme_ir::Fingerprint;
 
 /// The fixed alias table: canonical name to alias, for property names and for node kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -30,6 +31,13 @@ static TABLE: LazyLock<AliasTable> = LazyLock::new(build);
 /// The alias table (R-SYNTH-36), part of `prompt_version` (D-97).
 pub fn table() -> &'static AliasTable {
     &TABLE
+}
+
+/// The version of the alias table: the first 12 hex digits of its BLAKE3 (`Fingerprint`, as `prompt_version` hashes it,
+/// D-97). A change to any alias changes it, and with it the `input_version` of an `external` backend asked for `compact`
+/// (R-SYNTH-40, D-156).
+pub fn version() -> String {
+    Fingerprint::of(table()).map_or_else(|_| String::new(), |hash| hash.hex().chars().take(12).collect())
 }
 
 fn build() -> AliasTable {

@@ -19,7 +19,7 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 |---|---|---|
 | `signature` | goal name, param names + types, output type, every reachable record type | `Call.goal_signature`; parents' keys |
 | `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + the compatibility units of `ir_version` and `builtins_version` (D-55, D-85) | lock staleness (§5); generated-input seed (22 §7) |
-| `synthesis_key` | `contract_key` + provider `input_version` (`prompt_version` + options hash, `compiler/22` R-SYNTH-40, or the external `request_version`) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `<backend>@<backend_version>`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
+| `synthesis_key` | `contract_key` + provider `input_version` (`prompt_version` + options hash, `compiler/22` R-SYNTH-40, or the external `input_version`, R-SYNTH-40) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `<backend>@<backend_version>`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
 | `execution_id` | `artifact` + children's `execution_id`s in binding order | exact tree identity; shown as `artifact_id` in traces |
 
@@ -80,7 +80,7 @@ artifact this build reads, and is rejected like any document that is no artifact
 **R-ART-07** Wired goals (D-4) produce artifacts too, with `"provider": "compiler"` and no `model_version`, so every
 goal resolves through the lock the same way.
 **R-ART-21** An `external` artifact records `"provider": "external"`, the backend name as `backend`, `model_version` =
-`<backend>@<backend_version>` and `prompt_version` = `request_version`; an `ollama` artifact records `model_version` =
+`<backend>@<backend_version>` and `prompt_version` = the external `input_version` (`compiler/22` R-SYNTH-40); an `ollama` artifact records `model_version` =
 `<model>@<digest>` (D-41, D-42).
 **R-ART-25** The manifest's `prompt_version` records the provider's whole `input_version` — for an LLM provider the
 `prompt_version` plus the options hash (`compiler/22` R-SYNTH-40), not the prompt version alone — so `synthesis_key`

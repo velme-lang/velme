@@ -77,6 +77,17 @@ pub fn reply_schema() -> Value {
     })
 }
 
+/// The schema a reply in `format` must satisfy (R-SYNTH-36): [`reply_schema`] for `ir-json`; for `compact` a body under
+/// the body key's alias or a question, since the compact names are not the IR schema's and the validator alone judges
+/// the expanded IR. The question stays allowed: a grammar without it would forbid asking (R-SYNTH-05). It is what an
+/// LLM provider constrains its reply to and what an `external` request carries as `output_schema` (D-156).
+pub(crate) fn reply_schema_for(format: ReplyFormat) -> Value {
+    match format {
+        ReplyFormat::IrJson => reply_schema(),
+        ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
+    }
+}
+
 /// The operator names of a `binary` node and of a `unary` node, from the IR schema (D-104).
 pub(crate) fn operators() -> (Vec<String>, Vec<String>) {
     let names = |def: &str| -> Vec<String> {

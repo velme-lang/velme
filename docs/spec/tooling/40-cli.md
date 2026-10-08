@@ -241,7 +241,7 @@ timeout_secs = 60               # per provider request
 max_output_tokens = 8192        # LLM providers only; the default is 8192 for anthropic and 2048 for ollama (D-110)
 max_calls_per_build = 50        # hard stop across the whole build (compiler/22 R-SYNTH-21)
 replay_dir = "tests/fixtures/synth"   # replay provider only; relative, inside the project root (R-CLI-18)
-# token cost, LLM providers only (compiler/22 §4.1, D-44)
+# token cost, LLM providers only, except reply_format, which external takes too (compiler/22 §4.1, D-44, D-156)
 prompt_cache = true             # anthropic: cache the fixed prompt prefix (R-SYNTH-34)
 schema_in_prompt = "summary"    # summary | full (R-SYNTH-35)
 reply_format = "ir-json"        # ir-json | compact | notation; compact and notation are experimental (R-SYNTH-36, §4.2)
