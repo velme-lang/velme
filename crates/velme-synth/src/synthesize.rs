@@ -5,13 +5,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use velme_diagnostics::{Code, Diagnostic, Span};
-use velme_ir::{Fingerprint, Origin, Request, ValidIr, calls, from_json_str, validate_detailed};
+use velme_ir::{
+    Fingerprint, MAX_JSON_DEPTH, Origin, Request, ValidIr, calls, from_json_str, from_json_str_within,
+    validate_detailed,
+};
 use velme_sema::hir::{GoalId, Program};
 
-use crate::attempt::{Rejection, clean_line, clean_text, summary};
+use crate::attempt::{LogCause, Rejection, clean_line, clean_text, summary};
 use crate::compact;
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
-use crate::provider::{ProviderError, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::provider::{ProviderError, ReplyMeta, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{AttemptFeedback, SynthRequest, build_request};
 use crate::verify::{ChildRunner, Verdict, Verified, verify};
 
@@ -43,10 +46,125 @@ pub struct CallRecord {
     pub attempt: u32,
     /// `ok`, or the `VL` code the attempt ended with.
     pub outcome: String,
+    /// Why the attempt ended as it did; `None` exactly when `outcome` is `ok`.
+    pub cause: Option<LogCause>,
+    /// The provider's stop reason; `None` when the provider gave none or no response was read.
+    pub stop_reason: Option<StopReason>,
+    /// What the response looked like, `None` when none was read.
+    pub shape: Option<ReplyShape>,
+    /// Prompt-cache tokens read and written: `None` when the provider doesn't report them, `Some(0)` when it reports 0.
+    pub cache: (Option<u64>, Option<u64>),
     /// Tokens sent and received: `None` for a count the provider didn't report or reported as 0.
     pub tokens: (Option<u64>, Option<u64>),
     /// How long the request took, as the provider measured it, else as this loop did.
     pub latency: Duration,
+    /// The byte length of the reply as received; `None` when no reply came back.
+    pub reply_bytes: Option<usize>,
+    /// The reply format the request used, by its config name.
+    pub reply_format: &'static str,
+}
+
+/// A provider's stop reason as the log may keep it: 1..=32 characters of `a`-`z` and `_`, else `"…"`. Only
+/// the log builder makes one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopReason(String);
+
+impl StopReason {
+    /// The text to write.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// What a reply looked like, and nothing it said (R-SYNTH-23, D-154): kinds and names from closed sets, `"…"` for the rest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyShape {
+    /// The kinds of the response's content blocks in order, at most 64 and then one `"…"`; `None` for a
+    /// provider without blocks.
+    pub blocks: Option<Vec<String>>,
+    /// The reply object's top-level keys that are an IR property name, a compact alias of one, `body`, `question`, `pending` or
+    /// `error`, sorted and without repeats, then one `"…"` if any other key was there; empty if it isn't an object.
+    pub keys: Vec<String>,
+}
+
+/// The mark for a value outside a closed set of the synth log.
+const OTHER: &str = "…";
+
+/// The most block kinds the log lists.
+const MAX_BLOCKS: usize = 64;
+
+/// The content block kinds the log names.
+const BLOCK_KINDS: [&str; 4] = ["text", "tool_use", "thinking", "redacted_thinking"];
+
+/// The reply members the log names besides the IR's property names and their aliases.
+const REPLY_KEYS: [&str; 4] = ["body", "question", "pending", "error"];
+
+fn stop_reason(raw: &str) -> StopReason {
+    let closed = (1..=32).contains(&raw.len()) && raw.bytes().all(|b| b.is_ascii_lowercase() || b == b'_');
+    StopReason(if closed { raw.to_owned() } else { OTHER.to_owned() })
+}
+
+/// The shape of a response read: its block kinds, and the keys of its reply if it held one.
+fn shape(meta: &ReplyMeta, reply: Option<&str>) -> ReplyShape {
+    let blocks = meta.blocks.as_ref().map(|blocks| {
+        let mut kinds: Vec<String> = blocks
+            .iter()
+            .take(MAX_BLOCKS)
+            .map(|kind| {
+                if BLOCK_KINDS.contains(&kind.as_str()) {
+                    kind.clone()
+                } else {
+                    OTHER.to_owned()
+                }
+            })
+            .collect();
+        if blocks.len() > MAX_BLOCKS {
+            kinds.push(OTHER.to_owned());
+        }
+        kinds
+    });
+    let table = compact::table();
+    let known = |key: &str| {
+        REPLY_KEYS.contains(&key) || table.keys.contains_key(key) || table.keys.values().any(|alias| alias == key)
+    };
+    let mut keys: Vec<String> = Vec::new();
+    let mut other = false;
+    if let Some(Ok(serde_json::Value::Object(map))) =
+        reply.map(|r| from_json_str_within::<serde_json::Value>(r, MAX_JSON_DEPTH))
+    {
+        for key in map.keys() {
+            if known(key) {
+                keys.push(key.clone());
+            } else {
+                other = true;
+            }
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    if other {
+        keys.push(OTHER.to_owned());
+    }
+    ReplyShape { blocks, keys }
+}
+
+/// A response the log describes: a reply, or one that was read and held none.
+struct Response<'a> {
+    meta: &'a ReplyMeta,
+    usage: Usage,
+    latency: Duration,
+    reply: Option<&'a str>,
+}
+
+impl<'a> Response<'a> {
+    fn of(reply: &'a SynthReply) -> Self {
+        Response {
+            meta: &reply.meta,
+            usage: reply.usage,
+            latency: reply.latency,
+            reply: Some(&reply.reply_json),
+        }
+    }
 }
 
 /// What one build's synthesis has done so far: the calls made and the tokens used, and the error that put the provider
@@ -245,47 +363,90 @@ async fn run(
             .max_output_tokens
             .unwrap_or_else(|| provider.default_max_output_tokens());
         let (time_millis, started) = (session.clock.unix_millis(), Instant::now());
-        let called = provider.complete(&request, &limits).await;
-        let record = |session: &mut Session, outcome: &str, reply: Option<&SynthReply>| {
-            let count = |n: fn(&Usage) -> u64| reply.map(|r| n(&r.usage)).filter(|&n| n > 0);
-            let tokens = (count(|u| u.input_tokens), count(|u| u.output_tokens));
+        let called = provider.call(&request, &limits).await;
+        let record = |session: &mut Session, outcome: &str, cause: Option<LogCause>, response: Option<Response<'_>>| {
+            let count = |n: fn(&Usage) -> u64| response.as_ref().map(|r| n(&r.usage)).filter(|&n| n > 0);
+            let usage = response.as_ref().map(|r| r.usage);
             session.records.push(CallRecord {
                 time_millis,
                 attempt,
                 outcome: outcome.to_owned(),
-                tokens,
-                latency: reply.map_or_else(|| started.elapsed(), |r| r.latency),
+                cause,
+                stop_reason: response
+                    .as_ref()
+                    .and_then(|r| r.meta.stop_reason.as_deref())
+                    .map(stop_reason),
+                shape: response.as_ref().map(|r| shape(r.meta, r.reply)),
+                cache: usage.map_or((None, None), |u| (u.cache_read_tokens, u.cache_write_tokens)),
+                tokens: (count(|u| u.input_tokens), count(|u| u.output_tokens)),
+                latency: response.as_ref().map_or_else(|| started.elapsed(), |r| r.latency),
+                reply_bytes: response.as_ref().and_then(|r| r.reply).map(str::len),
+                reply_format: format.name(),
             });
         };
-        let reply = match called {
+        let reply = match called.result {
             Ok(reply) => reply,
-            Err(error) => match failed_call(session, error, provider.backend(), name, span, &history) {
-                Ok(rejection) => {
-                    record(session, rejection.cause.code.as_str(), None);
-                    history.push(rejection);
-                    if let Some(end) = next(&mut earlier, &history, &options, attempt, name, span) {
-                        return Err(end);
+            Err(error) => {
+                let variant = error.variant();
+                match failed_call(session, error, provider.backend(), name, span, &history) {
+                    Ok(rejection) => {
+                        // A response that was read but held no reply still shows its stop reason, block kinds and
+                        // billed tokens (R-SYNTH-21, R-SYNTH-23, D-155).
+                        let seen = called.seen.as_ref().map(|seen| Response {
+                            meta: &seen.meta,
+                            usage: seen.usage,
+                            latency: started.elapsed(),
+                            reply: None,
+                        });
+                        if let Some(seen) = &called.seen {
+                            session.usage = add(session.usage, seen.usage);
+                        }
+                        record(session, rejection.cause.code.as_str(), Some(rejection.log_cause), seen);
+                        history.push(rejection);
+                        if let Some(end) = next(&mut earlier, &history, &options, attempt, name, span) {
+                            return Err(end);
+                        }
+                        continue;
                     }
-                    continue;
+                    Err(failure) => {
+                        record(
+                            session,
+                            failure.diagnostic.code.as_str(),
+                            Some(LogCause::Provider(variant)),
+                            None,
+                        );
+                        return Err(failure);
+                    }
                 }
-                Err(failure) => {
-                    record(session, failure.diagnostic.code.as_str(), None);
-                    return Err(failure);
-                }
-            },
+            }
         };
         session.usage = add(session.usage, reply.usage);
         let rejection = match read(&reply.reply_json, format, &base) {
             Reply::Question(question) => {
-                record(session, Code::PlanUnclear.as_str(), Some(&reply));
+                record(
+                    session,
+                    Code::PlanUnclear.as_str(),
+                    Some(LogCause::Question),
+                    Some(Response::of(&reply)),
+                );
                 return Err(Failure::of(question_diagnostic(name, span, &question)));
             }
             Reply::Bad(rejection) => {
-                record(session, rejection.cause.code.as_str(), Some(&reply));
+                record(
+                    session,
+                    rejection.cause.code.as_str(),
+                    Some(rejection.log_cause),
+                    Some(Response::of(&reply)),
+                );
                 rejection
             }
             Reply::Internal => {
-                record(session, Code::InternalError.as_str(), Some(&reply));
+                record(
+                    session,
+                    Code::InternalError.as_str(),
+                    Some(LogCause::Internal),
+                    Some(Response::of(&reply)),
+                );
                 return Err(internal());
             }
             Reply::Candidate(text) => {
@@ -298,27 +459,47 @@ async fn run(
                 match validate_detailed(&text, &request) {
                     Err(found) => {
                         let rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
-                        record(session, rejection.cause.code.as_str(), Some(&reply));
+                        record(
+                            session,
+                            rejection.cause.code.as_str(),
+                            Some(rejection.log_cause),
+                            Some(Response::of(&reply)),
+                        );
                         rejection
                     }
                     Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
                         Verdict::Accepted(verified) => {
-                            record(session, "ok", Some(&reply));
+                            record(session, "ok", None, Some(Response::of(&reply)));
                             return Ok(Built { ir, verified });
                         }
                         Verdict::Rejected(mut rejection) => {
                             rejection.reply = reply.reply_json.clone();
-                            record(session, rejection.cause.code.as_str(), Some(&reply));
+                            record(
+                                session,
+                                rejection.cause.code.as_str(),
+                                Some(rejection.log_cause),
+                                Some(Response::of(&reply)),
+                            );
                             rejection
                         }
                         Verdict::Watchdog(d) => {
                             let mut d = d;
                             d.span = span;
-                            record(session, d.code.as_str(), Some(&reply));
+                            record(
+                                session,
+                                d.code.as_str(),
+                                Some(LogCause::Runtime(d.code)),
+                                Some(Response::of(&reply)),
+                            );
                             return Err(Failure::of(d));
                         }
                         Verdict::Internal => {
-                            record(session, Code::InternalError.as_str(), Some(&reply));
+                            record(
+                                session,
+                                Code::InternalError.as_str(),
+                                Some(LogCause::Internal),
+                                Some(Response::of(&reply)),
+                            );
                             return Err(internal());
                         }
                     },
@@ -400,7 +581,11 @@ fn failed_call(
     history: &[Rejection],
 ) -> Result<Rejection, Failure> {
     match error {
-        ProviderError::Refused(_) => Ok(Rejection::not_a_reply("", "was refused by the provider")),
+        ProviderError::Refused(_) => Ok(Rejection::not_a_reply(
+            "",
+            "was refused by the provider",
+            LogCause::Provider("refused"),
+        )),
         ProviderError::Malformed(reason) => Ok(Rejection::malformed(reason)),
         ProviderError::Pending(text) => Err(Failure::of(pending(name, span, backend, &text, history))),
         other => {
@@ -586,7 +771,11 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
         && map.contains_key("question")
     {
         if body.is_some() {
-            return Reply::Bad(Rejection::not_a_reply(reply, "held both a body and a question"));
+            return Reply::Bad(Rejection::not_a_reply(
+                reply,
+                "held both a body and a question",
+                LogCause::Reply("body-and-question"),
+            ));
         }
         return match (
             map.len(),
@@ -596,11 +785,16 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
             _ => Reply::Bad(Rejection::not_a_reply(
                 reply,
                 "had a question that was empty, too long or not text",
+                LogCause::Reply("bad-question"),
             )),
         };
     }
     let Some(body) = body else {
-        return Reply::Bad(Rejection::not_a_reply(reply, &no_body(body_key)));
+        return Reply::Bad(Rejection::not_a_reply(
+            reply,
+            &no_body(body_key),
+            LogCause::Reply("no-body"),
+        ));
     };
     let body = if format == ReplyFormat::IrJson {
         body.clone()
@@ -611,6 +805,7 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
                 return Reply::Bad(Rejection::not_a_reply(
                     reply,
                     "used a short name that is not in the table",
+                    LogCause::Reply("unknown-alias"),
                 ));
             }
         }
@@ -618,7 +813,11 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
     // A body the provider chose can hold what canonical JSON refuses, such as a number out of range: a failed attempt,
     // not a bug of ours.
     if velme_ir::to_canonical_string(&body).is_err() {
-        return Reply::Bad(Rejection::not_a_reply(reply, "holds a number Velme can't read"));
+        return Reply::Bad(Rejection::not_a_reply(
+            reply,
+            "holds a number Velme can't read",
+            LogCause::Reply("bad-number"),
+        ));
     }
     match request.assemble(&body) {
         Ok(text) => Reply::Candidate(text),
@@ -627,10 +826,15 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
 }
 
 fn add(a: Usage, b: Usage) -> Usage {
+    // Not reported stays not reported until a call reports.
+    let sum = |a: Option<u64>, b: Option<u64>| match (a, b) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0).saturating_add(b.unwrap_or(0))),
+    };
     Usage {
         input_tokens: a.input_tokens.saturating_add(b.input_tokens),
         output_tokens: a.output_tokens.saturating_add(b.output_tokens),
-        cache_read_tokens: a.cache_read_tokens.saturating_add(b.cache_read_tokens),
-        cache_write_tokens: a.cache_write_tokens.saturating_add(b.cache_write_tokens),
+        cache_read_tokens: sum(a.cache_read_tokens, b.cache_read_tokens),
+        cache_write_tokens: sum(a.cache_write_tokens, b.cache_write_tokens),
     }
 }

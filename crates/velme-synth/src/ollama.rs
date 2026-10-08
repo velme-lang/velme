@@ -14,7 +14,8 @@ use crate::http::{agent_config_trusting, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{
-    Identity, MalformedReason, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+    Called, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend, SynthLimits, SynthProvider,
+    SynthReply, Usage,
 };
 use crate::request::SynthRequest;
 use crate::schema::{compact_body_schema, question_schema};
@@ -266,31 +267,48 @@ fn find_digest(text: &str, model: &str) -> Result<String, ProviderError> {
     }
 }
 
+/// A response that gave no reply: why, and what it showed if it was read (D-155).
+type Unread = (ProviderError, Option<Seen>);
+
 /// The reply and the tokens of a chat response: the message's content, which is itself the reply document.
-fn read_response(text: &str) -> Result<(String, Usage), ProviderError> {
+// A response that gave no reply is rare and read once; boxing it would only add noise to every `?`.
+#[allow(clippy::result_large_err)]
+fn read_response(text: &str) -> Result<(String, Usage, ReplyMeta), Unread> {
     let malformed = |why: MalformedReason| ProviderError::Malformed(Some(why));
     let doc: Value = from_json_str_within(text, MAX_JSON_DEPTH + ENVELOPE_DEPTH)
-        .map_err(|_| malformed(MalformedReason::ResponseNotJson))?;
-    if doc.get("done_reason").and_then(Value::as_str) == Some("length") {
-        return Err(malformed(MalformedReason::CutOff));
-    }
-    let content = doc
-        .pointer("/message/content")
-        .and_then(Value::as_str)
-        .ok_or_else(|| malformed(MalformedReason::NoMessage))?;
-    let reply: Value =
-        from_json_str_within(content, MAX_JSON_DEPTH).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
-    if !reply.is_object() {
-        return Err(malformed(MalformedReason::ReplyNotObject));
-    }
-    let reply = to_canonical_string(&reply).map_err(|_| malformed(MalformedReason::ReplyNotJson))?;
+        .map_err(|_| (malformed(MalformedReason::ResponseNotJson), None))?;
     let count = |name: &str| doc.get(name).and_then(Value::as_u64).unwrap_or(0);
     let usage = Usage {
         input_tokens: count("prompt_eval_count"),
         output_tokens: count("eval_count"),
         ..Usage::default()
     };
-    Ok((reply, usage))
+    let meta = ReplyMeta {
+        stop_reason: doc.get("done_reason").and_then(Value::as_str).map(str::to_owned),
+        blocks: None,
+    };
+    // A failure from here on still shows how the response looked and what it billed.
+    let unread = |why: ProviderError| {
+        let seen = Seen {
+            meta: meta.clone(),
+            usage,
+        };
+        (why, Some(seen))
+    };
+    if doc.get("done_reason").and_then(Value::as_str) == Some("length") {
+        return Err(unread(malformed(MalformedReason::CutOff)));
+    }
+    let content = doc
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| unread(malformed(MalformedReason::NoMessage)))?;
+    let reply: Value =
+        from_json_str_within(content, MAX_JSON_DEPTH).map_err(|_| unread(malformed(MalformedReason::ReplyNotJson)))?;
+    if !reply.is_object() {
+        return Err(unread(malformed(MalformedReason::ReplyNotObject)));
+    }
+    let reply = to_canonical_string(&reply).map_err(|_| unread(malformed(MalformedReason::ReplyNotJson)))?;
+    Ok((reply, usage, meta.clone()))
 }
 
 #[async_trait]
@@ -353,18 +371,42 @@ impl SynthProvider for OllamaProvider {
 
     /// One provider call (R-SYNTH-21): the transport tries inside it wait 1 s then 2 s (R-SYNTH-12, D-95).
     async fn complete(&self, request: &SynthRequest, limits: &SynthLimits) -> Result<SynthReply, ProviderError> {
-        let body = self.server.body(request, limits)?;
+        self.call(request, limits).await.result
+    }
+
+    async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
+        let unsent = |error| Called {
+            result: Err(error),
+            seen: None,
+        };
+        let body = match self.server.body(request, limits) {
+            Ok(body) => body,
+            Err(error) => return unsent(error),
+        };
         let started = Instant::now();
-        let text = with_generation_retries(self.server.sleeper.as_ref(), || {
+        let sent = with_generation_retries(self.server.sleeper.as_ref(), || {
             std::future::ready(self.server.post_chat(&body, limits.timeout, limits.attempt))
         })
-        .await?;
-        let (reply_json, usage) = read_response(&text)?;
-        Ok(SynthReply {
-            reply_json,
-            usage,
-            latency: started.elapsed(),
-        })
+        .await;
+        let text = match sent {
+            Ok(text) => text,
+            Err(error) => return unsent(error),
+        };
+        match read_response(&text) {
+            Ok((reply_json, usage, meta)) => Called {
+                result: Ok(SynthReply {
+                    reply_json,
+                    usage,
+                    latency: started.elapsed(),
+                    meta,
+                }),
+                seen: None,
+            },
+            Err((error, seen)) => Called {
+                result: Err(error),
+                seen,
+            },
+        }
     }
 }
 

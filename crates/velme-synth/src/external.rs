@@ -15,7 +15,9 @@ use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::attempt::{clean_line, clean_name, clean_tail};
 use crate::http::{agent_config_trusting, transport_error};
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::provider::{
+    Identity, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 use crate::request::{REQUEST_VERSION, SynthRequest};
 use crate::transport::{ENVELOPE_DEPTH, Sleeper, StdSleeper, with_transport_retries};
 use crate::url::{ExternalUrl, LocalResolver};
@@ -394,6 +396,7 @@ impl SynthProvider for ExternalProvider {
             reply_json: reply,
             usage: Usage::default(),
             latency: started.elapsed(),
+            meta: ReplyMeta::default(),
         })
     }
 }

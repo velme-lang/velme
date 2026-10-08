@@ -27,6 +27,16 @@ pub enum ReplyFormat {
     Compact,
 }
 
+impl ReplyFormat {
+    /// The name `[synthesis]` and the synth log spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            ReplyFormat::IrJson => "ir-json",
+            ReplyFormat::Compact => "compact",
+        }
+    }
+}
+
 /// Which earlier replies a retry turn carries (R-SYNTH-37).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -88,10 +98,7 @@ impl SynthOptions {
                 SchemaInPrompt::Summary => "summary",
                 SchemaInPrompt::Full => "full",
             },
-            "reply_format": match self.reply_format {
-                ReplyFormat::IrJson => "ir-json",
-                ReplyFormat::Compact => "compact",
-            },
+            "reply_format": self.reply_format.name(),
             "retry_history": match self.retry_history {
                 RetryHistory::Latest => "latest",
                 RetryHistory::All => "all",

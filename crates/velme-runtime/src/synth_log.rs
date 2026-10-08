@@ -1,11 +1,12 @@
-//! The local synth log (`compiler/22` R-SYNTH-23, D-109): one JSON line per provider request in
-//! `.velme/synth-log.jsonl`. It holds no plan text, prompt, reply or value, and is written only through a regular file.
+//! The local synth log (`compiler/22` R-SYNTH-23, D-109, D-154): one JSON line per provider request in
+//! `.velme/synth-log.jsonl`. It holds no plan text, prompt, reply or value (a reply only as the shape `velme-synth`
+//! reduces it to), and is written only through a regular file.
 
 use std::path::Path;
 
 use velme_ir::Fingerprint;
-use velme_synth::CallRecord;
 use velme_synth::fsio::{append_file, create_file_if_absent};
+use velme_synth::{CallRecord, LogCause, StopReason};
 
 use crate::store::VELME_DIR;
 
@@ -16,7 +17,7 @@ pub const SYNTH_LOG_FILE: &str = "synth-log.jsonl";
 const GITIGNORE: &str = "synth-log.jsonl\n";
 
 /// The `format` member of every line.
-const FORMAT: &str = "velme-synth-log/1";
+const FORMAT: &str = "velme-synth-log/2";
 
 /// What the lines of one goal have in common.
 pub(crate) struct Goal<'a> {
@@ -45,9 +46,19 @@ pub(crate) fn append(project: &Path, goal: &Goal<'_>, records: &[CallRecord]) ->
 fn line(goal: &Goal<'_>, record: &CallRecord) -> String {
     let text = |s: &str| serde_json::Value::from(s).to_string();
     let count = |n: Option<u64>| n.map_or_else(|| "null".to_owned(), |n| n.to_string());
+    let optional = |s: Option<&str>| s.map_or_else(|| "null".to_owned(), text);
+    let list = |items: &[String]| format!("[{}]", items.iter().map(|s| text(s)).collect::<Vec<_>>().join(","));
+    let shape = record.shape.as_ref().map_or_else(
+        || "null".to_owned(),
+        |shape| {
+            let blocks = shape.blocks.as_deref().map_or_else(|| "null".to_owned(), list);
+            format!("{{\"blocks\":{blocks},\"keys\":{}}}", list(&shape.keys))
+        },
+    );
     let (tokens_in, tokens_out) = record.tokens;
+    let (cache_read, cache_write) = record.cache;
     format!(
-        "{{\"format\":\"{FORMAT}\",\"time\":\"{}\",\"file\":{},\"goal\":{},\"key\":\"{}\",\"provider\":{},\"model\":{},\"attempt\":{},\"outcome\":{},\"tokens_in\":{},\"tokens_out\":{},\"latency_ms\":{}}}\n",
+        "{{\"format\":\"{FORMAT}\",\"time\":\"{}\",\"file\":{},\"goal\":{},\"key\":\"{}\",\"provider\":{},\"model\":{},\"attempt\":{},\"outcome\":{},\"cause\":{},\"stop_reason\":{},\"reply_shape\":{},\"tokens_in\":{},\"tokens_out\":{},\"cache_read_tokens\":{},\"cache_write_tokens\":{},\"latency_ms\":{},\"reply_bytes\":{},\"reply_format\":{}}}\n",
         rfc3339(record.time_millis),
         text(goal.file),
         text(goal.goal),
@@ -56,9 +67,16 @@ fn line(goal: &Goal<'_>, record: &CallRecord) -> String {
         text(goal.model),
         record.attempt,
         text(&record.outcome),
+        optional(record.cause.map(LogCause::token).as_deref()),
+        optional(record.stop_reason.as_ref().map(StopReason::as_str)),
+        shape,
         count(tokens_in),
         count(tokens_out),
+        count(cache_read),
+        count(cache_write),
         record.latency.as_millis(),
+        count(record.reply_bytes.map(|n| n as u64)),
+        text(record.reply_format),
     )
 }
 

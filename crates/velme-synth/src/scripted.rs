@@ -11,7 +11,9 @@ use serde_json::Value;
 use velme_ir::{from_json_str, to_canonical_string};
 
 use crate::prompt::prompt_version;
-use crate::provider::{Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage};
+use crate::provider::{
+    Identity, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply, Usage,
+};
 use crate::request::SynthRequest;
 
 /// One scripted answer.
@@ -173,6 +175,7 @@ impl SynthProvider for Scripted {
                 reply_json,
                 usage: Usage::default(),
                 latency: Duration::ZERO,
+                meta: ReplyMeta::default(),
             }),
             Some(Step::Error(error)) => Err(error),
             None => Err(ProviderError::Unavailable(
