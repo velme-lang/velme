@@ -34,9 +34,10 @@ It is not the right tool for everything. v0.1 goals can't read files, use the ne
 (`delivery/50`), and a one-line rule is no shorter as a plan plus examples than as code plus a test. Velme saves the
 most on goals that are quick to describe but long to implement.
 
-**Status:** v0.1 is in its last phase (M8, the MVP gate). `velme` checks, builds, tests, runs, traces and explains
-programs, on a reference interpreter or a sandboxed WASM backend. Nothing is on crates.io and there is no release yet;
-the quick start below installs from this repository. To hear about the first release, watch this repo (Watch → Custom →
+**Status:** the first alpha, [v0.1.0-alpha.1](https://github.com/velme-lang/velme/releases/tag/v0.1.0-alpha.1), shipped
+on 2 October 2026. `velme` checks, builds, tests, runs, traces and explains programs, on a reference interpreter or a
+sandboxed WASM backend. Nothing is on crates.io yet; the quick start below installs from this repository. Work now is
+on making synthesis replies cheaper and more reliable. To hear about new releases, watch this repo (Watch → Custom →
 Releases); progress notes are posted in [Discussions → Announcements](https://github.com/velme-lang/velme/discussions/categories/announcements).
 
 - Specification: [`docs/spec/SPEC.md`](docs/spec/SPEC.md)
