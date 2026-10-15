@@ -1,0 +1,56 @@
+{
+  "goal": "Comparisons",
+  "body": {
+    "kind": "binary",
+    "op": "and",
+    "left": {
+      "kind": "binary",
+      "op": "and",
+      "left": {
+        "kind": "binary",
+        "op": "lt",
+        "left": {
+          "kind": "literal",
+          "type": {
+            "t": "Number"
+          },
+          "value": 0
+        },
+        "right": {
+          "kind": "input",
+          "name": "x"
+        }
+      },
+      "right": {
+        "kind": "binary",
+        "op": "le",
+        "left": {
+          "kind": "input",
+          "name": "x"
+        },
+        "right": {
+          "kind": "literal",
+          "type": {
+            "t": "Number"
+          },
+          "value": 2
+        }
+      }
+    },
+    "right": {
+      "kind": "binary",
+      "op": "ne",
+      "left": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 2
+      },
+      "right": {
+        "kind": "input",
+        "name": "y"
+      }
+    }
+  }
+}

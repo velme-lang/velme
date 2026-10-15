@@ -1,0 +1,61 @@
+language: velme/0.1
+
+type T:
+    from: Number
+
+type Bond:
+    yield: Number
+    if_value: Number
+
+type Box:
+    values: List<Number>
+
+goal N(x: Number, y: Number, c: Boolean, xs: List<Number>, opt: Number?, text: Text, bond: Bond, class: Number) -> Number:
+    plan: "Return a number."
+
+goal L(xs: List<Number>, opt: List<Number>?, c: Boolean) -> List<Number>:
+    plan: "Return a list."
+
+goal B(x: Number?, xs: List<Boolean>, ys: List<Boolean>, c: Boolean) -> Boolean:
+    plan: "Return a Boolean."
+
+goal Reserved(__v0: Number, xs: List<Boolean>, ys: List<Boolean>) -> Boolean:
+    plan: "Return a Boolean."
+
+goal R(x: Number) -> T:
+    plan: "Return a record."
+
+goal Nested() -> List<List<Number>>:
+    plan: "Return nested lists."
+
+goal Boxed() -> Box:
+    plan: "Return a boxed list."
+
+goal OptionalRecord(value: T?) -> Number:
+    plan: "Read the record."
+
+goal Child(x: Number) -> Number:
+    plan: "Return x."
+
+goal Composite(x: Number) -> Number:
+    call:
+        child = Child(x)
+    plan: "Return the child's result."
+
+goal Comparisons(x: Number, y: Number, c: Boolean, xs: List<Number>) -> Boolean:
+    plan: "Return a comparison."
+
+goal Flags(x: Boolean, y: Boolean, c: Boolean) -> Boolean:
+    plan: "Return a Boolean."
+
+goal TextValue() -> Text:
+    plan: "Return Text."
+
+goal OptionalValue() -> Number?:
+    plan: "Return nothing."
+
+goal Found(xs: List<Number>) -> Number?:
+    plan: "Find a number."
+
+goal Quantified(xs: List<Number>) -> Boolean:
+    plan: "Test the numbers."

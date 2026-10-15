@@ -1,0 +1,11 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "unary",
+    "op": "neg",
+    "arg": {
+      "kind": "input",
+      "name": "x"
+    }
+  }
+}

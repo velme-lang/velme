@@ -1,0 +1,10 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "literal",
+    "type": {
+      "t": "Number"
+    },
+    "value": 0.05
+  }
+}

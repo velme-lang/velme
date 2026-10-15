@@ -1,0 +1,14 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "unary",
+    "op": "neg",
+    "arg": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": -2
+    }
+  }
+}

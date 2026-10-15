@@ -1,0 +1,28 @@
+language: velme/0.1
+
+type Player:
+    name: Text
+    score: Number
+
+goal CalculateScore(player: Player) -> Number:
+    plan: "Return the player's score. CHILD-PLAN-MARKER"
+
+goal FindBadge(player: Player) -> Text:
+    plan: |
+        Give the player Gold for a score of at least 1000,
+        Silver for a score of at least 500, Bronze otherwise.
+    check:
+        - result == "Gold" or result == "Silver" or result == "Bronze"
+    examples:
+        - FindBadge(Player(name: "Lina", score: 820)) == "Silver"
+
+goal Rank(score: Number) -> Number:
+    plan: "Return the score."
+
+goal Summary(player: Player) -> Text:
+    call:
+        score = CalculateScore(player)
+        badge = FindBadge(player)
+    plan: "Join the badge and the score."
+    check:
+        - result != ""

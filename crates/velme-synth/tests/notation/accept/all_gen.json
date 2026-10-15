@@ -1,0 +1,28 @@
+{
+  "goal": "Quantified",
+  "body": {
+    "kind": "all",
+    "list": {
+      "kind": "input",
+      "name": "xs"
+    },
+    "fn": {
+      "param": "i",
+      "body": {
+        "kind": "binary",
+        "op": "gt",
+        "left": {
+          "kind": "local",
+          "name": "i"
+        },
+        "right": {
+          "kind": "literal",
+          "type": {
+            "t": "Number"
+          },
+          "value": 0
+        }
+      }
+    }
+  }
+}

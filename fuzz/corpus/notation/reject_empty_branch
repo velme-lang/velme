@@ -1,0 +1,2 @@
+if c:
+return 1

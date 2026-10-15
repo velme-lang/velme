@@ -1,0 +1,1 @@
+return [i for i in xs for j in xs]

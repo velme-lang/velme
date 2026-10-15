@@ -359,7 +359,7 @@ async fn run(
         } else {
             base.clone()
         };
-        request.attempts = carried(&earlier, external, options.retry_history);
+        request.attempts = carried(&earlier, external, options.retry_history, format);
         let mut limits = SynthLimits::new(task.synthesis_key);
         limits.attempt = attempt;
         limits.timeout = std::time::Duration::from_secs(options.timeout_secs);
@@ -425,7 +425,13 @@ async fn run(
             }
         };
         session.usage = add(session.usage, reply.usage);
-        let rejection = match read(&reply.reply_json, format, &base) {
+        let ir_request = Request {
+            program: task.program,
+            goal: task.goal,
+            calls: &compiler_calls,
+            origin: Origin::Candidate,
+        };
+        let rejection = match read(&reply.reply_json, format, &base, &ir_request) {
             Reply::Question(question) => {
                 record(
                     session,
@@ -453,7 +459,7 @@ async fn run(
                 );
                 return Err(internal());
             }
-            Reply::Candidate(text) => {
+            Reply::Candidate(text, notation) => {
                 let request = Request {
                     program: task.program,
                     goal: task.goal,
@@ -462,7 +468,10 @@ async fn run(
                 };
                 match validate_detailed(&text, &request) {
                     Err(found) => {
-                        let rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
+                        let mut rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
+                        if let Some((body, spans)) = &notation {
+                            rejection.notation_findings(body, spans, &found, &base);
+                        }
                         record(
                             session,
                             rejection.cause.code.as_str(),
@@ -553,23 +562,29 @@ fn next(
 
 /// The attempts a request carries (R-SYNTH-37): with `latest`, only the latest reply, and the primary diagnostic of each
 /// earlier attempt; `external` always gets everything.
-fn carried(earlier: &[AttemptFeedback], full: bool, history: RetryHistory) -> Vec<AttemptFeedback> {
-    if full || history == RetryHistory::All || earlier.len() < 2 {
-        return earlier.to_vec();
-    }
-    let split = earlier.len() - 1;
+fn carried(
+    earlier: &[AttemptFeedback],
+    full: bool,
+    history: RetryHistory,
+    format: ReplyFormat,
+) -> Vec<AttemptFeedback> {
+    let split = earlier.len().saturating_sub(1);
     earlier
         .iter()
         .enumerate()
-        .map(|(i, a)| {
-            if i < split {
-                AttemptFeedback {
-                    reply: String::new(),
-                    diagnostics: a.diagnostics.iter().take(1).cloned().collect(),
-                }
-            } else {
-                a.clone()
+        .map(|(i, attempt)| {
+            let mut attempt = attempt.clone();
+            if i < split && !full && history == RetryHistory::Latest {
+                attempt.reply.clear();
+                attempt.diagnostics.truncate(1);
             }
+            if i < split || format != ReplyFormat::Notation {
+                for diagnostic in &mut attempt.diagnostics {
+                    diagnostic.at = None;
+                    diagnostic.quote.clear();
+                }
+            }
+            attempt
         })
         .collect()
 }
@@ -774,7 +789,7 @@ fn no_body(body_key: &str) -> String {
 enum Reply {
     Question(String),
     /// The IR goal the reply's body completes, ready to validate (D-103).
-    Candidate(String),
+    Candidate(String, Option<(String, crate::notation::Spans)>),
     Bad(Rejection),
     /// The goal couldn't be assembled: a bug of ours.
     Internal,
@@ -782,7 +797,7 @@ enum Reply {
 
 /// Reads a reply document (R-SYNTH-10, D-103): a question, a body to complete into IR and validate, or nothing usable.
 /// Only `body` is read from it; whatever else it holds is not.
-fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
+fn read(reply: &str, format: ReplyFormat, request: &SynthRequest, ir: &Request<'_>) -> Reply {
     let value = match from_json_str::<serde_json::Value>(reply) {
         Ok(value) => value,
         Err(error) => return Reply::Bad(Rejection::unparsable(reply, &error)),
@@ -819,10 +834,10 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
             LogCause::Reply("no-body"),
         ));
     };
-    let body = if format == ReplyFormat::IrJson {
-        body.clone()
-    } else {
-        match compact::expand(body) {
+    let mut notation = None;
+    let body = match format {
+        ReplyFormat::IrJson => body.clone(),
+        ReplyFormat::Compact => match compact::expand(body) {
             Ok(expanded) => expanded,
             Err(_) => {
                 return Reply::Bad(Rejection::not_a_reply(
@@ -830,6 +845,24 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
                     "used a short name that is not in the table",
                     LogCause::Reply("unknown-alias"),
                 ));
+            }
+        },
+        ReplyFormat::Notation => {
+            let Some(text) = body.as_str() else {
+                return Reply::Bad(Rejection::not_a_reply(
+                    reply,
+                    "had a body that isn't a string",
+                    LogCause::Reply("body-not-string"),
+                ));
+            };
+            let lowered = match crate::notation::lower(text, request, ir) {
+                Ok(lowered) => lowered,
+                Err(rejected) => return Reply::Bad(Rejection::notation(reply, text, &rejected)),
+            };
+            notation = Some((text.to_owned(), lowered.spans));
+            match serde_json::to_value(lowered.body) {
+                Ok(body) => body,
+                Err(_) => return Reply::Internal,
             }
         }
     };
@@ -843,7 +876,7 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest) -> Reply {
         ));
     }
     match request.assemble(&body) {
-        Ok(text) => Reply::Candidate(text),
+        Ok(text) => Reply::Candidate(text, notation),
         Err(_) => Reply::Internal,
     }
 }
@@ -859,5 +892,41 @@ fn add(a: Usage, b: Usage) -> Usage {
         output_tokens: a.output_tokens.saturating_add(b.output_tokens),
         cache_read_tokens: sum(a.cache_read_tokens, b.cache_read_tokens),
         cache_write_tokens: sum(a.cache_write_tokens, b.cache_write_tokens),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ac_synth_60_only_the_latest_notation_diagnostics_carry_places() {
+        let diagnostic = crate::AttemptDiagnostic {
+            code: Code::IRSchemaInvalid.as_str().to_owned(),
+            message: "test".to_owned(),
+            path: None,
+            detail: None,
+            at: Some(crate::AttemptPlace { line: 1, column: 1 }),
+            quote: vec!["body".to_owned()],
+        };
+        let attempts = vec![
+            AttemptFeedback {
+                reply: "reply".to_owned(),
+                diagnostics: vec![diagnostic]
+            };
+            3
+        ];
+        for history in [RetryHistory::Latest, RetryHistory::All] {
+            for full in [false, true] {
+                for format in [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation] {
+                    let carried = carried(&attempts, full, history, format);
+                    for (index, attempt) in carried.iter().enumerate() {
+                        let placed = index == 2 && format == ReplyFormat::Notation;
+                        assert_eq!(attempt.diagnostics[0].at.is_some(), placed);
+                        assert_eq!(!attempt.diagnostics[0].quote.is_empty(), placed);
+                    }
+                }
+            }
+        }
     }
 }

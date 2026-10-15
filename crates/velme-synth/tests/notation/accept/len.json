@@ -1,0 +1,13 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "builtin",
+    "name": "length",
+    "args": [
+      {
+        "kind": "input",
+        "name": "xs"
+      }
+    ]
+  }
+}

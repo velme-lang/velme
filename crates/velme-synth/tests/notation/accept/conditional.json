@@ -1,0 +1,46 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "if",
+    "cond": {
+      "kind": "input",
+      "name": "c"
+    },
+    "then": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 1
+    },
+    "else": {
+      "kind": "if",
+      "cond": {
+        "kind": "binary",
+        "op": "gt",
+        "left": {
+          "kind": "input",
+          "name": "x"
+        },
+        "right": {
+          "kind": "input",
+          "name": "y"
+        }
+      },
+      "then": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 2
+      },
+      "else": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 3
+      }
+    }
+  }
+}

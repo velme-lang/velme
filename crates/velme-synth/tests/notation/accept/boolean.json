@@ -1,0 +1,10 @@
+{
+  "goal": "Flags",
+  "body": {
+    "kind": "literal",
+    "type": {
+      "t": "Boolean"
+    },
+    "value": true
+  }
+}

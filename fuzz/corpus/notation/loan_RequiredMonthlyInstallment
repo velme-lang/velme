@@ -1,0 +1,8 @@
+fee = 20 if product.product_type == "STANDARD LOAN" else 25
+rate = product.rate
+n = product.term
+if rate <= 0 or rate > 1 or n < 1 or n > 600 or floor(n) != n:
+    return fee
+r = rate / 12
+growth = reduce(lambda acc, i: acc * (1 + r), range(n), 1)
+return product.amount * r / (1 - 1 / growth) + fee

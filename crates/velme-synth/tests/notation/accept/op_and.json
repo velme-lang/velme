@@ -1,0 +1,15 @@
+{
+  "goal": "Flags",
+  "body": {
+    "kind": "binary",
+    "op": "and",
+    "left": {
+      "kind": "input",
+      "name": "x"
+    },
+    "right": {
+      "kind": "input",
+      "name": "y"
+    }
+  }
+}

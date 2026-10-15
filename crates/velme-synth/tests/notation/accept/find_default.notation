@@ -1,0 +1,1 @@
+return next((i for i in xs if i > 0), 0)

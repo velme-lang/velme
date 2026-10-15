@@ -26,6 +26,8 @@ pub enum ReplyFormat {
     IrJson,
     /// The same tree with every property name and node `kind` tag replaced by a short alias.
     Compact,
+    /// Python-shaped text lowered to canonical IR (R-SYNTH-50).
+    Notation,
 }
 
 impl ReplyFormat {
@@ -34,12 +36,13 @@ impl ReplyFormat {
         match self {
             ReplyFormat::IrJson => "ir-json",
             ReplyFormat::Compact => "compact",
+            ReplyFormat::Notation => "notation",
         }
     }
 
     /// The format called `name`, or `None` for a name Velme doesn't know.
     pub fn from_name(name: &str) -> Option<Self> {
-        [ReplyFormat::IrJson, ReplyFormat::Compact]
+        [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation]
             .into_iter()
             .find(|format| format.name() == name)
     }
@@ -101,7 +104,15 @@ impl SynthOptions {
     /// what is sent. Changing one changes `synthesis_key` and never `contract_key`, so it never re-synthesizes a locked
     /// goal.
     pub fn input_version(&self, prompt_version: &str) -> String {
-        let doc = serde_json::json!({
+        self.input_version_with_notation(
+            prompt_version,
+            crate::notation::GRAMMAR_VERSION,
+            crate::notation::PROMPT,
+        )
+    }
+
+    fn input_version_with_notation(&self, prompt_version: &str, grammar: &str, prompt: &str) -> String {
+        let mut doc = serde_json::json!({
             "schema_in_prompt": match self.schema_in_prompt {
                 SchemaInPrompt::Summary => "summary",
                 SchemaInPrompt::Full => "full",
@@ -113,6 +124,15 @@ impl SynthOptions {
             },
             "max_prompt_examples": self.max_prompt_examples,
         });
+        if self.reply_format == ReplyFormat::Notation
+            && let Some(members) = doc.as_object_mut()
+        {
+            members.insert("notation_grammar".to_owned(), grammar.into());
+            members.insert(
+                "notation_prompt".to_owned(),
+                Fingerprint::of_bytes(prompt.as_bytes()).hex().into(),
+            );
+        }
         let hash = Fingerprint::of(&doc).map(|f| f.to_string()).unwrap_or_default();
         format!("{prompt_version}+{hash}")
     }
@@ -141,5 +161,45 @@ pub struct PromptOptions {
 impl Default for PromptOptions {
     fn default() -> Self {
         SynthOptions::default().prompt()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ac_synth_54_notation_versions_rekey_only_notation_synthesis() {
+        let program = velme_test_support::program(
+            "language: velme/0.1\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n",
+        );
+        let goal = velme_sema::hir::GoalId(0);
+        let contract = velme_ir::contract_key(&program, goal).expect("contract");
+        let key = |input_version: &str| {
+            velme_ir::synthesis_key(
+                contract,
+                &velme_ir::Synthesis {
+                    input_version,
+                    compiler_version: "0.1",
+                    provider: "anthropic",
+                    model: "test",
+                },
+            )
+            .expect("key")
+        };
+        let prompt_version = crate::prompt_version();
+        for format in [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation] {
+            let options = SynthOptions {
+                reply_format: format,
+                ..SynthOptions::default()
+            };
+            let baseline = options.input_version_with_notation(&prompt_version, "1", "one");
+            let grammar = options.input_version_with_notation(&prompt_version, "2", "one");
+            let prompt = options.input_version_with_notation(&prompt_version, "1", "two");
+            assert_eq!(key(&baseline) == key(&grammar), format != ReplyFormat::Notation);
+            assert_eq!(key(&baseline) == key(&prompt), format != ReplyFormat::Notation);
+            assert_eq!(velme_ir::contract_key(&program, goal).expect("contract"), contract);
+            assert_eq!(crate::prompt_version(), prompt_version);
+        }
     }
 }

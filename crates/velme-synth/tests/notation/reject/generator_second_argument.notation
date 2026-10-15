@@ -1,0 +1,1 @@
+return next((v for v in xs if v > 0), (w for w in xs))

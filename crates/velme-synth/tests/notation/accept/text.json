@@ -1,0 +1,10 @@
+{
+  "goal": "TextValue",
+  "body": {
+    "kind": "literal",
+    "type": {
+      "t": "Text"
+    },
+    "value": "h\u00e9llo\n\tA"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "let",
+    "bind": [
+      [
+        "a",
+        {
+          "kind": "input",
+          "name": "x"
+        }
+      ],
+      [
+        "b",
+        {
+          "kind": "binary",
+          "op": "add",
+          "left": {
+            "kind": "local",
+            "name": "a"
+          },
+          "right": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 1
+          }
+        }
+      ]
+    ],
+    "body": {
+      "kind": "local",
+      "name": "b"
+    }
+  }
+}

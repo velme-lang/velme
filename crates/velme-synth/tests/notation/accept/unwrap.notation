@@ -1,0 +1,1 @@
+return unwrap_or(opt, 0)

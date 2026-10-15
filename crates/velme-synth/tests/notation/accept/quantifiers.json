@@ -1,0 +1,35 @@
+{
+  "goal": "B",
+  "body": {
+    "kind": "binary",
+    "op": "and",
+    "left": {
+      "kind": "any",
+      "list": {
+        "kind": "input",
+        "name": "xs"
+      },
+      "fn": {
+        "param": "__v0",
+        "body": {
+          "kind": "local",
+          "name": "__v0"
+        }
+      }
+    },
+    "right": {
+      "kind": "all",
+      "list": {
+        "kind": "input",
+        "name": "ys"
+      },
+      "fn": {
+        "param": "__v1",
+        "body": {
+          "kind": "local",
+          "name": "__v1"
+        }
+      }
+    }
+  }
+}

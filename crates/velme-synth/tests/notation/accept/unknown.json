@@ -1,0 +1,8 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "local",
+    "name": "while"
+  },
+  "reject_rule": "names-8"
+}

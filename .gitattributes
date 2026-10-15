@@ -4,3 +4,4 @@
 # These deliberately hold a lone carriage return (R-SYN-02); keep their bytes as committed.
 tests/golden/lexer/reject_lone_cr.velme -text
 fuzz/corpus/** -text
+crates/velme-synth/tests/notation/accept/crlf.notation -text

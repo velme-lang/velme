@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NIGHTLY: nightly-2026-09-24
-      FUZZ_TARGETS: parse validate differential
+      FUZZ_TARGETS: parse validate differential notation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install "$NIGHTLY" --profile minimal

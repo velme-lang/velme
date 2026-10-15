@@ -1,0 +1,10 @@
+---
+source: crates/velme-synth/tests/notation.rs
+assertion_line: 203
+expression: feedback
+---
+Your previous reply was not accepted. What Velme found:
+- VL0401 at line 2, column 10: Velme couldn't read the body: it used an operator the notation doesn't have (notation-7).
+  | return x % 2
+  `a % b` is `a - b * floor(a / b)`; `a // b` is `floor(a / b)`; `**` is a product or a `reduce` over `range`
+Return the corrected {"body": "<code>"}, with nothing else.

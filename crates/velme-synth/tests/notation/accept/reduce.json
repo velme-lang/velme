@@ -1,0 +1,33 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "reduce",
+    "list": {
+      "kind": "input",
+      "name": "xs"
+    },
+    "init": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 0
+    },
+    "fn": {
+      "acc": "acc",
+      "param": "i",
+      "body": {
+        "kind": "binary",
+        "op": "add",
+        "left": {
+          "kind": "local",
+          "name": "acc"
+        },
+        "right": {
+          "kind": "local",
+          "name": "i"
+        }
+      }
+    }
+  }
+}

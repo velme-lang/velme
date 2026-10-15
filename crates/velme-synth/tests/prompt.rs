@@ -138,6 +138,8 @@ fn an_earlier_attempt_becomes_a_pair_of_turns() {
             message: "There is no `call` in a candidate.".to_owned(),
             path: Some("/body".to_owned()),
             detail: Some("given 2, got 3".to_owned()),
+            at: None,
+            quote: Vec::new(),
         }],
     });
     let turns = render(&request).expect("rendered").turns();
@@ -206,7 +208,7 @@ goal Total(items: List<Item>) -> Number:
             .expect("rendered")
             .first_turn();
         let key = match format {
-            ReplyFormat::IrJson => "body".to_owned(),
+            ReplyFormat::IrJson | ReplyFormat::Notation => "body".to_owned(),
             ReplyFormat::Compact => alias_table().keys["body"].clone(),
         };
         assert_eq!(
@@ -224,7 +226,7 @@ goal Total(items: List<Item>) -> Number:
             let request = build_request(&program, id, EXAMPLES).expect("a request");
             let body: serde_json::Value = serde_json::from_str(body).expect("JSON");
             let body = match format {
-                ReplyFormat::IrJson => body[&key].clone(),
+                ReplyFormat::IrJson | ReplyFormat::Notation => body[&key].clone(),
                 ReplyFormat::Compact => expand(&body[&key]).expect("the aliases are in the table"),
             };
             let ir = request.assemble(&body).expect("assembled");
@@ -267,6 +269,8 @@ fn ac_synth_47_compact_prompts_name_the_alias_and_show_earlier_replies_as_receiv
                 message: "A candidate may not do that.".to_owned(),
                 path: Some("/body/args".to_owned()),
                 detail: None,
+                at: None,
+                quote: Vec::new(),
             }],
         });
         let prompt = render_with(&request, &options(ReplyFormat::Compact)).expect("rendered");

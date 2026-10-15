@@ -1,0 +1,1 @@
+return sorted(xs, key=lambda i: i, key=lambda j: j)

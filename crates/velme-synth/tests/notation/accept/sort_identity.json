@@ -1,0 +1,18 @@
+{
+  "goal": "L",
+  "body": {
+    "kind": "sort_by",
+    "list": {
+      "kind": "input",
+      "name": "xs"
+    },
+    "key": {
+      "param": "__v0",
+      "body": {
+        "kind": "local",
+        "name": "__v0"
+      }
+    },
+    "descending": false
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "goal": "L",
+  "body": {
+    "kind": "map",
+    "list": {
+      "kind": "input",
+      "name": "xs"
+    },
+    "fn": {
+      "param": "i",
+      "body": {
+        "kind": "binary",
+        "op": "mul",
+        "left": {
+          "kind": "local",
+          "name": "i"
+        },
+        "right": {
+          "kind": "literal",
+          "type": {
+            "t": "Number"
+          },
+          "value": 2
+        }
+      }
+    }
+  }
+}

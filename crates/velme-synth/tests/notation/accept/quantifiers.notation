@@ -1,0 +1,1 @@
+return any(xs) and all(ys)

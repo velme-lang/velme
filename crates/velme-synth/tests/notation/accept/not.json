@@ -1,0 +1,11 @@
+{
+  "goal": "Flags",
+  "body": {
+    "kind": "unary",
+    "op": "not",
+    "arg": {
+      "kind": "input",
+      "name": "c"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+if not affordable or bankrupt:
+    return "DECLINE"
+elif risk_category == "HIGH" or credit_score < 580:
+    return "REFER"
+else:
+    return "ACCEPT"
