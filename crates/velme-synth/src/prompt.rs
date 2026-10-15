@@ -167,6 +167,12 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
     let prefix = format!("{}\n", fill(prefix, &fields)?);
     let task = format!("{}\n", fill(task, &fields)?);
     let mut retries = Vec::new();
+    let retry_vars = |diagnostics: String| {
+        let mut own = BTreeMap::new();
+        own.insert("diagnostics", diagnostics);
+        own.insert("body_key", body_key(options.reply_format).to_owned());
+        own
+    };
     // An earlier attempt whose reply is not repeated (`retry_history = "latest"`, R-SYNTH-37) is a line in the next user
     // turn instead: its primary diagnostic.
     let mut earlier: Vec<String> = Vec::new();
@@ -188,24 +194,18 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
             // Exactly as received, never compressed again (R-SYNTH-37, D-153).
             text: attempt.reply.clone(),
         });
-        let mut own = BTreeMap::new();
         let mut found = std::mem::take(&mut earlier);
         found.push(diagnostics(&attempt.diagnostics, options));
-        own.insert("diagnostics", found.join("\n"));
-        own.insert("body_key", body_key(options.reply_format).to_owned());
         retries.push(Turn {
             role: Role::User,
-            text: fill(retry, &own)?,
+            text: fill(retry, &retry_vars(found.join("\n")))?,
         });
     }
     // Attempts with no reply of their own at the end (a refusal, or `latest` dropping replies) still owe their
     // diagnostics: they join the turn before them, so the conversation keeps alternating.
     let mut task = task;
     if !earlier.is_empty() {
-        let mut own = BTreeMap::new();
-        own.insert("diagnostics", earlier.join("\n"));
-        own.insert("body_key", body_key(options.reply_format).to_owned());
-        let text = fill(retry, &own)?;
+        let text = fill(retry, &retry_vars(earlier.join("\n")))?;
         match retries.last_mut() {
             Some(last) if last.role == Role::User => {
                 last.text.push('\n');

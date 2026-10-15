@@ -17,8 +17,8 @@ use crate::http::{agent, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, body_key, prompt_version, render_with};
 use crate::provider::{
-    Called, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend, SynthLimits, SynthProvider,
-    SynthReply, Usage,
+    Called, Identity, MalformedReason, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply,
+    Unread, Usage, unread,
 };
 use crate::request::SynthRequest;
 use crate::schema::reply_schema_for;
@@ -363,9 +363,6 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
     ]))
 }
 
-/// A response that gave no reply: why, and what it showed if it was read (D-155).
-type Unread = (ProviderError, Option<Seen>);
-
 /// The reply and the tokens of a successful response (R-SYNTH-44): the input of the one tool called. A refusal is
 /// `Refused`; no tool call, a second one, an unknown tool or a cut-off reply is `Malformed`.
 // A response that gave no reply is rare and read once; boxing it would only add noise to every `?`.
@@ -394,13 +391,7 @@ fn read_response(text: &str) -> Result<(String, Usage, ReplyMeta), Unread> {
         blocks,
     };
     // A failure from here on still shows how the response looked and what it billed.
-    let unread = |why: ProviderError| {
-        let seen = Seen {
-            meta: meta.clone(),
-            usage,
-        };
-        (why, Some(seen))
-    };
+    let unread = |why: ProviderError| unread(why, &meta, usage);
     match doc.get("stop_reason").and_then(Value::as_str) {
         Some("refusal") => return Err(unread(ProviderError::Refused(String::new()))),
         Some("max_tokens") => return Err(unread(malformed(MalformedReason::CutOff))),
@@ -462,41 +453,19 @@ impl SynthProvider for Anthropic {
     }
 
     async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
-        let unsent = |error| Called {
-            result: Err(error),
-            seen: None,
-        };
         let Some(key) = self.key.get() else {
-            return unsent(ProviderError::NotConfigured);
+            return Called::unsent(ProviderError::NotConfigured);
         };
         let body = match self.request_body(request, limits) {
             Ok(body) => body,
-            Err(error) => return unsent(error),
+            Err(error) => return Called::unsent(error),
         };
         let started = Instant::now();
         let sent = with_generation_retries(self.sleeper.as_ref(), || {
             std::future::ready(self.send(&key, &body, limits.timeout))
         })
         .await;
-        let text = match sent {
-            Ok(text) => text,
-            Err(error) => return unsent(error),
-        };
-        match read_response(&text) {
-            Ok((reply_json, usage, meta)) => Called {
-                result: Ok(SynthReply {
-                    reply_json,
-                    usage,
-                    latency: started.elapsed(),
-                    meta,
-                }),
-                seen: None,
-            },
-            Err((error, seen)) => Called {
-                result: Err(error),
-                seen,
-            },
-        }
+        Called::from_sent(sent, started, read_response)
     }
 }
 

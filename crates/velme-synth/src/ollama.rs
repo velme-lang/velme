@@ -14,8 +14,8 @@ use crate::http::{agent_config_trusting, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
 use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{
-    Called, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend, SynthLimits, SynthProvider,
-    SynthReply, Usage,
+    Called, Identity, MalformedReason, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply,
+    Unread, Usage, unread,
 };
 use crate::request::SynthRequest;
 use crate::schema::reply_schema_for;
@@ -269,9 +269,6 @@ fn find_digest(text: &str, model: &str) -> Result<String, ProviderError> {
     }
 }
 
-/// A response that gave no reply: why, and what it showed if it was read (D-155).
-type Unread = (ProviderError, Option<Seen>);
-
 /// The reply and the tokens of a chat response: the message's content, which is itself the reply document.
 // A response that gave no reply is rare and read once; boxing it would only add noise to every `?`.
 #[allow(clippy::result_large_err)]
@@ -290,13 +287,7 @@ fn read_response(text: &str) -> Result<(String, Usage, ReplyMeta), Unread> {
         blocks: None,
     };
     // A failure from here on still shows how the response looked and what it billed.
-    let unread = |why: ProviderError| {
-        let seen = Seen {
-            meta: meta.clone(),
-            usage,
-        };
-        (why, Some(seen))
-    };
+    let unread = |why: ProviderError| unread(why, &meta, usage);
     if doc.get("done_reason").and_then(Value::as_str) == Some("length") {
         return Err(unread(malformed(MalformedReason::CutOff)));
     }
@@ -377,38 +368,16 @@ impl SynthProvider for OllamaProvider {
     }
 
     async fn call(&self, request: &SynthRequest, limits: &SynthLimits) -> Called {
-        let unsent = |error| Called {
-            result: Err(error),
-            seen: None,
-        };
         let body = match self.server.request_body(request, limits) {
             Ok(body) => body,
-            Err(error) => return unsent(error),
+            Err(error) => return Called::unsent(error),
         };
         let started = Instant::now();
         let sent = with_generation_retries(self.server.sleeper.as_ref(), || {
             std::future::ready(self.server.post_chat(&body, limits.timeout, limits.attempt))
         })
         .await;
-        let text = match sent {
-            Ok(text) => text,
-            Err(error) => return unsent(error),
-        };
-        match read_response(&text) {
-            Ok((reply_json, usage, meta)) => Called {
-                result: Ok(SynthReply {
-                    reply_json,
-                    usage,
-                    latency: started.elapsed(),
-                    meta,
-                }),
-                seen: None,
-            },
-            Err((error, seen)) => Called {
-                result: Err(error),
-                seen,
-            },
-        }
+        Called::from_sent(sent, started, read_response)
     }
 }
 
