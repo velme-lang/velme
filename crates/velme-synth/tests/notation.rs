@@ -234,15 +234,20 @@ fn ac_synth_53_caps_and_determinism_on_a_two_mib_debug_stack() {
                 format!("if c: return 1\n{}else: return 0", "elif c: return 1\n".repeat(127)),
                 format!("return {}x", "-".repeat(128)),
                 format!("return {}True", "not ".repeat(128)),
+                // Chains held in chains of another precedence count toward the nesting (R-SYNTH-57).
+                format!("return {}x{}", "c or c and x == x + x * (".repeat(70), ")".repeat(70)),
             ] {
                 let rejected = lowered(&text, "N").expect_err("cap");
                 assert_eq!(rejected.rule, notation::Rule::Limit);
                 assert_eq!(notation::locate(&text, rejected.span.start), (1, 1));
             }
+            let chains = format!("return {}x{}", "c or c and x == x + x * (".repeat(70), ")".repeat(70));
+            assert_eq!(lowered(&chains, "B").expect_err("cap").rule, notation::Rule::Limit);
             for text in [
                 format!("return {}1{}", "(".repeat(128), ")".repeat(128)),
                 format!("return {}x", "-".repeat(127)),
                 format!("return {}True", "not ".repeat(127)),
+                format!("return {}x{}", "c or c and x == x + x * (".repeat(25), ")".repeat(25)),
             ] {
                 let one = body(&text, "N");
                 let two = body(&text, "N");
@@ -322,6 +327,26 @@ fn ac_synth_53_validator_feedback_has_notation_places_and_hints() {
         if rule == "types-12" {
             assert!(!diagnostic.detail.as_deref().unwrap_or_default().contains("`is_empty`"));
         }
+    }
+    // The names hint leaves out an empty list of inputs or call results, as R-SYNTH-49's does.
+    for (goal, inputs, calls) in [
+        ("TextValue", false, false),
+        ("N", true, false),
+        ("Composite", true, true),
+    ] {
+        let (_, provider, _) = run(goal, vec![json!({"body":"return unknown"}), json!({"body":"return 1"})]);
+        let requests = provider.requests();
+        let detail = requests[1].attempts[0].diagnostics[0]
+            .detail
+            .clone()
+            .unwrap_or_default();
+        assert!(
+            detail.starts_with("an input or call result is read by its name"),
+            "{detail}"
+        );
+        assert_eq!(detail.contains("the goal's inputs are: "), inputs, "{goal}: {detail}");
+        assert_eq!(detail.contains("call results: "), calls, "{goal}: {detail}");
+        assert!(!detail.ends_with(": "), "{detail}");
     }
 }
 
@@ -599,6 +624,33 @@ fn ac_synth_51_review_rejections_keep_phase_order_places_and_hints() {
             (1, 13),
             "write a list `[a, b]`",
         ),
+        (
+            "return x in (1, 2) == c",
+            "notation-8",
+            (1, 13),
+            "write a list `[a, b]`",
+        ),
+        // A form the notation lacks inside a call of a Python built-in gets that built-in's hint.
+        ("return max(v.a for v in xs)", "notation-8", (1, 16), "maximum"),
+        ("return max(xs, key=lambda v: v)", "notation-8", (1, 20), "maximum"),
+        ("return int(xs, key=lambda v: v)", "notation-8", (1, 20), "floor(x)"),
+        ("return float(xs, key=lambda v: v)", "notation-8", (1, 22), "next(…)"),
+        ("return f(v for v in xs)", "notation-8", (1, 12), "next(…)"),
+        // A bare generator with other arguments is the form in the wrong shape.
+        (
+            "return all(v > 0 for v in xs, 1)",
+            "notation-9",
+            (1, 8),
+            "all(c for x in xs)",
+        ),
+        (
+            "return sum(v for v in xs, 0)",
+            "notation-9",
+            (1, 8),
+            "sum(e for x in xs)",
+        ),
+        // A lex error after a keyword doesn't beat the syntax error at it.
+        ("return f(in $)", "notation-13", (1, 10), ""),
     ] {
         let error = lowered(text, "N").expect_err(text);
         assert_eq!(error.rule.id(), rule, "{text}: {error:?}");

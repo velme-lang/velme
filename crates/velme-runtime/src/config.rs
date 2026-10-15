@@ -406,9 +406,13 @@ impl<'a> Reader<'a> {
             Some((_, value)) => Ok(Some(*value)),
             None => {
                 let list: Vec<&str> = words.iter().map(|(word, _)| *word).collect();
+                let list = match list.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+                    _ => list.join(""),
+                };
                 Err(self.bad(
                     &format!("{section}.{key}"),
-                    &format!("one of {}", list.join(" or ")),
+                    &format!("one of {list}"),
                     &describe(&toml::Value::String(text)),
                 ))
             }
@@ -545,11 +549,11 @@ mod tests {
         );
         assert_eq!(
             wrong("[synthesis]\nprovider = \"scripted\"\n"),
-            "`synthesis.provider` in `velme.toml` should be one of anthropic or ollama or external or replay, but got \"scripted\"."
+            "`synthesis.provider` in `velme.toml` should be one of anthropic, ollama, external or replay, but got \"scripted\"."
         );
         assert_eq!(
             wrong("[synthesis]\nreply_format = \"xml\"\n"),
-            "`synthesis.reply_format` in `velme.toml` should be one of ir-json or compact or notation, but got \"xml\"."
+            "`synthesis.reply_format` in `velme.toml` should be one of ir-json, compact or notation, but got \"xml\"."
         );
         assert_eq!(
             wrong("[synthesis]\nnope = 1\n"),

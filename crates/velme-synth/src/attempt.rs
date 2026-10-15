@@ -311,7 +311,7 @@ impl Rejection {
                 Some(("resources", _) | ("structure", "structure-1" | "structure-3")) => {
                     "the plan may be too big for one goal: simplify it or split the goal"
                 }
-                Some(("schema", _)) | None => {
+                Some(("schema" | "notation", _)) | None => {
                     "the AI helper's reply wasn't in a form Velme can use: build again, or try another model"
                 }
                 Some(_) => {
@@ -486,9 +486,15 @@ fn notation_hint(found: &Invalid, request: &SynthRequest, spans: &crate::notatio
                 .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Some(format!(
-                "an input or call result is read by its name, a field as `x.f`; the goal's inputs are: {inputs}; call results: {locals}"
-            ));
+            // An empty list is left out, as R-SYNTH-49's own hint leaves it.
+            let mut text = "an input or call result is read by its name, a field as `x.f`".to_owned();
+            if !inputs.is_empty() {
+                text.push_str(&format!("; the goal's inputs are: {inputs}"));
+            }
+            if !locals.is_empty() {
+                text.push_str(&format!("; call results: {locals}"));
+            }
+            return Some(text);
         }
         ("types-12", _, _) => "Velme doesn't narrow after `x is None`: read it as `unwrap_or(x, d).f`",
         ("types-14", _, Some(Form::NoneTest)) => {

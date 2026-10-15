@@ -8,14 +8,67 @@ pub(super) struct Expr {
     pub kind: Box<ExprKind>,
     pub span: Span,
     grouped: bool,
+    /// The parser's nesting inside this expression (R-SYNTH-57).
+    depth: usize,
 }
 
 impl Expr {
     fn new(kind: ExprKind, span: Span) -> Self {
+        let depth = kind.depth();
         Self {
             kind: Box::new(kind),
             span,
             grouped: false,
+            depth,
+        }
+    }
+
+    /// The precedence of an ungrouped operator chain.
+    fn chain_precedence(&self) -> Option<u8> {
+        match self.kind.as_ref() {
+            _ if self.grouped => None,
+            ExprKind::Compare(_, _) => Some(4),
+            ExprKind::Chain(_, rest) => rest.first().map(|(op, _)| op_precedence(op)),
+            _ => None,
+        }
+    }
+
+    /// This expression's nesting as an operand of a chain of `precedence`: a chain of another precedence counts 1.
+    fn held_depth(&self, precedence: u8) -> usize {
+        self.depth + usize::from(self.chain_precedence().is_some_and(|p| p != precedence))
+    }
+}
+
+impl ExprKind {
+    /// The parser's nesting, counted bottom-up as `Parser::enter` counts it top-down, plus each chain held in a chain
+    /// of another precedence, so no syntax tree is deeper than the cap the parser checks (R-SYNTH-57).
+    fn depth(&self) -> usize {
+        let deepest = |items: &mut dyn Iterator<Item = &Expr>| items.map(|e| e.depth).max().unwrap_or(0);
+        match self {
+            Self::Number(_) | Self::Text(_) | Self::Boolean(_) | Self::Nothing | Self::Name(_) => 0,
+            Self::Field(of, _) => of.depth,
+            Self::List(items) | Self::Tuple(items) => 1 + deepest(&mut items.iter()),
+            Self::Unary(_, value) | Self::Lambda(_, value) | Self::Comprehension(value) => 1 + value.depth,
+            Self::Chain(first, rest) | Self::Compare(first, rest) => {
+                let precedence = match self {
+                    Self::Compare(_, _) => 4,
+                    _ => rest.first().map_or(0, |(op, _)| op_precedence(op)),
+                };
+                std::iter::once(first.as_ref())
+                    .chain(rest.iter().map(|(_, e)| e))
+                    .map(|e| e.held_depth(precedence))
+                    .max()
+                    .unwrap_or(0)
+            }
+            Self::Conditional(value, cond, other) => value.depth.max(1 + cond.depth.max(other.depth)),
+            Self::Call(_, args) => 1 + deepest(&mut args.iter().map(|a| &a.value)),
+            Self::Generator {
+                item, list, predicate, ..
+            } => deepest(
+                &mut [Some(item.as_ref()), Some(list.as_ref()), predicate.as_deref()]
+                    .into_iter()
+                    .flatten(),
+            ),
         }
     }
 }
@@ -516,6 +569,15 @@ impl Parser<'_> {
             values.push(Expr::new(ExprKind::Unary(op, Box::new(right)), span));
         } else {
             let mut left = values.pop().ok_or_else(|| Rule::Syntax.reject(right.span))?;
+            // A tuple is only the whole right operand of `in`, also when a comparison chain continues past it.
+            if let ExprKind::Compare(_, rest) = left.kind.as_ref()
+                && !left.grouped
+                && precedence == 4
+                && let Some((_, tuple)) = rest.last()
+                && matches!(tuple.kind.as_ref(), ExprKind::Tuple(_))
+            {
+                return Err(Rule::Expression.reject(tuple.span).hint(TUPLE_HINT));
+            }
             if matches!(left.kind.as_ref(), ExprKind::Tuple(_))
                 || (matches!(right.kind.as_ref(), ExprKind::Tuple(_)) && op != "in" && op != "not in")
             {
@@ -541,10 +603,10 @@ impl Parser<'_> {
                     _ => None,
                 };
                 if let Some(rest) = existing {
+                    left.depth = left.depth.max(right.held_depth(precedence));
                     rest.push((op, right));
                     left.span = span;
-                    values.push(left);
-                    return Ok(());
+                    return self.push_chain(values, left);
                 }
             }
             let kind = if precedence == 4 {
@@ -552,8 +614,16 @@ impl Parser<'_> {
             } else {
                 ExprKind::Chain(Box::new(left), vec![(op, right)])
             };
-            values.push(Expr::new(kind, span));
+            return self.push_chain(values, Expr::new(kind, span));
         }
+        Ok(())
+    }
+
+    fn push_chain(&self, values: &mut Vec<Expr>, chain: Expr) -> Result<(), Rejected> {
+        if self.nesting + chain.depth > velme_ir::limits::MAX_DEPTH {
+            return Err(Rule::Limit.reject(chain.span));
+        }
+        values.push(chain);
         Ok(())
     }
 
@@ -660,6 +730,7 @@ impl Parser<'_> {
                 if self.is("if")? || self.is(".")? || self.is("[")? || self.is("(")? || self.operator_ahead()? {
                     return Err(Rule::Expression.reject(for_span));
                 }
+                expr.depth += 1;
                 return Ok(expr);
             }
             items.push(first);
@@ -688,6 +759,7 @@ impl Parser<'_> {
             let mut value = items.pop().ok_or_else(|| Rule::Syntax.reject(span))?;
             value.span = span;
             value.grouped = true;
+            value.depth += 1;
             Ok(value)
         }
     }
@@ -724,6 +796,25 @@ impl Parser<'_> {
     fn call(&mut self, name: String, start: Span) -> Result<Expr, Rejected> {
         self.want("(")?;
         self.enter(start)?;
+        let args = self.arguments(&name).map_err(|rejected| {
+            // A form the notation lacks, in a call of a Python built-in, gets that built-in's hint (R-SYNTH-59).
+            let generic = Rule::Expression.reject(rejected.span).hint;
+            match super::lower::python_builtin(&name, start).and_then(|python| python.hint) {
+                Some(hint) if rejected.rule == Rule::Expression && rejected.hint == generic => Rejected {
+                    hint: Some(hint),
+                    ..rejected
+                },
+                _ => rejected,
+            }
+        })?;
+        let end = self.want(")")?.span;
+        self.nesting -= 1;
+        let span = start.through(end);
+        check_shape(&name, &args, span)?;
+        Ok(Expr::new(ExprKind::Call(name, args), span))
+    }
+
+    fn arguments(&mut self, name: &str) -> Result<Vec<Argument>, Rejected> {
         let mut args = Vec::new();
         if !self.is(")")? {
             loop {
@@ -731,7 +822,7 @@ impl Parser<'_> {
                 if t.is("*") || t.is("**") {
                     return Err(Rule::Expression.reject(t.span));
                 }
-                let arg_name = if matches!(t.kind, Kind::Word(_)) && self.peek(1)?.is("=") {
+                let arg_name = if matches!(t.kind, Kind::Word(_)) && self.peek(1).is_ok_and(|n| n.is("=")) {
                     let token = self.take()?;
                     self.take()?;
                     Some(token)
@@ -741,21 +832,14 @@ impl Parser<'_> {
                 let lambda = (name == "sorted" && arg_name.as_ref().is_some_and(|t| t.is("key")))
                     || (name == "reduce" && args.is_empty() && arg_name.is_none());
                 let generators =
-                    matches!(name.as_str(), "sum" | "all" | "any" | "next") && args.is_empty() && arg_name.is_none();
+                    matches!(name, "sum" | "all" | "any" | "next") && args.is_empty() && arg_name.is_none();
                 let mut value = self.expr(lambda, generators)?;
                 if self.is("for")? {
-                    if !matches!(name.as_str(), "sum" | "all" | "any" | "next")
-                        || arg_name.is_some()
-                        || !args.is_empty()
-                    {
+                    if !generators {
                         return Err(Rule::Expression.reject(self.token()?.span));
                     }
+                    // A bare generator with other arguments is left to `check_shape` (`notation-9`).
                     value = self.generator(value, false)?;
-                    args.push(Argument { name: None, value });
-                    if name == "next" && self.eat(",")? && !self.is(")")? {
-                        continue;
-                    }
-                    break;
                 }
                 args.push(Argument { name: arg_name, value });
                 if !self.eat(",")? || self.is(")")? {
@@ -763,11 +847,7 @@ impl Parser<'_> {
                 }
             }
         }
-        let end = self.want(")")?.span;
-        self.nesting -= 1;
-        let span = start.through(end);
-        check_shape(&name, &args, span)?;
-        Ok(Expr::new(ExprKind::Call(name, args), span))
+        Ok(args)
     }
 }
 
