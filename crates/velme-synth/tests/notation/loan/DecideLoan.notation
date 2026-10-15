@@ -1,0 +1,12 @@
+return Decision(
+    application_risk_score=score,
+    pre_bureau_risk_category=pre_category,
+    required_monthly_installment=installment,
+    pre_bureau_affordability=pre_affordable,
+    eligibility=eligibility,
+    bureau_call_type=call_type,
+    strategy=strategy,
+    post_bureau_risk_category=post_category,
+    post_bureau_affordability=post_affordable,
+    routing=routing,
+)

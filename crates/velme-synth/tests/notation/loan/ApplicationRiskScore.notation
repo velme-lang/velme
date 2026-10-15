@@ -1,0 +1,7 @@
+age = applicant.age
+age_points = 32 if age < 22 else 35 if age < 26 else 40 if age < 36 else 43 if age < 50 else 48
+marital = applicant.marital_status
+marital_points = 25 if marital == "S" else 45 if marital == "M" else 0
+job = applicant.employment_status
+job_points = 15 if job == "UNEMPLOYED" else 18 if job == "STUDENT" else 45 if job == "EMPLOYED" else 36 if job == "SELF-EMPLOYED" else 0
+return age_points + marital_points + job_points

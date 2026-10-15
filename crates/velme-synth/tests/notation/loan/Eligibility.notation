@@ -1,0 +1,1 @@
+return "INELIGIBLE" if risk_category == "DECLINE" or not affordable or age < 18 else "ELIGIBLE"

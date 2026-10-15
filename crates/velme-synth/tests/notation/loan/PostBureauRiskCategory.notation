@@ -1,0 +1,10 @@
+# New customers above 130 skip the bureau bands.
+if not existing_customer and score > 130:
+    return "VERY LOW"
+low = (580 if score <= 100 else 590) if existing_customer else (590 if score < 120 else 600)
+high = (600 if score <= 100 else 615) if existing_customer else (610 if score < 120 else 625)
+if credit_score < low:
+    return "HIGH"
+if credit_score <= high:
+    return "MEDIUM"
+return "LOW"
