@@ -152,7 +152,11 @@ impl ProjectConfig {
             &mut s,
             "synthesis",
             "reply_format",
-            &[("ir-json", ReplyFormat::IrJson), ("compact", ReplyFormat::Compact)],
+            &[
+                ("ir-json", ReplyFormat::IrJson),
+                ("compact", ReplyFormat::Compact),
+                ("notation", ReplyFormat::Notation),
+            ],
         )?;
         config.retry_history = r.choice(
             &mut s,
@@ -545,7 +549,7 @@ mod tests {
         );
         assert_eq!(
             wrong("[synthesis]\nreply_format = \"xml\"\n"),
-            "`synthesis.reply_format` in `velme.toml` should be one of ir-json or compact, but got \"xml\"."
+            "`synthesis.reply_format` in `velme.toml` should be one of ir-json or compact or notation, but got \"xml\"."
         );
         assert_eq!(
             wrong("[synthesis]\nnope = 1\n"),
