@@ -636,13 +636,13 @@ impl Parser<'_> {
             return Err(Rule::Operator.reject(token.span));
         }
         if token.is("-") {
-            return self.negative(generator);
+            return self.negative();
         }
         let value = self.atom(generator, tuple)?;
         self.postfix(value, tuple)
     }
 
-    fn negative(&mut self, _generator: bool) -> Result<Expr, Rejected> {
+    fn negative(&mut self) -> Result<Expr, Rejected> {
         let token = self.take()?;
         if let Kind::Number(number) = self.token()?.kind {
             let end = self.take()?.span;

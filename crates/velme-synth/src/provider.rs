@@ -1,7 +1,7 @@
 //! The provider interface (`compiler/22` §3.1, D-13, D-14, D-92): plain Rust and `serde_json`, with no vendor type in a
 //! signature (R-SYNTH-04).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use velme_ir::Fingerprint;
@@ -81,6 +81,54 @@ pub struct Called {
     pub result: Result<SynthReply, ProviderError>,
     /// Set only when `result` is an error.
     pub seen: Option<Seen>,
+}
+
+impl Called {
+    /// A call that got no response to read: nothing was seen.
+    pub(crate) fn unsent(error: ProviderError) -> Self {
+        Self {
+            result: Err(error),
+            seen: None,
+        }
+    }
+
+    /// The call whose transport gave `sent` (the response text) at `started`, read by `read`.
+    pub(crate) fn from_sent(sent: Result<String, ProviderError>, started: Instant, read: fn(&str) -> Read) -> Self {
+        let text = match sent {
+            Ok(text) => text,
+            Err(error) => return Self::unsent(error),
+        };
+        match read(&text) {
+            Ok((reply_json, usage, meta)) => Self {
+                result: Ok(SynthReply {
+                    reply_json,
+                    usage,
+                    latency: started.elapsed(),
+                    meta,
+                }),
+                seen: None,
+            },
+            Err((error, seen)) => Self {
+                result: Err(error),
+                seen,
+            },
+        }
+    }
+}
+
+/// A response that gave no reply: why, and what it showed if it was read (D-155).
+pub(crate) type Unread = (ProviderError, Option<Seen>);
+
+/// The reply, usage and shape of a response that held one.
+pub(crate) type Read = Result<(String, Usage, ReplyMeta), Unread>;
+
+/// A failure after the response was read, which still shows how it looked and what it billed.
+pub(crate) fn unread(why: ProviderError, meta: &ReplyMeta, usage: Usage) -> Unread {
+    let seen = Seen {
+        meta: meta.clone(),
+        usage,
+    };
+    (why, Some(seen))
 }
 
 /// A response that was read but held no reply (a refusal, a cut-off, text only): its shape and the tokens it billed.

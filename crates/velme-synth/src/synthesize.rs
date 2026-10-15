@@ -459,19 +459,27 @@ async fn run(
                 );
                 return Err(internal());
             }
-            Reply::Candidate(text, notation) => {
-                let request = Request {
-                    program: task.program,
-                    goal: task.goal,
-                    calls: &compiler_calls,
-                    origin: Origin::Candidate,
-                };
-                match validate_detailed(&text, &request) {
-                    Err(found) => {
-                        let mut rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
-                        if let Some((body, spans)) = &notation {
-                            rejection.notation_findings(body, spans, &found, &base);
-                        }
+            Reply::Candidate(text, notation) => match validate_detailed(&text, &ir_request) {
+                Err(found) => {
+                    let mut rejection = Rejection::invalid(&reply.reply_json, &found, &base, format);
+                    if let Some((body, spans)) = &notation {
+                        rejection.notation_findings(body, spans, &found, &base);
+                    }
+                    record(
+                        session,
+                        rejection.cause.code.as_str(),
+                        Some(rejection.log_cause),
+                        Some(Response::of(&reply)),
+                    );
+                    rejection
+                }
+                Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
+                    Verdict::Accepted(verified) => {
+                        record(session, "ok", None, Some(Response::of(&reply)));
+                        return Ok(Built { ir, verified });
+                    }
+                    Verdict::Rejected(mut rejection) => {
+                        rejection.reply = reply.reply_json.clone();
                         record(
                             session,
                             rejection.cause.code.as_str(),
@@ -480,44 +488,28 @@ async fn run(
                         );
                         rejection
                     }
-                    Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
-                        Verdict::Accepted(verified) => {
-                            record(session, "ok", None, Some(Response::of(&reply)));
-                            return Ok(Built { ir, verified });
-                        }
-                        Verdict::Rejected(mut rejection) => {
-                            rejection.reply = reply.reply_json.clone();
-                            record(
-                                session,
-                                rejection.cause.code.as_str(),
-                                Some(rejection.log_cause),
-                                Some(Response::of(&reply)),
-                            );
-                            rejection
-                        }
-                        Verdict::Watchdog(d) => {
-                            let mut d = d;
-                            d.span = span;
-                            record(
-                                session,
-                                d.code.as_str(),
-                                Some(LogCause::Runtime(d.code)),
-                                Some(Response::of(&reply)),
-                            );
-                            return Err(Failure::of(d));
-                        }
-                        Verdict::Internal => {
-                            record(
-                                session,
-                                Code::InternalError.as_str(),
-                                Some(LogCause::Internal),
-                                Some(Response::of(&reply)),
-                            );
-                            return Err(internal());
-                        }
-                    },
-                }
-            }
+                    Verdict::Watchdog(d) => {
+                        let mut d = d;
+                        d.span = span;
+                        record(
+                            session,
+                            d.code.as_str(),
+                            Some(LogCause::Runtime(d.code)),
+                            Some(Response::of(&reply)),
+                        );
+                        return Err(Failure::of(d));
+                    }
+                    Verdict::Internal => {
+                        record(
+                            session,
+                            Code::InternalError.as_str(),
+                            Some(LogCause::Internal),
+                            Some(Response::of(&reply)),
+                        );
+                        return Err(internal());
+                    }
+                },
+            },
         };
         history.push(rejection);
         if let Some(end) = next(&mut earlier, &history, &options, attempt, name, span) {

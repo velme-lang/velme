@@ -378,17 +378,11 @@ fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<
             items.join(", ")
         }
     };
+    let (input_names, local_names) = typed_names(request);
     let inputs = format!(
         "the goal's inputs, each read with an {}, are: {}",
         node("input"),
-        list(
-            request
-                .signature
-                .params
-                .iter()
-                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
-                .collect()
-        )
+        list(input_names)
     );
     // A composite's call bindings are names too (`compiler/22` R-SYNTH-49).
     let locals = if request.locals.is_empty() {
@@ -397,13 +391,7 @@ fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<
         format!(
             ", and the call results, each read with a {}, are: {}",
             node("local"),
-            list(
-                request
-                    .locals
-                    .iter()
-                    .map(|l| format!("{}: {}", l.name, type_name(&l.ty)))
-                    .collect()
-            )
+            list(local_names)
         )
     };
     match (found.rule, &found.subject) {
@@ -468,24 +456,29 @@ fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<
     }
 }
 
+/// The goal's inputs and the composite's call results as `name: type`, the names a reply may read.
+fn typed_names(request: &SynthRequest) -> (Vec<String>, Vec<String>) {
+    let inputs = request
+        .signature
+        .params
+        .iter()
+        .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
+        .collect();
+    let locals = request
+        .locals
+        .iter()
+        .map(|l| format!("{}: {}", l.name, type_name(&l.ty)))
+        .collect();
+    (inputs, locals)
+}
+
 fn notation_hint(found: &Invalid, request: &SynthRequest, spans: &crate::notation::Spans) -> Option<String> {
     use crate::notation::Form;
     let form = spans.entry(&found.path).map(|(_, form)| form);
     let text = match (found.rule, &found.subject, form) {
         ("names-7" | "names-8", _, _) => {
-            let inputs = request
-                .signature
-                .params
-                .iter()
-                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let locals = request
-                .locals
-                .iter()
-                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let (inputs, locals) = typed_names(request);
+            let (inputs, locals) = (inputs.join(", "), locals.join(", "));
             // An empty list is left out, as R-SYNTH-49's own hint leaves it.
             let mut text = "an input or call result is read by its name, a field as `x.f`".to_owned();
             if !inputs.is_empty() {

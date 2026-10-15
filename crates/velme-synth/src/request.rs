@@ -225,19 +225,12 @@ pub struct SynthRequest {
 /// format other than `ir-json` `+reply_format=<name>@<version>`, the version being the alias table's for `compact`. A
 /// format changes the requests and how replies are read, so it re-keys.
 pub(crate) fn external_input_version(format: ReplyFormat) -> String {
-    match format {
-        ReplyFormat::IrJson => REQUEST_VERSION.to_owned(),
-        ReplyFormat::Notation => format!(
-            "{REQUEST_VERSION}+reply_format={}@{}",
-            format.name(),
-            crate::notation::GRAMMAR_VERSION
-        ),
-        ReplyFormat::Compact => format!(
-            "{REQUEST_VERSION}+reply_format={}@{}",
-            format.name(),
-            crate::compact::version()
-        ),
-    }
+    let version = match format {
+        ReplyFormat::IrJson => return REQUEST_VERSION.to_owned(),
+        ReplyFormat::Notation => crate::notation::GRAMMAR_VERSION.to_owned(),
+        ReplyFormat::Compact => crate::compact::version(),
+    };
+    format!("{REQUEST_VERSION}+reply_format={}@{version}", format.name())
 }
 
 /// `reply_format` is absent or one of the names, never `null`: the request leaves the member out for `ir-json`.
