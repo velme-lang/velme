@@ -581,48 +581,20 @@ impl Lower<'_> {
             return self.record(name, args, span);
         }
 
-        const PYTHON: [&str; 19] = [
-            "max",
-            "min",
-            "int",
-            "float",
-            "str",
-            "bool",
-            "list",
-            "dict",
-            "set",
-            "tuple",
-            "print",
-            "enumerate",
-            "zip",
-            "map",
-            "filter",
-            "pow",
-            "divmod",
-            "isinstance",
-            "type",
-        ];
-        if PYTHON.contains(&name)
-            && !self
-                .request
-                .builtins
-                .iter()
-                .any(|b| b.name == name && velme_builtins::Builtin::find(name).is_some_and(|b| b.function.is_some()))
+        if !self
+            .request
+            .builtins
+            .iter()
+            .any(|b| b.name == name && velme_builtins::Builtin::find(name).is_some_and(|b| b.function.is_some()))
+            && let Some(rejection) = python_builtin(
+                name,
+                Span {
+                    start: span.start,
+                    end: span.start + name.len(),
+                },
+            )
         {
-            let rejection = Rule::PythonBuiltin.reject(Span {
-                start: span.start,
-                end: span.start + name.len(),
-            });
-            return Err(match name {
-                "max" | "min" => {
-                    rejection.hint("`max(a, b)` is `a if a >= b else b`, and `maximum(xs)` is `None` for `[]`")
-                }
-                "int" => rejection.hint("floor(x)"),
-                "str" => rejection.hint("to_text(x)"),
-                "pow" | "divmod" => rejection.hint(Rule::Operator.reject(span).hint.as_deref().unwrap_or_default()),
-                "map" | "filter" | "enumerate" | "zip" => rejection.hint("write a comprehension"),
-                _ => rejection,
-            });
+            return Err(rejection);
         }
         let mut built = Vec::new();
         for arg in args {
@@ -784,6 +756,43 @@ impl Lower<'_> {
             self.narrow(found, default, span)
         }
     }
+}
+
+/// `notation-10` with its hint by name, when `name` is a listed Python built-in (R-SYNTH-59).
+pub(super) fn python_builtin(name: &str, span: Span) -> Option<Rejected> {
+    const PYTHON: [&str; 19] = [
+        "max",
+        "min",
+        "int",
+        "float",
+        "str",
+        "bool",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "print",
+        "enumerate",
+        "zip",
+        "map",
+        "filter",
+        "pow",
+        "divmod",
+        "isinstance",
+        "type",
+    ];
+    if !PYTHON.contains(&name) {
+        return None;
+    }
+    let rejection = Rule::PythonBuiltin.reject(span);
+    Some(match name {
+        "max" | "min" => rejection.hint("`max(a, b)` is `a if a >= b else b`, and `maximum(xs)` is `None` for `[]`"),
+        "int" => rejection.hint("floor(x)"),
+        "str" => rejection.hint("to_text(x)"),
+        "pow" | "divmod" => rejection.hint(Rule::Operator.reject(span).hint.as_deref().unwrap_or_default()),
+        "map" | "filter" | "enumerate" | "zip" => rejection.hint("write a comprehension"),
+        _ => rejection,
+    })
 }
 
 use std::str::FromStr;

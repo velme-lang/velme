@@ -26,6 +26,8 @@ goal Double(n: Number) -> Number:
         - Double(3) == 6
 ";
 
+const FORM: &str = "the AI helper's reply wasn't in a form Velme can use: build again, or try another model";
+
 fn block_on<T>(future: impl Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .build()
@@ -183,7 +185,6 @@ fn ac_synth_40_only_the_body_is_read_from_a_reply() {
 /// kind of rule that failed: the builtins hint only where a built-in is at fault (AC-SYNTH-41, D-103).
 #[test]
 fn ac_synth_41_the_help_follows_the_kind_of_failure() {
-    const FORM: &str = "the AI helper's reply wasn't in a form Velme can use: build again, or try another model";
     const FIT: &str = "the AI helper's code didn't fit the goal: build again, or add an example that shows the result";
     const BIG: &str = "the plan may be too big for one goal: simplify it or split the goal";
     const BUILTINS: &str = "the plan may need more than the listed builtins can do: simplify it or split the goal";
@@ -229,6 +230,27 @@ fn ac_synth_41_the_help_follows_the_kind_of_failure() {
     let (message, _, help) = outcome(unknown);
     assert!(message.contains("uses a built-in that doesn't exist"), "{message}");
     assert_eq!(help, BUILTINS);
+}
+
+/// A body the notation doesn't read is a reply not in a usable form, like a schema fault: two alike stop on repeat and
+/// `VL0403` gives the reply-form help (AC-SYNTH-41, R-SYNTH-31).
+#[test]
+fn ac_synth_41_a_notation_rejection_gets_the_reply_form_help() {
+    let reply = json!({"body": "for v in xs:\n  return 1"}).to_string();
+    let run = run(
+        SynthOptions {
+            reply_format: ReplyFormat::Notation,
+            ..SynthOptions::default()
+        },
+        vec![reply.clone(), reply],
+    );
+    assert_eq!(run.provider.requests().len(), 2);
+    let d = failure(&run);
+    assert_eq!(d.code, Code::SynthesisFailed);
+    assert_eq!(
+        d.help.as_deref(),
+        Some(format!("{FORM}; `stop_on_repeat = false` retries anyway").as_str())
+    );
 }
 
 /// What a provider chose inside `body` never becomes a bug of ours: a number canonical JSON can't hold, a repeated key

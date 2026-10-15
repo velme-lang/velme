@@ -279,7 +279,7 @@ fn a_project_names_its_provider_and_the_flag_wins() {
     let out = velme(&dir, &["build", "game.velme"], &[]);
     assert_eq!(out.code, 64, "{}{}", out.stdout, out.stderr);
     assert!(
-        out.stderr.contains("VL0902") && out.stderr.contains("anthropic or ollama or external or replay"),
+        out.stderr.contains("VL0902") && out.stderr.contains("anthropic, ollama, external or replay"),
         "{}",
         out.stderr
     );
