@@ -1,0 +1,3 @@
+if risk_category in ["HIGH", "MEDIUM"]: return "FULL"
+if risk_category == "LOW": return "MINI"
+return "NONE"

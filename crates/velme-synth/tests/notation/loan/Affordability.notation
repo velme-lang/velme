@@ -1,0 +1,3 @@
+disposable = applicant.monthly_income - (applicant.monthly_repayments + applicant.monthly_expenses)
+factor = 0.6 if risk_category in ["HIGH", "DECLINE"] else 0.7 if risk_category == "MEDIUM" else 0.8
+return disposable * factor > installment
