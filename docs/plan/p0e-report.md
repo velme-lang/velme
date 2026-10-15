@@ -1,7 +1,7 @@
 # P0e report: reply notation against IR JSON
 
 **Result: pass** on all three bars (`post-mvp-plan.md` §P0, P0e). Run 2026-10-15 on branch `p0-synth` after 5118537.
-The live confirmation run (≤ $1) is still owed before the notation becomes the default.
+The live confirmation run passed on 2026-10-15 (§Live run), at a higher output cost than projected.
 
 | Bar | IR JSON | Notation | Pass if | |
 |---|---|---|---|---|
@@ -70,3 +70,26 @@ is 1.3× the 1,024-token cache minimum, so a few hundred bytes cut from `notatio
   separate the formats. The live run and the P1 benchmark are the real test of acceptance.
 - The run found one P0d gap, fixed with this report: `velme.toml` rejected `reply_format = "notation"`
   (`crates/velme-runtime/src/config.rs`).
+
+## Live run
+
+`velme build --provider anthropic` on `claude-sonnet-5-5`, `reply_format = "notation"`, at 2c0c873, one fresh project per
+run. Tokens are the API's, cost at the rates above.
+
+| Run | Built | First attempt ok | Requests | Output tokens | Cost |
+|---|---|---|---|---|---|
+| 1 | 7 of 10 | 6 of 9 sent | 10 | 3,704 | $0.089 |
+| 1, rebuilt | 7 of 10 | 0 of 2 | 2 | 781 | ~$0.01 |
+| 2, after the plan fix | 10 of 10 | 8 of 10 | 12 | 4,702 | $0.111 |
+
+- **Questions the stand-ins never asked.** In run 1 the model asked about RequiredMonthlyInstallment (the fee for a
+  product type other than the two named) and BureauCallType (a category outside the five named), and DecideLoan was not
+  reached (`VL0409`). Both were real gaps in the plans; the hand-written replies already took the last case as the
+  default, so the plans now say so. The stand-ins always answered, so P0e measured no questions.
+- **Output is about 5× the estimate.** Run 2's replies total ~3.1 KB (~940 tokens, close to P0e's 320 B per goal); the
+  rest of the 4,702 output tokens is text the model writes beside the tool call, which the synth log does not keep.
+  It is most of the cost: $0.111 against the projected $0.039. It applies to any reply format, so the format choice
+  stands; trimming it is a follow-up (prompt or `tool_choice`).
+- **Replies without a tool call.** 3 of 22 live requests ended with `end_turn` and no `write_goal` call
+  (`malformed-not-one-tool`); each retry succeeded. `tool_choice` is `auto` (D-150).
+- Caching works as projected: one 2,014-token prefix write per build, then reads.
