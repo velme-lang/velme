@@ -50,7 +50,7 @@ goal PreBureauRiskCategory(existing_customer: Boolean, score: Number) -> Text:
         - PreBureauRiskCategory(true, 100) == "MEDIUM"
 
 goal RequiredMonthlyInstallment(product: Product) -> Number:
-    plan: "The monthly repayment plus a monthly fee. The fee is 20.00 for \"STANDARD LOAN\" and 25.00 for \"SPECIAL LOAN\". With r = annual rate / 12 and n = term in months, the monthly repayment is (amount * r) / (1 - (1 + r)^(-n)). A product whose rate is not above 0 or above 1, or whose term is not a whole number from 1 to 600, has no repayment: its installment is the monthly fee alone. Nothing is rounded."
+    plan: "The monthly repayment plus a monthly fee. The fee is 20.00 for \"STANDARD LOAN\" and 25.00 for any other product type, such as \"SPECIAL LOAN\". With r = annual rate / 12 and n = term in months, the monthly repayment is (amount * r) / (1 - (1 + r)^(-n)). A product whose rate is not above 0 or above 1, or whose term is not a whole number from 1 to 600, has no repayment: its installment is the monthly fee alone. Nothing is rounded."
     examples:
         - RequiredMonthlyInstallment(Product(product_type: "STANDARD LOAN", rate: 0.08, term: 36, amount: 0)) == 20
         - RequiredMonthlyInstallment(Product(product_type: "SPECIAL LOAN", rate: 0.05, term: 12, amount: 0)) == 25
@@ -71,7 +71,7 @@ goal Eligibility(risk_category: Text, affordable: Boolean, age: Number) -> Text:
         - Eligibility("LOW", false, 40) == "INELIGIBLE"
 
 goal BureauCallType(risk_category: Text) -> Text:
-    plan: "From the pre-bureau risk category: \"HIGH\" or \"MEDIUM\" gives \"FULL\"; \"LOW\" gives \"MINI\"; \"VERY LOW\" or \"DECLINE\" gives \"NONE\"."
+    plan: "From the pre-bureau risk category: \"HIGH\" or \"MEDIUM\" gives \"FULL\"; \"LOW\" gives \"MINI\"; any other category, such as \"VERY LOW\" or \"DECLINE\", gives \"NONE\". The comparison is exact."
     examples:
         - BureauCallType("MEDIUM") == "FULL"
         - BureauCallType("LOW") == "MINI"
