@@ -320,3 +320,23 @@ fn replay_rejects_text_outside_a_pending_exchange() {
     ));
     assert!(text.contains("`text` without a `pending` error"), "{text}");
 }
+
+/// A recorded `external` identity whose `input_version` isn't the current one for its reply format is stale: the replay
+/// says to re-record rather than failing as an internal error (R-SYNTH-40, R-SYNTH-43, D-156).
+#[test]
+fn ac_synth_43_a_stale_external_recording_asks_for_a_re_record() {
+    let dir = dir("stale-external");
+    let mut stale = identity();
+    stale.provider = "external".to_owned();
+    stale.input_version = "0.1".to_owned();
+    stale.reply_format = Some(velme_synth::ReplyFormat::Compact);
+    write(&dir, "replay.json", &stale);
+    let error = block_on(Replay::new(&dir).identify()).expect_err("a stale identity");
+    match error {
+        ProviderError::Unavailable(text) => assert!(
+            text.ends_with("re-record the fixture with VELME_SYNTH_RECORD=1"),
+            "{text}"
+        ),
+        other => panic!("expected Unavailable, got {other:?}"),
+    }
+}

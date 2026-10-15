@@ -216,6 +216,19 @@ fn a_reply_is_one_of_four_kinds() {
     assert_eq!(complete(&backend, &request()).as_deref(), Ok(r#"{"body":"text"}"#));
 }
 
+/// In `compact` a canonical `body` key is passed on whatever it holds, to be the failed attempt (`VL0401`) the compact reader
+/// makes of it, not a backend failure (`VL0406`) here (D-153).
+#[test]
+fn a_compact_backend_replying_a_canonical_body_string_passes_it_on() {
+    let dir = scratch("compact-body-string");
+    fs::write(dir.join("FindBadge.json"), r#"{"body": "x"}"#).expect("reply file");
+    let (_server, backend) = serving_in(
+        Config::replying(dir).listing(json!(["ir-json", "compact"])),
+        ReplyFormat::Compact,
+    );
+    assert_eq!(complete(&backend, &request()).as_deref(), Ok(r#"{"body":"x"}"#));
+}
+
 /// A reply that isn't JSON, one past 2 MiB and a server error that outlives the transport retries are backend failures
 /// whose notes hold the last words of the reply body, cleaned; nothing is asked twice but a server error (AC-SYNTH-16,
 /// R-SYNTH-28).

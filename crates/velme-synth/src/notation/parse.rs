@@ -128,6 +128,7 @@ pub(super) fn body(text: &str) -> Result<Block, Rejected> {
         tokens: Vec::new(),
         pos: 0,
         nesting: 0,
+        settled: false,
         end: text.len(),
     }
     .block(None)
@@ -138,6 +139,8 @@ struct Parser<'t> {
     tokens: Vec<Result<Token, Rejected>>,
     pos: usize,
     nesting: usize,
+    /// A call has already settled a rejection (its hint included): an outer call leaves it as it is.
+    settled: bool,
     end: usize,
 }
 
@@ -797,6 +800,9 @@ impl Parser<'_> {
         self.want("(")?;
         self.enter(start)?;
         let args = self.arguments(&name).map_err(|rejected| {
+            if std::mem::replace(&mut self.settled, true) {
+                return rejected;
+            }
             // A form the notation lacks, in a call of a Python built-in, gets that built-in's hint (R-SYNTH-59).
             let generic = Rule::Expression.reject(rejected.span).hint;
             match super::lower::python_builtin(&name, start).and_then(|python| python.hint) {

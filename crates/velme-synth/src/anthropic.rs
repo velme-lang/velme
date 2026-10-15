@@ -343,7 +343,12 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
         },
     };
     let key = body_key(format);
-    let description = format!("Return the goal's body: {{\"{key}\": <expression>}}.");
+    let shape = if format == ReplyFormat::Notation {
+        "\"<notation text>\""
+    } else {
+        "<expression>"
+    };
+    let description = format!("Return the goal's body: {{\"{key}\": {shape}}}.");
     Ok(json!([
         {
             "name": WRITE_GOAL,
