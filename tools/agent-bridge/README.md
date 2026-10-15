@@ -26,7 +26,7 @@ as `pending` (R-SYNTH-41). One Python 3 script, standard library only, bound to 
    question, not the IR schema). To see the prompt a model would get for the same goal, with the same `[synthesis]` options:
 
    ```
-   cargo xtask render-prompt game.velme Double --provider anthropic [--reply-format ir-json|compact] [--schema-in-prompt full] [--max-examples N] [--model ID] [--pretty]
+   cargo xtask render-prompt game.velme Double --provider anthropic [--reply-format ir-json|compact|notation] [--schema-in-prompt full] [--max-examples N] [--model ID] [--pretty]
    ```
 
    It prints the exact request body the `anthropic` (or `ollama`, or `external`) provider sends for the goal's first attempt,
@@ -38,7 +38,7 @@ as `pending` (R-SYNTH-41). One Python 3 script, standard library only, bound to 
    a temporary file in `answers/` (a name not ending in `.json`) and rename it, so the build never reads half an answer
    (a file that is not valid JSON counts as still pending). For `ir-json` the answer is a bare IR expression node (the
    bridge wraps it as `{"body": <node>}`) or `{"body": <node>}`; in any other format it is sent exactly as written
-   (`compact`: `{"bo": ...}`). `{"question": "..."}` and `{"error": "..."}` work in every format.
+   (`compact`: `{"bo": ...}`, `notation`: `{"body": "<notation text>"}`, the body a string). `{"question": "..."}` and `{"error": "..."}` work in every format.
 5. Rerun the build. Velme validates and verifies the body like any model's (INV-1); a failed body is the answer's fault,
    not the bridge's. The id is a hash of the request, so an edited goal is queued again under a new id.
 

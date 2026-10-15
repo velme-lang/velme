@@ -475,7 +475,7 @@ impl External {
         };
         match (kind, value) {
             // Whatever the format's key holds is read by the format (an object, or a string in `notation`, R-SYNTH-36).
-            (key, body) if key == body_key || (key == "body" && body.is_object()) => {
+            (key, body) if key == body_key || key == "body" => {
                 let mut reply = Map::new();
                 reply.insert(key.to_owned(), body);
                 let canonical = to_canonical_string(&Value::Object(reply)).map_err(|_| unknown())?;

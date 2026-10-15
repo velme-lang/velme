@@ -17,7 +17,7 @@ use velme_synth::{
 };
 
 const USAGE: &str = "usage: render-prompt <file.velme> <Goal> [--provider anthropic|ollama|external] [--model ID] \
-[--reply-format ir-json|compact] [--schema-in-prompt summary|full] [--max-examples N] [--max-output-tokens N] \
+[--reply-format ir-json|compact|notation] [--schema-in-prompt summary|full] [--max-examples N] [--max-output-tokens N] \
 [--no-prompt-cache] [--pretty]  (the first attempt's request only)";
 
 /// The program; `pub` so the tests, which include this file, use the same code the tool runs.

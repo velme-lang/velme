@@ -636,6 +636,8 @@ fn ac_synth_51_review_rejections_keep_phase_order_places_and_hints() {
         ("return int(xs, key=lambda v: v)", "notation-8", (1, 20), "floor(x)"),
         ("return float(xs, key=lambda v: v)", "notation-8", (1, 22), "next(…)"),
         ("return f(v for v in xs)", "notation-8", (1, 12), "next(…)"),
+        // A nested non-built-in call settled the rejection first: the outer built-in's hint doesn't replace it.
+        ("return max(f(v for v in xs))", "notation-8", (1, 16), "next(…)"),
         // A bare generator with other arguments is the form in the wrong shape.
         (
             "return all(v > 0 for v in xs, 1)",

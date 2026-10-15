@@ -195,6 +195,15 @@ impl SynthBackend for Replay {
                 "there is no {IDENTITY_FILE} in the replay directory; {RE_RECORD}"
             ))
         })?;
+        // An external recording is keyed by its format's version: one recorded under another is stale (R-SYNTH-40, D-156).
+        if identity.provider == "external"
+            && identity.input_version
+                != crate::request::external_input_version(identity.reply_format.unwrap_or_default())
+        {
+            return Err(ProviderError::Unavailable(format!(
+                "the recorded `input_version` in {IDENTITY_FILE} isn't the current one for its reply format; {RE_RECORD}"
+            )));
+        }
         Ok(Identity {
             provider: identity.provider,
             model: identity.model_version,
