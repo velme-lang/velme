@@ -1,0 +1,48 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "if",
+    "cond": {
+      "kind": "input",
+      "name": "c"
+    },
+    "then": {
+      "kind": "let",
+      "bind": [
+        [
+          "a",
+          {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 1
+          }
+        ]
+      ],
+      "body": {
+        "kind": "local",
+        "name": "a"
+      }
+    },
+    "else": {
+      "kind": "let",
+      "bind": [
+        [
+          "a",
+          {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 2
+          }
+        ]
+      ],
+      "body": {
+        "kind": "local",
+        "name": "a"
+      }
+    }
+  }
+}

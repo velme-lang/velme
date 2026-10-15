@@ -1,0 +1,39 @@
+{
+  "goal": "Comparisons",
+  "body": {
+    "kind": "unary",
+    "op": "not",
+    "arg": {
+      "kind": "builtin",
+      "name": "contains",
+      "args": [
+        {
+          "kind": "list",
+          "of": {
+            "t": "Number"
+          },
+          "items": [
+            {
+              "kind": "literal",
+              "type": {
+                "t": "Number"
+              },
+              "value": 1
+            },
+            {
+              "kind": "literal",
+              "type": {
+                "t": "Number"
+              },
+              "value": 2
+            }
+          ]
+        },
+        {
+          "kind": "input",
+          "name": "x"
+        }
+      ]
+    }
+  }
+}

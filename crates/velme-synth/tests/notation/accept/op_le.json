@@ -1,0 +1,15 @@
+{
+  "goal": "Comparisons",
+  "body": {
+    "kind": "binary",
+    "op": "le",
+    "left": {
+      "kind": "input",
+      "name": "x"
+    },
+    "right": {
+      "kind": "input",
+      "name": "y"
+    }
+  }
+}

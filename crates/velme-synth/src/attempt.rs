@@ -10,7 +10,7 @@ use crate::compact;
 use crate::options::ReplyFormat;
 use crate::prompt::type_name;
 use crate::provider::MalformedReason;
-use crate::request::{AttemptDiagnostic, AttemptFeedback, SynthRequest};
+use crate::request::{AttemptDiagnostic, AttemptFeedback, AttemptPlace, SynthRequest};
 
 /// The most Unicode scalar values of a question or pending text (R-SYNTH-33).
 pub(crate) const MAX_TEXT_CHARS: usize = 280;
@@ -122,6 +122,8 @@ impl Rejection {
                 message,
                 path: None,
                 detail: None,
+                at: None,
+                quote: Vec::new(),
             }],
         }
     }
@@ -158,6 +160,8 @@ impl Rejection {
                 message: "The generated program wasn't in the right shape.".to_owned(),
                 path: Some(pointer),
                 detail: Some(detail),
+                at: None,
+                quote: Vec::new(),
             }],
         }
     }
@@ -172,7 +176,11 @@ impl Rejection {
             .iter()
             .map(|f| {
                 let mut sent = feedback(&f.diagnostic);
-                if let Some(hint) = hint(f, request, format).filter(|h| !said.contains(h)) {
+                if let Some(hint) = (format != ReplyFormat::Notation)
+                    .then(|| hint(f, request, format))
+                    .flatten()
+                    .filter(|h| !said.contains(h))
+                {
                     said.push(hint.clone());
                     sent.detail = Some(match sent.detail.take() {
                         Some(detail) => format!("{detail}; {hint}"),
@@ -212,6 +220,66 @@ impl Rejection {
             line,
             reply: reply.to_owned(),
             diagnostics,
+        }
+    }
+
+    /// A notation rejection at its body place (R-SYNTH-59), kept out of learner output.
+    pub(crate) fn notation(reply: &str, text: &str, rejected: &crate::notation::Rejected) -> Self {
+        let rule = rejected.rule;
+        let line = format!("the body {} ({})", rule.words(), rule.id());
+        let (line_number, column) = crate::notation::locate(text, rejected.span.start);
+        Self {
+            cause: Cause {
+                code: Code::IRSchemaInvalid,
+                name: format!("notation/{}", rule.id()),
+            },
+            log_cause: LogCause::Rule(rule.id()),
+            verbose: format!("{}: {line}", Code::IRSchemaInvalid.as_str()),
+            line,
+            input: String::new(),
+            reply: reply.to_owned(),
+            diagnostics: vec![AttemptDiagnostic {
+                code: Code::IRSchemaInvalid.as_str().to_owned(),
+                message: format!("Velme couldn't read the body: it {} ({}).", rule.words(), rule.id()),
+                detail: rejected.hint.clone(),
+                path: None,
+                at: Some(AttemptPlace {
+                    line: line_number,
+                    column,
+                }),
+                quote: crate::notation::quote(text, rejected.span),
+            }],
+        }
+    }
+
+    /// Places and notation hints for validator findings (R-SYNTH-59).
+    pub(crate) fn notation_findings(
+        &mut self,
+        text: &str,
+        spans: &crate::notation::Spans,
+        found: &[Invalid],
+        request: &SynthRequest,
+    ) {
+        let mut said = Vec::new();
+        for (diagnostic, finding) in self.diagnostics.iter_mut().zip(found) {
+            if let Some(span) = spans.at(&finding.path) {
+                let (line, column) = crate::notation::locate(text, span.start);
+                diagnostic.at = Some(AttemptPlace { line, column });
+                diagnostic.quote = crate::notation::quote(text, span);
+                diagnostic.path = None;
+            }
+            let hint = notation_hint(finding, request, spans);
+            // Replace the IR-node help, including the validator's narrowing help.
+            if finding.rule == "types-12" {
+                diagnostic.detail = None;
+            }
+            if let Some(hint) = hint.filter(|h| !said.contains(h)) {
+                said.push(hint.clone());
+                diagnostic.detail = Some(match diagnostic.detail.take() {
+                    Some(detail) => format!("{detail}; {hint}"),
+                    None => hint,
+                });
+            }
         }
     }
 
@@ -400,6 +468,70 @@ fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<
     }
 }
 
+fn notation_hint(found: &Invalid, request: &SynthRequest, spans: &crate::notation::Spans) -> Option<String> {
+    use crate::notation::Form;
+    let form = spans.entry(&found.path).map(|(_, form)| form);
+    let text = match (found.rule, &found.subject, form) {
+        ("names-7" | "names-8", _, _) => {
+            let inputs = request
+                .signature
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let locals = request
+                .locals
+                .iter()
+                .map(|p| format!("{}: {}", p.name, type_name(&p.ty)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Some(format!(
+                "an input or call result is read by its name, a field as `x.f`; the goal's inputs are: {inputs}; call results: {locals}"
+            ));
+        }
+        ("types-12", _, _) => "Velme doesn't narrow after `x is None`: read it as `unwrap_or(x, d).f`",
+        ("types-14", _, Some(Form::NoneTest)) => {
+            "only an optional `T?` can be `None`; test a list or Text with `len(x) == 0`"
+        }
+        ("types-15", Subject::TextArithmetic, _) => "`+ - * /` are for Numbers only; Text is joined with `concat`",
+        ("types-15", _, Some(Form::Or)) => "a default is `unwrap_or(x, d)`, not `x or d`",
+        ("types-26", _, Some(Form::Round(2))) => "to cents, `round(x, 2)` is `round(x * 100) / 100`",
+        ("names-11", Subject::Builtin(name), _) => {
+            if let Some(binding) = request.locals.iter().find(|b| b.child.name == *name) {
+                return Some(format!(
+                    "that goal is already called: its result is the name `{}`",
+                    binding.name
+                ));
+            }
+            return Some(
+                match name.as_str() {
+                    "add" => "write `a + b`",
+                    "sub" => "write `a - b`",
+                    "mul" => "write `a * b`",
+                    "div" => "write `a / b`",
+                    "eq" => "write `a == b`",
+                    "ne" => "write `a != b`",
+                    "lt" => "write `a < b`",
+                    "le" => "write `a <= b`",
+                    "gt" => "write `a > b`",
+                    "ge" => "write `a >= b`",
+                    "and" => "write `a and b`",
+                    "or" => "write `a or b`",
+                    "not" => "write `not a`",
+                    "neg" => "write `-a`",
+                    "is_empty" => "write `x is None` for an optional and `len(x) == 0` for a list or Text",
+                    _ => "call only a builtin from the allowed list",
+                }
+                .to_owned(),
+            );
+        }
+        ("names-9" | "names-10", _, _) => return hint(found, request, ReplyFormat::Notation),
+        _ => return None,
+    };
+    Some(text.to_owned())
+}
+
 /// A validator diagnostic as the next request carries it, in full: its code and message, the JSON path of its note, and
 /// what the note says after the path.
 fn feedback(diagnostic: &Diagnostic) -> AttemptDiagnostic {
@@ -436,6 +568,8 @@ fn feedback(diagnostic: &Diagnostic) -> AttemptDiagnostic {
         message: diagnostic.message.clone(),
         path,
         detail: (!detail.is_empty()).then(|| detail.join("; ")),
+        at: None,
+        quote: Vec::new(),
     }
 }
 

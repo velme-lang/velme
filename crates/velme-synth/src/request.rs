@@ -128,6 +128,18 @@ pub struct BuiltinSig {
     pub signatures: Vec<String>,
 }
 
+/// A place in a notation body, with 1-based scalar-value coordinates (R-SYNTH-59).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AttemptPlace {
+    /// The line, starting at 1.
+    #[schemars(range(min = 1))]
+    pub line: usize,
+    /// The column, starting at 1.
+    #[schemars(range(min = 1))]
+    pub column: usize,
+}
+
 /// A diagnostic shown to the provider on a retry (`compiler/22` R-SYNTH-11).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -142,6 +154,18 @@ pub struct AttemptDiagnostic {
     /// For a check or example failure: the input, the assertion and the actual values.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// The notation place, only on the latest attempt (R-SYNTH-59).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "attempt_place_schema")]
+    pub at: Option<AttemptPlace>,
+    /// At most three body lines, each cut to 160 scalar values (R-SYNTH-59).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(length(max = 3), inner(length(max = 160)))]
+    pub quote: Vec<String>,
+}
+
+fn attempt_place_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    generator.subschema_for::<AttemptPlace>()
 }
 
 /// An earlier attempt at the same goal: the reply and why it was refused (`compiler/22` §5).
@@ -203,6 +227,11 @@ pub struct SynthRequest {
 pub(crate) fn external_input_version(format: ReplyFormat) -> String {
     match format {
         ReplyFormat::IrJson => REQUEST_VERSION.to_owned(),
+        ReplyFormat::Notation => format!(
+            "{REQUEST_VERSION}+reply_format={}@{}",
+            format.name(),
+            crate::notation::GRAMMAR_VERSION
+        ),
         ReplyFormat::Compact => format!(
             "{REQUEST_VERSION}+reply_format={}@{}",
             format.name(),

@@ -177,6 +177,8 @@ fn wrap(code: Code, name: String, id: LogCause, inner: &Diagnostic, input: &Test
             message: format!("The candidate failed verification: {}", inner.message),
             path: None,
             detail: Some(detail),
+            at: None,
+            quote: Vec::new(),
         }],
     }
 }

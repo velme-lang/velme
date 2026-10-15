@@ -4,6 +4,10 @@
       "additionalProperties": false,
       "description": "A diagnostic shown to the provider on a retry (`compiler/22` R-SYNTH-11).",
       "properties": {
+        "at": {
+          "$ref": "#/$defs/AttemptPlace",
+          "description": "The notation place, only on the latest attempt (R-SYNTH-59)."
+        },
         "code": {
           "description": "The `VLnnnn` code.",
           "type": "string"
@@ -25,6 +29,15 @@
             "string",
             "null"
           ]
+        },
+        "quote": {
+          "description": "At most three body lines, each cut to 160 scalar values (R-SYNTH-59).",
+          "items": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
         }
       },
       "required": [
@@ -52,6 +65,29 @@
       "required": [
         "reply",
         "diagnostics"
+      ],
+      "type": "object"
+    },
+    "AttemptPlace": {
+      "additionalProperties": false,
+      "description": "A place in a notation body, with 1-based scalar-value coordinates (R-SYNTH-59).",
+      "properties": {
+        "column": {
+          "description": "The column, starting at 1.",
+          "format": "uint",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "line": {
+          "description": "The line, starting at 1.",
+          "format": "uint",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "column"
       ],
       "type": "object"
     },
@@ -254,6 +290,11 @@
         {
           "const": "compact",
           "description": "The same tree with every property name and node `kind` tag replaced by a short alias.",
+          "type": "string"
+        },
+        {
+          "const": "notation",
+          "description": "Python-shaped text lowered to canonical IR (R-SYNTH-50).",
           "type": "string"
         }
       ]

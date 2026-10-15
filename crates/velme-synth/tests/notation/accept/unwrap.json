@@ -1,0 +1,17 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "unwrap_or",
+    "of": {
+      "kind": "input",
+      "name": "opt"
+    },
+    "default": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 0
+    }
+  }
+}

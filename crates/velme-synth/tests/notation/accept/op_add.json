@@ -1,0 +1,15 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "binary",
+    "op": "add",
+    "left": {
+      "kind": "input",
+      "name": "x"
+    },
+    "right": {
+      "kind": "input",
+      "name": "y"
+    }
+  }
+}

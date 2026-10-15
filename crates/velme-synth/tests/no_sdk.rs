@@ -83,10 +83,15 @@ fn ac_rel_03_core_crates_have_no_provider_sdk_in_their_tree() {
 #[test]
 fn ac_cmp_08_velme_synth_takes_no_artifact_store() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for entry in std::fs::read_dir(dir.join("src")).expect("src").filter_map(Result::ok) {
-        let text = std::fs::read_to_string(entry.path()).expect("source");
-        assert!(!text.contains("ArtifactStore"), "{}", entry.path().display());
-        assert!(!text.contains("velme_runtime"), "{}", entry.path().display());
+    let mut pending = vec![dir.join("src")];
+    while let Some(path) = pending.pop() {
+        if path.is_dir() {
+            pending.extend(std::fs::read_dir(path).expect("src").map(|e| e.expect("entry").path()));
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("source");
+        assert!(!text.contains("ArtifactStore"), "{}", path.display());
+        assert!(!text.contains("velme_runtime"), "{}", path.display());
     }
     let manifest = std::fs::read_to_string(dir.join("Cargo.toml")).expect("manifest");
     let dependencies = manifest.split("[dev-dependencies]").next().expect("a section");

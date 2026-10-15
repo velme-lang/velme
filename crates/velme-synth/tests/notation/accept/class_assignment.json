@@ -1,0 +1,22 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "let",
+    "bind": [
+      [
+        "while",
+        {
+          "kind": "literal",
+          "type": {
+            "t": "Number"
+          },
+          "value": 1
+        }
+      ]
+    ],
+    "body": {
+      "kind": "local",
+      "name": "while"
+    }
+  }
+}

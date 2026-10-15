@@ -1,0 +1,3 @@
+if eligibility == "INELIGIBLE":
+    return "DECLINE"
+return "BUREAU" if bureau_call_type in ["FULL", "MINI"] else "THROUGH"

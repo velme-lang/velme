@@ -1,0 +1,11 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "field",
+    "of": {
+      "kind": "input",
+      "name": "bond"
+    },
+    "field": "yield"
+  }
+}

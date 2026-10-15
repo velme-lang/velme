@@ -1,0 +1,10 @@
+{
+  "goal": "OptionalValue",
+  "body": {
+    "kind": "literal",
+    "type": {
+      "t": "Nothing"
+    },
+    "value": null
+  }
+}

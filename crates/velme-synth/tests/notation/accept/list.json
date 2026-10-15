@@ -1,0 +1,25 @@
+{
+  "goal": "L",
+  "body": {
+    "kind": "list",
+    "of": {
+      "t": "Number"
+    },
+    "items": [
+      {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 1
+      },
+      {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 2
+      }
+    ]
+  }
+}

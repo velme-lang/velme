@@ -128,6 +128,39 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
         TaskKind::Leaf => LEAF,
         TaskKind::Composite => COMPOSITE,
     };
+    let notation_template;
+    let template = if options.reply_format == ReplyFormat::Notation {
+        let (reference, rest) = crate::notation::PROMPT
+            .split_once("--- composite task ---\n")
+            .ok_or_else(Diagnostic::internal_error)?;
+        let (composite, retry) = rest
+            .split_once("--- retry ---\n")
+            .ok_or_else(Diagnostic::internal_error)?;
+        let (header, rest) = template
+            .split_once("Output contract\n")
+            .ok_or_else(Diagnostic::internal_error)?;
+        let (_, rest) = rest
+            .split_once("Allowed builtins:\n")
+            .ok_or_else(Diagnostic::internal_error)?;
+        let (front, old_retry) = rest.split_once(RETRY_MARK).ok_or_else(Diagnostic::internal_error)?;
+        let front = if request.task == TaskKind::Composite {
+            let (before, task) = front.split_once("Task:").ok_or_else(Diagnostic::internal_error)?;
+            let (_, goal) = task.split_once("Goal:").ok_or_else(Diagnostic::internal_error)?;
+            format!("{before}{}Goal:{goal}", composite.trim_start())
+        } else {
+            front.to_owned()
+        };
+        let (retry_header, _) = old_retry
+            .rsplit_once("Return the corrected")
+            .ok_or_else(Diagnostic::internal_error)?;
+        notation_template = format!(
+            "{header}{}{{{{format_notes}}}}\n\nAllowed builtins:\n{front}{RETRY_MARK}{retry_header}{retry}",
+            reference.trim_end()
+        );
+        &notation_template
+    } else {
+        template
+    };
     let (front, retry) = template.split_once(RETRY_MARK).ok_or_else(Diagnostic::internal_error)?;
     let (prefix, task) = front.split_once(TASK_MARK).ok_or_else(Diagnostic::internal_error)?;
     let fields = fields(request, options)?;
@@ -206,7 +239,7 @@ fn fill(template: &str, fields: &BTreeMap<&str, String>) -> Result<String, Diagn
 /// The reply's `body` key as the requested format spells it (R-SYNTH-36): its alias in `compact`.
 pub(crate) fn body_key(format: ReplyFormat) -> &'static str {
     match format {
-        ReplyFormat::IrJson => "body",
+        ReplyFormat::IrJson | ReplyFormat::Notation => "body",
         ReplyFormat::Compact => compact::table().keys.get("body").map_or("body", String::as_str),
     }
 }
@@ -246,6 +279,10 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
         request
             .builtins
             .iter()
+            .filter(|b| {
+                options.reply_format != ReplyFormat::Notation
+                    || velme_builtins::Builtin::find(&b.name).is_some_and(|b| b.function.is_some())
+            })
             .map(|b| format!("- {}: {}", b.name, b.signatures.join(" | ")))
             .collect::<Vec<_>>()
             .join("\n"),
@@ -319,7 +356,9 @@ fn diagnostics(found: &[AttemptDiagnostic], options: &PromptOptions) -> String {
         .iter()
         .map(|d| {
             let mut line = format!("- {}", d.code);
-            if let Some(path) = &d.path {
+            if let Some(at) = &d.at {
+                line.push_str(&format!(" at line {}, column {}", at.line, at.column));
+            } else if let Some(path) = &d.path {
                 let path = if options.reply_format == ReplyFormat::Compact {
                     compact::compress_path(path)
                 } else {
@@ -328,6 +367,9 @@ fn diagnostics(found: &[AttemptDiagnostic], options: &PromptOptions) -> String {
                 line.push_str(&format!(" at {path}"));
             }
             line.push_str(&format!(": {}", d.message));
+            for quote in &d.quote {
+                line.push_str(&format!("\n  | {quote}"));
+            }
             if let Some(detail) = &d.detail {
                 line.push_str(&format!("\n  {detail}"));
             }

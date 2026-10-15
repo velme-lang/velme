@@ -1,0 +1,38 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "unwrap_or",
+    "of": {
+      "kind": "find",
+      "list": {
+        "kind": "input",
+        "name": "xs"
+      },
+      "fn": {
+        "param": "i",
+        "body": {
+          "kind": "binary",
+          "op": "gt",
+          "left": {
+            "kind": "local",
+            "name": "i"
+          },
+          "right": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 0
+          }
+        }
+      }
+    },
+    "default": {
+      "kind": "literal",
+      "type": {
+        "t": "Number"
+      },
+      "value": 0
+    }
+  }
+}

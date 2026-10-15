@@ -17,6 +17,7 @@ mod generate;
     feature = "provider-external"
 ))]
 mod http;
+pub mod notation;
 #[cfg(feature = "provider-ollama")]
 mod ollama;
 mod options;
@@ -54,8 +55,8 @@ pub use provider::{
 pub use record::Recorder;
 pub use replay::{Exchange, FixtureUsage, IDENTITY_FILE, Replay, ReplayIdentity, fixture_path, read_replay_identity};
 pub use request::{
-    AttemptDiagnostic, AttemptFeedback, Budget, BuiltinSig, CheckItem, Example, LocalBinding, Param, REQUEST_VERSION,
-    RecordType, Signature, SynthRequest, TaskKind, build_request, builtins, request_schema,
+    AttemptDiagnostic, AttemptFeedback, AttemptPlace, Budget, BuiltinSig, CheckItem, Example, LocalBinding, Param,
+    REQUEST_VERSION, RecordType, Signature, SynthRequest, TaskKind, build_request, builtins, request_schema,
 };
 pub use schema::{reply_schema, schema_summary};
 pub use scripted::{ScriptError, Scripted, Step};

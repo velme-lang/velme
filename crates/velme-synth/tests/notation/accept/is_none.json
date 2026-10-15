@@ -1,0 +1,18 @@
+{
+  "goal": "B",
+  "body": {
+    "kind": "binary",
+    "op": "eq",
+    "left": {
+      "kind": "input",
+      "name": "x"
+    },
+    "right": {
+      "kind": "literal",
+      "type": {
+        "t": "Nothing"
+      },
+      "value": null
+    }
+  }
+}

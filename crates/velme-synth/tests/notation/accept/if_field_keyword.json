@@ -1,0 +1,12 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "field",
+    "of": {
+      "kind": "input",
+      "name": "x"
+    },
+    "field": "if"
+  },
+  "reject_rule": "types-13"
+}

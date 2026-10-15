@@ -10,11 +10,13 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 velme-diagnostics = { path = "../crates/velme-diagnostics" }
 velme-syntax = { path = "../crates/velme-syntax" }
 velme-ir = { path = "../crates/velme-ir" }
 velme-runtime = { path = "../crates/velme-runtime" }
 velme-sema = { path = "../crates/velme-sema" }
+velme-synth = { path = "../crates/velme-synth", default-features = false }
 velme-test-support = { path = "../crates/velme-test-support" }
 velme-wasm = { path = "../crates/velme-wasm" }
 
@@ -38,6 +40,13 @@ bench = false
 [[bin]]
 name = "differential"
 path = "fuzz_targets/differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "notation"
+path = "fuzz_targets/notation.rs"
 test = false
 doc = false
 bench = false

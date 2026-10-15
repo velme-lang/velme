@@ -1,0 +1,7 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "input",
+    "name": "x"
+  }
+}

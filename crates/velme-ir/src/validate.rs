@@ -464,6 +464,7 @@ struct Validator<'a> {
     nodes: usize,
     too_deep: bool,
     too_nested: bool,
+    inference: Option<Inference>,
 }
 
 impl<'a> Validator<'a> {
@@ -489,6 +490,7 @@ impl<'a> Validator<'a> {
             nodes: 0,
             too_deep: false,
             too_nested: false,
+            inference: None,
         }
     }
 
@@ -939,15 +941,42 @@ impl<'a> Validator<'a> {
     }
 
     fn child(&mut self, segment: &str, node: &'a Node, depth: usize, nesting: usize) -> HirType {
+        self.expected_child(segment, node, depth, nesting, None)
+    }
+
+    fn expected_child(
+        &mut self,
+        segment: &str,
+        node: &'a Node,
+        depth: usize,
+        nesting: usize,
+        expected: Option<HirType>,
+    ) -> HirType {
+        let saved = self
+            .inference
+            .as_mut()
+            .and_then(|i| std::mem::replace(&mut i.expected, expected));
         self.path.push(segment.to_owned());
         let ty = self.expr(node, depth, nesting);
         self.path.pop();
+        if let Some(inference) = &mut self.inference {
+            inference.expected = saved;
+        }
         ty
+    }
+
+    fn expected(&self) -> Option<HirType> {
+        self.inference.as_ref().and_then(|i| i.expected.clone())
     }
 
     /// The type of `node` at nesting `depth` (the root is 1), inside `nesting` collection nodes (R-IR-14, R-IR-17).
     /// Each kind is its own method, so a debug build's stack frame per level stays small (R-IR-18).
     fn expr(&mut self, node: &'a Node, depth: usize, nesting: usize) -> HirType {
+        let key = std::ptr::from_ref(node) as usize;
+        if let Some(ty) = self.inference.as_ref().and_then(|i| i.types.get(&key)) {
+            return ty.clone();
+        }
+        let mark = self.findings.len();
         self.count(1);
         if depth > MAX_DEPTH && !self.too_deep {
             self.too_deep = true;
@@ -958,12 +987,12 @@ impl<'a> Validator<'a> {
             );
         }
         let inner = depth + 1;
-        match node {
+        let ty = match node {
             Node::Literal { ty, value } => self.literal(ty, value),
             Node::Input { name } => self.input(name),
             Node::Local { name } => self.local(name),
             Node::Record { ty, fields } => self.record(ty, fields, inner, nesting),
-            Node::List { of, items } => self.list(of, items, inner, nesting),
+            Node::List { of, items } => self.inferred_list(node, of, items, inner, nesting),
             Node::FieldGet { of, field } => self.field(of, field, inner, nesting),
             Node::BinaryOp { op, left, right } => self.binary(*op, left, right, inner, nesting),
             Node::UnaryOp { op, arg } => self.unary(*op, arg, inner, nesting),
@@ -1005,6 +1034,22 @@ impl<'a> Validator<'a> {
                 );
                 HirType::Error
             }
+        };
+        if let Some(inference) = &mut self.inference {
+            let ty = if self
+                .findings
+                .iter()
+                .skip(mark)
+                .any(|f| matches!(f.stage, Stage::Names | Stage::Types))
+            {
+                HirType::Error
+            } else {
+                ty
+            };
+            inference.types.insert(key, ty.clone());
+            ty
+        } else {
+            ty
         }
     }
 
@@ -1123,7 +1168,8 @@ impl<'a> Validator<'a> {
         };
         self.path.push("fields".to_owned());
         for (field, value) in fields {
-            let found = self.child(field, value, depth, nesting);
+            let expected = declared.and_then(|r| r.field(field)).map(|f| f.ty.clone());
+            let found = self.expected_child(field, value, depth, nesting, expected);
             let Some(record) = declared else { continue };
             match record.field(field) {
                 None => {
@@ -1161,6 +1207,77 @@ impl<'a> Validator<'a> {
         }
         self.path.pop();
         ty
+    }
+
+    fn inferred_list(&mut self, node: &Node, of: &Type, items: &'a [Node], depth: usize, nesting: usize) -> HirType {
+        if self.inference.is_none() {
+            return self.list(of, items, depth, nesting);
+        }
+        let expected = match self.expected() {
+            Some(HirType::List(of)) => Some(*of),
+            Some(HirType::Optional(inner)) => match *inner {
+                HirType::List(of) => Some(*of),
+                _ => None,
+            },
+            _ => None,
+        };
+        let element = if let Some(expected) = expected {
+            expected
+        } else if let Some(first) = items.first() {
+            self.path.push("items".to_owned());
+            let ty = self.child("0", first, depth, nesting);
+            self.path.pop();
+            if ty == HirType::Error { HirType::Nothing } else { ty }
+        } else {
+            let path = pointer(&self.path);
+            if let Some(inference) = &mut self.inference {
+                inference.untyped.push(path);
+            }
+            return HirType::Error;
+        };
+        let wire = ir_type(self.program, &element).unwrap_or(Type::Nothing {});
+        if let Some(inference) = &mut self.inference {
+            inference.lists.insert(std::ptr::from_ref(node) as usize, wire.clone());
+        }
+        self.path.push("items".to_owned());
+        for (i, item) in items.iter().enumerate() {
+            self.expected_child(&i.to_string(), item, depth, nesting, Some(element.clone()));
+        }
+        self.path.pop();
+        self.list(&wire, items, depth, nesting)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn siblings(
+        &mut self,
+        a_name: &str,
+        a: &'a Node,
+        b_name: &str,
+        b: &'a Node,
+        depth: usize,
+        nesting: usize,
+        expected: Option<HirType>,
+    ) -> (HirType, HirType) {
+        let reverse = matches!((a, b), (Node::List { items: a, .. }, Node::List { items: b, .. }) if a.is_empty() && !b.is_empty())
+            || (matches!(a, Node::List { .. }) && !matches!(b, Node::List { .. }));
+        let (first_name, first, second_name, second) = if reverse {
+            (b_name, b, a_name, a)
+        } else {
+            (a_name, a, b_name, b)
+        };
+        let first_ty = self.expected_child(first_name, first, depth, nesting, expected.clone());
+        let second_ty = self.expected_child(
+            second_name,
+            second,
+            depth,
+            nesting,
+            expected.or_else(|| (first_ty != HirType::Error).then(|| first_ty.clone())),
+        );
+        if reverse {
+            (second_ty, first_ty)
+        } else {
+            (first_ty, second_ty)
+        }
     }
 
     /// Each item assignable to `of` (R-TYP-13: lists are invariant, so the list's type is `List<of>`).
@@ -1231,8 +1348,14 @@ impl<'a> Validator<'a> {
 
     /// `compiler/21` §3 `binary`: equality needs one side assignable to the other (R-TYP-20, D-61).
     fn binary(&mut self, op: BinaryOperator, left: &'a Node, right: &'a Node, depth: usize, nesting: usize) -> HirType {
-        let l = self.child("left", left, depth, nesting);
-        let r = self.child("right", right, depth, nesting);
+        let (l, r) = if self.inference.is_some() && matches!(op, BinaryOperator::Eq | BinaryOperator::Ne) {
+            self.siblings("left", left, "right", right, depth, nesting, None)
+        } else {
+            (
+                self.child("left", left, depth, nesting),
+                self.child("right", right, depth, nesting),
+            )
+        };
         let (operand, result) = match op {
             BinaryOperator::Add | BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div => {
                 (HirType::Number, HirType::Number)
@@ -1304,7 +1427,7 @@ impl<'a> Validator<'a> {
             self.path.pop();
         }
         self.path.pop();
-        let ty = self.child("body", body, depth, nesting);
+        let ty = self.expected_child("body", body, depth, nesting, self.expected());
         self.scope.truncate(mark);
         ty
     }
@@ -1323,8 +1446,14 @@ impl<'a> Validator<'a> {
             let rule = format!("the condition of `if` must be a Boolean, not {}", self.name(&c));
             self.find_at(&["cond"], Stage::Types, "types-17", rule, None);
         }
-        let a = self.child("then", then, depth, nesting);
-        let b = self.child("else", otherwise, depth, nesting);
+        let (a, b) = if self.inference.is_some() {
+            self.siblings("then", then, "else", otherwise, depth, nesting, self.expected())
+        } else {
+            (
+                self.child("then", then, depth, nesting),
+                self.child("else", otherwise, depth, nesting),
+            )
+        };
         join(&a, &b).unwrap_or_else(|| {
             let rule = format!(
                 "the branches of `if` give {} and {}, which don't mix",
@@ -1339,7 +1468,11 @@ impl<'a> Validator<'a> {
     /// `of: T?` and `default: T` give `T` (R-IR-05).
     fn narrow(&mut self, of: &'a Node, default: &'a Node, depth: usize, nesting: usize) -> HirType {
         let found = self.child("of", of, depth, nesting);
-        let fallback = self.child("default", default, depth, nesting);
+        let expected = match &found {
+            HirType::Optional(of) => Some(*of.clone()),
+            _ => None,
+        };
+        let fallback = self.expected_child("default", default, depth, nesting, expected);
         let present = match found {
             HirType::Optional(inner) => *inner,
             HirType::Nothing => fallback.clone(),
@@ -1428,7 +1561,7 @@ impl<'a> Validator<'a> {
         nesting: usize,
     ) -> HirType {
         let (element, nesting) = self.list_of(node, list, depth, nesting);
-        let acc = self.child("init", init, depth, nesting);
+        let acc = self.expected_child("init", init, depth, nesting, self.expected());
         self.path.push("fn".to_owned());
         let mark = self.scope.len();
         self.path.push("acc".to_owned());
@@ -1478,7 +1611,13 @@ impl<'a> Validator<'a> {
         let found: Vec<HirType> = args
             .iter()
             .enumerate()
-            .map(|(i, arg)| self.child(&i.to_string(), arg, depth, nesting))
+            .map(|(i, arg)| {
+                let expected = self
+                    .inference
+                    .as_ref()
+                    .and_then(|_| fixed_parameter(name, args.len(), i));
+                self.expected_child(&i.to_string(), arg, depth, nesting, expected)
+            })
             .collect();
         self.path.pop();
         let Some(builtin) = Builtin::find(name).filter(|b| b.in_ir) else {
@@ -1512,6 +1651,227 @@ impl<'a> Validator<'a> {
         self.find(Stage::Types, "types-26", rule);
         HirType::Error
     }
+}
+
+#[derive(Default)]
+struct Inference {
+    expected: Option<HirType>,
+    types: BTreeMap<usize, HirType>,
+    lists: BTreeMap<usize, Type>,
+    untyped: Vec<String>,
+    #[cfg(test)]
+    visits: usize,
+}
+
+/// Sets list element types with the validator's per-kind typing; returns only untyped-list pointers (R-SYNTH-58).
+pub fn infer_list_types(body: &mut Node, request: &Request<'_>) -> Vec<String> {
+    let inference = infer_types(body, request);
+    set_list_types(body, &inference.lists);
+    // The traversal may visit a typed sibling first; the public findings are in IR pre-order.
+    let order = list_pointers(body);
+    let untyped: std::collections::BTreeSet<_> = inference.untyped.into_iter().collect();
+    order.into_iter().filter(|p| untyped.contains(p)).collect()
+}
+
+fn infer_types(body: &Node, request: &Request<'_>) -> Inference {
+    let Some(target) = request.program.goals.get(request.goal.0) else {
+        return Inference::default();
+    };
+    let holder = Goal {
+        ir_version: IR_VERSION.to_owned(),
+        builtins_version: BUILTINS_VERSION.to_owned(),
+        goal: target.name.clone(),
+        types: BTreeMap::new(),
+        inputs: Vec::new(),
+        output: Type::Nothing {},
+        calls: Vec::new(),
+        body: Node::Local { name: String::new() },
+    };
+    {
+        let mut validator = Validator::new(
+            request.program,
+            target,
+            &holder,
+            request.calls,
+            request.origin,
+            Vec::new(),
+        );
+        validator.compiler_names = true;
+        for binding in &target.bindings {
+            validator.scope.push((&binding.name, binding.ty.clone()));
+        }
+        validator.inference = Some(Inference {
+            expected: Some(target.output.clone()),
+            ..Inference::default()
+        });
+        validator.path.push("body".to_owned());
+        validator.expr(body, 1, 0);
+        let inference = validator.inference.unwrap_or_default();
+        #[cfg(test)]
+        let inference = Inference {
+            visits: validator.nodes,
+            ..inference
+        };
+        inference
+    }
+}
+
+fn set_list_types(node: &mut Node, lists: &BTreeMap<usize, Type>) {
+    let inferred = lists.get(&(std::ptr::from_ref(node) as usize)).cloned();
+    match node {
+        Node::List { of, items } => {
+            if let Some(ty) = inferred {
+                *of = ty;
+            }
+            for item in items {
+                set_list_types(item, lists);
+            }
+        }
+        Node::Record { fields, .. } => {
+            for value in fields.values_mut() {
+                set_list_types(value, lists);
+            }
+        }
+        Node::FieldGet { of, .. } | Node::Narrow { of, .. } => {
+            set_list_types(of, lists);
+            if let Node::Narrow { default, .. } = node {
+                set_list_types(default, lists);
+            }
+        }
+        Node::BinaryOp { left, right, .. } => {
+            set_list_types(left, lists);
+            set_list_types(right, lists);
+        }
+        Node::UnaryOp { arg, .. } => set_list_types(arg, lists),
+        Node::Let { bind, body } => {
+            for (_, value) in bind {
+                set_list_types(value, lists);
+            }
+            set_list_types(body, lists);
+        }
+        Node::Condition { cond, then, otherwise } => {
+            set_list_types(cond, lists);
+            set_list_types(then, lists);
+            set_list_types(otherwise, lists);
+        }
+        Node::Map { list, func, .. }
+        | Node::Filter { list, func }
+        | Node::Find { list, func }
+        | Node::All { list, func }
+        | Node::Any { list, func }
+        | Node::Sort { list, key: func, .. } => {
+            set_list_types(list, lists);
+            set_list_types(&mut func.body, lists);
+        }
+        Node::Reduce { list, init, func } => {
+            set_list_types(list, lists);
+            set_list_types(init, lists);
+            set_list_types(&mut func.body, lists);
+        }
+        Node::Builtin { args, .. } => {
+            for arg in args {
+                set_list_types(arg, lists);
+            }
+        }
+        Node::Call(call) => {
+            for arg in &mut call.args {
+                set_list_types(arg, lists);
+            }
+        }
+        Node::Literal { .. } | Node::Input { .. } | Node::Local { .. } => {}
+    }
+}
+
+fn list_pointers(body: &Node) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![("/body".to_owned(), body)];
+    while let Some((path, node)) = stack.pop() {
+        let mut children = Vec::new();
+        match node {
+            Node::List { items, .. } => {
+                out.push(path.clone());
+                for (i, item) in items.iter().enumerate() {
+                    children.push((format!("{path}/items/{i}"), item));
+                }
+            }
+            Node::Record { fields, .. } => {
+                for (name, value) in fields {
+                    children.push((
+                        format!("{path}/fields/{}", name.replace('~', "~0").replace('/', "~1")),
+                        value,
+                    ));
+                }
+            }
+            Node::FieldGet { of, .. } => children.push((format!("{path}/of"), &**of)),
+            Node::BinaryOp { left, right, .. } => {
+                children.push((format!("{path}/left"), &**left));
+                children.push((format!("{path}/right"), &**right));
+            }
+            Node::UnaryOp { arg, .. } => children.push((format!("{path}/arg"), &**arg)),
+            Node::Let { bind, body } => {
+                for (i, (_, v)) in bind.iter().enumerate() {
+                    children.push((format!("{path}/bind/{i}/1"), v));
+                }
+                children.push((format!("{path}/body"), &**body));
+            }
+            Node::Condition { cond, then, otherwise } => {
+                children.push((format!("{path}/cond"), &**cond));
+                children.push((format!("{path}/then"), &**then));
+                children.push((format!("{path}/else"), &**otherwise));
+            }
+            Node::Narrow { of, default } => {
+                children.push((format!("{path}/of"), &**of));
+                children.push((format!("{path}/default"), &**default));
+            }
+            Node::Map { list, func, .. }
+            | Node::Filter { list, func }
+            | Node::Find { list, func }
+            | Node::All { list, func }
+            | Node::Any { list, func }
+            | Node::Sort { list, key: func, .. } => {
+                children.push((format!("{path}/list"), &**list));
+                children.push((
+                    format!(
+                        "{path}/{}/body",
+                        if matches!(node, Node::Sort { .. }) { "key" } else { "fn" }
+                    ),
+                    &*func.body,
+                ));
+            }
+            Node::Reduce { list, init, func } => {
+                children.push((format!("{path}/list"), &**list));
+                children.push((format!("{path}/init"), &**init));
+                children.push((format!("{path}/fn/body"), &*func.body));
+            }
+            Node::Builtin { args, .. } => {
+                for (i, arg) in args.iter().enumerate() {
+                    children.push((format!("{path}/args/{i}"), arg));
+                }
+            }
+            Node::Call(_) | Node::Literal { .. } | Node::Input { .. } | Node::Local { .. } => {}
+        }
+        stack.extend(children.into_iter().rev());
+    }
+    out
+}
+
+fn fixed_parameter(name: &str, arity: usize, index: usize) -> Option<HirType> {
+    fn fixed(shape: &Shape) -> Option<HirType> {
+        match shape {
+            Shape::Number => Some(HirType::Number),
+            Shape::Text => Some(HirType::Text),
+            Shape::Boolean => Some(HirType::Boolean),
+            Shape::List(of) => Some(HirType::List(Box::new(fixed(of)?))),
+            Shape::Optional(of) => Some(optional(fixed(of)?)),
+            Shape::T | Shape::U | Shape::Lambda(..) => None,
+        }
+    }
+    let builtin = Builtin::find(name)?;
+    let mut signatures = builtin.signatures.iter().filter(|s| s.params.len() == arity);
+    let first = fixed(signatures.next()?.params.get(index)?)?;
+    signatures
+        .all(|s| s.params.get(index).and_then(fixed).as_ref() == Some(&first))
+        .then_some(first)
 }
 
 /// The record types in `ty`, each once, in the order first met.
@@ -1568,6 +1928,34 @@ fn major_minor(version: &str) -> Option<(u64, u64)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ac_synth_59_ten_thousand_nodes_are_typed_once() {
+        let source = "language: velme/0.1\n\ngoal G() -> List<Number>:\n    plan: \"Return numbers.\"\n";
+        let (program, diagnostics) = velme_sema::analyze(&velme_sema::SourceFile::new("test.velme", source));
+        assert!(diagnostics.is_empty());
+        let program = program.expect("program");
+        let items = (0..9_999)
+            .map(|_| super::Node::Literal {
+                ty: super::Type::Number {},
+                value: serde_json::json!(1).into(),
+            })
+            .collect();
+        let body = super::Node::List {
+            of: super::Type::Text {},
+            items,
+        };
+        let request = super::Request {
+            program: &program,
+            goal: velme_sema::hir::GoalId(0),
+            calls: &[],
+            origin: super::Origin::Candidate,
+        };
+        let inference = super::infer_types(&body, &request);
+        assert_eq!(inference.types.len(), 10_000);
+        assert_eq!(inference.visits, 10_000);
+        assert!(inference.untyped.is_empty());
+    }
+
     use super::readable;
 
     /// R-IR-22, D-85: a validator reads its own compatibility unit — `MAJOR`, or `MAJOR.MINOR` while `MAJOR` is 0 — at

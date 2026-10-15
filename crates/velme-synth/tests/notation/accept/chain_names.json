@@ -1,0 +1,64 @@
+{
+  "goal": "B",
+  "body": {
+    "kind": "binary",
+    "op": "and",
+    "left": {
+      "kind": "binary",
+      "op": "eq",
+      "left": {
+        "kind": "literal",
+        "type": {
+          "t": "Boolean"
+        },
+        "value": true
+      },
+      "right": {
+        "kind": "any",
+        "list": {
+          "kind": "input",
+          "name": "xs"
+        },
+        "fn": {
+          "param": "__v0",
+          "body": {
+            "kind": "local",
+            "name": "__v0"
+          }
+        }
+      }
+    },
+    "right": {
+      "kind": "binary",
+      "op": "eq",
+      "left": {
+        "kind": "any",
+        "list": {
+          "kind": "input",
+          "name": "xs"
+        },
+        "fn": {
+          "param": "__v0",
+          "body": {
+            "kind": "local",
+            "name": "__v0"
+          }
+        }
+      },
+      "right": {
+        "kind": "any",
+        "list": {
+          "kind": "input",
+          "name": "ys"
+        },
+        "fn": {
+          "param": "__v1",
+          "body": {
+            "kind": "local",
+            "name": "__v1"
+          }
+        }
+      }
+    }
+  }
+}

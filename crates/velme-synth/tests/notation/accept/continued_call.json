@@ -1,0 +1,13 @@
+{
+  "goal": "N",
+  "body": {
+    "kind": "builtin",
+    "name": "floor",
+    "args": [
+      {
+        "kind": "input",
+        "name": "x"
+      }
+    ]
+  }
+}

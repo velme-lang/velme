@@ -1,0 +1,13 @@
+{
+  "goal": "R",
+  "body": {
+    "kind": "record",
+    "type": "T",
+    "fields": {
+      "from": {
+        "kind": "input",
+        "name": "x"
+      }
+    }
+  }
+}

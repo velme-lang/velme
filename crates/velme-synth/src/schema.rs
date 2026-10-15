@@ -84,6 +84,9 @@ pub fn reply_schema() -> Value {
 pub(crate) fn reply_schema_for(format: ReplyFormat) -> Value {
     match format {
         ReplyFormat::IrJson => reply_schema(),
+        ReplyFormat::Notation => {
+            json!({"anyOf": [{"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, question_schema()]})
+        }
         ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
     }
 }

@@ -1083,6 +1083,8 @@ fn r_synth_11_feedback_of_a_reply_less_attempt_is_rendered() {
         message: marker.to_owned(),
         path: None,
         detail: None,
+        at: None,
+        quote: Vec::new(),
     };
     let attempt = |reply: &str, marker: &str| AttemptFeedback {
         reply: reply.to_owned(),
