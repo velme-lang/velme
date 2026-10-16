@@ -36,7 +36,7 @@ async-trait = "0.1"
 ariadne = { version = "0.6", default-features = false }
 # Every fingerprint and artifact address is BLAKE3 over canonical JSON (D-21, `runtime/32` §2).
 blake3 = "1"
-chumsky = { version = "0.12", default-features = false, features = ["std"] }
+chumsky = { version = "0.13", default-features = false, features = ["std"] }
 # Benchmarks in each crate's `benches/`, report-only and never in PR CI (`delivery/51` §2, D-130); no plotting or rayon.
 criterion = { version = "0.8", default-features = false }
 insta = { version = "1", features = ["glob", "json"] }
@@ -57,8 +57,8 @@ tokio = { version = "1", default-features = false, features = ["rt"] }
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 # The bundled CA roots as certificates, so `external_ca_file` can be added to them (D-105); the same list ureq trusts.
 webpki-root-certs = "1.0.9"
-wasm-encoder = { version = "0.258", default-features = false, features = ["std"] }
-wasmparser = { version = "0.258", default-features = false, features = ["std", "validate", "features"] }
+wasm-encoder = { version = "0.261", default-features = false, features = ["std"] }
+wasmparser = { version = "0.261", default-features = false, features = ["std", "validate", "features"] }
 # The sandbox (`runtime/31` §6, D-116): the runtime and Cranelift only, on the `wasmparser` line above. No WASI, cache,
 # async, component model or profiling.
 wasmtime = { version = "49", default-features = false, features = ["runtime", "cranelift", "std"] }
