@@ -55,6 +55,12 @@ a size limit), then the remaining fuel (`VL0601`) (D-88). Within the computing s
 result is allocated, so `VL0606` wins over `VL0604`, and `VL0602`, raised while computing, wins over both. A builtin whose cost follows from its arguments' sizes (`length`
 of a text, `concat`, `range`) checks its result's bytes and then its fuel before the work, so it never computes or
 allocates what it can't pay for; the outcome is the same.
+The additional membership traversal cost is part of this same cost model (R-RUN-27):
+
+| Named cost | Fuel | Charged before |
+|---|---|---|
+| `DOMAIN_VISIT_FUEL` | 1 | each visited type/value pair, including domain/base and container wrappers |
+
 **R-RUN-05** No I/O, clock, randomness or global state is reachable from the interpreter (INV-4); `random` is a pure
 builtin of its arguments (D-22).
 **R-RUN-25** Validated IR never fails for lack of stack, on any backend: its recursion is statically bounded.
@@ -77,13 +83,15 @@ M7 WASM backend (31 §3) must size their stacks for max(T, 512) + 5 000 value le
 ```
 run(goal, input)
   1  look up artifact via lock → load + validate (32)          fail → Unavailable / ValidationFailed
-  2  validate input against the signature (D-23)               fail → VL0902
+  2  decode/validate input (requested goal or verification entry only), including deep domain membership; debit invocation fuel (D-23, R-RUN-28)
+                                                             fail → VL0902 (budget errors retain their code)
   3  build waves from `calls` args (R-IR-10)
   4  for each wave: run all its bindings concurrently (each = recursive run of the child)
   5  collect results in source order; on failure apply D-9
   6  evaluate the tail `body` with inputs + bindings as locals
-  7  run checks on (inputs, bindings, result)                  fail → VL0501
-  8  enforce output size; return value + trace
+  7  validate output domain membership, deeply              fail → VL0504
+  8  run checks on (inputs, bindings, result)                  fail → VL0501
+  9  enforce output size; return value + trace
 ```
 
 **R-RUN-06** Waves are computed statically: a binding's wave is 1 + the max wave of the bindings its args reference
@@ -101,12 +109,53 @@ Worked example (12 §8.4) — `CreateLevelSummary`:
 | 2 | `difficulty = EstimateDifficulty(enemies)`, `reward = CalculateReward(treasures, score)` |
 | tail | `CreateLevelSummary` body over all five bindings |
 
+**R-RUN-26** Each goal whose output type contains a reachable domain validates its output before its own `check:` assertions,
+including wired/composite goals and every child invocation. Walk the value depth-first in record declaration order
+and List index order; visit through `?` only when non-`nothing`. Precomputed type reachability skips branches
+containing no domain; a wholly domain-free input/output pays no membership fuel. At a Domain, check membership of the complete
+base-valued value, then visit its base structure for nested domains. A record domain's condition may relate fields.
+Use R-CHK-15's full source condition, evaluated from validated HIR by `velme-check`'s reference evaluator, also when
+the body backend is WASM. Closed sets compare exact Text values without normalization. False or a value error is
+`VL0504`, naming the goal, domain and first failing path (`result`, `.field`, `[index]`), with the condition/value-error
+cause. No own checks run after this failure; child failures propagate under R-RUN-09–10. Fuel, memory and timeout
+failures retain their budget code rather than becoming non-membership.
+
+**R-RUN-27** The membership walk lives in `velme-check` and is called only by `velme-runtime` around each
+backend invocation, including the reference runner used for verification. It is not a WASM host import;
+`velme-wasm` and `velme-interp` do not depend on `velme-check` (INV-9, R-CMP-01). The runtime passes the remaining
+invocation fuel after input validation to the body: for WASM this is its initial `velme_fuel_left`, and for the
+interpreter the equivalent remaining meter. Output validation starts with the fuel left reported by that backend;
+it never resets to the original budget. Own checks then use the invocation's remaining fuel (R-CHK-08).
+
+Debit `DOMAIN_VISIT_FUEL` (R-RUN-04) before each visited type/value pair, including the Domain wrapper, its base,
+visited record fields, list items and optional wrapper. A Domain always includes its base visit, even for a scalar;
+`nothing` has no child visit. Repeated paths to a shared immutable value each pay. At a Domain evaluate one predicate:
+closed-set membership scans the immutable declaration's members without constructing/allocating a List, using
+`contains`'s catalog fuel (1 plus each scanned equality's cost, including Text blocks), stopping at the match or
+exhaustion. There are no synthetic list/literal-node charges or per-validation membership allocations.
+A `where` uses the complete source expression once in source evaluation order, including simple bounds;
+`value is whole` lowers per R-CHK-13. Charge expression nodes, builtins, comparisons and Text work by R-RUN-04 and
+`language/14`; do not charge extracted bounds again. Predicate allocations count against the same invocation memory
+limit on both body backends, with the same size/error ordering. Debit before work and stop at exhaustion with
+`VL0601`. Runtime orchestration invokes the same walk/evaluator around interpreter and WASM bodies, yielding equal
+failure paths, fuel and allocation accounting; WASM's base representation does not erase contracts.
+
+**R-RUN-28** After base JSON decoding and before executing a requested goal, apply the same deep membership walk
+to its inputs. A non-member is `VL0902 InvalidInput`, with parameter/field/index path, domain and cause; the CLI
+exits 64 and executes no goal body. A condition's value error is a non-member; budget failure retains its code.
+Input validation and output validation share that invocation's fuel budget with the body (R-RUN-27). Verification
+and examples enter through the same runtime input walk, debit the same fuel, and include those debits in
+`max_fuel_observed`, so that value predicts `run`. A generated/example input failing membership indicates a Velme
+bug (`VL0607`), not user JSON `VL0902` or an ordinary non-member counterexample; predicate budget errors still keep
+their codes. The runtime calls this walk only at the requested JSON or verification/example entry, not again for
+statically typed inter-goal arguments; every producer's output is checked as above.
+
 ## 5. Failure semantics
 
 | Outcome | Meaning | Codes |
 |---|---|---|
 | `Success(value)` | body and checks passed | — |
-| `Failure(error)` | the goal ran and failed | `VL0501`, `VL0602`, `VL0902`, `VL0607` |
+| `Failure(error)` | the goal ran and failed | `VL0501`, `VL0504`, `VL0602`, `VL0902`, `VL0607` |
 | `BudgetExceeded` | a deterministic limit was hit | `VL0601` fuel, `VL0604` memory, `VL0605` calls, `VL0606` size |
 | `Timeout` | wall-clock watchdog fired — **non-reproducible** (D-10) | `VL0603` |
 | `ValidationFailed` | a loaded artifact failed re-validation or its hash | `VL0402`, `VL0703` |
@@ -228,3 +277,8 @@ single "At the same time:" group, not "First … At the same time …".
 | AC-RUN-10 | `velme explain` output for `BuildPlayerSummary` and `CreateLevelSummary` matches the golden text; no provider is constructed. |
 | AC-RUN-11 | A wall-clock timeout produces `VL0603` with `reproducible: false` in the trace and no artifact or cache write. |
 | AC-RUN-12 | With an injected fake clock, a run is stopped with `VL0603` (`reproducible: false`) only once the clock passes 60 s; a run of 128 invocations each using its full `max_fuel` under a clock advancing at `FUEL_PER_MS` completes without `VL0603` (D-51). |
+| AC-RUN-13 | Every leaf, wired and composite output is checked before its own checks; invalid nested record fields, list items and present optionals produce `VL0504` with the first path, while `nothing` passes an optional domain (R-RUN-26). Tested by D4. |
+| AC-RUN-14 | Closed sets, Number bounds/whole, Text scalar length and residual cross-field predicates reject invalid outputs; a value-error condition is non-membership, a failed child propagates, and no own check runs afterward (R-RUN-26). Tested by D4. |
+| AC-RUN-15 | Domain-free values have no membership overhead; exact fuel debits use `DOMAIN_VISIT_FUEL`, repeated paths and predicate/Text costs. Closed-set lookup allocates no per-check List; predicate allocations count identically on both backends. Exhaustion at an injected debit is `VL0601`; values, paths, fuel and memory failures agree (R-RUN-27). Tested by D4. |
+| AC-RUN-16 | Deep invalid JSON domains produce `VL0902` before body execution, including predicate value errors; valid inputs/optional `nothing` pass. Verification/examples use the identical fuel-charging entry walk, but invalid generated/example input membership is `VL0607`; budget errors retain their codes (R-RUN-28). Tested by D4. |
+| AC-RUN-17 | A body receives only fuel left after input validation; output validation uses the backend-reported remainder. Verification/examples and run agree on `max_fuel_observed`, exhaustion debit and diagnostics for interpreter/WASM bodies; neither backend imports/depends on `velme-check` (R-RUN-27–28). Tested by D4. |

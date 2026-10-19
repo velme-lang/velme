@@ -54,7 +54,8 @@ pub trait SynthProvider: Send + Sync {
 
 pub struct SynthRequest { pub request_version: String, pub ir_version: String, pub builtins_version: String,
                           pub task: TaskKind, pub goal: String,
-                          pub signature: Signature, pub types: Vec<RecordType>, pub locals: Vec<LocalBinding>,
+                          pub signature: Signature, pub types: Vec<RecordType>,
+                          pub domain_declarations: Vec<String>, pub locals: Vec<LocalBinding>,
                           pub plan: String, pub checks: Vec<CheckItem>, pub examples: Vec<Example>,
                           pub budget: Budget, pub builtins: Vec<BuiltinSig>,
                           pub attempts: Vec<AttemptFeedback>,                // earlier replies + diagnostics (§5)
@@ -172,18 +173,18 @@ committed `velme-synth-request` JSON Schema, generated from the Rust types like 
 
 | Endpoint | Velme sends | Backend replies |
 |---|---|---|
-| `GET /v1/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}`, and optionally `"reply_formats": ["<name>", ...]` (R-SYNTH-26) |
-| `POST /v1/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"body": <expression>}` (`{"bo": ...}` in `compact`, R-SYNTH-36), `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
+| `GET /v2/describe` | no body | `{"backend": "<name>", "backend_version": "<version>"}`, and optionally `"reply_formats": ["<name>", ...]` (R-SYNTH-26) |
+| `POST /v2/synthesize` | the canonical `SynthRequest` as the body (`Content-Type: application/json`) | `{"body": <expression>}` (`{"bo": ...}` in `compact`, R-SYNTH-36), `{"question": "<text>"}`, `{"pending": "<text>"}` or `{"error": "<reason>"}` |
 
 When `reply_format` (R-SYNTH-36) is not `ir-json`, the request holds one more member, `"reply_format": "<name>"`, and the backend
 answers in that format (the `body` key spelled as the format spells it); with `ir-json` the member is left out, so the
 request is the same bytes as without the option (D-156). `output_schema` is that format's reply schema, so a `compact`
 request does not carry the IR schema: its body is the object under the alias of `body`, or a question. Within
-`request_version` `0.1` Velme adds only optional members, absent by default and sent only to a backend that advertises
+`request_version` `0.2` Velme adds only optional members, absent by default and sent only to a backend that advertises
 support for them (`reply_formats` is how a backend does it for `reply_format`), so a backend written against the first
-`0.1` keeps working (D-156). The endpoints are relative to the base URL, so a service may live under a path prefix. A service may add fields to its
-replies (unknown keys are ignored, as in `describe`); a change that isn't compatible with this protocol goes to `/v2`. `SynthRequest` carries its own
-`request_version` (`"0.1"`); the `/v1/` prefix versions the endpoints.
+`0.2` keeps working. The endpoints are relative to the base URL, so a service may live under a path prefix. A service may add fields to its
+replies (unknown keys are ignored, as in `describe`); a change that isn't compatible with this protocol goes to the next endpoint major version. `SynthRequest` carries its own
+`request_version` (`"0.2"`); the `/v2/` prefix versions the endpoints.
 
 **R-SYNTH-26** `describe` runs once, on the first lock miss in a build (D-57), and is skipped entirely for a fully
 cached build; its `reply_formats`, when present, is a list of reply-format names (R-SYNTH-36) the backend answers in, and
@@ -259,7 +260,7 @@ sends the same fields as structured JSON.
 | Rules and worked example | in the reply's format (the `compact` aliases when asked, R-SYNTH-36; in `notation`, the §4.2 forms in place of nodes): one line each: an input is read with an `input` node, a record's field with a `field` node and never a dotted name, `local` only for a lambda's parameter or a call result; checks and examples describe the result and are never the body, and `result` is not a name the body can read. Arithmetic and comparison are `binary` ops and never builtins, and the `unary` ops are listed too (both from the IR schema). Then three fixed worked examples, for a made-up goal that no example of the repository uses, each a valid body and together showing a `builtin` call, a top-level `binary` node and a lambda's `local` (D-104) | template |
 | Allowed builtins | name + signature of each catalog entry | `velme-builtins` |
 | Goal | task kind (`leaf` / `composite-tail`) and signature `Name(params) -> Output` | HIR |
-| Types | every reachable record type with fields | HIR |
+| Types | every reachable record type with fields and every full domain declaration, using declaration source text with comments stripped (as Checks, D-104); render a record domain once in declaration form | HIR/source spans |
 | Locals | composite only: each call binding `name: Type = Child(args)` — child **signatures** only, never child IR | HIR (D-5, D-11) |
 | Plan | normalized plan text (D-21), fenced and labelled as untrusted user description (§9) | HIR |
 | Checks | the source text of each check, and nothing else: its lowered form reads like a body and models copy it (D-104). The `SynthRequest` still carries the lowered form for `external` (§3.2) | HIR |
@@ -278,13 +279,34 @@ question object `{"question": "<text>"}` (R-SYNTH-32). In `compact` the body is 
 alias (R-SYNTH-36); in `notation` it is `{"body": "<notation>"}`, a string that §4.2 lowers to one expression node
 before anything below applies. Only `body` is read from it, and Velme writes the rest of the
 IR goal itself from the request: `ir_version` and `builtins_version` (§3.1), `goal`, `inputs` and `output` from the
-signature, and `types` from the request's `types`, which are exactly the record types R-IR-01 reaches (`compiler/21`
+signature, `domains` from the compiler's domain table (R-IR-24), and `types` from the request's `types`, which are exactly the record types R-IR-01 reaches (`compiler/21`
 D-84); `calls` is left out and the compiler's are joined in (R-IR-02). The assembled goal then passes the full validator
 (`compiler/21` §6), so every rule that judges a body still judges it, and no reply can differ from its goal's signature
 (D-103). Any prose, markdown fence, partial JSON, a reply with no `body`, one holding both a `body` and a `question`
 (neither wins) or another shape is a failed attempt with `VL0401`, as is a number in the `body` that canonical JSON can't hold, or in `notation` a `body` that is not a string; a `body` that is not an expression, or repeats a key, fails at validation stage 1, at a JSON path under `/body`. The reply schema and
 the summary of R-SYNTH-35 leave out the `call` node, which only the compiler's `calls` may hold (a body reads a call's
 result as a `local`).
+
+**R-SYNTH-60** The Types section uses each declaration's source text with comments stripped (D-104), not an
+unwritten canonical-source printer. Render each reachable record domain once, in declaration form, not again as
+an underlying record. It includes all
+closed-set members, bounds, `is whole`, Text length and residual conditions; a record domain includes its fields and
+condition. It must not show only the base or only the extracted constraints. A typical declaration costs about
+20–25 tokens (about 30–130 per goal); these tokens are uncached prompt input, repeated on every retry, and enter
+each request's token estimate. Only when a goal reaches a domain add the prompt rule line:
+"declared types are their base in the body".
+The model writes base-valued expressions, never Domain type references or a `domains` table. Compiler assembly and
+validation apply R-IR-24–25 equally to JSON, compact and notation replies.
+
+**R-SYNTH-61** The external request is version `0.2`, at `/v2/describe` and `/v2/synthesize` under the existing
+incompatible-protocol rule (§3.2). Its required `domain_declarations` is an array of those full source declarations
+in type-name order (empty when none), alongside the existing record `types`; the committed request schema includes
+it. Use the declaration source text with comments stripped, including record domains only once in declaration
+form, just as in the prompt (R-SYNTH-60); signature hashing still uses normalized HIR (R-ART-26).
+`ir_version` and `builtins_version` are `0.2`. The external `input_version` is `0.2` for `ir-json`,
+`0.2+reply_format=notation@1` for the current notation grammar, and R-SYNTH-40's suffix for other formats.
+Old `/v1` backends are not silently used; normal external-backend errors and timeouts still apply. LLM
+`input_version` changes with the new Types text and schema through R-SYNTH-40.
 
 ### 4.1 Token cost (D-44)
 
@@ -519,7 +541,8 @@ empty `[]` with no expected type is rejected (`notation-11`), never given a gues
 **R-SYNTH-58** List typing helper. R-SYNTH-53's types come from one function of `velme-ir`'s validator,
 `infer_list_types`, which types nodes with stage 4's own per-kind rules, the same functions the validator calls (one
 implementation, not a fork of it; D-157). It takes the lowered body and the validator's request (`compiler/21` §6),
-sets the `of` of every `list` node by the table below (whatever lowering put there), and returns the JSON pointer of
+sets the `of` of every `list` node by the table below (whatever lowering put there), recursively erasing Domain
+from the written body annotation while preserving the outer expected type for R-IR-25's compatibility/literal pass, and returns the JSON pointer of
 every `list` it can give no type. It reports nothing else: an unknown name or a type error makes a type unknown and is
 left to the validator. Lowering reports the pointer whose node's span starts first, ties going to the node met first
 in a pre-order walk of the lowered tree, as `notation-11`.
@@ -539,7 +562,8 @@ Each node is typed once, in an order the tree fixes. A sibling whose type a list
 `list` nodes (the two branches of an `if` with no type of its own, the two sides of `eq` or `ne`), a non-empty one is
 typed first and the other takes its type; when both or neither are empty, `then` goes before `else` and `left` before
 `right`. A list is typed before its items, except one with no expected list type, which types its first item, takes
-its type and gives that `of` to the other items. An expected `List<T>` or `List<T>?` gives `of` `T`. When the first
+its type and gives that `of` to the other items. An expected `List<T>` or `List<T>?` gives `of` `base(T)` (recursively erasing Domain in the body annotation);
+compatibility and expected literal checks still use the unerased expected `T`. When the first
 item's type is unknown, `of` is `Nothing` and the validator reports the item's fault; an empty list with no expected
 type has no type. Its time is linear in the nodes.
 
@@ -581,7 +605,7 @@ tables or the type rules lowering consults (R-SYNTH-58) that can change the IR o
 (D-93, D-97). It is a decimal integer, `1` for the rules of this section, bumped by one. An LLM provider's options
 hash (R-SYNTH-40) gains, in `notation` only, the members `"notation_grammar": "<version>"` and `"notation_prompt":
 "<hex>"`, the BLAKE3 of `notation.txt`'s bytes as lowercase hex (R-SYNTH-56), so other formats keep their keys and an
-edit to `notation.txt` re-keys only `notation` builds; an `external` backend's `input_version` is `0.1+reply_format=notation@1`. After lowering, a body takes the
+edit to `notation.txt` re-keys only `notation` builds; an `external` backend's `input_version` is `0.2+reply_format=notation@1`. After lowering, a body takes the
 `ir-json` path unchanged: the canonical-number check (`bad-number`), assembly (R-SYNTH-10) and the validator. The fuzz
 target is `notation` (`fuzz/fuzz_targets/notation.rs`, in CI's `FUZZ_TARGETS`, AC-QA-06; the fuzz crate depends on
 `velme-synth` with `default-features = false`): any input that is UTF-8 (other input is skipped, since a body is a JSON
@@ -619,7 +643,7 @@ In the next request (§3.1), the diagnostic of a notation rejection, and of a va
 `at` (`{"line": L, "column": C}`, both integers of at least 1, no other members) and `quote` (the body lines its span
 covers, at most 3, each cut to 160 Unicode scalar values; in the request schema `maxItems` 3 and `maxLength` 160), and
 no `path`; a finding with no place keeps its `path`. Both members are optional and absent outside `notation`, so other
-requests keep their bytes (D-156's rule for `request_version` `0.1`). Only the latest attempt's diagnostics carry them:
+requests keep their bytes (D-156's rule for `request_version` `0.2`). Only the latest attempt's diagnostics carry them:
 the primary diagnostics `retry_history = "latest"` carries from earlier attempts (R-SYNTH-37) keep neither `at` nor
 `quote`, since their bodies are not resent, nor a `path` they didn't have. The retry turn renders a diagnostic with
 `at` as `- VL0401 at line 3, column 9: <message>`, then each quoted line as `  | <line>`, then the detail with the
@@ -768,8 +792,10 @@ A candidate becomes an artifact only after every step passes, in order:
 | Step | Check | Failure |
 |---|---|---|
 | 1–7 | IR validation stages (21 §6): schema, structure, names, types, capabilities, call graph, resources | `VL0401`/`VL0402`/`VL0801` |
-| 8a | every `examples:` item runs on the interpreter and matches (D-7) | `VL0502` |
-| 8b | every generated input (§7) executes within budget | `VL06xx` |
+| 8a | every example/generated input passes the runtime's fuel-charging input membership walk (R-RUN-28) | `VL0607` for non-membership; budget codes retained |
+| 8b | every example/generated input executes within budget through `ChildRunner` | `VL06xx` |
+| 8c | each goal output passes deep domain membership before any checks/example comparison (R-RUN-26) | `VL0504`, wrapped as `VL0503` by R-SYNTH-15 |
+| 8d | every `examples:` item matches (D-7) | `VL0502` |
 | 9 | all `check`s hold for every example and generated input | `VL0501` |
 
 **R-SYNTH-14** Verification executes on the reference interpreter with the goal's effective budget, through the
@@ -845,7 +871,8 @@ SplitMix64 stream with seed `s` has as its `j`-th output (`j` ≥ 1) `mix(s + j 
 wrapping mod 2⁶⁴, where `mix(z)`: `z = (z ^ (z >> 30)) · 0xBF58476D1CE4E5B9`; `z = (z ^ (z >> 27)) ·
 0x94D049BB133111EB`; `z ^ (z >> 31)` — the stream of language/14 R-BLT-04 before its `[0, 1)` mapping. Random attempt
 `i` (0-based) draws from its own stream, seeded with the `(i + 1)`-th output of the stream seeded with `seed`.
-`below(n)` takes the stream's next output `x` and is `⌊x · n / 2⁶⁴⌋` (a 128-bit product, no rejection).
+`below(n)`, for `1 ≤ n ≤ 2⁶⁴`, takes the stream's next output `x` and is `⌊x · n / 2⁶⁴⌋`
+(a 128-bit product, no rejection). At `n = 2⁶⁴` it returns `x`.
 
 A value is drawn depth first: parameters and record fields in declaration order, list items in order.
 
@@ -905,6 +932,95 @@ V3  type Item: name: Text, price: Number
 **R-SYNTH-19** A check failure on a generated input is shown to the learner as a counterexample ("your check fails
 when `players` is `[]`"), so they can refine the check; the message suggests the `if … then …` rewrite
 (`if price >= 0 then result >= 0`, D-6). An `assume:` precondition block is Future; the word is reserved (D-39).
+
+### 7.5 Domain values (D-151, D-161, D-162, D-164)
+
+D5 completes domain-aware generation and the probe. Until D5, `build` on a domain program uses base-type
+generated values; D2–D4 establish syntax, typing, IR and membership only and do not claim end-to-end builds
+of domain programs. This is implementation sequencing, not an alternative 0.2 generator contract.
+
+**R-SYNTH-62** Construct domain value sets recursively before constructing goal tuples. A Text closed set's `B`
+is its first 16 members in declaration order (all members if at most 16), and its `S` is the first two
+members (or its sole member). This truncation governs finite sets; random draws still use every member. For Number domains,
+start with the base `B`/`S`, project each value into the simple constraints as below, append the lower edge then the
+upper edge when present, and de-duplicate in first-occurrence order. For Text length domains do the same, appending
+`"a"` repeated the lower-edge length then the upper-edge length. Edges belong to both `B` and `S`.
+An inclusive edge is its bound. For an exclusive non-whole Number edge use the bound ± 0.01 toward the interval;
+if the interval is narrower than that step, use its midpoint instead. With `is whole` use the nearest integer inside. A Text edge is the nearest integer length inside the
+bound. A missing lower or upper bound adds no edge. This covers both edges, including strict, negative and whole
+bounds. Representable Number limits are `language/11` §3; a simple constraint with no representable member is `VL0209`.
+
+Projection of the base `B`/`S` values clamps to the admissible interval's edges, taking `floor` first for `is whole`;
+Text projection truncates on scalar boundaries or appends `"a"`. It never rejects a candidate for a simple bound.
+
+Random draws use the interval directly. For a Number interval with both bounds and `is whole`, let `lo'` and `hi'`
+be its first and last admissible integers, respecting strict bounds; draw `lo' + below(min(hi' - lo' + 1, 2⁶⁴))`.
+For a finite non-whole interval, form two grids: admissible integers and admissible multiples of 0.01. In each
+grid with scale `s` (`1` or `100`), let `lo_s` and `hi_s` be the first and last admissible integer indices, so its
+draw is `(lo_s + below(min(hi_s - lo_s + 1, 2⁶⁴))) / s`. Thus an interval or grid with more than 2⁶⁴ points
+draws only from its first 2⁶⁴ points, counted from its lower admissible index. When both grids are nonempty, `below(2)` selects the whole grid
+on 0 and the 2-decimal grid on 1, then draw from that grid. With only one Number bound, offset its admissible
+edge into the interval by the absolute §7.3 base draw, taking `floor` of the offset for `is whole`; with neither
+bound, keep the base draw, taking `floor` for `is whole`. For Text, let `lo` be the minimum admissible scalar length
+(zero when unbounded below) and `hi` the maximum (unbounded when absent); draw the length as
+`lo + below(min(hi, lo + 16) − lo + 1)`. Boundary edges still cover `hi` when present.
+Then draw scalars from §7.3's alphabet. Set draws choose `below(member_count)`
+in declaration order. If exactly one Number grid is empty, every draw uses the other grid and consumes no
+`below(2)`. If both are empty (e.g. `0 < value < 0.001`), draw the midpoint `(lo + hi) / 2`, rounded per
+R-TYP-04, as for a narrow exclusive edge above; consume no grid-selection or grid-index draw. Duplicate midpoint
+draws count as usual in R-SYNTH-65's probe.
+
+Constructors check the existing size limits before allocation; an oversized candidate is skipped as in R-SYNTH-18.
+Other base generators, and List/optional traversal, retain §7.1–7.3's order and draw consumption.
+
+**R-SYNTH-63** Evaluate every residual condition on a complete value, using R-CHK-15. Filter each domain's finite
+`B` and `S` once, in order, then de-duplicate; filtering never replaces a boundary by an unrelated value. For a
+random draw, construct the complete simple-valid value, evaluate its condition, and, on non-membership, retry that
+value with the same advancing stream up to **K = 16 retries after the initial draw** (at most 17 candidates).
+Exhaustion fails this value draw; the containing random input attempt is skipped and consumes one of R-SYNTH-18's
+256 attempts. It does not restart the goal's stream or discard independently drawn sibling values. For a record
+domain, first construct all fields (including nested domains); evaluate the record condition with `value` bound
+to the whole record. A retry redraws that whole record, allowing relations such as `value.discount <= value.price`.
+A nested domain is filtered at its own value level before its container's condition is evaluated. A failed child
+draw fails its containing candidate. A condition's value error counts as rejection; fuel and other budget failures
+retain their codes (R-CHK-15). No residual condition is serialized into artifact IR.
+
+**R-SYNTH-64** After filtering, construct record diagonals, List/optional sets and goal tuples in the existing
+order. Empty sets propagate explicitly: `B(T?) = [nothing]` when `B(T)` is empty, `B(List<T>) = [[]]`, and a record's
+diagonal is empty if any field's `B` is empty. A parameter diagonal is empty if any parameter's `B` is empty.
+The same rules apply to `S`, with `[nothing]` and `[[]]` retained for Optional/List. Thus an empty item domain does
+not eliminate empty lists or absent optionals. Skip only the resulting empty boundary (`B`) or pairwise (`S`)
+stage; never take a modulus by zero or invent a placeholder. Random generation may still succeed.
+
+Finite closed-set `B` is the first 16 members, as R-SYNTH-62 specifies; every member is covered for sets of at most
+16, subject to the 64-input cap and available boundary slots (R-SYNTH-18). Larger sets use those first 16 in the
+boundary stage and all members in random draws. An example containing a member counts toward observed coverage
+only descriptively; it does not alter `B`/`S`, reorder or remove candidates, replace a slot, or change the generator.
+R-SYNTH-18's existing tuple de-duplication against examples still applies. Record conditions may remove invalid
+combinations; there is no static exhaustiveness or coverage promise for an invalid combination.
+
+**R-SYNTH-65** The generator/scarcity probe lives in `velme-synth`, called during `velme check` without
+constructing a provider; it calls `velme-check` only to evaluate domain predicates, not to run the runtime
+membership walk (D-164, INV-9). Before goal generation or synthesis it probes each declared domain once, including
+unused declarations, in type-name order. The probe seed is the first eight bytes, little-endian, of that domain's
+own declaration hash (R-ART-26), never a goal's `contract_key`. Use §7.3's SplitMix64 and per-attempt stream rule
+with indices 0–63 to make **64 raw simple-valid draws**. Do not apply the domain's own K-retry filter to a probe draw;
+nested field domains still use R-SYNTH-63. Count draws whose complete value satisfies the full condition and
+input-size limits; duplicates count as successes, so a singleton domain can pass. Fewer than **8** successes is
+`VL0210`, with domain name and `n/64`; 8 passes. False or value-error results count as failures. Probe predicate evaluation by `velme-check`
+uses the reference interpreter, system fuel/memory/size caps (`runtime/30` §7), a fresh fuel budget per draw, and no goal
+budget override. Budget exhaustion retains its diagnostic. Changing a goal's plan, model or parameter name cannot
+change this probe. Probe failure stops `check` before any provider call and exits 1; it is not synthesis feedback.
+
+**R-SYNTH-66** Golden vectors V4–V6 supplement §7.4's V1–V3. V4: `type Risk = Text one of "B", "A"`
+has `B = ["B", "A"]`, `S = ["B", "A"]`, and a singleton set has 64 successful probe draws. V5:
+`type Age = Number where value > 18 and value <= 20 and value is whole` has `B = [19, 20]` and
+`S = [19, 20]` after projection, edges and de-duplication; Text length `value.length > 0 and value.length < 3`
+has edge values `"a"` and `"aa"`. V6: a record with `x: Number`, `y: Number` and condition
+`value.x < value.y` has empty filtered diagonal `B` and `S` (base fields' diagonal pairs are equal), skips both
+stages, and can draw admissible random records. D5 freezes the declaration hashes, probe draws, retry counts and
+accepted random tuples for these fixtures as executable golden vectors using the algorithms above; tests include
+thresholds 7 and 8, all-rejected and value-error filters, 16-member coverage, and declaration-local seeds.
 
 ## 8. Configuration & secrets
 
@@ -1041,6 +1157,15 @@ leaves the machine (tooling/41).
 | AC-SYNTH-56 | In `notation`, the `anthropic` and `ollama` request bodies hold no IR schema: no `$defs` and no definition name of the IR schema, and `write_goal`'s input schema and `ollama`'s `format` are the `{"body": string}` reply schema, with either `schema_in_prompt` (R-SYNTH-56, D-152). |
 | AC-SYNTH-57 | With `reply_format = "compact"`, the `external` request names the format and a compact reply builds an artifact; a default build's request has no `reply_format` member; a compact build whose backend answers under `body` is a failed attempt (`VL0401`, then `VL0403` naming the alias), not `VL0406`; the request's `output_schema` is the compact reply schema (no IR `$defs`); the format enters the external `input_version` (`<request_version>+reply_format=compact@<version>`, the version a 12-digit hash of the alias table), re-keying the build; and a backend whose `describe` lacks `reply_formats` (or does not list `compact`) ends the goal with `VL0406` naming the setting before any `synthesize` request (R-SYNTH-26, R-SYNTH-27, R-SYNTH-36, R-SYNTH-40, D-153, D-156). |
 | AC-SYNTH-58 | Golden accepted bodies cover R-SYNTH-50 and R-SYNTH-57: `\r\n` line ends, a comment-only line, a top level indented 4 spaces, a call continued over lines with a trailing comma, a single-line `return` branch, an `elif` chain with no `else` before the rest of its block, `a if c else b if d else e` grouping to the right and `a - b - c` to the left, `-0.5` and `- 0.5` lowering to one literal, `--2` to `neg` of `-2` and `-(2)` to `neg` of `2`, keyword names read as names (`bond.yield`, `T(from=x)` for a record field `from`, an input named `class`, `x.if`), `while` used as a name lowering to `local` (`names-8` from the validator), and `x in (1, 2)` lowering as `x in [1, 2]`. Golden rejected bodies split statements as R-SYNTH-57 says: `match x:`, `while c:`, `x.y = 1`, `x = y = 1`, `x += 1`, `a, b = c` and a bare expression before the block's last statement are `notation-4`, a bare expression last in its block and `if c: x = 1` `notation-5`, `else:` with no `if` `notation-13`, `x[0]`, `(a, b)`, `return a, b`, `[x for a, b in xs]` and `(f)(x)` `notation-8`, and `next((x for x in xs), None)` and `sorted(xs, key=…, key=…)` `notation-9`, while `sorted(xs, reverse=True, key=lambda x: x.a)` lowers (D-157). |
-| AC-SYNTH-59 | `infer_list_types`, in `velme-ir`'s tests over hand-built nodes, sets each list's `of` from each row of the R-SYNTH-58 table whatever `of` it was given, the second of two list branches from the first; an item of a typed list takes its `of` (`[[], [1]]` as a `List<List<Number>>` output), and of two list branches the non-empty one is typed first (`[] if c else [1]` with no expected type); it returns only the pointer of an untyped list for `[]` as a `let` binding's value, and nothing for a body whose only fault is an unknown name; a list whose first item is an unknown name gets `of` `Nothing`, and the build's primary diagnostic is that name's `names-8`, not `notation-11`; it visits each node of a 10 000-node body once (D-157). |
-| AC-SYNTH-60 | `ReplyFormat::from_name("notation")` is the notation format; the committed `velme-synth-request` schema lists `notation` and the optional `at` (`line` and `column` integers of at least 1, no other members) and `quote` (at most 3 strings of at most 160 characters) members, which a diagnostic carried from an attempt before the latest never holds, and which an `ir-json` or `compact` retry request never holds, so its bytes are unchanged; an `external` `notation` build's `input_version` is `0.1+reply_format=notation@1` and a backend whose `describe` doesn't list `notation` ends the goal with `VL0406`; a `notation` reply whose `body` is an object is a failed attempt with `VL0401` and log cause `body-not-string`, and a notation reply's log line has `reply_format` `notation` and `keys` `["body"]` (R-SYNTH-23, R-SYNTH-55, R-SYNTH-59, D-156, D-157). |
+| AC-SYNTH-59 | `infer_list_types`, in `velme-ir`'s tests over hand-built nodes, sets each list's `of` from each row of the R-SYNTH-58 table whatever `of` it was given, the second of two list branches from the first; an item of a typed list takes its `of` (`[[], [1]]` as a `List<List<Number>>` output), and of two list branches the non-empty one is typed first (`[] if c else [1]` with no expected type); it returns only the pointer of an untyped list for `[]` as a `let` binding's value, and nothing for a body whose only fault is an unknown name; a list whose first item is an unknown name gets `of` `Nothing`, and the build's primary diagnostic is that name's `names-8`, not `notation-11`; it visits each node of a 10 000-node body once (D-157). Domain list annotations write the recursive base while the expected-type pass retains the domain context (D3). |
+| AC-SYNTH-60 | `ReplyFormat::from_name("notation")` is the notation format; the committed `velme-synth-request` schema lists `notation` and the optional `at` (`line` and `column` integers of at least 1, no other members) and `quote` (at most 3 strings of at most 160 characters) members, which a diagnostic carried from an attempt before the latest never holds, and which an `ir-json` or `compact` retry request never holds, so its bytes are unchanged; an `external` `notation` build's `input_version` is `0.2+reply_format=notation@1` and a backend whose `describe` doesn't list `notation` ends the goal with `VL0406`; a `notation` reply whose `body` is an object is a failed attempt with `VL0401` and log cause `body-not-string`, and a notation reply's log line has `reply_format` `notation` and `keys` `["body"]` (R-SYNTH-23, R-SYNTH-55, R-SYNTH-59, D-156, D-157). |
 | AC-SYNTH-61 | A body with a syntax error before a lexical one is rejected for the syntax error; one with a `notation-6` before a `notation-13` for the `notation-13`; one with two untyped lists for the first. Each golden rejected body of AC-SYNTH-51 is placed at the line and column R-SYNTH-59 gives, a `%` after a Text holding non-ASCII counted one column per scalar value; a validator finding on a chain's added `and` is placed at the chain's start. The caps are exact: a 65 536-byte body passes the size check and a 65 537-byte one is `notation-12`, as are IR 129 deep and 10 001 nodes, while 128 deep and 10 000 nodes lower; every `notation-12` is placed at line 1, column 1; a body ending in an assignment is `notation-5` at the end of the text, and an untyped `[]` as a chain's middle operand (`a == [] == b`, both sides untyped) is reported once, at its own place, from the first of its two equal spans in a pre-order walk (R-SYNTH-59, D-157). |
+| AC-SYNTH-62 | The prompt/external request use full declaration source text with comments stripped; record domains appear once in declaration form, residuals included. Domain-reachable goals alone get the base-in-body rule line. The model's extra `domains` is ignored; all reply formats assemble the compiler table. Token estimates count uncached declaration text on every retry (R-SYNTH-60–61). Tested by D3. |
+| AC-SYNTH-63 | The external schema, `/v2` routes, `request_version`, IR/builtins versions and `input_version` follow R-SYNTH-61, including empty declarations, notation suffix and rejection of an old-only backend. Tested by D3. |
+| AC-SYNTH-64 | Closed sets of 1, 16 and 17 members, inclusive/exclusive Number bounds, whole bounds and Text scalar-length bounds produce R-SYNTH-62's sets and valid random values; both edges appear, with size checks before allocation. Text lengths from 5 through 100 draw only from 5 through 21, while boundary sets still contain length 100. Tested by D5. |
+| AC-SYNTH-65 | Residual conditions filter complete scalar/record values, redraw only the failed value, use at most 17 candidates per draw, and propagate a failed child draw; value errors reject candidates and budget exhaustion keeps its code (R-SYNTH-63). Tested by D5. |
+| AC-SYNTH-66 | Empty domain `B`/`S` propagates to `[nothing]` for Optional, `[[]]` for List, empty record and parameter diagonals, skipping only the resulting empty stages; random records can still succeed. Finite closed-set `B` truncates at 16; examples affect only observed coverage and existing tuple de-duplication, never value sets or candidate order (R-SYNTH-64). Tested by D5. |
+| AC-SYNTH-67 | The `velme-synth` probe, called during `velme check`, evaluates predicates via `velme-check`, makes 64 raw draws, permits duplicate successes, rejects 7 and accepts 8, and reports `VL0210` before provider construction. Goal/model changes preserve its seed; declaration/dependency changes alter it; nested domains/budget errors follow R-SYNTH-65 (D5). |
+| AC-SYNTH-68 | V4–V6 freeze finite sets, declaration hashes, seeded probe/random outputs and retry counts, with regression cases listed in R-SYNTH-66. Tested by D5. |
+| AC-SYNTH-69 | Verification/examples use the runtime input walk and include its fuel in `max_fuel_observed`; invalid generated/example membership is `VL0607`, output non-membership is `VL0504` wrapped as `VL0503`, and output checks precede example comparison/own checks (R-SYNTH-14–15, R-RUN-26–28). Tested by D4. |
+| AC-SYNTH-70 | Number intervals with more than 2⁶⁴ whole or 0.01-grid points (e.g. 0 through 10²⁵) draw only from the first 2⁶⁴ points counted from the lower admissible index; `below(2⁶⁴)` returns the stream output using the 128-bit product. Finite non-whole intervals with exactly one empty grid always draw from the other grid without consuming `below(2)`; with both grids empty (`0 < value < 0.001`), every draw is the R-TYP-04-rounded midpoint, with no grid-selection/index draw, and duplicate valid midpoints count toward the 64-draw probe (R-SYNTH-62, R-SYNTH-65). Golden seeded draws freeze these cases and their stream consumption. Tested by D5. |
