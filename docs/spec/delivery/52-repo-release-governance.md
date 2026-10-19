@@ -34,8 +34,8 @@ velme/
 
 **R-REL-01** A new crate needs a real API or ownership boundary and an update to SPEC.md §5 and INV-9's order; a
 directory alone is never a reason.
-**R-REL-02** Grows later, not in v0.1: `language/spec/0.1/` (published, versioned mirror of the language chapters of
-`docs/spec` — created at the first release), `editors/{tree-sitter,vscode}/` (post-MVP, D-25), `stdlib/` (when goals
+**R-REL-02** At release `0.2.0-alpha.1`, publish `language/spec/0.2/`, a versioned mirror of the language chapters of
+`docs/spec` (D1 creates it; D0 changes only the source specification). Grows later: `editors/{tree-sitter,vscode}/` (post-MVP, D-25), `stdlib/` (when goals
 can be imported, Future).
 
 ## 3. Dependency direction (INV-9)
@@ -104,10 +104,10 @@ by commit SHA.
 
 | Version | Example | Bumped when |
 |---|---|---|
-| Language | `velme/0.1` | syntax or semantics change (RFC) |
-| Compiler/CLI | `0.1.4` (semver) | any release |
+| Language | `velme/0.2` | syntax or semantics change (RFC) |
+| Compiler/CLI | `0.2.0-alpha.1` (semver) | any release |
 | IR | `ir/0.2` | IR schema changes (`compiler/21`) |
-| Builtins | `builtins/0.1` | builtin added/changed (`language/14`) |
+| Builtins | `builtins/0.2` | builtin added/changed (`language/14`) |
 | Prompt | `prompt/3` | prompt template changes (`compiler/22`) |
 
 **R-REL-07** Versions are independent and all recorded in every artifact manifest (INV-8). Any bump that changes a
@@ -116,6 +116,12 @@ fingerprint input is noted in `CHANGELOG.md` with "invalidates locks: yes/no".
 changes before 1.0 bump the minor version — `ir_version` and `builtins_version` included, whose compatibility unit is
 therefore MAJOR.MINOR while MAJOR is 0 (D-85); the CLI exit codes (R-CLI-10), diagnostic codes (INV-10) and `--json`
 schema count as public API.
+
+**R-REL-14** Release `0.2.0-alpha.1` is the coordinated language/domain/IR break (D-160): accept only
+`velme/0.2` and IR `0.2`, default headerless files to `0.2`, re-bless repository fixtures without provider calls,
+and invalidate `0.1` locks once. Its CHANGELOG entry says **invalidates locks: yes**, explains the header change
+and rebuild, and links the input-domains RFC. Create R-REL-02's `language/spec/0.2/` mirror in D1, not D0.
+Subsequent implementation slices share this release and compatibility break.
 
 ## 6. Distribution and docs
 
@@ -198,3 +204,4 @@ then filings in the US, EU and target markets.
 | AC-REL-03 | Core crates (all but `velme-cli`) build with `--no-default-features` and no provider SDK in their dependency tree. |
 | AC-REL-04 | A release dry run produces archives for the five targets, checksums and signatures, and two builds of the same commit give binaries with identical checksums (R-REL-13); `ac_rel_04_*` checks that `release.yml` has these steps and the dry-run guard (D-143, D-149). |
 | AC-REL-05 | Every artifact manifest records language, compiler, IR, builtins, prompt and model versions. |
+| AC-REL-06 | The `0.2.0-alpha.1` release reports language/IR/builtins `0.2`, publishes the `language/spec/0.2/` mirror, explains the `0.1` header break and one lock invalidation in CHANGELOG, and re-blesses fixtures without a provider (R-REL-02, R-REL-14). Tested by D1. |

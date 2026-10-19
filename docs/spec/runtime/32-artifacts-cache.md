@@ -17,7 +17,7 @@ All hashes are BLAKE3 over canonical JSON (21 R-IR-21), written `b3:<hex>`.
 
 | Identity | Hash of | Used for |
 |---|---|---|
-| `signature` | goal name, param names + types, output type, every reachable record type | `Call.goal_signature`; parents' keys |
+| `signature` | goal name, param names + types, output type, every reachable record type and full domain declaration (R-ART-26) | `Call.goal_signature`; parents' keys |
 | `contract_key` | normalized goal source (signature, plan per D-21, `call` bindings, checks, examples, budget) + child `signature`s + `language_version` + the compatibility units of `ir_version` and `builtins_version` (D-55, D-85) | lock staleness (§5); generated-input seed (22 §7) |
 | `synthesis_key` | `contract_key` + provider `input_version` (`prompt_version` + options hash, `compiler/22` R-SYNTH-40, or the external `input_version`, R-SYNTH-40) + compiler `MAJOR.MINOR` + provider id + model id (Ollama `<model>@<digest>`, external `<backend>@<backend_version>`; `compiler/22` §3) | artifact-store lookup; replay fixture name |
 | `artifact` | the canonical artifact document (§3) | store address, lock pin |
@@ -51,6 +51,33 @@ arguments; `budget` is the effective limits, system caps included: `max_fuel`, `
 `max_call_depth`, `max_list_size` and `max_output_bytes`. The document is built field by field, never from a Rust
 type's derived serialization, and a hard-coded golden key pins it: changing it invalidates every lock.
 
+**R-ART-26** A signature includes each reachable domain's **full declaration**, not just its base or the IR's
+extracted constraints. Include the name, base, ordered closed-set members or complete normalized condition AST,
+and a record domain's fields with their types. Use R-ART-23's span-free HIR normalization and canonical JSON:
+comments/whitespace do not count, member/field/operand order does, and Number spelling normalizes by R-TYP-08.
+The signature document has members `domains`, `goal`, `inputs`, `output`, `types` in that canonical key order.
+`domains` is an array of normalized full domain-declaration nodes in type-name order (empty if none); it is not the
+artifact IR's extracted `domains` object. `inputs` keeps parameter declaration order as `[name, IRType]` pairs; a
+domain parameter is e.g. `["age", {"t":"Domain","name":"Age"}]`, recursively under List/Optional.
+`output` and record-field types use the same Domain references. Existing `goal`/`types` shapes are unchanged; `types` also includes records reached through condition constructors.
+Reachability follows parameters, output, record fields, List and optional items, domain bases, and every type
+named by a record constructor in a domain condition, transitively. Each declaration
+appears once, in type-name order; referenced declarations are included transitively. Thus tightening even a residual
+condition changes the goal signature, its contract key, and its callers' keys through child signatures. A simple
+base erasure cannot preserve these keys (D-151, D-158; resolves Q-17's key question).
+
+For R-SYNTH-65, the declaration hash is BLAKE3 of the canonical JSON object
+`{"declaration": D, "dependencies": [D1, ...]}`, where `D` is that normalized full type-declaration HIR node and
+`dependencies` contains its transitively referenced declarations once each, excluding itself, in type-name order,
+using the same normalization. It contains no goal source, model, prompt, artifact or goal budget. Dependencies also include types named by record constructors inside the condition and their transitive
+references; collect each name once, excluding the root even if constructor references form a cycle. Thus changing
+a field contract or constructor-referenced declaration changes the record domain's probe seed.
+
+**R-ART-27** The move to language `velme/0.2`, IR `0.2` and CLI `0.2.0-alpha.1` invalidates `0.1` locks once through
+the existing version/key checks; do not accept an old pin as a fresh `0.2` artifact or silently rewrite it on `run`.
+D1 re-blesses in-repo fixtures without provider calls. Subsequent unchanged `0.2` builds retain their keys and pins;
+this is one coordinated compatibility break, not a separate invalidation for each domain implementation slice.
+
 ## 3. Artifact document & manifest
 
 ```json
@@ -59,8 +86,8 @@ type's derived serialization, and a hard-coded golden key pins it: changing it i
     "format": "velme-artifact/1",
     "goal": "FindBadge", "kind": "leaf",
     "signature": "b3:…", "contract_key": "b3:…", "synthesis_key": "b3:…",
-    "language_version": "0.1", "compiler_version": "0.1.4", "ir_version": "0.1",
-    "builtins_version": "0.1", "prompt_version": "leaf-v1+b3:…",
+    "language_version": "0.2", "compiler_version": "0.2.0-alpha.1", "ir_version": "0.2",
+    "builtins_version": "0.2", "prompt_version": "leaf-v1+b3:…",
     "provider": "anthropic", "model_version": "<provider-reported id>",
     "children": [],
     "verification": { "examples": 3, "generated_inputs": 61, "input_set": "b3:…", "max_fuel_observed": 412 }
@@ -131,7 +158,7 @@ deleted implicitly.
 ```toml
 # Generated by `velme build`. Commit this file. Do not edit by hand.
 version  = 1
-language = "0.1"
+language = "0.2"
 
 [[goal]]
 file          = "player.velme"
@@ -208,3 +235,7 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 | AC-ART-10 | Regenerating `FindBadge` so its behaviour changes, then rebuilding `BuildPlayerSummary`: `BuildPlayerSummary` is re-verified against the new `FindBadge` with no provider call; if it now fails a check, it is re-synthesized with a diagnostic naming `FindBadge` (D-55). |
 | AC-ART-11 | Editing a locked goal's IR to break one of its own `examples:` while keeping a hash-consistent artifact file: `velme test --locked` fails on that example (D-46); `velme run` with the same artifact does not detect it (no example re-run). |
 | AC-ART-12 | A lock entry whose `contract_key` differs from its artifact's manifest `contract_key` is stale with `VL0702`, even though the artifact file's own hash still matches (D-46). |
+| AC-ART-13 | Changing a set, bound, residual predicate, field domain or constructor-referenced declaration changes the goal/callers' signature and contract keys; comments/whitespace and equivalent Number spelling do not (R-ART-26). Tested by D2. |
+| AC-ART-14 | A declaration hash includes normalized full source, transitive field and condition-constructor declarations, each once and excluding itself, but no goal/model/budget; changing an unrelated goal does not change it (R-ART-26). Tested by D2. |
+| AC-ART-15 | A `0.1` lock is stale under `0.2`, is never silently upgraded by run, and after the coordinated fixture re-bless two unchanged builds reuse the same keys and pins without provider calls (R-ART-27). Tested by D1. |
+| AC-ART-16 | Golden signature JSON pins `domains` before `goal`, `inputs`, `output`, `types`; full normalized declarations occur once in type-name order, and parameter/field/output types retain Domain references recursively (R-ART-26). Tested by D2. |

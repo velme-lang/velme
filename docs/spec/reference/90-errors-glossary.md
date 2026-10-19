@@ -26,16 +26,18 @@ diagnostic's data.
 | VL0103 | TabIndentation | syntax | tab in leading whitespace (D-19) | Please indent with spaces, not tabs. | A001 |
 | VL0104 | ReservedWord | syntax | reserved future word used (D-24) | `{word}` is coming in a later Velme version — try another name. | — |
 | VL0105 | UnterminatedText | syntax | text literal missing closing quote | This text starts with `"` but never ends. | A001 |
-| VL0106 | UnsupportedLanguageVersion | syntax | header names a version this compiler doesn't support | This file is written for `{version}`, but this Velme understands `{supported}`. | — |
+| VL0106 | UnsupportedLanguageVersion | syntax | header is not exactly `velme/0.2`, including `velme/0.1` | This file is written for `{version}`, but this Velme understands `velme/0.2`. Only for a `velme/0.1` header add help: Change the header to `language: velme/0.2` and rebuild the lock. | — |
 | VL0107 | LintWarning | syntax, names/types | warning: naming convention (`language/10` R-SYN-06), bidi control character in text (R-SYN-22), declaration named like a built-in (D-64) (D-69) | `{name}` works, but Velme style writes it `{suggestion}`. | — |
 | VL0201 | UnknownType | names/types | type name not declared | I don't know a type called `{name}`. | A003 |
 | VL0202 | UnknownName | names/types | identifier not in scope | I don't know what `{name}` is here. | — |
 | VL0203 | DuplicateDeclaration | names/types | type/goal/field/parameter declared twice | `{name}` is already defined on line {line}. | — |
-| VL0204 | TypeMismatch | names/types | value's type differs from the expected type | Expected {expected}, but got {found}. | A004 |
+| VL0204 | TypeMismatch | names/types | value's type differs from the expected type, a source literal violates a domain's set/simple constraints or HIR-checked residual condition, or a closed-set comparison names a non-member literal (R-TYP-31–32) | Expected {expected}, but got {found}. Domain non-member: `{value}` isn't a valid `{domain}`: {reason}. | A004 |
 | VL0205 | UnknownField | names/types | record has no such field | A `{type}` doesn't have a field called `{field}`. | — |
 | VL0206 | InvalidOperandType | names/types | operator applied to unsupported types | `{op}` can't be used with {left} and {right}. | A004 |
 | VL0207 | NullableAccess | names/types | field access on un-narrowed `T?` (D-6) | `{expr}` might be empty — check `is not empty` first. | — |
 | VL0208 | RecursiveType | names/types | record type contains itself directly or indirectly | `{type}` contains itself, which Velme doesn't allow yet. | — |
+| VL0209 | InvalidDomain | names/types | invalid domain declaration (R-TYP-29, R-CHK-14): unsupported base; empty, duplicate or non-Text set member; more than 1 000 members or over 64 KiB total decoded UTF-8 across members; ill-typed/non-Boolean condition; a simple constraint on the wrong base; repeated lower/upper/whole constraint; a negative or fractional literal Text length bound (computed bounds remain residual filters); no representable value in the simple interval | Domain `{domain}` is invalid: {reason}. | — |
+| VL0210 | TooFewValidValues | names/types | `velme check` declaration-local probe finds fewer than 8 valid draws out of 64 (R-SYNTH-65); includes residual value-error rejections, not budget failures | Domain `{domain}` produced only {valid}/64 valid values; at least 8 are needed. Loosen its condition. | — |
 | VL0301 | UnknownGoal | calls/graph | call names an undeclared goal | I don't know a goal called `{name}`. | A002 |
 | VL0302 | CallArityMismatch | calls/graph | wrong number of arguments | `{goal}` needs {expected} inputs, but got {found}. | A006 |
 | VL0303 | InvalidCall | calls/graph | call not allowed here (e.g. goal used outside its `call` block, self-call outside `examples`) | `{goal}` can only be used after it's listed in `call:`. | A006 |
@@ -56,19 +58,20 @@ diagnostic's data.
 | VL0501 | CheckFailed | checks | a `check` assertion evaluated false | `{goal}` didn't pass its check: `{check}`. | A009 |
 | VL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | VL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is VL0403, except a compiler-built wired goal that fails its own examples or checks, whose final code is VL0503) | The generated program didn't pass `{check}` for {input}. | A009 |
+| VL0504 | OutputOutsideDomain | checks | a goal output is outside its declared domain, deeply, before its own checks; a condition value error counts as non-membership, budget failures keep their code (R-RUN-26) | `{goal}` returned a value outside `{domain}` at `{path}`: {reason}. | — |
 | VL0601 | BudgetExceeded | runtime | fuel exhausted (deterministic, D-10) | `{goal}` took too many steps and was stopped. | A010 |
 | VL0602 | ArithmeticError | runtime | divide by zero, overflow, non-integer or out-of-range integer argument (D-22, D-36) | `{goal}` tried to {op}, which has no answer. | — |
 | VL0603 | Timeout | runtime | wall-clock watchdog fired (non-reproducible, D-10) | `{goal}` ran too long and was stopped. | A011 |
 | VL0604 | MemoryLimitExceeded | runtime | memory limit reached | `{goal}` needed more memory than it's allowed. | A012 |
 | VL0605 | CallLimitExceeded | runtime | `max_goal_calls` or `max_call_depth` exceeded | Too many goals were called while running `{goal}`. (`max_goal_calls`) / Goals call each other too deeply while running `{goal}`. (`max_call_depth`) | A010 |
 | VL0606 | SizeLimitExceeded | runtime | list size or output size cap exceeded | `{goal}` made a list or answer that's too big. | A010 |
-| VL0607 | InternalError | any | invariant violated inside Velme (a bug); or, under `--backend wasm`, a leaf goal the WASM backend can't run (R-SBX-02, R-SBX-16, D-117, D-121) | Something went wrong inside Velme. Please report it: {report_url}. A decline, which is not a bug, has its own message and no report link (D-123): The WASM backend can't run `{goal}` yet. Note: the backend has no code for {why}; run it without `--backend wasm`. | — |
+| VL0607 | InternalError | any | invariant violated inside Velme (a bug), including generated/example input membership failure (R-RUN-28); or, under `--backend wasm`, a leaf goal the WASM backend can't run (R-SBX-02, R-SBX-16, D-117, D-121) | Something went wrong inside Velme. Please report it: {report_url}. A decline, which is not a bug, has its own message and no report link (D-123): The WASM backend can't run `{goal}` yet. Note: the backend has no code for {why}; run it without `--backend wasm`. | — |
 | VL0701 | ArtifactUnavailable | artifacts | referenced artifact missing from store | The built version of `{goal}` is missing — run `velme build`. | A013 |
 | VL0702 | LockStale | artifacts | lock entry missing or changed, or a locked artifact that no longer passes its examples (`--locked`, `run`, `test`, `artifact`) | `{goal}` changed since it was last built — run `velme build`. A goal with no entry: `{goal}` has no verified build in `velme.lock` — run `velme build`. A goal that fails re-verification: `{goal}` no longer passes its examples — run `velme build`. | — |
 | VL0703 | ArtifactCorrupt | artifacts | artifact bytes don't match their hash, are longer than any artifact, or aren't the canonical JSON the store writes (`runtime/32` R-ART-10) | The built version of `{goal}` was changed or damaged. | — |
 | VL0801 | CapabilityDenied | capabilities | IR or module requests an ungranted capability/host function | `{goal}` tried to use `{capability}`, which goals aren't allowed to use. | A014 |
 | VL0901 | FileError | CLI/IO | source/config/input file unreadable (a user-level config or `external_ca_file` included), or on a path that isn't UTF-8; `velme.lock` unreadable, malformed, of another format or not a regular file; a stored artifact that isn't a regular file, or a `.velme` directory that is a symbolic link (`runtime/32` R-ART-09); a replay fixture or `replay.json` that is a link, not a regular file, too large or unreadable (`compiler/22` R-SYNTH-43) | I couldn't open `{path}`. | — |
-| VL0902 | InvalidInput | CLI/IO | input JSON or config doesn't match expected shape (D-23); a config file with bad TOML, an unknown key, a wrong type or an out-of-range value, or a service URL or `external_url`/`ollama_url` in a project's `velme.toml` (D-105); an invalid flag, `--build` with `--locked`, a provider flag without `--build`, or an unknown `--backend` value (D-108, D-117); an `external` URL that is plain `http` to a host other than `localhost`, 127.0.0.0/8 or `[::1]`, has another scheme or user information, or does not parse (D-101) | Input `{name}` should be {expected}, but got {found}. / `{key}` in `{file}` should be {expected}, but got {found}. / `{flag}` can't be used here: {reason}. / Input `{name}` isn't valid JSON. / The input isn't valid JSON. / The input is too big. / The input should be a record with one field per input, but got {found}. / `{goal}` has no input called `{name}`. | — |
+| VL0902 | InvalidInput | CLI/IO | input JSON fails base shape or deep domain membership (R-RUN-28), or config doesn't match expected shape (D-23), including an unsupported `project.language` (R-CLI-29); only `velme/0.1` gets help to change the setting to `velme/0.2` and rebuild the lock; a config file with bad TOML, an unknown key, a wrong type or an out-of-range value, or a service URL or `external_url`/`ollama_url` in a project's `velme.toml` (D-105); an invalid flag, `--build` with `--locked`, a provider flag without `--build`, or an unknown `--backend` value (D-108, D-117); an `external` URL that is plain `http` to a host other than `localhost`, 127.0.0.0/8 or `[::1]`, has another scheme or user information, or does not parse (D-101) | Input `{name}` should be {expected}, but got {found}. / Input `{path}` is outside `{domain}`: {reason}. / `{key}` in `{file}` should be {expected}, but got {found}. / `{flag}` can't be used here: {reason}. / Input `{name}` isn't valid JSON. / The input isn't valid JSON. / The input is too big. / The input should be a record with one field per input, but got {found}. / `{goal}` has no input called `{name}`. | — |
 | VL0903 | GoalNotFound | CLI/IO | `--goal` names no goal in the file | There's no goal called `{name}`. Did you mean `{suggestion}`? | — |
 
 Severity: all codes above are errors in v0.1 except `VL0107`, the one warning (D-69). Further warnings
@@ -93,6 +96,15 @@ Each goal invocation ends in exactly one outcome (`runtime/30` §5):
 | `ChildFailed(binding, kind)` | child's code | as child (D-9) |
 
 Original `Failure(error)` and `ValidationFailed` map to the specific kinds above.
+
+**R-ERR-04** Domain membership diagnostics name the domain and first deep value path; predicate value errors
+are retained as causes of `VL0902`/`VL0504`, and of `VL0204` for a source literal (R-TYP-31). Declaration failures give the invalid-declaration reason (`VL0209`);
+scarcity gives the success count out of 64 (`VL0210`). These codes use the same human/JSON rendering contract as
+other diagnostics. For a base-typed source argument supplied by goal `X` where `Age` is expected, `VL0204`
+adds help "declare `X`'s output as `Age`"; a non-member literal states the value, domain and failed reason (P-6).
+Active `where` and contextual `value`/`one`/`of`/`whole` follow R-SYN-24;
+they are not additions to the future-reserved-word table below. A candidate whose output fails membership follows the existing failed-verification retry path,
+retaining `VL0504` as its cause; final synthesis exhaustion remains `VL0403`, and wired verification uses `VL0503`.
 
 ## 4. Reserved words
 
@@ -153,3 +165,7 @@ Exact lexical rules (which words are contextual) are owned by `language/10`.
 | AC-ERR-01 | Every code in §2 exists in `velme-diagnostics` with the listed name, and no code there is missing from §2. |
 | AC-ERR-02 | Using each §4 reserved word as an identifier yields `VL0104`. |
 | AC-ERR-03 | Every rendered diagnostic ends its first line with `[VLnnnn]` and its `--json` form carries the same code. |
+| AC-ERR-04 | Invalid declarations render `VL0209` with the precise reason and scarce domains render `VL0210` with `n/64`, using identical codes in human and JSON output (R-ERR-04). Tested by D2 (`VL0209`) and D5 (`VL0210`). |
+| AC-ERR-05 | Deep input/output failures render `VL0902`/`VL0504` with domain, path and value-error cause; predicate budget errors are not relabelled, and synthesis preserves membership failure as verification feedback (R-ERR-04). Tested by D4. |
+| AC-ERR-06 | A `velme/0.1` header renders existing `VL0106` and help to use `language: velme/0.2` and rebuild the lock; newer unsupported headers receive no downgrade advice. Config `project.language` uses `VL0902` and the same migration wording for the setting (R-SYN-15, R-CLI-29). Tested by D1. |
+| AC-ERR-07 | A source domain non-member uses "`{value}` isn't a valid `{domain}`: {reason}."; a base-typed argument from goal `X` expected as `Age` adds "declare `X`'s output as `Age`" in human/JSON help (R-ERR-04, R-TYP-31). Tested by D2. |

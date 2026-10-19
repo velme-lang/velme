@@ -214,10 +214,17 @@ length/format rule for that one field, not a substitute for this one.
 | `0` | success (and all checks/examples passed) |
 | `1` | the program is invalid: `VL01xx`–`VL03xx` |
 | `2` | build could not produce an accepted artifact: `VL04xx`, `VL0503` |
-| `3` | execution failed: check/example failure `VL0501/0502` or runtime failure `VL06xx` except `VL0607`, `VL0801` |
+| `3` | execution failed: check/example failure `VL0501/0502/0504` or runtime failure `VL06xx` except `VL0607`, `VL0801` |
 | `4` | artifact/lock problem: `VL07xx` |
 | `64` | usage or input error: `VL09xx`, bad flags |
 | `70` | internal error `VL0607` (a Velme bug — message asks the user to report it; or, under `--backend wasm`, a leaf the WASM backend declines, with no report link, D-123) |
+
+**R-CLI-29** JSON input domain validation follows R-RUN-28 after ordinary JSON/base-type validation. It is deep
+through records, lists and present optionals, accepts the unchanged base JSON representation, and rejects a
+non-member with `VL0902`, exit 64, before any goal body runs. The diagnostic names the domain and first input path
+and carries a predicate's value-error cause when relevant. `VL0504` on a goal output exits 3. `VL0209` and the
+`velme check` probe's `VL0210` exit 1; the probe runs without a provider. Predicate budget failures retain their
+normal runtime exit mapping. Both interpreter and WASM use these rules.
 
 **R-CLI-10** Exit codes are part of the CLI contract; changing a mapping is a breaking change (`delivery/52` §5).
 **R-CLI-16** When goals in one invocation fail with codes from different rows above, the process exit code is decided
@@ -229,9 +236,14 @@ execution failure (`3`). `pending` (`VL0408`) keeps exit code `2` — no new exi
 
 ### 5.1 `velme.toml`
 
+R-CLI-29 also applies to `[project].language`: only `"velme/0.2"` is supported (the default). A
+`"velme/0.1"` setting is `VL0902`, exit 64, with help "Change `project.language` to `velme/0.2` and rebuild the
+lock." This migration help is only for `0.1`; newer/other unsupported settings report the supported version
+without advice to downgrade. The header equivalent remains `VL0106` (R-SYN-15).
+
 ```toml
 [project]
-language = "velme/0.1"          # default when the file has no header (language/10)
+language = "velme/0.2"          # default when the file has no header (language/10)
 
 [synthesis]
 provider = "anthropic"          # anthropic | ollama | external | replay (`scripted` is flag-only, D-111)
@@ -378,3 +390,7 @@ name to set.
 | AC-CLI-24 | `--provider` on `velme check`, an unknown `--backend` value and an invalid flag value each exit 64 with `VL0902`, inside the `--json` envelope when `--json` is given; `-q` removes progress lines but not diagnostics, results or the R-SEC-12 notice. |
 | AC-CLI-25 | `--color auto` colours stderr but not stdout when only stderr is a TTY, and neither with `NO_COLOR` set. |
 | AC-CLI-26 | `run --json` for a composite goal has one `results[]` entry for the requested goal, with `calls[]` in source order holding `binding`, `goal` and `status`. |
+| AC-CLI-27 | Invalid nested JSON domain values exit 64 with `VL0902` and a domain/path/cause before body execution on both backends; valid base JSON values, including optional `null`, pass (R-CLI-29). Tested by D4. |
+| AC-CLI-28 | An invalid output domain exits 3 with `VL0504`, also in the JSON diagnostic envelope; membership budget failures keep their normal code and exit (R-CLI-29). Tested by D4. |
+| AC-CLI-29 | `velme check` reports `VL0210` and exits 1 without constructing a provider for a scarce domain (R-CLI-29). Tested by D5. |
+| AC-CLI-30 | `velme.toml` with `project.language = "velme/0.1"` yields `VL0902`, exit 64, with help to change the setting and rebuild the lock. Newer unsupported config versions and source headers receive no downgrade help; old headers use `VL0106` (R-CLI-29, R-SYN-15). Tested by D1. |

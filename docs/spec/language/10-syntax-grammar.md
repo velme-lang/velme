@@ -41,7 +41,8 @@ where `#` is ordinary text.
 
 | Kind | Words |
 |---|---|
-| Keywords (v0.1) | `language type goal call plan check examples budget and or not if then every some in has is empty nothing true false result` |
+| Keywords (velme/0.2) | `language type goal call plan check examples budget where and or not if then every some in has is empty nothing true false result` |
+| Contextual words | `value` binds the tested value in a domain condition; `one of` follows a domain's base type; `whole` follows `is` (optionally `not`). Elsewhere these remain names. |
 | Reserved (D-24, D-87) | `pure effects when choose otherwise import module fallback retry optional assume sample for` |
 | Built-in type names | `Number Text Boolean Nothing List` — ordinary names resolved by sema, not keywords |
 
@@ -106,7 +107,10 @@ header         = "language" ":" NAME "/" VERSION NEWLINE ;         (* NAME must 
 declaration    = type_decl | goal_decl ;
 
 (* ---- types ---- *)
-type_decl      = "type" NAME ":" NEWLINE INDENT field_decl { field_decl } DEDENT ;
+type_decl      = record_decl | domain_decl ;
+record_decl    = "type" NAME [ "where" expr ] ":" NEWLINE INDENT field_decl { field_decl } DEDENT ;
+domain_decl    = "type" NAME "=" type_expr
+                 ( "one" "of" [ literal { "," literal } [ "," ] ] | "where" expr ) NEWLINE ;
 field_decl     = NAME ":" type_expr NEWLINE ;
 type_expr      = base_type [ "?" ] ;
 base_type      = "List" "<" type_expr ">" | NAME ;
@@ -145,7 +149,7 @@ quant_expr     = ( "every" | "some" ) NAME "in" postfix "has" expr ;
 or_expr        = and_expr { "or" and_expr } ;
 and_expr       = not_expr { "and" not_expr } ;
 not_expr       = "not" not_expr | cmp_expr ;
-cmp_expr       = add_expr [ cmp_op add_expr | "is" [ "not" ] "empty" ] ;
+cmp_expr       = add_expr [ cmp_op add_expr | "is" [ "not" ] ( "empty" | "whole" ) ] ;
 cmp_op         = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 add_expr       = mul_expr { ( "+" | "-" ) mul_expr } ;
 mul_expr       = unary { ( "*" | "/" ) unary } ;
@@ -162,12 +166,34 @@ arg            = [ NAME ":" ] expr ;          (* named ⇒ record literal; sema 
 A block out of order or repeated is `VL0101` with a hint naming the expected order.
 
 **R-SYN-15** `T??` is `VL0101`. A header naming another language or a version this compiler doesn't support is
-`VL0106 UnsupportedLanguageVersion`, and so is a version written in another form, such as `velme/1`. Without a header the compiler's current language version applies and is recorded in
-the artifact (INV-8).
+`VL0106 UnsupportedLanguageVersion`, and so is a version written in another form, such as `velme/1`. The only accepted
+header is `language: velme/0.2`; no header means 0.2, recorded in the artifact (INV-8). A `velme/0.1` header is
+`VL0106` with help "Change the header to `language: velme/0.2` and rebuild the lock." (D-160). That migration help applies only to `velme/0.1`; newer or otherwise unsupported versions retain
+the version diagnostic without advice to downgrade.
 
 **R-SYN-21** The header's `VERSION` is compared to the compiler's supported versions as text, never decoded as a
-`Number`: `velme/0.10` and `velme/0.1` are different versions even though `0.10 == 0.1` numerically. A version the
+`Number`: `velme/0.20` and `velme/0.2` are different versions even though `0.20 == 0.2` numerically. A version the
 compiler doesn't support is `VL0106` (R-SYN-15).
+
+**R-SYN-23** Domains are named declarations, never inline field, parameter or output constraints (D-151). Examples:
+
+```text
+type Risk = Text one of "DECLINE", "HIGH", "VERY LOW"
+type Age = Number where value >= 18 and value <= 120 and value is whole
+type Label = Text where value.length >= 1 and value.length <= 40
+type Offer where value.discount <= value.price:
+  price: Number
+  discount: Number
+```
+
+The record condition precedes its colon and is checked after its fields are known. `one of` accepts only Text
+members on base `Text`; the grammar admits other literals and an empty list so sema can report `VL0209` rather than
+a syntax error (R-TYP-29). Parenthesized multi-line `one of (…)` is not accepted in 0.2 (`VL0101`);
+that syntax is deferred as Q-34. A bare `type X = Text` is not an unchecked alias and is `VL0101`.
+
+**R-SYN-24** `where` is a keyword everywhere (`VL0101` as a name). `value`, `one`, `of` and `whole` remain legal
+parameter, field and binding names outside their contextual positions (§2.2); `value.value` can read a record field
+named `value`. `is whole` has comparison precedence and cannot chain, just like `is empty`.
 
 ### 4.1 Precedence (lowest → highest)
 
@@ -222,7 +248,7 @@ outcome on the whole corpus (D-25).
 | AC-SYN-05 | `goal A(when: Number) -> Number:` yields `VL0104` whose message says the word is coming in a later version. |
 | AC-SYN-06 | `"abc` followed by a newline yields `VL0105`; `"\q"` yields `VL0101`. |
 | AC-SYN-07 | A file with three unrelated syntax errors reports all three, in source order, and no cascaded `VL0301`. |
-| AC-SYN-08 | `language: velme/0.2` on a 0.1 compiler yields `VL0106`; a file without a header compiles as 0.1. |
+| AC-SYN-08 | `language: velme/0.2` and no header both compile as 0.2; `language: velme/0.1` yields `VL0106` with help to change the header and rebuild the lock; newer unsupported headers do not receive that migration help (D1). |
 | AC-SYN-09 | `a < b < c` in a check yields `VL0101`; `not a and b` parses as `(not a) and b`; `a or b and c` as `a or (b and c)`. |
 | AC-SYN-10 | `if a then b or c` parses as `if a then (b or c)`; `every x in xs has x > 0 and x < 9` quantifies the whole conjunction. |
 | AC-SYN-11 | A parameter list split across lines inside `( )` parses as if written on one line. |
@@ -231,5 +257,7 @@ outcome on the whole corpus (D-25).
 | AC-SYN-14 | A file with a UTF-8 BOM followed by valid source compiles with no diagnostics; a byte sequence that isn't valid UTF-8 yields `VL0901`. |
 | AC-SYN-15 | A file containing a lone `\r` not followed by `\n` yields `VL0101`; a file using only `\r\n` line endings parses identically to the same source with `\n`. |
 | AC-SYN-16 | A `NUMBER` literal with 29 fractional digits yields `VL0101` ("too many decimal places"); one whose coefficient exceeds `2^96` yields `VL0101` ("too big"). |
-| AC-SYN-17 | `Player??` yields `VL0101`; on a compiler that supports only `0.1`, `language: velme/0.10` yields `VL0106` while `language: velme/0.1` compiles (R-SYN-21). |
+| AC-SYN-17 | `Player??` yields `VL0101`; `language: velme/0.20` yields `VL0106` while `language: velme/0.2` compiles (R-SYN-21, D1). |
 | AC-SYN-18 | `Player(name: "A", 3)` (mixed named and positional arguments) yields `VL0101`; `sum(1, 2)` in a check parses as a built-in call and `Player(name: "A", jump_height: 3, score: 1)` as a record literal. |
+| AC-SYN-19 | The four R-SYN-23 forms parse, including a multiword Text member and a record condition reading two fields; an inline `age: Number where …` is `VL0101` (D2). Parenthesized multi-line `one of (…)` is rejected with `VL0101` (Q-34, D2). |
+| AC-SYN-20 | `where` as a parameter is `VL0101`; parameters named `value`, `one`, `of`, `whole` and a field accessed as `value.value` are accepted; `x is whole` groups at comparison precedence and `x is whole == true` cannot chain (D2). |

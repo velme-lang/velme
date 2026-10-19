@@ -10,7 +10,8 @@ goals it may use in a `call` block, and executable `check` assertions. An LLM (*
 
 - **Implementation:** Rust workspace — Chumsky parser, serde IR + JSON Schema, reference interpreter, Tokio DAG
   scheduler, Wasmtime sandbox (WASM backend after the interpreter is stable).
-- **Surface (v0.1):** `type`, `goal`, `call`, `plan`, `check`, `examples`, optional `budget`.
+- **Surface (velme/0.2):** `type` (records and input domains with `one of`/`where`), `goal`, `call`, `plan`,
+  `check`, `examples`, optional `budget`; older `velme/0.1` headers are rejected (D-160).
 - **Works offline:** with a committed lockfile, `velme check/run/test` need no network and no account (INV-7).
 - **Open core:** language, compiler, runtime, CLI and spec are open source; hosted services are separate products.
 
@@ -64,7 +65,8 @@ Areas: `SYN` 10 · `TYP` 11 · `GOAL` 12 · `CHK` 13 · `BLT` 14 · `CMP` 20 · 
 ### Status tags
 
 `v0.1` — build now · `v0.1-ready` — reserved (keyword, IR field, schema slot) in v0.1, feature deferred ·
-`Future` — do not build, do not contradict.
+`Future` — do not build, do not contradict. These scope tags remain the original MVP work labels, not the
+accepted language/IR version: D-160 sets those to 0.2. D1 performs the coordinated tree-wide tag rename.
 
 ---
 
@@ -104,7 +106,7 @@ These hold for the life of the language. A change that breaks one is an architec
 | Area | v0.1 | v0.1-ready (reserved) | Future |
 |---|---|---|---|
 | Declarations | `type`, `goal`, `call`, `plan`, `check`, `examples`, `budget` | `pure`, `effects`, `when`, `choose`, `otherwise`, `import`, `module` keywords | conditional calls, `choose`, modules/packages |
-| Types | `Number`, `Text`, `Boolean`, `Nothing`, `T?`, `List<T>`, records | — | maps, enums, tuples, generics, ADTs, binary `Float` (D-36) |
+| Types | `Number`, `Text`, `Boolean`, `Nothing`, `T?`, `List<T>`, records; named closed Text sets and Number/Text/record `where` domains (D-151, D-163–164) | — | maps, enums, tuples, generics, ADTs, binary `Float` (D-36) |
 | Control | straight-line call DAG; collection primitives and expression `if` inside IR (`compiler/21` R-IR-06) | — | conditional calls, recursion, loops, `fallback`/`retry`/optional calls |
 | Synthesis | `anthropic` + local `ollama` providers, `external` backend for human/tool-written IR, structured IR output, retry with diagnostics, replay provider | provider routing fields in manifest | multiple agents, fine-tuning |
 | Execution | reference interpreter, parallel DAG scheduler, budgets, trace | — | distributed execution |
@@ -136,7 +138,9 @@ Full MVP list and exclusions: `delivery/50`.
 
 | Decision | Choice | Ref |
 |---|---|---|
-| LLM output boundary | typed Velme IR (JSON, or a reply notation lowered to IR), never WASM | INV-1, `compiler/21`, D-152 |
+| LLM output boundary | typed Velme IR 0.2 (JSON, or reply notation lowered to IR); compiler-owned domains, body annotations use bases | INV-1, `compiler/21`, D-152, D-158, D-163 |
+| Language version | only `velme/0.2`; no header means 0.2; CLI release `0.2.0-alpha.1` | D-160, `delivery/52` |
+| Input domains | full HIR predicates, recursive runtime membership and deterministic domain generation/probe | D-151, D-162–164, `language/11`, `compiler/22`, `runtime/30` |
 | Implementation language | Rust (stable toolchain pinned) | `compiler/20` |
 | Parser | Chumsky + hand-written indentation-aware lexer; Tree-sitter later, sharing the golden corpus | D-25 |
 | Semantics owner | reference interpreter; WASM must match (differential tests) | P-4, `delivery/51` |
@@ -156,9 +160,9 @@ Full MVP list and exclusions: `delivery/50`.
 
 | Artifact | Owner |
 |---|---|
-| Language semantics | this spec tree (later mirrored as the versioned `language/spec/0.1/`, `delivery/52`) |
+| Language semantics | this spec tree (D1 publishes `language/spec/0.2/` at `0.2.0-alpha.1`, `delivery/52`) |
 | Accepted implementation of a goal | the locked IR artifact (`runtime/32`) |
-| Whether a result passes | the runtime's check evaluator (INV-2) |
+| Whether a result passes | runtime membership and check evaluation (`velme-check`, invoked by `velme-runtime`; INV-2, INV-9) |
 | Diagnostic codes | `reference/90` |
 
 ---

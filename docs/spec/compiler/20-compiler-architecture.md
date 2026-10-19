@@ -20,9 +20,9 @@ public compiler API that the CLI, a future LSP and the playground share. Syntax 
 | `velme-builtins` | built-in catalog: names, signatures, pure Rust implementations, `builtins_version`; the cost table (D-54); the execution types both backends share: `Limits`, `Spent`, `Interrupt`, `Error`, `Failure` and the wording of their diagnostics (D-114) | `diagnostics` |
 | `velme-sema` | name resolution, type checking, narrowing, call-graph build + cycle check → typed semantic model (HIR) | `syntax`, `builtins`, `diagnostics` |
 | `velme-ir` | IR types, JSON Schema (schemars), canonical JSON, validator, lowering HIR → IR for compiler-owned parts | `sema`, `builtins`, `diagnostics` |
-| `velme-check` | lowering of `check`/`examples` to IR predicates; check and example evaluation on the interpreter, failure reports (D-80) | `ir`, `interp`, `sema`, `builtins`, `diagnostics` |
+| `velme-check` | lowering of `check`/`examples` and domain predicates to IR; predicate evaluation on the interpreter, source-literal checks, membership walk called only by `velme-runtime`, failure reports (D-80, D-164) | `ir`, `interp`, `sema`, `builtins`, `diagnostics` |
 | `velme-interp` | reference interpreter for IR (fuel-metered, pure); re-exports the execution types of `velme-builtins` (D-114) | `ir`, `builtins`, `diagnostics` |
-| `velme-synth` | Spellbook: `SynthProvider` trait, providers, prompt builder, retry loop, verification pipeline, test-input generator | `ir`, `check`, `interp`, `sema`, `builtins` (the catalog for `SynthRequest.builtins`, D-98), `diagnostics` |
+| `velme-synth` | Spellbook: `SynthProvider` trait, providers, prompt builder, retry loop, verification pipeline, test-input generator and declaration-local scarcity probe (D-164); domain predicates evaluated via `velme-check` | `ir`, `check`, `interp`, `sema`, `builtins` (the catalog for `SynthRequest.builtins`, D-98), `diagnostics` |
 | `velme-wasm` | IR → core WASM emitter, Wasmtime sandbox host (M7) | `ir`, `builtins`, `diagnostics` |
 | `velme-runtime` | VibeVM: goal registry, call planner, scheduler, budgets, trace, artifact store, lockfile | `ir`, `check`, `interp`, `wasm`, `synth`, `sema` (its API takes `hir::Program`, §6, D-80), `builtins` (budget caps, D-77), `diagnostics` |
 | `velme-cli` | binary `velme`: argument parsing, config, rendering, exit codes | any of the above |
@@ -175,3 +175,4 @@ takes the whole candidate goal and runs it through `velme-runtime`'s scheduler, 
 | AC-CMP-06 | A `wired` goal (D-4) builds and runs with no provider configured. |
 | AC-CMP-07 | `analyze` on a 1 000-line program from a seeded generator completes in < 50 ms on the reference machine (`delivery/51` §6), asserted by an ignored release-mode test that `cargo xtask gate` runs (D-130, D-131). |
 | AC-CMP-08 | `velme-synth`'s public API takes no `&dyn ArtifactStore`; a `cargo xtask deps` check confirms no new dependency edge outside §2 (D-54). |
+| AC-CMP-09 | Crate-boundary checks keep draws/probe in `velme-synth`, predicate evaluation and membership implementation in `velme-check`, and membership-walk invocation in `velme-runtime`; no backend → check or check → synth edge/import is introduced. `velme check` probes without constructing a provider (R-CMP-01, D-164). Tested by D4 (runtime), D5 (probe). |

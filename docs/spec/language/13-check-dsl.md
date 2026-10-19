@@ -46,6 +46,7 @@ A quantifier variable that repeats a visible name is `VL0306 DuplicateBinding`. 
 | `a and b`, `a or b`, `not a` | Boolean logic | short-circuit, left to right |
 | `if a then b` | implication, ≡ `not a or b` | D-6; `b` not evaluated when `a` is false |
 | `x is empty`, `x is not empty` | emptiness of `T?`, `List`, `Text` | R-TYP-20 |
+| `x is whole`, `x is not whole` | Number has no fractional part, or its negation | R-TYP-07; domains use the base; nullable operands need narrowing |
 | `x.field` | field access | `VL0205` if unknown; `VL0207` on un-narrowed `T?` |
 | `xs.field` | projection → `List<F>` | R-TYP-14 |
 | `xs.length`, `t.length` | length | |
@@ -127,6 +128,44 @@ quantifiers, a 1 001-item list); a lowered check's depth is bounded by its sourc
 the LLM as the specification to satisfy ([22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md)), but their
 truth is decided only here.
 
+### 6.1 Domain conditions
+
+**R-CHK-13** The expression after `where` uses this chapter's complete check expression language, with one
+additional binding `value` of the unconstrained base type (the underlying record for a record domain). It must
+return Boolean. It sees no goal parameters, call bindings or `result`; only `value`, its quantifier variables,
+record constructors and check-callable built-ins. Record conditions may relate fields, e.g.
+`value.discount <= value.price`. Type errors in the condition are `VL0209` (R-TYP-29). Outside a declaration,
+`is whole` is also available in ordinary checks: `x is whole` lowers to `floor(x) == x`, and `is not whole` to
+its negation, with Number operands required (`VL0206`, or `VL0207` before nullable narrowing).
+
+**R-CHK-14** Split a condition by flattening only its top-level `and` tree, in source order. Extract only:
+
+| Conjunct | Exact-generation constraint |
+|---|---|
+| `value > n`, `>= n`, `< n`, `<= n` on Number, or the reversed literal comparison | one lower / one upper bound, exclusive / inclusive |
+| `value is whole` on Number | integer-valued generation |
+| `value.length > n`, `>= n`, `< n`, `<= n` on Text, or the reversed literal comparison | one lower / one upper length bound; Unicode scalars |
+
+For Number bounds, `n` is a Number literal, including a signed literal. For Text length bounds it must be a
+non-negative whole literal; a negative or fractional literal bound is `VL0209`. A computed Text length bound
+stays a residual filter condition.
+Parentheses do not change extraction. Normalize a reversed literal comparison by swapping operands and reversing
+its operator (`0 <= value` becomes `value >= 0`; likewise Text length). Such bounds count toward the same duplicate
+lower/upper-bound rule. Computed Number or Text length bounds, `==`, negation, implication, disjunction, patterns and record-field
+relations remain residual conditions. No other algebraic rewriting or constraint solving occurs. Duplicate bound
+directions or whole conjuncts are `VL0209` even if redundant. A Text length interval is intersected with nonnegative
+integers; a Number whole interval with integers. Missing endpoints retain the base's limits. Number bounds / whole
+on a non-Number, and length bounds on a non-Text domain, are `VL0209`.
+
+**R-CHK-15** Membership requires the closed set or complete `where` condition. The complete condition is retained
+in HIR and evaluated once in source order; extraction is for generation/static simple checks, not a rewrite of
+membership evaluation. Residual conjuncts are excluded from the artifact IR `domains` table (R-IR-24), and evaluated
+by `velme-check` from that HIR, using the same validated lowering and reference interpreter as R-CHK-11. This
+evaluation is used for generated-value filtering, the scarcity probe, and input/output membership even when a
+WASM body produced the value. A predicate returning false or raising a value error (e.g. `VL0602`) means
+"not a member"; input/output reports retain that cause. Budget exhaustion keeps its budget code (R-CHK-08),
+and an internal error remains `VL0607`. Conditions are never LLM-judged (INV-2).
+
 ## 7. Acceptance criteria
 
 | ID | Criterion |
@@ -143,3 +182,7 @@ truth is decided only here.
 | AC-CHK-10 | A check that exhausts fuel yields `VL0601`, not `VL0501`. |
 | AC-CHK-11 | The same failing check produces an identical report (values, index, order) on the interpreter and the WASM backend. |
 | AC-CHK-12 | Quantifier variable `player` inside a goal with parameter `player` yields `VL0306`. |
+| AC-CHK-13 | `is whole` and its negation agree with fractional-part semantics for positive, negative and zero Numbers; nullable use needs narrowing, non-Number use is `VL0206`; lowered checks validate (D2). |
+| AC-CHK-14 | A domain condition sees only `value` and check-local names; a record condition relating two fields passes; a goal input, call binding or `result` referenced there yields `VL0209` (D2). |
+| AC-CHK-15 | Top-level conjunction extraction finds Number bounds/whole and Text length bounds, including reversed literal comparisons; forward plus reversed bounds in the same direction yield `VL0209`. Computed Number and Text length bounds (e.g. `value.length <= other_expr`), `or` and record relations stay residual; only negative/fractional literal Text length bounds yield `VL0209` (D2). |
+| AC-CHK-16 | A residual condition returning false or dividing by zero rejects membership with its cause; fuel exhaustion remains `VL0601`; interpreter/WASM body execution uses the same HIR predicate evaluator (D4). |
