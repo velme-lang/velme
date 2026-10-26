@@ -241,6 +241,38 @@ fn check_codes() {
     });
 }
 
+/// AC-ERR-04 (the `VL0209` half; `VL0210` is D5's): each invalid declaration names its precise reason, with the same
+/// code and message in human and JSON output.
+#[test]
+fn ac_err_04_vl0209_names_the_reason_in_human_and_json() {
+    for (decl, reason) in [
+        (
+            "type Score = Number one of \"1\"",
+            "`one of` lists Text values, so its base must be `Text`",
+        ),
+        ("type Risk = Text one of \"LOW\", \"LOW\"", "`\"LOW\"` is listed twice"),
+        ("type Flag = Boolean where value", "its base can't be `Boolean`"),
+        (
+            "type Band = Number where value > 5 and value < 5",
+            "no number lies between its bounds",
+        ),
+    ] {
+        let source = format!("language: velme/0.2\n\n{decl}\n\ngoal G(x: Number) -> Number:\n    plan: \"p\"\n");
+        let dir = project("ac_err_04", &source);
+        let human = velme(&dir, &["check", FILE], &[]);
+        assert!(human.stderr.contains("  [VL0209]"), "{decl}: {}", human.stderr);
+        let json = velme(&dir, &["check", "--json", FILE], &[]);
+        assert_eq!(json.code, human.code, "{decl}");
+        let envelope: Value = serde_json::from_str(&json.stdout).expect("--json prints one JSON document");
+        let diagnostics = envelope["diagnostics"].as_array().expect("a diagnostics array");
+        assert_eq!(diagnostics.len(), 1, "{decl}: {}", json.stdout);
+        assert_eq!(diagnostics[0]["code"], "VL0209", "{decl}");
+        let message = diagnostics[0]["message"].as_str().expect("a message");
+        assert!(message.contains(reason), "{decl}: {message}");
+        assert!(human.stderr.contains(message), "{decl}: {}", human.stderr);
+    }
+}
+
 // ---- synthesis ----
 
 #[test]

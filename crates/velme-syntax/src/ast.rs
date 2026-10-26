@@ -61,21 +61,66 @@ pub struct FailedDecl {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Decl {
-    /// `type Name:` with fields.
+    /// `type Name [where …]:` with fields.
     Type(TypeDecl),
+    /// `type Name = Base one of …` or `type Name = Base where …` (R-SYN-23).
+    Domain(DomainDecl),
     /// `goal Name(…) -> T:` with a body.
     Goal(Box<GoalDecl>),
 }
 
-/// `type_decl` (§4).
+impl Decl {
+    /// The declared name.
+    pub fn name(&self) -> &Ident {
+        match self {
+            Decl::Type(t) => &t.name,
+            Decl::Domain(d) => &d.name,
+            Decl::Goal(g) => &g.name,
+        }
+    }
+}
+
+/// `record_decl` (§4). With a `where` condition it is a record domain (R-SYN-23, R-TYP-28).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TypeDecl {
     /// The type's name.
     pub name: Ident,
+    /// The condition after `where`, on the whole record as `value`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<Expr>,
     /// Its fields, in order.
     pub fields: Vec<Field>,
     /// The whole declaration.
     pub span: Span,
+}
+
+/// `domain_decl` (§4): a named subset of a base type (R-SYN-23).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DomainDecl {
+    /// The domain's name.
+    pub name: Ident,
+    /// The type after `=`.
+    pub base: TypeExpr,
+    /// `one of …` or `where …`.
+    pub rule: DomainRule,
+    /// The whole declaration.
+    pub span: Span,
+}
+
+/// What follows a domain's base type (§4 `domain_decl`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DomainRule {
+    /// `one of a, b, …`: the members as written; sema checks they are distinct Text (R-TYP-29).
+    OneOf {
+        /// The members, in order.
+        members: Vec<Literal>,
+    },
+    /// `where condition`, on the base value as `value`.
+    Where {
+        /// The condition.
+        condition: Expr,
+    },
 }
 
 /// `field_decl` (§4).
@@ -421,6 +466,13 @@ pub enum ExprKind {
         /// What is tested.
         operand: Box<Expr>,
         /// `is not empty`.
+        negated: bool,
+    },
+    /// `x is whole` or `x is not whole` (R-CHK-13).
+    IsWhole {
+        /// What is tested.
+        operand: Box<Expr>,
+        /// `is not whole`.
         negated: bool,
     },
     /// `if a then b`.

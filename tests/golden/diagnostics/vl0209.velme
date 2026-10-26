@@ -1,0 +1,7 @@
+# A closed set over a Number base is VL0209: `one of` lists Text values.
+language: velme/0.2
+
+type Score = Number one of "1", "2"
+
+goal Grade(score: Score) -> Text:
+    plan: "Name the grade."

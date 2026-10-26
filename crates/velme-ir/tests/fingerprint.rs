@@ -139,13 +139,199 @@ fn canonical_json_is_jcs_like_not_jcs() {
 }
 
 /// The `contract_key` of one fixed goal, spelled out: the D-81 document is built by hand, so a change to a Rust
-/// type's serialization can't reach it. Changing this value invalidates every lock.
+/// type's serialization can't reach it. Changing this value invalidates every lock. Re-pinned for the 0.2 version
+/// bump (R-ART-27): `language_version` is part of the key document.
 #[test]
 fn contract_key_golden_value() {
     assert_eq!(
         key(&program(SUMMARY), "CalculateScore").to_string(),
-        "b3:f64dd8797d69b05fdf869357971f3b0b622346ac52127985659a2e6e33d33cfb"
+        "b3:ed2d2fe2bbec1587632561ede3cfd3199cbe13c160718769e890bdb8b5e10cd0"
     );
+}
+
+const DOMAIN_GOAL: &str = "type Age = Number where value >= 18
+type Tier = Text one of \"A\", \"B\"
+type Unused = Number where value > 0
+type Offer where value.price >= 0:
+    price: Number
+    tier: Tier
+type Person:
+    age: Age
+
+goal G(person: Person, offers: List<Offer?>) -> Age:
+    plan: \"p\"
+
+goal H(x: Number) -> Number:
+    call:
+        r = G(Person(age: 30), [])
+    plan: \"p\"
+";
+
+/// AC-ART-13: a set, a bound, a residual condition or a field domain changes the signature and its caller's key;
+/// layout, comments and Number spelling don't, and neither do domains `H` doesn't reach (R-ART-27).
+#[test]
+fn ac_art_13_domain_declarations_enter_signatures() {
+    let base = program(DOMAIN_GOAL);
+    for (from, to) in [
+        ("value >= 18", "value >= 21"),
+        ("\"A\", \"B\"", "\"A\", \"C\""),
+        ("value.price >= 0", "value.price >= 0 and value.price != 3"),
+        ("    age: Age", "    age: Number"),
+    ] {
+        let changed = program(&DOMAIN_GOAL.replace(from, to));
+        assert_ne!(sig(&base, "G"), sig(&changed, "G"), "{to}");
+        assert_ne!(key(&base, "H"), key(&changed, "H"), "{to}");
+    }
+    let same = program(&DOMAIN_GOAL.replace("value >= 18", "value   >=  018.0 # adult"));
+    assert_eq!(sig(&base, "G"), sig(&same, "G"));
+    let unused = program(&DOMAIN_GOAL.replace("value > 0", "value > 1"));
+    assert_eq!(sig(&base, "G"), sig(&unused, "G"));
+    let no_domains = program("goal H(x: Number) -> Number:\n    plan: \"p\"\n");
+    assert_eq!(sig(&base, "H"), sig(&no_domains, "H"));
+}
+
+/// AC-ART-13, R-ART-27: a domain-free goal keeps the keys D1 wrote, even beside a domain declaration it doesn't
+/// reach. The expected keys are read from the committed `examples/beginner/velme.lock`.
+#[test]
+fn ac_art_13_domain_free_keys_equal_the_d1_lock() {
+    let lock = read(&repo("examples/beginner/velme.lock"));
+    let entry = lock
+        .split("[[goal]]")
+        .find(|e| e.contains("name          = \"Add\""))
+        .expect("an Add entry");
+    let locked = |field: &str| {
+        let line = entry
+            .lines()
+            .find(|l| l.starts_with(field))
+            .unwrap_or_else(|| panic!("no {field}"));
+        line.split('"').nth(1).expect("a quoted value").to_owned()
+    };
+    let source = read(&repo("examples/beginner/add.velme"));
+    for text in [
+        source.clone(),
+        format!("{source}\ntype Adult = Number where value >= 18\n"),
+    ] {
+        let p = program(&text);
+        assert_eq!(sig(&p, "Add").to_string(), locked("signature"));
+        assert_eq!(key(&p, "Add").to_string(), locked("contract_key"));
+    }
+}
+
+/// AC-ART-14: a declaration hash covers its transitive declarations, not goals.
+#[test]
+fn ac_art_14_declaration_hash_covers_dependencies_only() {
+    let offer = |p: &Program| {
+        let id = p.domains.iter().position(|d| d.name == "Offer").expect("Offer");
+        velme_ir::declaration_hash(p, velme_sema::hir::DomainId(id)).expect("a hash")
+    };
+    let base = program(DOMAIN_GOAL);
+    assert_eq!(
+        offer(&base),
+        offer(&program(&DOMAIN_GOAL.replace("plan: \"p\"", "plan: \"q\"")))
+    );
+    assert_ne!(
+        offer(&base),
+        offer(&program(&DOMAIN_GOAL.replace("\"A\", \"B\"", "\"A\", \"C\"")))
+    );
+    assert_eq!(
+        offer(&base),
+        offer(&program(&DOMAIN_GOAL.replace("value >= 18", "value >= 19")))
+    );
+}
+
+/// AC-ART-16: the signature document pins `domains` first, each declaration once in name order, and Domain
+/// references in inputs, fields and output; a goal that reaches no domain has no `domains` member.
+#[test]
+fn ac_art_16_golden_signature_document() {
+    let p = program(DOMAIN_GOAL);
+    let doc = velme_ir::signature_document(&p, goal_id(&p, "G")).expect("a document");
+    let text = to_canonical_string(&doc).expect("canonical");
+    let age = r#"{"base":{"t":"Number"},"name":"Age","where":{"kind":"binary","lhs":{"kind":"value"},"op":">=","rhs":{"kind":"number","value":"18"}}}"#;
+    let offer = r#"{"fields":[["price",{"t":"Number"}],["tier",{"name":"Tier","t":"Domain"}]],"name":"Offer","where":{"kind":"binary","lhs":{"base":{"kind":"value"},"field":"price","kind":"field"},"op":">=","rhs":{"kind":"number","value":"0"}}}"#;
+    let tier = r#"{"base":{"t":"Text"},"name":"Tier","one_of":["A","B"]}"#;
+    let expected = format!(
+        r#"{{"domains":[{age},{offer},{tier}],"goal":"G","inputs":[["person",{{"name":"Person","t":"Record"}}],["offers",{{"of":{{"of":{{"name":"Offer","t":"Domain"}},"t":"Optional"}},"t":"List"}}]],"output":{{"name":"Age","t":"Domain"}},"types":{{"Person":{{"fields":[["age",{{"name":"Age","t":"Domain"}}]]}}}}}}"#
+    );
+    assert_eq!(text, expected);
+    let free = velme_ir::signature_document(&p, goal_id(&p, "H")).expect("a document");
+    assert!(
+        free.get("domains").is_none(),
+        "a domain-free signature omits `domains`: {free}"
+    );
+}
+
+fn domain_id(p: &Program, name: &str) -> velme_sema::hir::DomainId {
+    velme_sema::hir::DomainId(p.domains.iter().position(|d| d.name == name).expect("a domain"))
+}
+
+/// The canonical declaration-hash document of domain `name`.
+fn declaration(p: &Program, name: &str) -> String {
+    let doc = velme_ir::declaration_document(p, domain_id(p, name)).expect("a document");
+    to_canonical_string(&doc).expect("canonical")
+}
+
+/// Architect review F3a (AC-ART-13/14): a plain record a condition constructs is part of the domain, so changing its
+/// field changes the goal's signature and the domain's declaration hash.
+#[test]
+fn ac_art_13_condition_constructors_enter_signature_and_declaration_hash() {
+    let source = "type P:\n    x: Number\n    tag: Text\ntype D = Number where P(x: value, tag: \"a\").x >= 0\n\n\
+                  goal G(d: D) -> Number:\n    plan: \"p\"\n";
+    let base = program(source);
+    let changed = program(&source.replace("tag: Text", "tag: Text?"));
+    assert_ne!(sig(&base, "G"), sig(&changed, "G"));
+    let hash = |p: &Program| velme_ir::declaration_hash(p, domain_id(p, "D")).expect("a hash");
+    assert_ne!(hash(&base), hash(&changed));
+    let doc = velme_ir::signature_document(&base, goal_id(&base, "G")).expect("a document");
+    assert!(doc["types"].get("P").is_some(), "{doc}");
+}
+
+/// Architect review F3b (AC-ART-14): constructor cycles end; the root is never its own dependency and each
+/// dependency appears once.
+#[test]
+fn ac_art_14_constructor_cycles_leave_the_root_out() {
+    let selfish = program("type A where A(x: 1).x <= value.x:\n    x: Number\n");
+    let doc = declaration(&selfish, "A");
+    assert!(doc.ends_with(r#""dependencies":[]}"#), "{doc}");
+    velme_ir::declaration_hash(&selfish, domain_id(&selfish, "A")).expect("a hash");
+    let cycle = program("type A where B(a: value).a.x >= 0:\n    x: Number\ntype B:\n    a: A\n");
+    let doc = declaration(&cycle, "A");
+    let b = r#"{"fields":[["a",{"name":"A","t":"Domain"}]],"name":"B"}"#;
+    assert!(doc.ends_with(&format!(r#""dependencies":[{b}]}}"#)), "{doc}");
+    velme_ir::declaration_hash(&cycle, domain_id(&cycle, "A")).expect("a hash");
+}
+
+/// Architect review F3c (AC-ART-14): the declaration-hash document of `Offer`, spelled out, and its hash. Changing
+/// either changes every probe seed (R-SYNTH-65).
+#[test]
+fn ac_art_14_declaration_hash_golden_value() {
+    let p = program(DOMAIN_GOAL);
+    let offer = r#"{"fields":[["price",{"t":"Number"}],["tier",{"name":"Tier","t":"Domain"}]],"name":"Offer","where":{"kind":"binary","lhs":{"base":{"kind":"value"},"field":"price","kind":"field"},"op":">=","rhs":{"kind":"number","value":"0"}}}"#;
+    let tier = r#"{"base":{"t":"Text"},"name":"Tier","one_of":["A","B"]}"#;
+    assert_eq!(
+        declaration(&p, "Offer"),
+        format!(r#"{{"declaration":{offer},"dependencies":[{tier}]}}"#)
+    );
+    assert_eq!(
+        velme_ir::declaration_hash(&p, domain_id(&p, "Offer"))
+            .expect("a hash")
+            .to_string(),
+        "b3:277d0942690ef66b77cd3b3fe5e2f7ab9290ef2819887f94fce058066c240533"
+    );
+}
+
+/// Architect review F3d (AC-ART-13/14): a record domain's plain-record field is in the signature's `types` and the
+/// domain's `dependencies`; the record domain itself never is in `types`.
+#[test]
+fn ac_art_13_record_domain_fields_reach_plain_records() {
+    let p = program(
+        "type Seller:\n    name: Text\ntype Offer where value.price >= 0:\n    price: Number\n    seller: Seller\n\n\
+         goal G(o: Offer) -> Number:\n    plan: \"p\"\n",
+    );
+    let doc = velme_ir::signature_document(&p, goal_id(&p, "G")).expect("a document");
+    let types: Vec<&String> = doc["types"].as_object().expect("types").keys().collect();
+    assert_eq!(types, ["Seller"]);
+    let seller = r#"{"fields":[["name",{"t":"Text"}]],"name":"Seller"}"#;
+    assert!(declaration(&p, "Offer").ends_with(&format!(r#""dependencies":[{seller}]}}"#)));
 }
 
 /// D-85: the compatibility unit is `MAJOR`, or `MAJOR.MINOR` while `MAJOR` is 0, as Cargo reads versions.

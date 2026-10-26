@@ -479,7 +479,7 @@ fn record_types(program: &Program, roots: Vec<&HirType>) -> Result<Vec<RecordTyp
 
 fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
     match ty {
-        HirType::Optional(inner) | HirType::List(inner) => records_in(inner, out),
+        HirType::Optional(inner) | HirType::List(inner) | HirType::Domain(_, inner) => records_in(inner, out),
         HirType::Record(id) => out.push(*id),
         _ => {}
     }

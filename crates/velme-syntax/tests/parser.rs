@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use velme_diagnostics::render::{self, JsonDiagnostic, LineIndex};
 use velme_diagnostics::{Code, Diagnostic};
-use velme_syntax::ast::{Decl, Expr, ExprKind, GoalDecl, Program};
+use velme_syntax::ast::{Decl, DomainRule, Expr, ExprKind, GoalDecl, LiteralKind, Program};
 use velme_syntax::{Keyword, SourceFile, parse};
 
 fn repo_root() -> PathBuf {
@@ -102,6 +102,9 @@ fn shape(e: &Expr) -> String {
         ExprKind::Binary { op, lhs, rhs } => format!("({op:?} {} {})", shape(lhs), shape(rhs)),
         ExprKind::IsEmpty { operand, negated } => {
             format!("(IsEmpty{} {})", if *negated { "Not" } else { "" }, shape(operand))
+        }
+        ExprKind::IsWhole { operand, negated } => {
+            format!("(IsWhole{} {})", if *negated { "Not" } else { "" }, shape(operand))
         }
         ExprKind::If { condition, then } => format!("(If {} {})", shape(condition), shape(then)),
         ExprKind::Quantified {
@@ -207,14 +210,7 @@ fn ac_syn_02_tab_does_not_stop_parsing() {
 }
 
 fn decl_names(program: &Program) -> Vec<&str> {
-    program
-        .decls
-        .iter()
-        .map(|d| match d {
-            Decl::Type(t) => t.name.name.as_str(),
-            Decl::Goal(g) => g.name.name.as_str(),
-        })
-        .collect()
+    program.decls.iter().map(|d| d.name().name.as_str()).collect()
 }
 
 /// D-76: one mistake is one diagnostic, and the declaration holding it is excluded.
@@ -564,6 +560,85 @@ fn ac_syn_18_calls_and_record_literals() {
         shape(&check_expr("result == Player(name: \"A\", jump_height: 3, score: 1)")),
         "(Eq result Player(name: \"A\", jump_height: 3, score: 1))"
     );
+}
+
+/// Parses `src` as one declaration and returns it.
+fn only_decl(src: &str) -> Decl {
+    let (program, diags) = parse_str(src);
+    assert!(diags.is_empty(), "{src}: {diags:#?}");
+    match program.decls.as_slice() {
+        [decl] => decl.clone(),
+        other => panic!("expected one declaration, got {other:#?}"),
+    }
+}
+
+#[test]
+fn ac_syn_19_domain_forms_parse_and_inline_conditions_do_not() {
+    let Decl::Domain(risk) = only_decl("type Risk = Text one of \"DECLINE\", \"HIGH\", \"VERY LOW\"\n") else {
+        panic!("a domain")
+    };
+    let DomainRule::OneOf { members } = &risk.rule else {
+        panic!("a closed set")
+    };
+    let members: Vec<&LiteralKind> = members.iter().map(|m| &m.kind).collect();
+    assert_eq!(
+        members.last(),
+        Some(&&LiteralKind::Text {
+            value: "VERY LOW".into()
+        })
+    );
+    assert_eq!(members.len(), 3);
+    let Decl::Domain(age) = only_decl("type Age = Number where value >= 18 and value <= 120 and value is whole\n")
+    else {
+        panic!("a domain")
+    };
+    let DomainRule::Where { condition } = &age.rule else {
+        panic!("a condition")
+    };
+    assert_eq!(
+        shape(condition),
+        "(And (And (GtEq value 18) (LtEq value 120)) (IsWhole value))"
+    );
+    assert!(matches!(
+        only_decl("type Label = Text where value.length >= 1 and value.length <= 40\n"),
+        Decl::Domain(_)
+    ));
+    let Decl::Type(offer) =
+        only_decl("type Offer where value.discount <= value.price:\n    price: Number\n    discount: Number\n")
+    else {
+        panic!("a record")
+    };
+    let condition = offer.condition.as_ref().expect("a record condition");
+    assert_eq!(shape(condition), "(LtEq value.discount value.price)");
+    assert_eq!(offer.fields.len(), 2);
+
+    for src in [
+        "type P:\n    age: Number where value >= 18\n",
+        "goal G(age: Number where value >= 18) -> Number:\n    plan: \"p\"\n",
+        "type Risk = Text one of (\"A\", \"B\")\n",
+        "type Risk = Text one of (\n    \"A\",\n    \"B\"\n)\n",
+        "type Name = Text\n",
+    ] {
+        let (_, diags) = parse_str(src);
+        assert_eq!(codes(&diags), [Code::UnexpectedToken], "{src}: {diags:#?}");
+    }
+}
+
+#[test]
+fn ac_syn_20_where_is_a_keyword_and_contextual_words_are_names() {
+    let (_, diags) = parse_str("goal G(where: Number) -> Number:\n    plan: \"p\"\n");
+    assert_eq!(codes(&diags), [Code::UnexpectedToken]);
+    let src = "type Box:\n    value: Number\n\ngoal G(value: Box, one: Number, of: Number, whole: Number) -> Boolean:\n    \
+               plan: \"p\"\n    check:\n        - value.value > one + of + whole\n";
+    let (_, diags) = parse_str(src);
+    assert!(diags.is_empty(), "{diags:#?}");
+    assert_eq!(
+        shape(&check_expr("x is whole and y is not whole")),
+        "(And (IsWhole x) (IsWholeNot y))"
+    );
+    assert_eq!(shape(&check_expr("not x + 1 is whole")), "(Not (IsWhole (Add x 1)))");
+    let (_, diags) = parse_str("goal G() -> Boolean:\n    check:\n        - x is whole == true\n");
+    assert_eq!(codes(&diags), [Code::UnexpectedToken]);
 }
 
 /// The parser half of AC-TYP-16; the JSON half is in `velme-ir`'s mapping tests.

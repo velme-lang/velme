@@ -3,7 +3,7 @@ source: crates/velme-synth/tests/prompt.rs
 expression: "composite.replace(&prompt_version(), \"<prompt_version>\")"
 ---
 Velme prompt <prompt_version>
-IR version: 0.1
+IR version: 0.2
 Builtins version: 0.1
 
 You write the implementation of one goal for Velme, a tool that turns plain-language plans into programs.

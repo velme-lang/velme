@@ -169,6 +169,17 @@ fn decode_at(json: &Json, ty: &Type, program: &Program, path: &mut Vec<String>) 
             Some(record) => decode_record(record, members, program, path),
             None => Err(mismatch()),
         },
+        // A domain decodes as its base; membership is checked later (D2: domains reach the IR as bases until D3).
+        (Type::Domain(_, base), _) => {
+            let depth = path.len();
+            decode_at(json, base, program, path).map_err(|problem| match problem {
+                DecodeProblem::Mismatch { found, .. } if path.len() == depth => DecodeProblem::Mismatch {
+                    expected: program.type_name(ty),
+                    found,
+                },
+                other => other,
+            })
+        }
         _ => Err(mismatch()),
     }
 }

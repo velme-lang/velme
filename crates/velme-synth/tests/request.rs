@@ -176,3 +176,20 @@ fn ac_synth_57_an_external_compact_request_carries_the_compact_reply_schema() {
     let plain = velme_ir::to_canonical_string(&base).expect("canonical");
     assert!(text.len() + 10_000 < plain.len(), "{} vs {}", text.len(), plain.len());
 }
+
+/// D2 review #3: a record-domain parameter, also under `List` and `?`, brings its record into the request's types.
+#[test]
+fn a_record_domain_parameter_reaches_the_request_types() {
+    let source = "language: velme/0.2
+
+type Offer where value.price >= 0:
+    price: Number
+
+goal Best(offers: List<Offer?>, first: Offer) -> Number:
+    plan: \"Return the best price.\"
+";
+    let program = program(source);
+    let request = build_request(&program, goal_id(&program, "Best"), source).expect("a request");
+    let names: Vec<&str> = request.types.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["Offer"]);
+}

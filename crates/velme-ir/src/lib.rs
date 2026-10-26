@@ -10,7 +10,8 @@ mod node;
 mod validate;
 
 pub use fingerprint::{
-    Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, execution_id, signature, synthesis_key,
+    Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, declaration_document, declaration_hash,
+    execution_id, signature, signature_document, synthesis_key,
 };
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, from_json_str_within, to_canonical_string};
 pub use lower::{calls, ir_type, wired_goal};

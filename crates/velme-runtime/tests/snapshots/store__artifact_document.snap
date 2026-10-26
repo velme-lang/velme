@@ -71,7 +71,7 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
         }
       ]
     ],
-    "ir_version": "0.1",
+    "ir_version": "0.2",
     "output": {
       "name": "Summary",
       "t": "Record"
@@ -143,17 +143,17 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
       }
     ],
     "compiler_version": "0.1.4",
-    "contract_key": "b3:4e35ae0c39d2ef177922ae6c98d1e6e22345fb049a68f8e8095a30cef6ba8db5",
+    "contract_key": "b3:9c76f2990af153ce6c3964d59777cee0b059a10fc24ab1a694779b7e27da24b7",
     "format": "velme-artifact/1",
     "goal": "BuildPlayerSummary",
-    "ir_version": "0.1",
+    "ir_version": "0.2",
     "kind": "composite",
-    "language_version": "0.1",
+    "language_version": "0.2",
     "model_version": "model-a",
     "prompt_version": "leaf-v1",
     "provider": "anthropic",
     "signature": "b3:ab92627fe12e92ede0753f955cd76067be0814b0ddb4853c220e9baeb72a8100",
-    "synthesis_key": "b3:275879758484ae1f475de0f34dcd74ae12baabd31fb461252761550765365bef",
+    "synthesis_key": "b3:21abdff903f2e358e47457e2acc752f09c66ed01bf31e33f8aa4415439cc3ff2",
     "verification": {
       "examples": 3,
       "generated_inputs": 61,

@@ -1,0 +1,47 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: "serde_json::to_string_pretty(&diagnostics_json(&diags)).expect(\"JSON value serializes\")"
+input_file: tests/golden/parser/reject/record_decl_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "declare a domain like `type Age = Number where value >= 18`, and use `Age` as the type here",
+    "message": "A condition can't be written here — only on a named type.",
+    "severity": "error",
+    "span": [
+      195,
+      200
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect `where` here — I was looking for `)` or a name.",
+    "severity": "error",
+    "span": [
+      225,
+      230
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "declare a domain like `type Age = Number where value >= 18`, and use `Age` as the type here",
+    "message": "A condition can't be written here — only on a named type.",
+    "severity": "error",
+    "span": [
+      290,
+      295
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect the end of the line here — I was looking for `.`, `:`, `and`, `is` or `or`.",
+    "severity": "error",
+    "span": [
+      387,
+      387
+    ]
+  }
+]

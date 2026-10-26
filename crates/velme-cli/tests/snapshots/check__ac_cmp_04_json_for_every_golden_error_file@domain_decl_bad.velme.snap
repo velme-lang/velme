@@ -1,0 +1,72 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
+input_file: tests/golden/parser/reject/domain_decl_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "domain_decl_bad.velme",
+      "help": "write the values it allows, like `type Risk = Text one of \"LOW\", \"HIGH\"`, or use the base type itself",
+      "labels": [],
+      "message": "A type written with `=` needs `one of …` or `where …` after its base type.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 185,
+        "line": 4,
+        "start": 185
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "domain_decl_bad.velme",
+      "help": "list them on one line after `one of`, like `one of \"LOW\", \"HIGH\"`",
+      "labels": [],
+      "message": "A closed set's members aren't written in parentheses.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 25,
+        "end": 211,
+        "line": 5,
+        "start": 210
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "domain_decl_bad.velme",
+      "help": "list them on one line after `one of`, like `one of \"LOW\", \"HIGH\"`",
+      "labels": [],
+      "message": "A closed set's members aren't written in parentheses.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 26,
+        "end": 252,
+        "line": 6,
+        "start": 251
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "domain_decl_bad.velme",
+      "labels": [],
+      "message": "I didn't expect the end of the line here — I was looking for an expression.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 24,
+        "end": 300,
+        "line": 10,
+        "start": 300
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

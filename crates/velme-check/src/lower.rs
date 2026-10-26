@@ -240,6 +240,24 @@ impl<'p> Lowering<'p> {
                 let empty = Tree::new(span, node, vec![arg.spans]);
                 if *negated { not(span, empty) } else { empty }
             }
+            // R-CHK-13: `x is whole` is `floor(x) == x`.
+            ExprKind::IsWhole { operand, negated } => {
+                let (x, again) = (self.expr(operand)?, self.expr(operand)?);
+                let floor = Node::Builtin {
+                    name: "floor".to_owned(),
+                    args: vec![x.node],
+                };
+                let floor = Tree::new(span, floor, vec![x.spans]);
+                let node = Node::BinaryOp {
+                    op: binary(BinaryOp::Eq),
+                    left: Box::new(floor.node),
+                    right: Box::new(again.node),
+                };
+                let whole = Tree::new(span, node, vec![floor.spans, again.spans]);
+                if *negated { not(span, whole) } else { whole }
+            }
+            // A domain condition is evaluated from HIR by D4's membership walk, never lowered as a check.
+            ExprKind::Value => return None,
             // `if a then b` is `not a or b`, so `b` is evaluated only when `a` holds.
             ExprKind::If { condition, then } => {
                 let (condition, then) = (not(span, self.expr(condition)?), self.expr(then)?);
@@ -301,7 +319,9 @@ impl<'p> Lowering<'p> {
 
     /// The name and type of field `index` of the record type `record`.
     fn field(&self, record: &Type, index: usize) -> Option<(String, Type)> {
-        let Type::Record(id) = record else { return None };
+        let Type::Record(id) = record.widened() else {
+            return None;
+        };
         let field = self.program.record(*id)?.fields.get(index)?;
         Some((field.name.clone(), field.ty.clone()))
     }
@@ -373,6 +393,7 @@ fn zero(program: &Program, ty: &Type) -> Option<Json> {
                 .map(|f| Some((f.name.clone(), zero(program, &f.ty)?)))
                 .collect::<Option<_>>()?,
         ),
+        Type::Domain(_, base) => return zero(program, base),
         Type::Error => return None,
     })
 }

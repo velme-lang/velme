@@ -190,6 +190,8 @@ enum Kind {
 fn values(program: &Program, ty: &Type, kind: Kind) -> Vec<Json> {
     let boundary = kind == Kind::Boundary;
     match ty {
+        // Domains generate as their bases until D5's domain generator.
+        Type::Domain(_, base) => values(program, base, kind),
         Type::Number if boundary => ["0", "1", "-1", "0.5", "1000000", "-1000000"]
             .iter()
             .map(|n| number(n))
@@ -369,6 +371,7 @@ fn alphabet() -> Vec<char> {
 /// A value of `ty`, drawn depth first (§7.3).
 fn draw(program: &Program, ty: &Type, stream: &mut Stream) -> Json {
     match ty {
+        Type::Domain(_, base) => draw(program, base, stream),
         Type::Number => {
             if stream.below(2) == 0 {
                 let n = i64::try_from(stream.below(2001)).unwrap_or(0) - 1000;

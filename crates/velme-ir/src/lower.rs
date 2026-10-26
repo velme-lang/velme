@@ -102,6 +102,8 @@ pub fn ir_type(program: &Program, ty: &HirType) -> Option<Type> {
         HirType::Record(id) => Type::Record {
             name: program.record(*id)?.name.clone(),
         },
+        // Domains reach the IR as their bases until the IR has a Domain type (D-158, D2).
+        HirType::Domain(_, base) => return ir_type(program, base),
         HirType::Error => return None,
     })
 }

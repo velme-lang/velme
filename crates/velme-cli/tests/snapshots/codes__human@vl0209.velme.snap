@@ -1,0 +1,14 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0209.velme
+---
+Error: Domain `Score` is invalid: `one of` lists Text values, so its base must be `Text`.  [VL0209]
+   ╭─[ vl0209.velme:4:1 ]
+   │
+ 4 │ type Score = Number one of "1", "2"
+   │ ─────────────────┬─────────────────  
+   │                  ╰─────────────────── here
+   │ 
+   │ Help: write `Text one of "…", "…"`, or use `where` with bounds for numbers
+───╯

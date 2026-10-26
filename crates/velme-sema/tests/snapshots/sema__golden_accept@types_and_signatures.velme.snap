@@ -4,7 +4,7 @@ expression: "program.expect(\"a program without errors\")"
 input_file: tests/golden/sema/accept/types_and_signatures.velme
 ---
 {
-  "language_version": "0.1",
+  "language_version": "0.2",
   "types": [
     {
       "name": "Stats",

@@ -56,8 +56,12 @@ extracted constraints. Include the name, base, ordered closed-set members or com
 and a record domain's fields with their types. Use R-ART-23's span-free HIR normalization and canonical JSON:
 comments/whitespace do not count, member/field/operand order does, and Number spelling normalizes by R-TYP-08.
 The signature document has members `domains`, `goal`, `inputs`, `output`, `types` in that canonical key order.
-`domains` is an array of normalized full domain-declaration nodes in type-name order (empty if none); it is not the
-artifact IR's extracted `domains` object. `inputs` keeps parameter declaration order as `[name, IRType]` pairs; a
+`domains` is an array of normalized full domain-declaration nodes in type-name order; it is omitted when no domain is
+reachable, so a domain-free signature, and the keys built on it, keep their D1 values (R-ART-27, D-165). It is not the
+artifact IR's extracted `domains` object. A declaration node is `{"name", "base" | "fields", "one_of" | "where"}`:
+`base` is `{"t":"Number"}` or `{"t":"Text"}`; a record domain has `fields` (`[name, IRType]` pairs) and no `base`, and
+its underlying record never appears in `types`; `one_of` lists the members in order; `where` is the condition's
+normalized AST, which keeps the surface `is_whole` node, never its `floor` lowering. `inputs` keeps parameter declaration order as `[name, IRType]` pairs; a
 domain parameter is e.g. `["age", {"t":"Domain","name":"Age"}]`, recursively under List/Optional.
 `output` and record-field types use the same Domain references. Existing `goal`/`types` shapes are unchanged; `types` also includes records reached through condition constructors.
 Reachability follows parameters, output, record fields, List and optional items, domain bases, and every type
@@ -69,7 +73,8 @@ base erasure cannot preserve these keys (D-151, D-158; resolves Q-17's key quest
 For R-SYNTH-65, the declaration hash is BLAKE3 of the canonical JSON object
 `{"declaration": D, "dependencies": [D1, ...]}`, where `D` is that normalized full type-declaration HIR node and
 `dependencies` contains its transitively referenced declarations once each, excluding itself, in type-name order,
-using the same normalization. It contains no goal source, model, prompt, artifact or goal budget. Dependencies also include types named by record constructors inside the condition and their transitive
+using the same normalization; a plain-record dependency is `{"name", "fields"}`. It contains no goal source, model,
+prompt, artifact, goal budget or version field. Dependencies also include types named by record constructors inside the condition and their transitive
 references; collect each name once, excluding the root even if constructor references form a cycle. Thus changing
 a field contract or constructor-referenced declaration changes the record domain's probe seed.
 
@@ -238,4 +243,4 @@ traffic sampling, automatic promotion and rollback belong to hosted services, la
 | AC-ART-13 | Changing a set, bound, residual predicate, field domain or constructor-referenced declaration changes the goal/callers' signature and contract keys; comments/whitespace and equivalent Number spelling do not (R-ART-26). Tested by D2. |
 | AC-ART-14 | A declaration hash includes normalized full source, transitive field and condition-constructor declarations, each once and excluding itself, but no goal/model/budget; changing an unrelated goal does not change it (R-ART-26). Tested by D2. |
 | AC-ART-15 | A `0.1` lock is stale under `0.2`, is never silently upgraded by run, and after the coordinated fixture re-bless two unchanged builds reuse the same keys and pins without provider calls (R-ART-27). Tested by D1. |
-| AC-ART-16 | Golden signature JSON pins `domains` before `goal`, `inputs`, `output`, `types`; full normalized declarations occur once in type-name order, and parameter/field/output types retain Domain references recursively (R-ART-26). Tested by D2. |
+| AC-ART-16 | Golden signature JSON pins `domains` before `goal`, `inputs`, `output`, `types`, and omits `domains` when no domain is reachable (a domain-free signature keeps its D1 value); full normalized declarations occur once in type-name order, and parameter/field/output types retain Domain references recursively (R-ART-26). Tested by D2. |

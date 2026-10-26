@@ -1,0 +1,6 @@
+# covers: cmp_expr
+# `is whole` has comparison precedence and cannot chain (R-SYN-24).
+goal G(x: Number) -> Boolean:
+    plan: "p"
+    check:
+        - x is whole == true

@@ -1,0 +1,71 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
+input_file: tests/golden/parser/reject/record_decl_bad.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "record_decl_bad.velme",
+      "help": "declare a domain like `type Age = Number where value >= 18`, and use `Age` as the type here",
+      "labels": [],
+      "message": "A condition can't be written here — only on a named type.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 17,
+        "end": 200,
+        "line": 5,
+        "start": 195
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "record_decl_bad.velme",
+      "labels": [],
+      "message": "I didn't expect `where` here — I was looking for `)` or a name.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 12,
+        "end": 230,
+        "line": 7,
+        "start": 225
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "record_decl_bad.velme",
+      "help": "declare a domain like `type Age = Number where value >= 18`, and use `Age` as the type here",
+      "labels": [],
+      "message": "A condition can't be written here — only on a named type.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 24,
+        "end": 295,
+        "line": 10,
+        "start": 290
+      }
+    },
+    {
+      "code": "VL0101",
+      "file": "record_decl_bad.velme",
+      "labels": [],
+      "message": "I didn't expect the end of the line here — I was looking for `.`, `:`, `and`, `is` or `or`.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 47,
+        "end": 387,
+        "line": 13,
+        "start": 387
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -1,0 +1,787 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: program
+input_file: tests/golden/parser/accept/domains.velme
+---
+{
+  "header": null,
+  "decls": [
+    {
+      "kind": "domain",
+      "name": {
+        "name": "Risk",
+        "span": [
+          265,
+          269
+        ]
+      },
+      "base": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            272,
+            276
+          ]
+        },
+        "optional": false,
+        "span": [
+          272,
+          276
+        ]
+      },
+      "rule": {
+        "kind": "one_of",
+        "members": [
+          {
+            "kind": "text",
+            "value": "DECLINE",
+            "span": [
+              284,
+              293
+            ]
+          },
+          {
+            "kind": "text",
+            "value": "HIGH",
+            "span": [
+              295,
+              301
+            ]
+          },
+          {
+            "kind": "text",
+            "value": "VERY LOW",
+            "span": [
+              303,
+              313
+            ]
+          }
+        ]
+      },
+      "span": [
+        260,
+        313
+      ]
+    },
+    {
+      "kind": "domain",
+      "name": {
+        "name": "Age",
+        "span": [
+          319,
+          322
+        ]
+      },
+      "base": {
+        "kind": "named",
+        "name": {
+          "name": "Number",
+          "span": [
+            325,
+            331
+          ]
+        },
+        "optional": false,
+        "span": [
+          325,
+          331
+        ]
+      },
+      "rule": {
+        "kind": "where",
+        "condition": {
+          "kind": "binary",
+          "op": "and",
+          "lhs": {
+            "kind": "binary",
+            "op": "and",
+            "lhs": {
+              "kind": "binary",
+              "op": "gt_eq",
+              "lhs": {
+                "kind": "name",
+                "name": "value",
+                "span": [
+                  338,
+                  343
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "18",
+                "span": [
+                  347,
+                  349
+                ]
+              },
+              "span": [
+                338,
+                349
+              ]
+            },
+            "rhs": {
+              "kind": "binary",
+              "op": "lt_eq",
+              "lhs": {
+                "kind": "name",
+                "name": "value",
+                "span": [
+                  354,
+                  359
+                ]
+              },
+              "rhs": {
+                "kind": "number",
+                "text": "120",
+                "span": [
+                  363,
+                  366
+                ]
+              },
+              "span": [
+                354,
+                366
+              ]
+            },
+            "span": [
+              338,
+              366
+            ]
+          },
+          "rhs": {
+            "kind": "is_whole",
+            "operand": {
+              "kind": "name",
+              "name": "value",
+              "span": [
+                371,
+                376
+              ]
+            },
+            "negated": false,
+            "span": [
+              371,
+              385
+            ]
+          },
+          "span": [
+            338,
+            385
+          ]
+        }
+      },
+      "span": [
+        314,
+        385
+      ]
+    },
+    {
+      "kind": "domain",
+      "name": {
+        "name": "Label",
+        "span": [
+          391,
+          396
+        ]
+      },
+      "base": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            399,
+            403
+          ]
+        },
+        "optional": false,
+        "span": [
+          399,
+          403
+        ]
+      },
+      "rule": {
+        "kind": "where",
+        "condition": {
+          "kind": "binary",
+          "op": "and",
+          "lhs": {
+            "kind": "binary",
+            "op": "gt_eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "value",
+                "span": [
+                  410,
+                  415
+                ]
+              },
+              "field": {
+                "name": "length",
+                "span": [
+                  416,
+                  422
+                ]
+              },
+              "span": [
+                410,
+                422
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "1",
+              "span": [
+                426,
+                427
+              ]
+            },
+            "span": [
+              410,
+              427
+            ]
+          },
+          "rhs": {
+            "kind": "binary",
+            "op": "lt_eq",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "value",
+                "span": [
+                  432,
+                  437
+                ]
+              },
+              "field": {
+                "name": "length",
+                "span": [
+                  438,
+                  444
+                ]
+              },
+              "span": [
+                432,
+                444
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "40",
+              "span": [
+                448,
+                450
+              ]
+            },
+            "span": [
+              432,
+              450
+            ]
+          },
+          "span": [
+            410,
+            450
+          ]
+        }
+      },
+      "span": [
+        386,
+        450
+      ]
+    },
+    {
+      "kind": "type",
+      "name": {
+        "name": "Offer",
+        "span": [
+          456,
+          461
+        ]
+      },
+      "condition": {
+        "kind": "binary",
+        "op": "lt_eq",
+        "lhs": {
+          "kind": "field",
+          "base": {
+            "kind": "name",
+            "name": "value",
+            "span": [
+              468,
+              473
+            ]
+          },
+          "field": {
+            "name": "discount",
+            "span": [
+              474,
+              482
+            ]
+          },
+          "span": [
+            468,
+            482
+          ]
+        },
+        "rhs": {
+          "kind": "field",
+          "base": {
+            "kind": "name",
+            "name": "value",
+            "span": [
+              486,
+              491
+            ]
+          },
+          "field": {
+            "name": "price",
+            "span": [
+              492,
+              497
+            ]
+          },
+          "span": [
+            486,
+            497
+          ]
+        },
+        "span": [
+          468,
+          497
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "price",
+            "span": [
+              503,
+              508
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                510,
+                516
+              ]
+            },
+            "optional": false,
+            "span": [
+              510,
+              516
+            ]
+          },
+          "span": [
+            503,
+            516
+          ]
+        },
+        {
+          "name": {
+            "name": "discount",
+            "span": [
+              521,
+              529
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                531,
+                537
+              ]
+            },
+            "optional": false,
+            "span": [
+              531,
+              537
+            ]
+          },
+          "span": [
+            521,
+            537
+          ]
+        }
+      ],
+      "span": [
+        451,
+        537
+      ]
+    },
+    {
+      "kind": "domain",
+      "name": {
+        "name": "Trailing",
+        "span": [
+          543,
+          551
+        ]
+      },
+      "base": {
+        "kind": "named",
+        "name": {
+          "name": "Text",
+          "span": [
+            554,
+            558
+          ]
+        },
+        "optional": false,
+        "span": [
+          554,
+          558
+        ]
+      },
+      "rule": {
+        "kind": "one_of",
+        "members": [
+          {
+            "kind": "text",
+            "value": "A",
+            "span": [
+              566,
+              569
+            ]
+          },
+          {
+            "kind": "text",
+            "value": "B",
+            "span": [
+              571,
+              574
+            ]
+          }
+        ]
+      },
+      "span": [
+        538,
+        575
+      ]
+    },
+    {
+      "kind": "type",
+      "name": {
+        "name": "Box",
+        "span": [
+          582,
+          585
+        ]
+      },
+      "fields": [
+        {
+          "name": {
+            "name": "value",
+            "span": [
+              591,
+              596
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                598,
+                604
+              ]
+            },
+            "optional": false,
+            "span": [
+              598,
+              604
+            ]
+          },
+          "span": [
+            591,
+            604
+          ]
+        },
+        {
+          "name": {
+            "name": "one",
+            "span": [
+              609,
+              612
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Text",
+              "span": [
+                614,
+                618
+              ]
+            },
+            "optional": false,
+            "span": [
+              614,
+              618
+            ]
+          },
+          "span": [
+            609,
+            618
+          ]
+        }
+      ],
+      "span": [
+        577,
+        618
+      ]
+    },
+    {
+      "kind": "goal",
+      "name": {
+        "name": "Pick",
+        "span": [
+          625,
+          629
+        ]
+      },
+      "params": [
+        {
+          "name": {
+            "name": "value",
+            "span": [
+              630,
+              635
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Box",
+              "span": [
+                637,
+                640
+              ]
+            },
+            "optional": false,
+            "span": [
+              637,
+              640
+            ]
+          },
+          "span": [
+            630,
+            640
+          ]
+        },
+        {
+          "name": {
+            "name": "one",
+            "span": [
+              642,
+              645
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                647,
+                653
+              ]
+            },
+            "optional": false,
+            "span": [
+              647,
+              653
+            ]
+          },
+          "span": [
+            642,
+            653
+          ]
+        },
+        {
+          "name": {
+            "name": "of",
+            "span": [
+              655,
+              657
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                659,
+                665
+              ]
+            },
+            "optional": false,
+            "span": [
+              659,
+              665
+            ]
+          },
+          "span": [
+            655,
+            665
+          ]
+        },
+        {
+          "name": {
+            "name": "whole",
+            "span": [
+              667,
+              672
+            ]
+          },
+          "ty": {
+            "kind": "named",
+            "name": {
+              "name": "Number",
+              "span": [
+                674,
+                680
+              ]
+            },
+            "optional": false,
+            "span": [
+              674,
+              680
+            ]
+          },
+          "span": [
+            667,
+            680
+          ]
+        }
+      ],
+      "output": {
+        "kind": "named",
+        "name": {
+          "name": "Boolean",
+          "span": [
+            685,
+            692
+          ]
+        },
+        "optional": false,
+        "span": [
+          685,
+          692
+        ]
+      },
+      "budget": null,
+      "call": null,
+      "plan": {
+        "text": "Pick.",
+        "form": "inline",
+        "span": [
+          704,
+          711
+        ]
+      },
+      "check": {
+        "items": [
+          {
+            "kind": "binary",
+            "op": "gt",
+            "lhs": {
+              "kind": "field",
+              "base": {
+                "kind": "name",
+                "name": "value",
+                "span": [
+                  733,
+                  738
+                ]
+              },
+              "field": {
+                "name": "value",
+                "span": [
+                  739,
+                  744
+                ]
+              },
+              "span": [
+                733,
+                744
+              ]
+            },
+            "rhs": {
+              "kind": "number",
+              "text": "0",
+              "span": [
+                747,
+                748
+              ]
+            },
+            "span": [
+              733,
+              748
+            ]
+          },
+          {
+            "kind": "binary",
+            "op": "or",
+            "lhs": {
+              "kind": "is_whole",
+              "operand": {
+                "kind": "name",
+                "name": "one",
+                "span": [
+                  759,
+                  762
+                ]
+              },
+              "negated": true,
+              "span": [
+                759,
+                775
+              ]
+            },
+            "rhs": {
+              "kind": "is_whole",
+              "operand": {
+                "kind": "name",
+                "name": "of",
+                "span": [
+                  779,
+                  781
+                ]
+              },
+              "negated": false,
+              "span": [
+                779,
+                790
+              ]
+            },
+            "span": [
+              759,
+              790
+            ]
+          }
+        ],
+        "span": [
+          716,
+          790
+        ]
+      },
+      "examples": null,
+      "span": [
+        620,
+        790
+      ]
+    }
+  ],
+  "failed": [],
+  "span": [
+    0,
+    791
+  ]
+}

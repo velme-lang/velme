@@ -667,12 +667,15 @@ fn children(e: &Expr) -> Vec<&Expr> {
         | ExprKind::Input { .. }
         | ExprKind::Binding { .. }
         | ExprKind::Result
+        | ExprKind::Value
         | ExprKind::Var { .. } => Vec::new(),
         ExprKind::Builtin { args: items, .. } | ExprKind::Record { fields: items, .. } | ExprKind::List { items } => {
             items.iter().collect()
         }
         ExprKind::Field { base, .. } | ExprKind::Project { base, .. } => vec![base],
-        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } => vec![operand],
+        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } | ExprKind::IsWhole { operand, .. } => {
+            vec![operand]
+        }
         ExprKind::Binary { lhs, rhs, .. } => vec![lhs, rhs],
         ExprKind::If { condition, then } => vec![condition, then],
         ExprKind::Quantified { collection, body, .. } => vec![collection, body],

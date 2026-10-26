@@ -15,13 +15,20 @@ pub struct TypeId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct GoalId(pub usize);
 
+/// A domain type: an index into [`Program::domains`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub struct DomainId(pub usize);
+
 /// A checked file (`compiler/20` §4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Program {
     /// The language version from the header, or the one assumed without one (R-SYN-15).
     pub language_version: String,
-    /// Record types, in source order.
+    /// Record types, in source order; a record domain's underlying record is one of them (R-TYP-28).
     pub types: Vec<RecordType>,
+    /// Domain types, in source order (`language/11` §7.1).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<DomainType>,
     /// Goals, in source order.
     pub goals: Vec<Goal>,
 }
@@ -32,10 +39,71 @@ impl Program {
         self.types.get(id.0)
     }
 
+    /// The domain type `id`.
+    pub fn domain(&self, id: DomainId) -> Option<&DomainType> {
+        self.domains.get(id.0)
+    }
+
     /// `ty` as a learner writes it: `List<Player?>`.
     pub fn type_name(&self, ty: &Type) -> String {
-        ty.display(&self.types)
+        ty.display(&self.types, &self.domains)
     }
+}
+
+/// `type Name = Base one of …`, `type Name = Base where …` or `type Name where …:` (`language/11` §7.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DomainType {
+    /// Its name.
+    pub name: String,
+    /// `Number`, `Text`, or the underlying record of a record domain (R-TYP-28).
+    pub base: Type,
+    /// The closed set or the complete condition, which alone decides membership (R-CHK-15).
+    pub rule: DomainRule,
+    /// The simple constraints extracted from the condition's top-level conjunction (R-CHK-14).
+    pub constraints: Constraints,
+    /// The whole declaration.
+    pub span: Span,
+}
+
+/// What a domain admits (`language/11` R-TYP-28).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DomainRule {
+    /// `one of …`: exact Text members in declaration order.
+    OneOf {
+        /// The members.
+        members: Vec<String>,
+    },
+    /// `where …`: a Boolean condition on [`ExprKind::Value`].
+    Where {
+        /// The condition.
+        condition: Expr,
+    },
+}
+
+/// The simple constraints of a domain condition (`language/13` R-CHK-14), for generation and static literal checks;
+/// membership still evaluates the whole condition (R-CHK-15).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Constraints {
+    /// `value > n` / `value >= n` on Number.
+    pub lower: Option<Bound>,
+    /// `value < n` / `value <= n` on Number.
+    pub upper: Option<Bound>,
+    /// `value is whole` on Number.
+    pub whole: bool,
+    /// `value.length > n` / `>= n` on Text.
+    pub min_length: Option<Bound>,
+    /// `value.length < n` / `<= n` on Text.
+    pub max_length: Option<Bound>,
+}
+
+/// One end of an interval.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Bound {
+    /// The literal's exact decimal text, signed.
+    pub value: String,
+    /// `>=` / `<=` rather than `>` / `<`.
+    pub inclusive: bool,
 }
 
 /// `type Name:` (`language/11` §7).
@@ -85,23 +153,55 @@ pub enum Type {
     List(Box<Type>),
     /// A record type.
     Record(TypeId),
+    /// A domain type, with its base (`Number`, `Text` or a record) so it can be widened without the program
+    /// (R-TYP-30).
+    Domain(DomainId, Box<Type>),
     /// A type that already has an error; it matches everything so the error isn't repeated (`compiler/20` R-CMP-10).
     /// Never present in a program returned by [`crate::analyze`].
     Error,
 }
 
 impl Type {
-    /// `self` as a learner writes it, naming records from `types`.
-    pub fn display(&self, types: &[RecordType]) -> String {
+    /// `self` as a learner writes it, naming records from `types` and domains from `domains`.
+    pub fn display(&self, types: &[RecordType], domains: &[DomainType]) -> String {
         match self {
             Type::Number => "Number".to_owned(),
             Type::Text => "Text".to_owned(),
             Type::Boolean => "Boolean".to_owned(),
             Type::Nothing => "Nothing".to_owned(),
-            Type::Optional(inner) => format!("{}?", inner.display(types)),
-            Type::List(element) => format!("List<{}>", element.display(types)),
+            Type::Optional(inner) => format!("{}?", inner.display(types, domains)),
+            Type::List(element) => format!("List<{}>", element.display(types, domains)),
             Type::Record(id) => types.get(id.0).map_or_else(|| "?".to_owned(), |r| r.name.clone()),
+            Type::Domain(id, _) => domains.get(id.0).map_or_else(|| "?".to_owned(), |d| d.name.clone()),
             Type::Error => "?".to_owned(),
+        }
+    }
+
+    /// `self` with every domain replaced by its base, through `List` and `?`: what reaches the IR until domains
+    /// are IR types (D-158).
+    pub fn erased(&self) -> Type {
+        match self {
+            Type::Domain(_, base) => base.erased(),
+            Type::Optional(inner) => Type::Optional(Box::new(inner.erased())),
+            Type::List(element) => Type::List(Box::new(element.erased())),
+            other => other.clone(),
+        }
+    }
+
+    /// `self` with a top-level domain replaced by its base: what operators see (R-TYP-30).
+    pub fn widened(&self) -> &Type {
+        match self {
+            Type::Domain(_, base) => base,
+            other => other,
+        }
+    }
+
+    /// Whether a domain appears anywhere in `self`.
+    pub fn has_domain(&self) -> bool {
+        match self {
+            Type::Domain(..) => true,
+            Type::Optional(inner) | Type::List(inner) => inner.has_domain(),
+            _ => false,
         }
     }
 }
@@ -252,6 +352,8 @@ pub enum ExprKind {
     },
     /// The goal's output.
     Result,
+    /// `value`, the tested value in a domain condition (`language/13` R-CHK-13).
+    Value,
     /// A quantifier variable, by nesting depth: `0` is the outermost quantifier around it.
     Var {
         /// The depth.
@@ -313,6 +415,13 @@ pub enum ExprKind {
         /// `is not empty`.
         negated: bool,
     },
+    /// `x is whole` or `x is not whole` on a Number (R-CHK-13).
+    IsWhole {
+        /// What is tested.
+        operand: Box<Expr>,
+        /// `is not whole`.
+        negated: bool,
+    },
     /// `if a then b`.
     If {
         /// The condition.
@@ -342,12 +451,47 @@ fn same(a: &Type, b: &Type) -> bool {
     }
 }
 
-/// R-TYP-20: `from` is assignable to `to` iff they're the same, or `to` is `U?` and `from` is `U` or `Nothing`.
+/// R-TYP-20, R-TYP-30: `from` is assignable to `to` iff it [widens] to `to`, or `to` is `U?` and `from` is
+/// `Nothing` or widens to `U`. A base never becomes a domain here; source literals reach domains through the
+/// expected-type pass (R-TYP-31).
 pub fn assignable(from: &Type, to: &Type) -> bool {
-    same(from, to) || matches!(to, Type::Optional(inner) if *from == Type::Nothing || same(from, inner))
+    widens(from, to) || matches!(to, Type::Optional(inner) if *from == Type::Nothing || widens(from, inner))
 }
 
-/// R-TYP-26: the least type both `a` and `b` are assignable to, if there is one.
+/// `from` is `to`, or `to` with some of `from`'s domains widened to their bases, also under matching `List` and `?`
+/// (R-TYP-30); lists stay otherwise invariant (R-TYP-13). A different domain never widens to `D`.
+pub fn widens(from: &Type, to: &Type) -> bool {
+    match (from, to) {
+        (Type::Error, _) | (_, Type::Error) => true,
+        (Type::Domain(a, _), Type::Domain(b, _)) => a == b,
+        (Type::Domain(_, base), _) => widens(base, to),
+        (Type::Optional(a), Type::Optional(b)) | (Type::List(a), Type::List(b)) => widens(a, b),
+        _ => from == to,
+    }
+}
+
+/// D-163's `compat`: [`assignable`], and also a value with no domain at the top filling a domain position of its
+/// base, recursively under `List` and `?`. Optional values enter `?` only at the top, so `List<Number>` still doesn't
+/// fit `List<Number?>` (R-TYP-13). Source uses it for literals, record fields and list items (R-TYP-31).
+pub fn compat(from: &Type, to: &Type) -> bool {
+    compat_at(from, to, true)
+}
+
+fn compat_at(from: &Type, to: &Type, top: bool) -> bool {
+    match (from, to) {
+        (Type::Error, _) | (_, Type::Error) => true,
+        (Type::Domain(a, _), Type::Domain(b, _)) => a == b,
+        (_, Type::Domain(_, base)) => compat_at(from, base, top),
+        (Type::List(a), Type::List(b)) | (Type::Optional(a), Type::Optional(b)) => compat_at(a, b, false),
+        // Before a source domain is widened, so a different domain never fits `D?` (R-TYP-30).
+        (_, Type::Optional(inner)) if top => *from == Type::Nothing || compat_at(from, inner, true),
+        (Type::Domain(_, base), _) => compat_at(base, to, top),
+        _ => from == to,
+    }
+}
+
+/// R-TYP-26, R-TYP-30: the least type both `a` and `b` are assignable to, if there is one. Distinct domains, or a
+/// domain and its base, join at the base.
 pub fn join(a: &Type, b: &Type) -> Option<Type> {
     if assignable(a, b) {
         Some(b.clone())
@@ -357,8 +501,24 @@ pub fn join(a: &Type, b: &Type) -> Option<Type> {
         Some(Type::Optional(Box::new(b.clone())))
     } else if *b == Type::Nothing {
         Some(Type::Optional(Box::new(a.clone())))
+    } else if a.has_domain() || b.has_domain() {
+        join(&a.erased(), &b.erased())
     } else {
         None
+    }
+}
+
+/// R-TYP-30: unifying distinct domains, or a domain and its base, yields the base, recursively through containers:
+/// `b` if `a` widens to it, `a` if `b` does, else both erased when they erase alike. `None` when no domain is involved.
+fn domain_join(a: &Type, b: &Type) -> Option<Type> {
+    if !(a.has_domain() || b.has_domain()) || a.erased() != b.erased() {
+        None
+    } else if widens(a, b) {
+        Some(b.clone())
+    } else if widens(b, a) {
+        Some(a.clone())
+    } else {
+        Some(a.erased())
     }
 }
 
@@ -405,7 +565,8 @@ impl Vars {
         match (shape, ty) {
             (_, Type::Error) => true,
             (Shape::T | Shape::U, _) => match self.slot(shape) {
-                Some(Some(bound)) => assignable(ty, bound),
+                Some(Some(bound)) if assignable(ty, bound) => true,
+                Some(Some(bound)) => domain_join(ty, bound).map(|joined| *bound = joined).is_some(),
                 Some(slot) => {
                     *slot = Some(ty.clone());
                     true
@@ -420,12 +581,17 @@ impl Vars {
     /// Whether `ty` is exactly `shape`: inside a list, types are invariant (R-TYP-13).
     fn exact(&mut self, shape: &Shape, ty: &Type) -> bool {
         match (shape, ty) {
+            // A fixed-shape parameter takes a domain as its base; `T` and `U` keep the domain (R-TYP-30).
+            (Shape::Number | Shape::Text | Shape::Boolean | Shape::List(_), Type::Domain(_, base)) => {
+                self.exact(shape, base)
+            }
             (_, Type::Error)
             | (Shape::Number, Type::Number)
             | (Shape::Text, Type::Text)
             | (Shape::Boolean, Type::Boolean) => true,
             (Shape::T | Shape::U, _) => match self.slot(shape) {
-                Some(Some(bound)) => same(ty, bound),
+                Some(Some(bound)) if same(ty, bound) => true,
+                Some(Some(bound)) => domain_join(ty, bound).map(|joined| *bound = joined).is_some(),
                 Some(slot) => {
                     *slot = Some(ty.clone());
                     true
@@ -438,9 +604,9 @@ impl Vars {
     }
 
     /// `shape` for a learner: its type if known, else what kind of value it is.
-    pub(crate) fn describe(&self, shape: &Shape, types: &[RecordType]) -> String {
+    pub(crate) fn describe(&self, shape: &Shape, types: &[RecordType], domains: &[DomainType]) -> String {
         if let Some(ty) = self.instantiate(shape) {
-            return ty.display(types);
+            return ty.display(types, domains);
         }
         match shape {
             Shape::List(_) => "a list".to_owned(),

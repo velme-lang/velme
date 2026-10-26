@@ -1,0 +1,47 @@
+---
+source: crates/velme-syntax/tests/parser.rs
+expression: "serde_json::to_string_pretty(&diagnostics_json(&diags)).expect(\"JSON value serializes\")"
+input_file: tests/golden/parser/reject/domain_decl_bad.velme
+---
+[
+  {
+    "code": "VL0101",
+    "help": "write the values it allows, like `type Risk = Text one of \"LOW\", \"HIGH\"`, or use the base type itself",
+    "message": "A type written with `=` needs `one of …` or `where …` after its base type.",
+    "severity": "error",
+    "span": [
+      185,
+      185
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "list them on one line after `one of`, like `one of \"LOW\", \"HIGH\"`",
+    "message": "A closed set's members aren't written in parentheses.",
+    "severity": "error",
+    "span": [
+      210,
+      211
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": "list them on one line after `one of`, like `one of \"LOW\", \"HIGH\"`",
+    "message": "A closed set's members aren't written in parentheses.",
+    "severity": "error",
+    "span": [
+      251,
+      252
+    ]
+  },
+  {
+    "code": "VL0101",
+    "help": null,
+    "message": "I didn't expect the end of the line here — I was looking for an expression.",
+    "severity": "error",
+    "span": [
+      300,
+      300
+    ]
+  }
+]
