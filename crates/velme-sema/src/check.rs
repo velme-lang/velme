@@ -9,15 +9,146 @@ use velme_syntax::Keyword;
 use velme_syntax::ast::{self, BinaryOp, CallArg, ExprKind as Ast, LiteralKind, UnaryOp};
 
 use crate::budget::budget;
+use crate::domain;
 use crate::hir::{
-    Binding, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type, TypeId, Vars, assignable, join,
-    signature_output,
+    Binding, Constraints, DomainRule, DomainType, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type,
+    TypeId, Vars, assignable, compat, join, signature_output,
 };
-use crate::resolve::{Declared, Scope};
+use crate::resolve::{Declared, DomainSource, Rule, Scope};
+
+/// Checks every domain declaration (`language/11` §7.1): its closed set, or its condition in R-CHK-13's scope with
+/// the simple constraints split off (R-CHK-14). Every error is `VL0209` (R-TYP-29).
+pub(crate) fn check_domains(
+    types: &[RecordType],
+    scope: &Scope<'_>,
+    text: &str,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<DomainType> {
+    // Closed sets first, so a condition comparing with one sees its members (R-TYP-32).
+    let mut domains: Vec<DomainType> = scope
+        .domains
+        .iter()
+        .map(|d| DomainType {
+            name: d.name.name.clone(),
+            base: d.base.clone(),
+            rule: match d.rule {
+                Rule::OneOf(literals) => DomainRule::OneOf {
+                    members: domain::members(&d.name.name, &d.base, literals, d.span, diags),
+                },
+                Rule::Where(condition) => DomainRule::Where {
+                    condition: poisoned(condition.span),
+                },
+            },
+            constraints: Constraints::default(),
+            span: d.span,
+        })
+        .collect();
+    let mut checked = Vec::new();
+    {
+        let file = File {
+            types,
+            domains: &domains,
+            goals: &[],
+            scope,
+            text,
+        };
+        for (index, source) in scope.domains.iter().enumerate() {
+            let Rule::Where(condition) = source.rule else { continue };
+            if source.base == Type::Error {
+                continue;
+            }
+            checked.push((index, condition_of(&file, source, condition, diags)));
+        }
+        // Domains whose name is taken are checked too, then dropped (CC-ERR-04).
+        for source in &scope.unnamed_domains {
+            match source.rule {
+                Rule::OneOf(literals) => {
+                    drop(domain::members(
+                        &source.name.name,
+                        &source.base,
+                        literals,
+                        source.span,
+                        diags,
+                    ));
+                }
+                Rule::Where(condition) => drop(condition_of(&file, source, condition, diags)),
+            }
+        }
+    }
+    for (index, (condition, constraints)) in checked {
+        if let Some(d) = domains.get_mut(index) {
+            d.rule = DomainRule::Where { condition };
+            d.constraints = constraints;
+        }
+    }
+    domains
+}
+
+/// Domain `source`'s `condition` checked in R-CHK-13's scope, with its simple constraints split off (R-CHK-14); every
+/// error is `VL0209` (R-TYP-29). An invalid base leaves `value` untyped and nothing split off.
+fn condition_of<'a>(
+    file: &File<'_>,
+    source: &DomainSource<'a>,
+    condition: &'a ast::Expr,
+    diags: &mut Vec<Diagnostic>,
+) -> (Expr, Constraints) {
+    let goal = Goal {
+        name: source.name.name.clone(),
+        params: Vec::new(),
+        output: Type::Error,
+        kind: GoalKind::Leaf,
+        budget: crate::hir::Budget::SYSTEM,
+        bindings: Vec::new(),
+        plan: None,
+        checks: Vec::new(),
+        examples: Vec::new(),
+        span: source.span,
+    };
+    let mut found = Vec::new();
+    let e = {
+        let mut body = Body::new(file, &goal, &mut found);
+        body.value = Some(source.base.clone());
+        body.check_item(condition)
+    };
+    let name = &source.name.name;
+    let failed = found.iter().any(Diagnostic::is_error);
+    diags.extend(
+        found
+            .into_iter()
+            .map(|d| if d.is_error() { reissued(name, d) } else { d }),
+    );
+    let constraints = if failed || source.base == Type::Error {
+        Constraints::default()
+    } else {
+        domain::extract(name, &source.base, &e, diags)
+    };
+    (e, constraints)
+}
+
+/// An error in domain `name`'s condition as `VL0209`, keeping its place, help and code (R-TYP-29, R-ERR-04).
+fn reissued(name: &str, d: Diagnostic) -> Diagnostic {
+    let reason = d.message.trim_end_matches('.');
+    let mut chars = reason.chars();
+    // A sentence's capital, not a standalone "I" ("I don't know …").
+    let reason: String = match (chars.next(), chars.clone().next()) {
+        (Some(first), Some(second)) if second.is_lowercase() => first.to_lowercase().chain(chars).collect(),
+        _ => reason.to_owned(),
+    };
+    let mut out = Diagnostic::new(
+        Code::InvalidDomain,
+        d.span,
+        format!("Domain `{name}` is invalid: its condition has a problem: {reason}."),
+    )
+    .with_note(format!("underlying error: {} {}", d.code.as_str(), d.code.name()));
+    out.labels = d.labels;
+    out.help = d.help;
+    out
+}
 
 /// Checks every goal's body and budget and fills them in. Goals whose name is taken are checked too (CC-ERR-04).
 pub(crate) fn check_bodies(
     types: &[RecordType],
+    domains: &[DomainType],
     goals: &mut [Goal],
     scope: &Scope<'_>,
     text: &str,
@@ -26,6 +157,7 @@ pub(crate) fn check_bodies(
 ) {
     let file = File {
         types,
+        domains,
         goals,
         scope,
         text,
@@ -65,6 +197,7 @@ struct Checked {
 /// What every body sees.
 struct File<'f> {
     types: &'f [RecordType],
+    domains: &'f [DomainType],
     goals: &'f [Goal],
     scope: &'f Scope<'f>,
     text: &'f str,
@@ -72,14 +205,7 @@ struct File<'f> {
 
 impl File<'_> {
     fn body(&self, decl: &ast::GoalDecl, goal: &Goal, diags: &mut Vec<Diagnostic>) -> Checked {
-        let mut body = Body {
-            file: self,
-            goal,
-            bindings: Vec::new(),
-            vars: Vec::new(),
-            narrowed: Vec::new(),
-            diags,
-        };
+        let mut body = Body::new(self, goal, diags);
         let lines = decl.call.as_ref().map_or(&[][..], |c| &c.bindings);
         let bindings = body.call_block(lines);
         let kind = match lines.last() {
@@ -126,6 +252,8 @@ enum Root {
     Binding(usize),
     Result,
     Var(usize),
+    /// `value` in a domain condition (R-CHK-13).
+    Value,
 }
 
 impl Root {
@@ -135,6 +263,7 @@ impl Root {
             Root::Binding(index) => ExprKind::Binding { index },
             Root::Result => ExprKind::Result,
             Root::Var(depth) => ExprKind::Var { depth },
+            Root::Value => ExprKind::Value,
         }
     }
 }
@@ -153,10 +282,14 @@ struct Body<'f, 'a> {
     /// `call` bindings visible here, in block order: the earlier ones in the `call` block, all but `result` in checks
     /// (R-GOAL-09, R-CHK-02).
     bindings: Vec<(&'a str, Type)>,
+    /// The goal each of `bindings` calls, for help naming it (R-TYP-31).
+    callees: Vec<&'f str>,
     /// Quantifier variables in scope, outermost first.
     vars: Vec<(&'a str, Type)>,
     /// Paths known to be present here (`language/11` §9).
     narrowed: Vec<Path<'a>>,
+    /// In a domain condition, the type of `value`; nothing of a goal is then in scope (R-CHK-13).
+    value: Option<Type>,
     diags: &'f mut Vec<Diagnostic>,
 }
 
@@ -187,6 +320,19 @@ fn poisoned(span: Span) -> Expr {
 }
 
 impl<'f, 'a> Body<'f, 'a> {
+    fn new(file: &'f File<'f>, goal: &'f Goal, diags: &'f mut Vec<Diagnostic>) -> Self {
+        Body {
+            file,
+            goal,
+            bindings: Vec::new(),
+            callees: Vec::new(),
+            vars: Vec::new(),
+            narrowed: Vec::new(),
+            value: None,
+            diags,
+        }
+    }
+
     /// The `call` block (`language/12` §3). Each binding becomes visible to the lines after it and to the checks with
     /// its callee's output type (R-GOAL-12); one whose callee isn't a goal is left out of the result, but its name
     /// stays visible so its uses aren't reported again.
@@ -251,6 +397,7 @@ impl<'f, 'a> Body<'f, 'a> {
                 }
             } else {
                 self.bindings.push((name, ty.clone()));
+                self.callees.push(callee.map_or("", |(_, g)| g.name.as_str()));
                 waves.push(wave);
             }
             if let Some((id, _)) = callee {
@@ -273,7 +420,7 @@ impl<'f, 'a> Body<'f, 'a> {
         let invalid = |message: String| Diagnostic::new(Code::InvalidCall, callee.span, message);
         let diag = match self.file.scope.names.get(name) {
             Some(&Declared::Goal(id)) => return self.file.goals.get(id.0).map(|g| (id, g)),
-            Some(Declared::Type(_)) => invalid(format!("`{name}` is a type, not a goal."))
+            Some(Declared::Type(_) | Declared::Domain(..)) => invalid(format!("`{name}` is a type, not a goal."))
                 .with_help("a `call:` line runs a goal; its inputs can be values of this type"),
             None if self.file.scope.is_failed(name) => return None,
             None if Builtin::find(name).is_some() => invalid(format!("`{name}` is a built-in, not a goal."))
@@ -281,7 +428,7 @@ impl<'f, 'a> Body<'f, 'a> {
             None => {
                 let goals = self.file.scope.names.iter().filter_map(|(n, d)| match d {
                     Declared::Goal(_) => Some(*n),
-                    Declared::Type(_) => None,
+                    Declared::Type(_) | Declared::Domain(..) => None,
                 });
                 let diag = Diagnostic::new(
                     Code::UnknownGoal,
@@ -317,7 +464,27 @@ impl<'f, 'a> Body<'f, 'a> {
         };
         if !assignable(&e.ty, ty) {
             let mut diag = self.mismatch(&e, &[self.type_name(ty)]);
-            if matches!(e.ty, Type::Optional(_)) {
+            let domain = match ty {
+                Type::Optional(inner) => &**inner,
+                other => other,
+            };
+            if matches!(domain, Type::Domain(..)) && compat(&e.ty, ty) {
+                // R-TYP-31: a base value isn't made a member implicitly; the goal producing it should say so.
+                let wanted = self.type_name(domain);
+                diag = match (&e.kind, path_is_root(arg)) {
+                    (ExprKind::Binding { index }, true) => match self.callees.get(*index) {
+                        Some(goal) if !goal.is_empty() => {
+                            diag.with_help(format!("declare `{goal}`'s output as `{wanted}`"))
+                        }
+                        _ => diag,
+                    },
+                    (ExprKind::Input { index }, true) => match self.goal.params.get(*index) {
+                        Some(p) => diag.with_help(format!("declare the input `{}` as `{wanted}`", p.name)),
+                        None => diag,
+                    },
+                    _ => diag,
+                };
+            } else if matches!(e.ty, Type::Optional(_)) {
                 // A call block can't narrow, unlike a check (`language/11` §9).
                 let wanted = self.type_name(&Type::Optional(Box::new(ty.clone())));
                 diag = diag.with_help(format!(
@@ -378,7 +545,7 @@ impl<'f, 'a> Body<'f, 'a> {
             let may_be_empty = match &e.ty {
                 Type::Optional(_) => true,
                 Type::List(element) => {
-                    matches!(&**element, Type::Optional(inner) if matches!(**inner, Type::Record(_)))
+                    matches!(&**element, Type::Optional(inner) if matches!(inner.widened(), Type::Record(_)))
                 }
                 _ => false,
             };
@@ -418,7 +585,12 @@ impl<'f, 'a> Body<'f, 'a> {
     /// R-CHK-01: a check item is `Boolean`.
     fn check_item(&mut self, item: &'a ast::Expr) -> Expr {
         let e = self.expr(item, None);
-        self.expect_boolean(&e, "a check must be true or false, like `result > 0`");
+        let help = if self.value.is_some() {
+            "a condition must be true or false, like `value > 0`"
+        } else {
+            "a check must be true or false, like `result > 0`"
+        };
+        self.expect_boolean(&e, help);
         e
     }
 
@@ -477,11 +649,38 @@ impl<'f, 'a> Body<'f, 'a> {
     /// `value` checked against `ty`, which it must be assignable to (R-TYP-20).
     fn assigned<V: Value>(&mut self, value: &'a V, ty: &Type) -> Expr {
         let e = value.check(self, Some(ty));
-        if !assignable(&e.ty, ty) {
+        if !self.fits(&e, ty) {
             let diag = self.mismatch(&e, &[self.type_name(ty)]);
             self.diags.push(diag);
         }
         e
+    }
+
+    /// Whether `e` may stand where `ty` is expected in a literal, record field or list item: D-163's `compat`, so a
+    /// base value fills a domain position but a different domain doesn't (R-TYP-30). A source literal there is also
+    /// checked against the domain's closed set and simple constraints, `VL0204` if it isn't a member (R-TYP-31).
+    fn fits(&mut self, e: &Expr, ty: &Type) -> bool {
+        if !compat(&e.ty, ty) {
+            return false;
+        }
+        let domain = match ty {
+            Type::Optional(inner) => &**inner,
+            other => other,
+        };
+        if let Type::Domain(id, _) = domain
+            && let Some(d) = self.file.domains.get(id.0)
+            && let Some((value, reason)) = domain::literal_violation(d, e)
+        {
+            self.diags.push(
+                Diagnostic::new(
+                    Code::TypeMismatch,
+                    e.span,
+                    format!("`{value}` isn't a valid `{}`: {reason}.", d.name),
+                )
+                .with_help(format!("use a value `{}` allows", d.name)),
+            );
+        }
+        true
     }
 
     fn literal(&mut self, literal: &'a ast::Literal, expected: Option<&Type>) -> Expr {
@@ -493,9 +692,16 @@ impl<'f, 'a> Body<'f, 'a> {
             LiteralKind::List { items } => self.list(items, expected, literal.span),
             LiteralKind::Record { name, fields } => {
                 let fields: Vec<_> = fields.iter().map(|f| (&f.name, &f.value)).collect();
-                match self.file.scope.names.get(name.name.as_str()) {
-                    Some(&Declared::Type(id)) => self.record(id, &fields, literal.span),
-                    Some(Declared::Goal(_)) => {
+                let declared = self.file.scope.names.get(name.name.as_str()).copied();
+                match (declared, declared.and_then(Declared::record)) {
+                    (_, Some(id)) => self.record(id, &fields, literal.span),
+                    (Some(Declared::Domain(..)), None) => {
+                        let diag = self.not_a_record(name);
+                        self.diags.push(diag);
+                        self.skip(fields.iter().map(|(_, v)| *v));
+                        return poisoned(literal.span);
+                    }
+                    (Some(_), None) => {
                         self.diags.push(
                             Diagnostic::new(
                                 Code::UnknownType,
@@ -509,7 +715,7 @@ impl<'f, 'a> Body<'f, 'a> {
                         self.skip(fields.iter().map(|(_, v)| *v));
                         return poisoned(literal.span);
                     }
-                    None => {
+                    (None, _) => {
                         if !self.file.scope.is_failed(&name.name) {
                             let diag = self.unknown_type(name);
                             self.diags.push(diag);
@@ -539,6 +745,17 @@ impl<'f, 'a> Body<'f, 'a> {
             Ast::Text { value } => (ExprKind::Text { value: value.clone() }, Type::Text),
             Ast::Bool { value } => (ExprKind::Bool { value: *value }, Type::Boolean),
             Ast::Nothing => (ExprKind::Nothing, Type::Nothing),
+            Ast::Result if self.value.is_some() => {
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::UnknownName,
+                        e.span,
+                        "`result` doesn't exist in a domain condition.",
+                    )
+                    .with_help("a condition tests `value`, the value being checked"),
+                );
+                return poisoned(e.span);
+            }
             Ast::Result => (ExprKind::Result, self.goal.output.clone()),
             Ast::Name { name } => match self.lookup(name) {
                 Some((root, ty)) => (root.kind(), ty),
@@ -557,6 +774,17 @@ impl<'f, 'a> Body<'f, 'a> {
                 self.check_emptiable(&operand, *negated);
                 (
                     ExprKind::IsEmpty {
+                        operand: Box::new(operand),
+                        negated: *negated,
+                    },
+                    Type::Boolean,
+                )
+            }
+            Ast::IsWhole { operand, negated } => {
+                let operand = self.expr(operand, None);
+                self.check_whole(&operand, *negated);
+                (
+                    ExprKind::IsWhole {
                         operand: Box::new(operand),
                         negated: *negated,
                     },
@@ -599,6 +827,9 @@ impl<'f, 'a> Body<'f, 'a> {
     fn lookup(&self, name: &str) -> Option<(Root, Type)> {
         if let Some((depth, (_, ty))) = self.vars.iter().enumerate().rev().find(|(_, (n, _))| *n == name) {
             return Some((Root::Var(depth), ty.clone()));
+        }
+        if let Some(ty) = &self.value {
+            return (name == "value").then(|| (Root::Value, ty.clone()));
         }
         if let Some((i, p)) = self.goal.params.iter().enumerate().find(|(_, p)| p.name == name) {
             return Some((Root::Input(i), p.ty.clone()));
@@ -687,12 +918,19 @@ impl<'f, 'a> Body<'f, 'a> {
         // name is a record literal only with named fields (R-BLT-12, D-64).
         let named = !args.is_empty() && args.iter().all(|a| a.name.is_some());
         if let Some(builtin) = Builtin::find(name).filter(|b| b.in_checks)
-            && !(named && matches!(declared, Some(Declared::Type(_))))
+            && !(named && declared.and_then(Declared::record).is_some())
         {
             return self.builtin(builtin, args, span);
         }
         match declared {
-            Some(Declared::Type(id)) => {
+            Some(Declared::Domain(_, None)) => {
+                let diag = self.not_a_record(callee);
+                self.diags.push(diag);
+                self.skip(args.iter().map(|a| &a.value));
+                (ExprKind::Nothing, Type::Error)
+            }
+            // A record domain's constructor builds its underlying record, not a member (R-TYP-28).
+            Some(Declared::Type(id) | Declared::Domain(_, Some(id))) => {
                 let named: Option<Vec<_>> = args.iter().map(|a| a.name.as_ref().map(|n| (n, &a.value))).collect();
                 if let Some(fields) = named {
                     return self.record(id, &fields, span);
@@ -809,7 +1047,7 @@ impl<'f, 'a> Body<'f, 'a> {
             .unwrap_or(0);
         let mut wanted: Vec<String> = Vec::new();
         for shape in candidates.iter().filter_map(|s| s.params.get(bad)) {
-            let described = vars.describe(shape, self.file.types);
+            let described = vars.describe(shape, self.file.types, self.file.domains);
             if !wanted.contains(&described) {
                 wanted.push(described);
             }
@@ -899,8 +1137,11 @@ impl<'f, 'a> Body<'f, 'a> {
         };
         let items: Vec<Expr> = items.iter().map(|item| item.check(self, element)).collect();
         if let Some(element) = element
-            && items.iter().all(|item| assignable(&item.ty, element))
+            && items.iter().all(|item| compat(&item.ty, element))
         {
+            for item in &items {
+                self.fits(item, element);
+            }
             let ty = Type::List(Box::new(element.clone()));
             return (ExprKind::List { items }, ty);
         }
@@ -941,7 +1182,8 @@ impl<'f, 'a> Body<'f, 'a> {
     /// [`Self::field`] of a base already checked.
     fn field_of(&mut self, base_e: Expr, field: &ast::Ident) -> (ExprKind, Type) {
         let name = field.name.as_str();
-        let base_ty = base_e.ty.clone();
+        // A domain reads as its base: a record domain's fields, a Text domain's length (R-TYP-30).
+        let base_ty = base_e.ty.widened().clone();
         let length = |base_e: Expr| {
             (
                 ExprKind::Builtin {
@@ -968,7 +1210,7 @@ impl<'f, 'a> Body<'f, 'a> {
                 ),
                 None => (ExprKind::Nothing, Type::Error),
             },
-            Type::List(element) => match &**element {
+            Type::List(element) => match element.widened() {
                 Type::Record(id) => match self.record_field(*id, field) {
                     Some((index, ty)) => (
                         ExprKind::Project {
@@ -979,7 +1221,7 @@ impl<'f, 'a> Body<'f, 'a> {
                     ),
                     None => (ExprKind::Nothing, Type::Error),
                 },
-                Type::Optional(inner) if matches!(**inner, Type::Record(_)) => {
+                Type::Optional(inner) if matches!(inner.widened(), Type::Record(_)) => {
                     let list = self.source(base_e.span);
                     self.diags.push(
                         Diagnostic::new(
@@ -1023,10 +1265,10 @@ impl<'f, 'a> Body<'f, 'a> {
             UnaryOp::Neg => (Type::Number, Type::Number),
             UnaryOp::Not => (Type::Boolean, Type::Boolean),
         };
-        match &e.ty {
+        match e.ty.widened() {
             Type::Error => {}
             t if *t == wanted => {}
-            Type::Optional(inner) if **inner == wanted && op == UnaryOp::Neg => self.nullable(operand.span),
+            Type::Optional(inner) if *inner.widened() == wanted && op == UnaryOp::Neg => self.nullable(operand.span),
             t => {
                 let t = self.type_name(t);
                 self.diags.push(Diagnostic::new(
@@ -1062,18 +1304,24 @@ impl<'f, 'a> Body<'f, 'a> {
                 (l, r, Type::Boolean)
             }
             BinaryOp::Eq | BinaryOp::NotEq => {
-                // `[]` takes its type from the other side, so that side is checked first.
+                // `[]` takes its type from the other side, so that side is checked first. It gets the other side's
+                // erased type: an operand of `==` isn't a domain position, so only R-TYP-32 checks literals here.
                 let (l, r) = if matches!(lhs.kind, Ast::List { .. }) && !matches!(rhs.kind, Ast::List { .. }) {
                     let r = self.expr_narrowed(rhs, None, false);
-                    (self.expr_narrowed(lhs, Some(&r.ty), false), r)
+                    (self.expr_narrowed(lhs, Some(&r.ty.erased()), false), r)
                 } else {
                     let l = self.expr_narrowed(lhs, None, false);
-                    let r = self.expr_narrowed(rhs, Some(&l.ty), false);
+                    let r = self.expr_narrowed(rhs, Some(&l.ty.erased()), false);
                     (l, r)
                 };
-                if !assignable(&l.ty, &r.ty) && !assignable(&r.ty, &l.ty) {
+                // Both sides widen first, so distinct domains compare as their bases (R-TYP-30).
+                let (lw, rw) = (l.ty.erased(), r.ty.erased());
+                if !assignable(&lw, &rw) && !assignable(&rw, &lw) {
                     let diag = self.invalid_operands(op, &l, &r);
                     self.diags.push(diag);
+                } else {
+                    self.closed_set_literal(&l, &r);
+                    self.closed_set_literal(&r, &l);
                 }
                 (l, r, Type::Boolean)
             }
@@ -1101,11 +1349,11 @@ impl<'f, 'a> Body<'f, 'a> {
     fn numeric(&mut self, op: BinaryOp, lhs: &'a ast::Expr, rhs: &'a ast::Expr) -> (Expr, Expr, bool) {
         let l = self.expr(lhs, None);
         let r = self.expr(rhs, None);
-        let optional_number = |t: &Type| matches!(t, Type::Optional(inner) if **inner == Type::Number);
-        let fits = |t: &Type| is(t, &Type::Number) || optional_number(t);
+        let optional_number = |t: &Type| matches!(t, Type::Optional(inner) if *inner.widened() == Type::Number);
+        let fits = |t: &Type| is(t.widened(), &Type::Number) || optional_number(t);
         if !fits(&l.ty) || !fits(&r.ty) {
             let mut diag = self.invalid_operands(op, &l, &r);
-            if l.ty == Type::Text && r.ty == Type::Text {
+            if *l.ty.widened() == Type::Text && *r.ty.widened() == Type::Text {
                 diag = diag.with_help(match op {
                     BinaryOp::Add => "use `concat(a, b)` to join text",
                     _ => "text can only be compared with `==` and `!=`",
@@ -1124,7 +1372,7 @@ impl<'f, 'a> Body<'f, 'a> {
 
     /// `is empty` applies to `T?`, lists and text (R-TYP-20 table, R-TYP-21).
     fn check_emptiable(&mut self, operand: &Expr, negated: bool) {
-        match &operand.ty {
+        match operand.ty.widened() {
             Type::Optional(_) | Type::List(_) | Type::Text | Type::Nothing | Type::Error => {}
             ty => {
                 let name = self.type_name(ty);
@@ -1304,19 +1552,88 @@ impl<'f, 'a> Body<'f, 'a> {
         names
             .iter()
             .filter_map(|(n, d)| match d {
-                Declared::Type(_) => Some(*n),
+                Declared::Type(_) | Declared::Domain(..) => Some(*n),
                 Declared::Goal(_) => None,
             })
             .collect()
     }
 
     fn type_name(&self, ty: &Type) -> String {
-        ty.display(self.file.types)
+        ty.display(self.file.types, self.file.domains)
+    }
+
+    /// R-TYP-32: `VL0204` when `domain_side` is a closed-set domain (or `?` of one) and `other` a Text literal that
+    /// isn't a member.
+    fn closed_set_literal(&mut self, domain_side: &Expr, other: &Expr) {
+        let ty = match &domain_side.ty {
+            Type::Optional(inner) => &**inner,
+            ty => ty,
+        };
+        let (Type::Domain(id, _), ExprKind::Text { value }) = (ty, &other.kind) else {
+            return;
+        };
+        let Some(d) = self.file.domains.get(id.0) else { return };
+        if let DomainRule::OneOf { members } = &d.rule
+            && !members.contains(value)
+        {
+            self.diags.push(
+                Diagnostic::new(
+                    Code::TypeMismatch,
+                    other.span,
+                    format!("`\"{value}\"` isn't a valid `{}`: it isn't one of its members.", d.name),
+                )
+                .with_help(format!("a `{}` is one of {}", d.name, quoted_list(members))),
+            );
+        }
+    }
+
+    /// `VL0204` for a constructor call of a Number or Text domain, which has no fields.
+    fn not_a_record(&self, name: &ast::Ident) -> Diagnostic {
+        Diagnostic::new(
+            Code::TypeMismatch,
+            name.span,
+            format!("`{}` isn't a record, so it can't be built with `( )`.", name.name),
+        )
+        .with_help(format!("write a plain value where a `{}` is expected", name.name))
+    }
+
+    /// `is whole` applies to Numbers (R-CHK-13): `VL0207` before narrowing, `VL0206` otherwise.
+    fn check_whole(&mut self, operand: &Expr, negated: bool) {
+        match operand.ty.widened() {
+            Type::Number | Type::Error => {}
+            Type::Optional(inner) if *inner.widened() == Type::Number => self.nullable(operand.span),
+            ty => {
+                let name = self.type_name(ty);
+                let op = if negated { "is not whole" } else { "is whole" };
+                self.diags.push(
+                    Diagnostic::new(
+                        Code::InvalidOperandType,
+                        operand.span,
+                        format!("`{op}` can't be used with {name}."),
+                    )
+                    .with_help("`is whole` tests whether a number has no fractional part"),
+                );
+            }
+        }
     }
 
     fn source(&self, span: Span) -> &'f str {
         self.file.text.get(span.start..span.end).unwrap_or_default()
     }
+}
+
+/// `"A"`, `"A" or "B"`, at most eight, then `…`.
+fn quoted_list(members: &[String]) -> String {
+    let mut shown: Vec<String> = members.iter().take(8).map(|m| format!("`\"{m}\"`")).collect();
+    if members.len() > 8 {
+        shown.push("…".to_owned());
+    }
+    or_list(&shown)
+}
+
+/// Whether a call argument is a bare name, with no `.field`.
+fn path_is_root(arg: &CallArg) -> bool {
+    matches!(arg, CallArg::Path(p) if p.segments.len() == 1)
 }
 
 /// `VL0302` for a call to `name` with `found` inputs instead of `expected`.

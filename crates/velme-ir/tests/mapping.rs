@@ -197,6 +197,7 @@ fn json_text_input_rejects_a_repeated_key() {
 fn a_type_that_already_has_an_error_accepts_any_json() {
     let program = Program {
         language_version: "0.1".to_owned(),
+        domains: Vec::new(),
         types: vec![RecordType {
             name: "Broken".to_owned(),
             fields: vec![FieldDef {
@@ -242,4 +243,34 @@ fn rendering_stops_at_its_limit() {
     assert!(shown.ends_with('…'), "{shown}");
     assert!(shown.len() <= SHOWN_TOTAL + '…'.len_utf8(), "{}", shown.len());
     assert!(shown.starts_with("[[[["), "{shown}");
+}
+
+/// D2 review #3: a domain decodes as its base, a record domain as its record, and a mismatch names the domain.
+/// Membership is checked later (D4), not by the mapping.
+#[test]
+fn json_domain_values_decode_as_their_bases() {
+    let (program, diags) = analyze(&SourceFile::new(
+        "domains.velme",
+        "type Age = Number where value >= 18\ntype Offer where value.price >= 0:\n    price: Number\n",
+    ));
+    assert!(diags.iter().all(|d| !d.is_error()), "{diags:#?}");
+    let program = program.expect("a program");
+    let domain = |name: &str| {
+        let id = program.domains.iter().position(|d| d.name == name).expect("declared");
+        let base = program.domains[id].base.clone();
+        Type::Domain(velme_sema::hir::DomainId(id), Box::new(base))
+    };
+    let (age, offer) = (domain("Age"), domain("Offer"));
+    assert_eq!(round_trip("30", &age, &program), "30");
+    assert_eq!(round_trip("3", &age, &program), "3");
+    assert_eq!(round_trip(r#"{"price": 2}"#, &offer, &program), r#"{"price":2}"#);
+    let list = Type::List(Box::new(Type::Optional(Box::new(offer))));
+    assert_eq!(
+        round_trip(r#"[null, {"price": 1}]"#, &list, &program),
+        r#"[null,{"price":1}]"#
+    );
+    let DecodeProblem::Mismatch { expected, found } = reject(r#""x""#, &age, &program).problem else {
+        panic!("a mismatch")
+    };
+    assert_eq!((expected.as_str(), found), ("Age", "text"));
 }

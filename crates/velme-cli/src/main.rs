@@ -1353,6 +1353,7 @@ fn code_exit(code: Code) -> u8 {
         | InvalidOperandType
         | NullableAccess
         | RecursiveType
+        | InvalidDomain
         | UnknownGoal
         | CallArityMismatch
         | InvalidCall

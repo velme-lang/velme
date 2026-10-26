@@ -1,0 +1,14 @@
+# covers: record_decl
+# An inline condition on a field or a parameter, `where` as a name, and a record condition without its colon are
+# VL0101 (R-SYN-23, R-SYN-24).
+type Person:
+    age: Number where value >= 18
+
+goal Greet(where: Text) -> Text:
+    plan: "Greet."
+
+goal Adult(age: Number where value >= 18) -> Boolean:
+    plan: "Check."
+
+type Offer where value.discount <= value.price
+    price: Number

@@ -1,0 +1,10 @@
+# covers: domain_decl
+# A bare alias, a parenthesized closed set (deferred, Q-34), a multi-line parenthesized set, and a missing condition
+# are each VL0101 (R-SYN-23).
+type Name = Text
+type Risk = Text one of ("LOW", "HIGH")
+type Level = Text one of (
+    "LOW",
+    "HIGH"
+)
+type Age = Number where

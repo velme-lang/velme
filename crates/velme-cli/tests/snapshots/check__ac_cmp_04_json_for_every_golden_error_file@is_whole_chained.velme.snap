@@ -1,0 +1,28 @@
+---
+source: crates/velme-cli/tests/check.rs
+expression: "serde_json::to_string_pretty(&json).expect(\"JSON value serializes\")"
+input_file: tests/golden/parser/reject/is_whole_chained.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0101",
+      "file": "is_whole_chained.velme",
+      "help": "join two comparisons with `and`, like `a < b and b < c`",
+      "labels": [],
+      "message": "Comparisons can't be chained like this.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 22,
+        "end": 165,
+        "line": 6,
+        "start": 163
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -4,7 +4,7 @@
 //! cannot change a key (R-ART-04): operators are their surface spelling, and the only serialized types are the IR's own
 //! (`Type`, `RecordType`), whose form is the versioned IR schema (`compiler/21` R-IR-20). The goal source enters as
 //! normalized structure (R-ART-23, D-81).
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::str::FromStr;
 
@@ -14,7 +14,7 @@ use serde_json::{Value as Json, json};
 use velme_builtins::BUILTINS_VERSION;
 use velme_builtins::limits::{MAX_LIST_SIZE, MAX_OUTPUT_BYTES};
 use velme_diagnostics::Diagnostic;
-use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType, TypeId};
+use velme_sema::hir::{self, DomainId, DomainRule, Expr, ExprKind, GoalId, Program, Type as HirType, TypeId};
 
 use crate::lower::{ir_type, number};
 use crate::node::RecordType;
@@ -99,10 +99,13 @@ pub fn signature(program: &Program, goal: GoalId) -> Result<Fingerprint, Diagnos
 /// builtins compatibility units (`runtime/32` §2, D-26, D-85). It decides lock staleness and seeds generated inputs.
 pub fn contract_key(program: &Program, goal: GoalId) -> Result<Fingerprint, Diagnostic> {
     let goal = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
-    Contract { program, goal }
-        .document()
-        .and_then(|doc| Fingerprint::of(&doc).ok())
-        .ok_or_else(Diagnostic::internal_error)
+    Contract {
+        program,
+        goal: Some(goal),
+    }
+    .document()
+    .and_then(|doc| Fingerprint::of(&doc).ok())
+    .ok_or_else(Diagnostic::internal_error)
 }
 
 /// What a synthesis run adds to a `contract_key` to make its `synthesis_key` (`runtime/32` §2). None of it decides
@@ -160,19 +163,244 @@ fn major_minor(version: &str) -> &str {
     version.get(..major.len() + 1 + minor.len()).unwrap_or(version)
 }
 
+/// The signature document (R-ART-26): `goal`, `inputs`, `output` and `types` as before domains, and `domains` only
+/// when the goal reaches one, so a domain-free goal keeps its key (R-ART-27).
 fn signature_of(program: &Program, goal: &hir::Goal) -> Option<Fingerprint> {
+    Fingerprint::of(&signature_doc(program, goal)?).ok()
+}
+
+/// The JSON document whose hash is [`signature`] (R-ART-26), for golden tests (AC-ART-16).
+#[doc(hidden)]
+pub fn signature_document(program: &Program, goal: GoalId) -> Option<Json> {
+    signature_doc(program, program.goals.get(goal.0)?)
+}
+
+fn signature_doc(program: &Program, goal: &hir::Goal) -> Option<Json> {
     let inputs = goal
         .params
         .iter()
-        .map(|p| Some(json!([p.name, ir_type(program, &p.ty)?])))
+        .map(|p| Some(json!([p.name, sig_type(program, &p.ty)?])))
         .collect::<Option<Vec<_>>>()?;
-    let doc = json!({
+    let mut reach = Reach::default();
+    for ty in goal.params.iter().map(|p| &p.ty).chain([&goal.output]) {
+        reach.ty(program, ty)?;
+    }
+    let mut doc = json!({
         "goal": goal.name,
         "inputs": inputs,
-        "output": ir_type(program, &goal.output)?,
-        "types": reachable(program, goal.params.iter().map(|p| &p.ty).chain([&goal.output]))?,
+        "output": sig_type(program, &goal.output)?,
+        "types": reach.types(program)?,
     });
-    Fingerprint::of(&doc).ok()
+    if !reach.domains.is_empty()
+        && let Some(map) = doc.as_object_mut()
+    {
+        map.insert("domains".to_owned(), Json::Array(reach.domain_nodes(program)?));
+    }
+    Some(doc)
+}
+
+/// The declaration hash of domain `id` (R-ART-26, for R-SYNTH-65): its normalized declaration and every declaration
+/// it reaches through fields, its base and its condition's constructors, each once, without itself, in name order.
+pub fn declaration_hash(program: &Program, id: DomainId) -> Result<Fingerprint, Diagnostic> {
+    declaration_document(program, id)
+        .and_then(|doc| Fingerprint::of(&doc).ok())
+        .ok_or_else(Diagnostic::internal_error)
+}
+
+/// The JSON document whose hash is [`declaration_hash`] (R-ART-26), for golden tests.
+#[doc(hidden)]
+pub fn declaration_document(program: &Program, id: DomainId) -> Option<Json> {
+    let mut reach = Reach::default();
+    reach.domain_parts(program, id)?;
+    let mut dependencies: Vec<(&str, Json)> = reach
+        .records
+        .iter()
+        .map(|r| {
+            let record = program.record(*r)?;
+            Some((record.name.as_str(), record_node(program, record)?))
+        })
+        .collect::<Option<_>>()?;
+    // A constructor cycle can reach the root again; it is the `declaration`, never its own dependency.
+    for d in reach.domains.iter().filter(|d| **d != id) {
+        let domain = program.domain(*d)?;
+        dependencies.push((domain.name.as_str(), domain_node(program, domain)?));
+    }
+    dependencies.sort_by(|a, b| a.0.cmp(b.0));
+    let declaration = domain_node(program, program.domain(id)?)?;
+    let dependencies: Vec<Json> = dependencies.into_iter().map(|(_, node)| node).collect();
+    Some(json!({"declaration": declaration, "dependencies": dependencies}))
+}
+
+/// A type in a signature: the IR's JSON form, with a domain written `{"t": "Domain", "name": …}` (R-ART-26).
+fn sig_type(program: &Program, ty: &HirType) -> Option<Json> {
+    if !ty.has_domain() {
+        // Exactly the IR's own serialization, so domain-free signatures keep their D1 bytes (R-ART-27).
+        return serde_json::to_value(ir_type(program, ty)?).ok();
+    }
+    Some(match ty {
+        HirType::Domain(id, _) => json!({"t": "Domain", "name": program.domain(*id)?.name}),
+        HirType::Optional(inner) => json!({"t": "Optional", "of": sig_type(program, inner)?}),
+        HirType::List(element) => json!({"t": "List", "of": sig_type(program, element)?}),
+        other => serde_json::to_value(ir_type(program, other)?).ok()?,
+    })
+}
+
+/// `[[name, type], …]` of `fields`.
+fn field_nodes(program: &Program, fields: &[hir::FieldDef]) -> Option<Json> {
+    fields
+        .iter()
+        .map(|f| Some(json!([f.name, sig_type(program, &f.ty)?])))
+        .collect::<Option<Vec<_>>>()
+        .map(Json::Array)
+}
+
+/// A plain record's declaration node.
+fn record_node(program: &Program, record: &hir::RecordType) -> Option<Json> {
+    Some(json!({"name": record.name, "fields": field_nodes(program, &record.fields)?}))
+}
+
+/// A domain's full normalized declaration (R-ART-26): name, then `base` and `one_of` or `where`; a record domain has
+/// its `fields` instead of a base.
+fn domain_node(program: &Program, domain: &hir::DomainType) -> Option<Json> {
+    let mut node = serde_json::Map::new();
+    node.insert("name".to_owned(), json!(domain.name));
+    match &domain.base {
+        HirType::Record(id) => {
+            node.insert("fields".to_owned(), field_nodes(program, &program.record(*id)?.fields)?);
+        }
+        base => {
+            node.insert("base".to_owned(), sig_type(program, base)?);
+        }
+    }
+    match &domain.rule {
+        DomainRule::OneOf { members } => node.insert("one_of".to_owned(), json!(members)),
+        DomainRule::Where { condition } => {
+            let normal = Contract { program, goal: None }.expr(condition)?;
+            node.insert("where".to_owned(), normal)
+        }
+    };
+    Some(Json::Object(node))
+}
+
+/// The domain whose underlying record is `id`, if any (R-TYP-28).
+fn record_domain(program: &Program, id: TypeId) -> Option<DomainId> {
+    program
+        .domains
+        .iter()
+        .position(|d| d.base == HirType::Record(id))
+        .map(DomainId)
+}
+
+/// The declarations a signature or a declaration reaches (R-ART-26): records through fields, and domains through
+/// fields, bases and the record constructors in their conditions, transitively.
+#[derive(Default)]
+struct Reach {
+    records: BTreeSet<TypeId>,
+    domains: BTreeSet<DomainId>,
+}
+
+impl Reach {
+    fn ty(&mut self, program: &Program, ty: &HirType) -> Option<()> {
+        match ty {
+            HirType::Optional(inner) | HirType::List(inner) => self.ty(program, inner)?,
+            HirType::Domain(id, _) => self.domain(program, *id)?,
+            HirType::Record(id) => match record_domain(program, *id) {
+                Some(domain) => self.domain(program, domain)?,
+                None if self.records.insert(*id) => {
+                    for field in &program.record(*id)?.fields {
+                        self.ty(program, &field.ty)?;
+                    }
+                }
+                None => {}
+            },
+            _ => {}
+        }
+        Some(())
+    }
+
+    fn domain(&mut self, program: &Program, id: DomainId) -> Option<()> {
+        if self.domains.insert(id) {
+            self.domain_parts(program, id)?;
+        }
+        Some(())
+    }
+
+    /// What domain `id` itself refers to.
+    fn domain_parts(&mut self, program: &Program, id: DomainId) -> Option<()> {
+        let domain = program.domain(id)?;
+        if let HirType::Record(record) = &domain.base {
+            for field in &program.record(*record)?.fields {
+                self.ty(program, &field.ty)?;
+            }
+        }
+        if let DomainRule::Where { condition } = &domain.rule {
+            self.constructors(program, condition)?;
+        }
+        Some(())
+    }
+
+    fn constructors(&mut self, program: &Program, e: &Expr) -> Option<()> {
+        if let ExprKind::Record { record, .. } = &e.kind {
+            self.ty(program, &HirType::Record(*record))?;
+        }
+        for child in children(e) {
+            self.constructors(program, child)?;
+        }
+        Some(())
+    }
+
+    /// The `types` member: each plain record as `{"fields": …}`, by name.
+    fn types(&self, program: &Program) -> Option<BTreeMap<String, Json>> {
+        self.records
+            .iter()
+            .map(|id| {
+                let record = program.record(*id)?;
+                Some((
+                    record.name.clone(),
+                    json!({"fields": field_nodes(program, &record.fields)?}),
+                ))
+            })
+            .collect()
+    }
+
+    /// The `domains` member: each domain's node, in name order.
+    fn domain_nodes(&self, program: &Program) -> Option<Vec<Json>> {
+        let mut nodes = self
+            .domains
+            .iter()
+            .map(|d| {
+                let domain = program.domain(*d)?;
+                Some((domain.name.as_str(), domain_node(program, domain)?))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        nodes.sort_by(|a, b| a.0.cmp(b.0));
+        Some(nodes.into_iter().map(|(_, node)| node).collect())
+    }
+}
+
+/// The direct subexpressions of `e`.
+fn children(e: &Expr) -> Vec<&Expr> {
+    match &e.kind {
+        ExprKind::Builtin { args: items, .. } | ExprKind::Record { fields: items, .. } | ExprKind::List { items } => {
+            items.iter().collect()
+        }
+        ExprKind::Field { base, .. } | ExprKind::Project { base, .. } => vec![base],
+        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } | ExprKind::IsWhole { operand, .. } => {
+            vec![operand]
+        }
+        ExprKind::Binary { lhs, rhs, .. } => vec![lhs, rhs],
+        ExprKind::If { condition, then } => vec![condition, then],
+        ExprKind::Quantified { collection, body, .. } => vec![collection, body],
+        ExprKind::Number { .. }
+        | ExprKind::Text { .. }
+        | ExprKind::Bool { .. }
+        | ExprKind::Nothing
+        | ExprKind::Input { .. }
+        | ExprKind::Binding { .. }
+        | ExprKind::Result
+        | ExprKind::Value
+        | ExprKind::Var { .. } => Vec::new(),
+    }
 }
 
 /// Every record type reachable from `roots`, through fields too, as IR (`compiler/21` R-IR-01).
@@ -202,21 +430,22 @@ pub(crate) fn reachable<'p>(
 
 fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
     match ty {
-        HirType::Optional(inner) | HirType::List(inner) => records_in(inner, out),
+        HirType::Optional(inner) | HirType::List(inner) | HirType::Domain(_, inner) => records_in(inner, out),
         HirType::Record(id) => out.push(*id),
         _ => {}
     }
 }
 
-/// The normalized source of one goal. `None` anywhere below means HIR that [`velme_sema::analyze`] doesn't return.
+/// The normalized source of one goal, or of a domain condition with no goal. `None` anywhere below means HIR that
+/// [`velme_sema::analyze`] doesn't return.
 struct Contract<'p> {
     program: &'p Program,
-    goal: &'p hir::Goal,
+    goal: Option<&'p hir::Goal>,
 }
 
 impl<'p> Contract<'p> {
     fn document(&self) -> Option<Json> {
-        let goal = self.goal;
+        let goal = self.goal?;
         let calls = goal
             .bindings
             .iter()
@@ -268,9 +497,14 @@ impl<'p> Contract<'p> {
             ExprKind::Text { value } => json!({"kind": "text", "value": value}),
             ExprKind::Bool { value } => json!({"kind": "bool", "value": value}),
             ExprKind::Nothing => json!({"kind": "nothing"}),
-            ExprKind::Input { index } => json!({"kind": "input", "name": goal.params.get(*index)?.name}),
-            ExprKind::Binding { index } => json!({"kind": "binding", "name": goal.bindings.get(*index)?.name}),
+            ExprKind::Input { index } => json!({"kind": "input", "name": goal?.params.get(*index)?.name}),
+            ExprKind::Binding { index } => json!({"kind": "binding", "name": goal?.bindings.get(*index)?.name}),
             ExprKind::Result => json!({"kind": "result"}),
+            ExprKind::Value => json!({"kind": "value"}),
+            // Keys keep the surface `is whole` node (R-ART-23), never its `floor` lowering.
+            ExprKind::IsWhole { operand, negated } => {
+                json!({"kind": "is_whole", "operand": self.expr(operand)?, "negated": negated})
+            }
             ExprKind::Var { depth } => json!({"kind": "var", "depth": depth}),
             ExprKind::Builtin { name, args } => json!({"kind": "builtin", "name": name, "args": self.exprs(args)?}),
             ExprKind::Record { record, fields } => {
@@ -291,7 +525,7 @@ impl<'p> Contract<'p> {
             }),
             ExprKind::Project { base, field } => {
                 let element = match strip_optional(&base.ty) {
-                    HirType::List(element) => element,
+                    HirType::List(element) => element.widened(),
                     _ => return None,
                 };
                 json!({"kind": "project", "base": self.expr(base)?, "field": self.field_name(element, *field)?})
@@ -325,7 +559,7 @@ impl<'p> Contract<'p> {
 
     /// The name of field `index` of the record type `ty` holds.
     fn field_name(&self, ty: &HirType, index: usize) -> Option<&'p str> {
-        let HirType::Record(id) = strip_optional(ty) else {
+        let HirType::Record(id) = strip_optional(ty).widened() else {
             return None;
         };
         Some(self.program.record(*id)?.fields.get(index)?.name.as_str())

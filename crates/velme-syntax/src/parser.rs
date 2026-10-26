@@ -13,9 +13,10 @@ use velme_diagnostics::{Code, Diagnostic, Span, closest};
 
 use crate::BuiltinType;
 use crate::ast::{
-    Arg, BaseType, BinaryOp, Binding, Budget, BudgetItem, CallArg, CallBlock, CheckBlock, Decl, Example, ExamplesBlock,
-    Expr, ExprKind, FailedDecl, Field, FieldValue, GoalDecl, Header, Ident, Literal, LiteralKind, Number, Param, Path,
-    Plan, PlanForm, Program, Quantifier, TypeDecl, TypeExpr, UnaryOp, UnitLit, Version,
+    Arg, BaseType, BinaryOp, Binding, Budget, BudgetItem, CallArg, CallBlock, CheckBlock, Decl, DomainDecl, DomainRule,
+    Example, ExamplesBlock, Expr, ExprKind, FailedDecl, Field, FieldValue, GoalDecl, Header, Ident, Literal,
+    LiteralKind, Number, Param, Path, Plan, PlanForm, Program, Quantifier, TypeDecl, TypeExpr, UnaryOp, UnitLit,
+    Version,
 };
 use crate::token::{Punct, Token, TokenKind as Tok};
 use crate::{Keyword, LANGUAGE_VERSION, SourceFile, lex};
@@ -280,6 +281,8 @@ fn too_deep(chunk: &[(Tok, SimpleSpan)]) -> Option<(SimpleSpan, &'static str)> {
             }
             Tok::Indent => indent += 1,
             Tok::Dedent => indent = indent.saturating_sub(1),
+            // A domain condition compares, so its `<` opens no level (R-SYN-23).
+            Tok::Keyword(Keyword::Where) => in_type = false,
             Tok::Punct(Punct::LParen | Punct::LBracket) => frames.push(Frame::default()),
             Tok::Punct(Punct::Lt) if in_type => frames.push(Frame {
                 angle: true,
@@ -478,6 +481,7 @@ fn lint_names(decl: &Decl, diags: &mut Vec<Diagnostic>) {
                 lint_snake(&field.name, "field", diags);
             }
         }
+        Decl::Domain(domain) => lint_pascal(&domain.name, "type", diags),
         Decl::Goal(goal) => {
             lint_pascal(&goal.name, "goal", diags);
             for param in &goal.params {
@@ -645,7 +649,7 @@ fn item_parser<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Item, Extra<'t>> {
         .then_ignore(newline());
     choice((
         header.map(Item::Header),
-        type_decl().map(|d| Item::Decl(Decl::Type(d))),
+        type_decl().map(Item::Decl),
         goal_decl().map(|d| Item::Decl(Decl::Goal(Box::new(d)))),
     ))
     .then_ignore(end())
@@ -694,25 +698,99 @@ fn type_expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, TypeExpr, Extra<'t>>
     .labelled("a type")
 }
 
-fn type_decl<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, TypeDecl, Extra<'t>> + Clone {
+/// A field's or parameter's type: a `where` after it is read so the error can say domains are named (R-SYN-23).
+fn declared_type<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, TypeExpr, Extra<'t>> + Clone {
+    type_expr()
+        .then(
+            kw(Keyword::Where)
+                .map_with(|_, e| e.span())
+                .then_ignore(expr())
+                .or_not(),
+        )
+        .validate(|(ty, inline), _, emitter| {
+            if let Some(at) = inline {
+                emitter.emit(custom(
+                    at,
+                    "A condition can't be written here — only on a named type.",
+                    "declare a domain like `type Age = Number where value >= 18`, and use `Age` as the type here",
+                ));
+            }
+            ty
+        })
+}
+
+/// `record_decl | domain_decl` (§4, R-SYN-23).
+fn type_decl<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Decl, Extra<'t>> + Clone {
     let field = name()
         .then_ignore(punct(Punct::Colon))
-        .then(type_expr())
+        .then(declared_type())
         .map_with(|(name, ty), e| Field {
             name,
             ty,
             span: sp(e.span()),
         })
         .then_ignore(newline());
-    kw(Keyword::Type)
-        .ignore_then(name())
+    let record = kw(Keyword::Where)
+        .ignore_then(expr())
+        .or_not()
         .then_ignore(punct(Punct::Colon))
         .then_ignore(newline())
-        .then(indented(field))
-        .map_with(|(name, fields), e| TypeDecl {
-            name,
-            fields,
-            span: sp(e.span()),
+        .then(indented(field));
+    let word = |w: &'static str| {
+        select! { Tok::Name(n) if n == w => () }.labelled(match w {
+            "one" => "`one of`",
+            _ => "`of`",
+        })
+    };
+    // Q-34: `one of (…)` is deferred, so its parentheses get their own message.
+    let parenthesized = punct(Punct::LParen)
+        .map_with(|_, e| e.span())
+        .then_ignore(any().filter(|t: &Tok| *t != Tok::Newline).repeated())
+        .validate(|at, _, emitter| {
+            emitter.emit(custom(
+                at,
+                "A closed set's members aren't written in parentheses.",
+                "list them on one line after `one of`, like `one of \"LOW\", \"HIGH\"`",
+            ));
+            Vec::new()
+        });
+    let members = literal().separated_by(punct(Punct::Comma)).allow_trailing().collect();
+    let one_of = word("one")
+        .ignore_then(word("of"))
+        .ignore_then(choice((parenthesized, members)))
+        .map(|members| DomainRule::OneOf { members });
+    let condition = kw(Keyword::Where)
+        .ignore_then(expr())
+        .map(|condition| DomainRule::Where { condition });
+    // A bare `type X = Text` is no alias (R-SYN-23).
+    let bare = newline().rewind().map_with(|_, e| e.span()).validate(|at, _, emitter| {
+        emitter.emit(custom(
+            at,
+            "A type written with `=` needs `one of …` or `where …` after its base type.",
+            "write the values it allows, like `type Risk = Text one of \"LOW\", \"HIGH\"`, or use the base type itself",
+        ));
+        DomainRule::OneOf { members: Vec::new() }
+    });
+    let domain = punct(Punct::Assign)
+        .ignore_then(type_expr())
+        .then(choice((one_of, condition, bare)))
+        .then_ignore(newline());
+    kw(Keyword::Type)
+        .ignore_then(name())
+        .then(domain.map(Ok).or(record.map(Err)))
+        .map_with(|(name, rest), e| match rest {
+            Ok((base, rule)) => Decl::Domain(DomainDecl {
+                name,
+                base,
+                rule,
+                span: sp(e.span()),
+            }),
+            Err((condition, fields)) => Decl::Type(TypeDecl {
+                name,
+                condition,
+                fields,
+                span: sp(e.span()),
+            }),
         })
 }
 
@@ -743,7 +821,12 @@ fn goal_decl<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, GoalDecl, Extra<'t>>
     // message and left in place.
     let next = any().map_with(|tok: Tok, e| (tok, e.span())).rewind().or_not();
     let param = name()
-        .then(punct(Punct::Colon).ignore_then(type_expr()).map(Ok).or(next.map(Err)))
+        .then(
+            punct(Punct::Colon)
+                .ignore_then(declared_type())
+                .map(Ok)
+                .or(next.map(Err)),
+        )
         .validate(|(name, ty), e, emitter| {
             let ty = ty.unwrap_or_else(|next| {
                 let (found, at) = next.map_or_else(
@@ -946,7 +1029,9 @@ fn first_result(e: &Expr) -> Option<Span> {
         ExprKind::Call { args, .. } => args.iter().find_map(|a| first_result(&a.value)),
         ExprKind::List { items } => items.iter().find_map(first_result),
         ExprKind::Field { base, .. } => first_result(base),
-        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } => first_result(operand),
+        ExprKind::Unary { operand, .. } | ExprKind::IsEmpty { operand, .. } | ExprKind::IsWhole { operand, .. } => {
+            first_result(operand)
+        }
         ExprKind::Binary { lhs, rhs, .. } => first_result(lhs).or_else(|| first_result(rhs)),
         ExprKind::If { condition, then } => first_result(condition).or_else(|| first_result(then)),
         ExprKind::Quantified { collection, body, .. } => first_result(collection).or_else(|| first_result(body)),
@@ -1057,7 +1142,12 @@ fn prefix(op: UnaryOp, at: Span, operand: Expr) -> Expr {
 /// What may follow the left side of a comparison (§4 `cmp_expr`).
 enum CmpTail {
     Op(BinaryOp, Expr),
-    IsEmpty { negated: bool, end: Span },
+    /// `is [not] empty`, or `is [not] whole` (R-SYN-24).
+    Is {
+        whole: bool,
+        negated: bool,
+        end: Span,
+    },
 }
 
 /// `expr` (§4, precedence §4.1).
@@ -1154,9 +1244,14 @@ fn expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Expr, Extra<'t>> + Clone 
                 .map(|((op, at), rhs)| (at, CmpTail::Op(op, rhs))),
             kw(Keyword::Is)
                 .ignore_then(kw(Keyword::Not).or_not())
-                .then_ignore(kw(Keyword::Empty))
-                .map_with(|not, e| {
-                    let tail = CmpTail::IsEmpty {
+                .then(
+                    kw(Keyword::Empty)
+                        .to(false)
+                        .or(select! { Tok::Name(n) if n == "whole" => true }.labelled("`whole`")),
+                )
+                .map_with(|(not, whole), e| {
+                    let tail = CmpTail::Is {
+                        whole,
                         negated: not.is_some(),
                         end: sp(e.span()),
                     };
@@ -1175,13 +1270,17 @@ fn expr<'t, I: TokenInput<'t>>() -> impl Parser<'t, I, Expr, Extra<'t>> + Clone 
                 }
                 tails.into_iter().fold(first, |lhs, (_, tail)| match tail {
                     CmpTail::Op(op, rhs) => binary(op, lhs, rhs),
-                    CmpTail::IsEmpty { negated, end } => Expr {
-                        span: lhs.span.to(end),
-                        kind: ExprKind::IsEmpty {
-                            operand: Box::new(lhs),
-                            negated,
-                        },
-                    },
+                    CmpTail::Is { whole, negated, end } => {
+                        let operand = Box::new(lhs);
+                        Expr {
+                            span: operand.span.to(end),
+                            kind: if whole {
+                                ExprKind::IsWhole { operand, negated }
+                            } else {
+                                ExprKind::IsEmpty { operand, negated }
+                            },
+                        }
+                    }
                 })
             });
         let not = recursive(|not| {

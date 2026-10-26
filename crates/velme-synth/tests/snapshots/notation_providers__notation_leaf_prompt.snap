@@ -1,10 +1,9 @@
 ---
 source: crates/velme-synth/tests/notation_providers.rs
-assertion_line: 34
 expression: "prompt.first_turn().replace(&velme_synth::prompt_version(),\n\"<prompt_version>\")"
 ---
 Velme prompt <prompt_version>
-IR version: 0.1
+IR version: 0.2
 Builtins version: 0.1
 
 You write the implementation of one goal for Velme, a tool that turns plain-language plans into programs.

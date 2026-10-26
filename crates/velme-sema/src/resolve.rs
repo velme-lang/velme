@@ -9,19 +9,49 @@ use velme_syntax::BuiltinType;
 use velme_syntax::ast::{self, BaseType, Decl, TypeExpr};
 
 use crate::graph::shortest_cycle;
-use crate::hir::{Budget, FieldDef, Goal, GoalId, GoalKind, Param, RecordType, Type, TypeId};
+use crate::hir::{Budget, DomainId, FieldDef, Goal, GoalId, GoalKind, Param, RecordType, Type, TypeId};
 
 /// What a declared name refers to.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Declared {
     Type(TypeId),
+    /// A domain; a record domain's underlying record too, which its constructor builds (R-TYP-28).
+    Domain(DomainId, Option<TypeId>),
     Goal(GoalId),
+}
+
+impl Declared {
+    /// The record a constructor of this name builds, if any.
+    pub fn record(self) -> Option<TypeId> {
+        match self {
+            Declared::Type(id) | Declared::Domain(_, Some(id)) => Some(id),
+            Declared::Domain(_, None) | Declared::Goal(_) => None,
+        }
+    }
+}
+
+/// A domain declaration with its base resolved (`language/11` §7.1).
+pub(crate) struct DomainSource<'a> {
+    pub name: &'a ast::Ident,
+    /// `Number`, `Text`, the underlying record, or [`Type::Error`] for an invalid base.
+    pub base: Type,
+    pub rule: Rule<'a>,
+    pub span: Span,
+}
+
+/// A domain's closed set or condition, as written.
+#[derive(Clone, Copy)]
+pub(crate) enum Rule<'a> {
+    OneOf(&'a [ast::Literal]),
+    Where(&'a ast::Expr),
 }
 
 /// The file's declarations after resolving, for the later phases.
 pub(crate) struct Scope<'a> {
     /// Type and goal names (R-TYP-19); a name declared twice keeps its first declaration.
     pub names: BTreeMap<&'a str, Declared>,
+    /// Each domain, by [`DomainId`].
+    pub domains: Vec<DomainSource<'a>>,
     /// Names of declarations that failed to parse or hold an error: references to them are not reported again
     /// (R-SYN-17).
     pub failed: BTreeSet<&'a str>,
@@ -29,6 +59,9 @@ pub(crate) struct Scope<'a> {
     pub goals: Vec<&'a ast::GoalDecl>,
     /// Goals whose name is taken, with their signatures: their bodies are checked too (CC-ERR-04).
     pub unnamed_goals: Vec<(&'a ast::GoalDecl, Goal)>,
+    /// Domains whose name is taken: their conditions are checked too, like goals' (CC-ERR-04). A record domain's base
+    /// is [`Type::Error`] here, since its record has no id.
+    pub unnamed_domains: Vec<DomainSource<'a>>,
 }
 
 impl Scope<'_> {
@@ -51,6 +84,7 @@ pub(crate) fn resolve<'a>(
     let lines = LineIndex::new(text);
     let mut scope = Scope {
         names: BTreeMap::new(),
+        domains: Vec::new(),
         failed: program
             .failed
             .iter()
@@ -58,16 +92,15 @@ pub(crate) fn resolve<'a>(
             .collect(),
         goals: Vec::new(),
         unnamed_goals: Vec::new(),
+        unnamed_domains: Vec::new(),
     };
     let mut type_decls = Vec::new();
     // Declarations whose name is taken: checked, never referenced.
     let mut unnamed: Vec<&Decl> = Vec::new();
     let mut first_span: BTreeMap<&str, Span> = BTreeMap::new();
+    let mut domain_decls: Vec<&Decl> = Vec::new();
     for decl in &program.decls {
-        let name = match decl {
-            Decl::Type(t) => &t.name,
-            Decl::Goal(g) => &g.name,
-        };
+        let name = decl.name();
         if let Some(builtin) = BuiltinType::from_name(&name.name) {
             diags.push(
                 Diagnostic::new(
@@ -89,9 +122,22 @@ pub(crate) fn resolve<'a>(
         }
         first_span.insert(&name.name, name.span);
         match decl {
+            Decl::Type(t) if t.condition.is_some() => {
+                let record = TypeId(type_decls.len());
+                let domain = DomainId(domain_decls.len());
+                scope.names.insert(&name.name, Declared::Domain(domain, Some(record)));
+                type_decls.push(t);
+                domain_decls.push(decl);
+            }
             Decl::Type(t) => {
                 scope.names.insert(&name.name, Declared::Type(TypeId(type_decls.len())));
                 type_decls.push(t);
+            }
+            Decl::Domain(_) => {
+                scope
+                    .names
+                    .insert(&name.name, Declared::Domain(DomainId(domain_decls.len()), None));
+                domain_decls.push(decl);
             }
             Decl::Goal(g) => {
                 scope
@@ -102,6 +148,11 @@ pub(crate) fn resolve<'a>(
         }
     }
 
+    // Bases first: a field or parameter of a domain type carries its base (R-TYP-30).
+    scope.domains = domain_decls
+        .iter()
+        .map(|decl| domain_source(decl, &scope, diags))
+        .collect();
     let types: Vec<RecordType> = type_decls
         .iter()
         .map(|t| record_type(t, &scope, &lines, diags))
@@ -114,7 +165,21 @@ pub(crate) fn resolve<'a>(
         .collect();
     for decl in unnamed {
         match decl {
-            Decl::Type(t) => drop(record_type(t, &scope, &lines, diags)),
+            Decl::Type(t) => {
+                drop(record_type(t, &scope, &lines, diags));
+                if let Some(condition) = &t.condition {
+                    scope.unnamed_domains.push(DomainSource {
+                        name: &t.name,
+                        base: Type::Error,
+                        rule: Rule::Where(condition),
+                        span: t.span,
+                    });
+                }
+            }
+            Decl::Domain(_) => {
+                let source = domain_source(decl, &scope, diags);
+                scope.unnamed_domains.push(source);
+            }
             Decl::Goal(g) => {
                 let goal = goal_signature(g, &scope, &lines, diags);
                 scope.unnamed_goals.push((g, goal));
@@ -122,6 +187,76 @@ pub(crate) fn resolve<'a>(
         }
     }
     (types, goals, scope)
+}
+
+/// A domain declaration with its base checked: only `Number`, `Text`, or a record domain's own fields (R-TYP-28);
+/// anything else is `VL0209` (R-TYP-29, AC-TYP-32).
+fn domain_source<'a>(decl: &'a Decl, scope: &Scope<'a>, diags: &mut Vec<Diagnostic>) -> DomainSource<'a> {
+    let (name, base, rule, span) = match decl {
+        Decl::Type(t) => {
+            let record = match scope.names.get(t.name.name.as_str()) {
+                Some(Declared::Domain(_, Some(id))) => Type::Record(*id),
+                _ => Type::Error,
+            };
+            let rule = t.condition.as_ref().map_or(Rule::OneOf(&[]), Rule::Where);
+            return DomainSource {
+                name: &t.name,
+                base: record,
+                rule,
+                span: t.span,
+            };
+        }
+        Decl::Domain(d) => (
+            &d.name,
+            &d.base,
+            match &d.rule {
+                ast::DomainRule::OneOf { members } => Rule::OneOf(members),
+                ast::DomainRule::Where { condition } => Rule::Where(condition),
+            },
+            d.span,
+        ),
+        Decl::Goal(g) => (&g.name, &g.output, Rule::OneOf(&[]), g.span),
+    };
+    let invalid = |reason: String, help: &str| {
+        Diagnostic::new(
+            Code::InvalidDomain,
+            base.span,
+            format!("Domain `{}` is invalid: {reason}.", name.name),
+        )
+        .with_help(help.to_owned())
+    };
+    let plain = "a domain's base is `Number` or `Text`; write `List<…>` or `?` where the domain is used";
+    let ty = match &base.base {
+        _ if base.optional => Err(invalid("its base can't be optional".to_owned(), plain)),
+        BaseType::List { .. } => Err(invalid("its base can't be a list".to_owned(), plain)),
+        BaseType::Named { name: base_name } => match BuiltinType::from_name(&base_name.name) {
+            Some(BuiltinType::Number) => Ok(Type::Number),
+            Some(BuiltinType::Text) => Ok(Type::Text),
+            Some(other) => Err(invalid(
+                format!("its base can't be `{}`", other.as_str()),
+                "a domain's base is `Number` or `Text`, or it is a record with its own fields",
+            )),
+            None => match scope.names.get(base_name.name.as_str()) {
+                Some(Declared::Type(_) | Declared::Domain(_, Some(_))) => Err(invalid(
+                    format!("its base can't be the record `{}`", base_name.name),
+                    &format!(
+                        "write a record domain with its own fields, like `type {} where …:` followed by the fields",
+                        name.name
+                    ),
+                )),
+                Some(Declared::Domain(..)) => Err(invalid(
+                    format!("its base can't be another domain, `{}`", base_name.name),
+                    "use that domain's own base, `Number` or `Text`, and repeat the condition",
+                )),
+                _ => Ok(resolve_type(base, scope, diags)),
+            },
+        },
+    };
+    let base = ty.unwrap_or_else(|diag| {
+        diags.push(diag);
+        Type::Error
+    });
+    DomainSource { name, base, rule, span }
 }
 
 /// A record type with its fields resolved; a field declared twice is reported and left out (R-TYP-16).
@@ -249,6 +384,10 @@ fn named_type(name: &ast::Ident, scope: &Scope<'_>, diags: &mut Vec<Diagnostic>)
     }
     match scope.names.get(name.name.as_str()) {
         Some(Declared::Type(id)) => Type::Record(*id),
+        Some(Declared::Domain(id, _)) => match scope.domains.get(id.0).map(|d| &d.base) {
+            Some(Type::Error) | None => Type::Error,
+            Some(base) => Type::Domain(*id, Box::new(base.clone())),
+        },
         Some(Declared::Goal(_)) => {
             diags.push(
                 Diagnostic::new(
@@ -266,7 +405,7 @@ fn named_type(name: &ast::Ident, scope: &Scope<'_>, diags: &mut Vec<Diagnostic>)
                 .iter()
                 .map(|t| t.as_str())
                 .chain(scope.names.iter().filter_map(|(n, d)| match d {
-                    Declared::Type(_) => Some(*n),
+                    Declared::Type(_) | Declared::Domain(..) => Some(*n),
                     Declared::Goal(_) => None,
                 }));
             let diag = Diagnostic::new(
@@ -286,7 +425,7 @@ fn named_type(name: &ast::Ident, scope: &Scope<'_>, diags: &mut Vec<Diagnostic>)
 fn mentioned_records(ty: &Type, out: &mut Vec<TypeId>) {
     match ty {
         Type::Record(id) => out.push(*id),
-        Type::Optional(inner) | Type::List(inner) => mentioned_records(inner, out),
+        Type::Optional(inner) | Type::List(inner) | Type::Domain(_, inner) => mentioned_records(inner, out),
         Type::Number | Type::Text | Type::Boolean | Type::Nothing | Type::Error => {}
     }
 }

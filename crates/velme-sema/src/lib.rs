@@ -3,6 +3,7 @@
 
 mod budget;
 mod check;
+mod domain;
 mod graph;
 pub mod hir;
 mod resolve;
@@ -43,7 +44,8 @@ pub fn analyze_parsed(
         max_call_depth: defaults.max_call_depth.min(system.max_call_depth),
     };
     let (types, mut goals, scope) = resolve::resolve(ast, &file.text, &mut diags);
-    check::check_bodies(&types, &mut goals, &scope, &file.text, defaults, &mut diags);
+    let domains = check::check_domains(&types, &scope, &file.text, &mut diags);
+    check::check_bodies(&types, &domains, &mut goals, &scope, &file.text, defaults, &mut diags);
     graph::check_graph(&goals, &scope.goals, &mut diags);
     velme_diagnostics::sort(&mut diags);
     let program = hir::Program {
@@ -52,6 +54,7 @@ pub fn analyze_parsed(
             .as_ref()
             .map_or_else(|| LANGUAGE_VERSION.to_owned(), |h| h.version.text.clone()),
         types,
+        domains,
         goals,
     };
     let ok = !diags.iter().any(Diagnostic::is_error);

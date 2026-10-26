@@ -59,6 +59,7 @@ keywords! {
     Check = "check",
     Examples = "examples",
     Budget = "budget",
+    Where = "where",
     And = "and",
     Or = "or",
     Not = "not",

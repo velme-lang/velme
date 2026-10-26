@@ -1,0 +1,20 @@
+# covers: domain_decl, record_decl
+# The four domain forms of R-SYN-23: a closed Text set with a multiword member, a bounded whole Number, a Text
+# length condition, and a record condition reading two fields; plus a plain record and contextual words as names.
+type Risk = Text one of "DECLINE", "HIGH", "VERY LOW"
+type Age = Number where value >= 18 and value <= 120 and value is whole
+type Label = Text where value.length >= 1 and value.length <= 40
+type Offer where value.discount <= value.price:
+    price: Number
+    discount: Number
+type Trailing = Text one of "A", "B",
+
+type Box:
+    value: Number
+    one: Text
+
+goal Pick(value: Box, one: Number, of: Number, whole: Number) -> Boolean:
+    plan: "Pick."
+    check:
+        - value.value > 0
+        - one is not whole or of is whole

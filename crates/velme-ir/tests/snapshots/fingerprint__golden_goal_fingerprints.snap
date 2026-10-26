@@ -4,19 +4,19 @@ expression: "keys.join(\"\\n\")"
 ---
 CalculateScore
   signature    b3:93d8c7902fedad3d56f7de91641cc500546563a9305d265cf96f2771f163d876
-  contract_key b3:64521d8821642aeb970a760d30f29fa6ca01e955aea53773f1f97aac1005b6f4
+  contract_key b3:b1cac140590b623944f00aec1fdd30dd0d5953bf69d0a894bd2ed7de25f1c6dc
 CalculateRank
   signature    b3:3a2b352b920ac3ac2e2c693a854af1d03582abfe56f2d6cac324e7e9ac6cb273
-  contract_key b3:1dd0ee5342416599b5df650aec4e9e18591114acf98534aeec4d95ba84388908
+  contract_key b3:262e71bde49bbb88af5e1e8be744f166a675fb7134e104ca4f1073cbe9d93944
 FindBadge
   signature    b3:fae14969bcded347fe0b153a9462bb105843b8a5f869179359077e8cccc9ce5d
-  contract_key b3:99329e71a54fcfb20191a05d43d3184d409b7ee255a76c4a316d352d78403758
+  contract_key b3:417fac8fd78d4d209f2020a237eef2659176c22e2c43eb95cc54fa568a789133
 BuildPlayerSummary
   signature    b3:ab92627fe12e92ede0753f955cd76067be0814b0ddb4853c220e9baeb72a8100
-  contract_key b3:4e35ae0c39d2ef177922ae6c98d1e6e22345fb049a68f8e8095a30cef6ba8db5
+  contract_key b3:9c76f2990af153ce6c3964d59777cee0b059a10fc24ab1a694779b7e27da24b7
 FindHighestJumpingPlayer
   signature    b3:f02bbaaa25b79198b945f8098d02cef7ab026962769c9c92f4a968f6e7b4dcf9
-  contract_key b3:c9568b35d3ceec09badd4e90e9b3d1a0a9bbd2370f58345af552d3450ae6c417
+  contract_key b3:21563efe4363facf43562552aa46a2cbbd42b8720b039bc0f1bf953b7772e44f
 SummarizeTeam
   signature    b3:d0d3eb618e18d38b1d2d1b1c7080fe009b748453131f63567ab92e13698b75a7
-  contract_key b3:dcbf6f67cda83bc20b1edf70f3394ae3d6d597275da7c27a172a64111aab7e82
+  contract_key b3:eb71d331a20e0ef8494c4bd43340330f234708ff83abb874b0d85be9691674fc
