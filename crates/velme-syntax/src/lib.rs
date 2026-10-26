@@ -17,4 +17,4 @@ pub use source::SourceFile;
 pub use token::{Punct, Token, TokenKind, Unit};
 
 /// The language version this compiler implements and assumes for a file without a header (R-SYN-15, INV-8).
-pub const LANGUAGE_VERSION: &str = "0.1";
+pub const LANGUAGE_VERSION: &str = "0.2";

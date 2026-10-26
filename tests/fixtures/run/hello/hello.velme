@@ -1,4 +1,4 @@
-language: velme/0.1
+language: velme/0.2
 
 # The smallest Velme program: one goal, its plan in plain words, a check and an example.
 goal SayHello(name: Text) -> Text:

@@ -1,6 +1,6 @@
 # 31 — WASM Backend & Wasmtime Sandbox
 
-**Status:** v0.1 (roadmap M7, the last MVP phase) · **Area:** SBX
+**Status:** v0.2 (roadmap M7, the last MVP phase) · **Area:** SBX
 **Read when:** working on IR → WASM code generation, the value layout, Wasmtime configuration, host imports, or interpreter/WASM differential tests.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [30-execution-vibevm](30-execution-vibevm.md), [language/14](../language/14-builtins.md), [tooling/41](../tooling/41-security-privacy.md)
 

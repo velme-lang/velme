@@ -5,7 +5,7 @@
 use velme_runtime::explain;
 use velme_test_support::{goal_id, program};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Base(n: Number) -> Number:
     call:

@@ -13,7 +13,7 @@ use velme_synth::{
 };
 use velme_test_support::{PanicProvider, goal_id, program};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Rank(score: Number) -> Number:
     plan: \"Return the score. SECRET-PLAN-TEXT\"

@@ -25,7 +25,7 @@ fn golden(path: &Path) -> Goal {
 
 #[test]
 fn ac_ir_01_committed_schema_matches_generated() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/ir-0.1.json");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/ir-0.2.json");
     let generated = serde_json::to_string_pretty(&schema()).expect("schema serializes") + "\n";
     if std::env::var_os("VELME_BLESS").is_some() {
         std::fs::write(&path, &generated).expect("schema file is writable");
@@ -244,7 +244,7 @@ fn ir_at_the_expression_depth_limit_parses() {
         body = format!(r#"{{"kind": "let", "bind": [["x", {body}]], "body": {{"kind": "local", "name": "x"}}}}"#);
     }
     let ir = format!(
-        r#"{{"ir_version": "0.1", "builtins_version": "0.1", "goal": "Deep", "types": {{}}, "inputs": [],
+        r#"{{"ir_version": "0.2", "builtins_version": "0.1", "goal": "Deep", "types": {{}}, "inputs": [],
             "output": {{"t": "List", "of": {{"t": "Optional", "of": {{"t": "Number"}}}}}}, "body": {body}}}"#
     );
     let goal: Goal = from_json_str(&ir).expect("IR at the depth limit parses");

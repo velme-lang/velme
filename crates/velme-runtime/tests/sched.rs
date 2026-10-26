@@ -26,7 +26,7 @@ const FILE: &str = "sched.velme";
 /// `Spin` counts `n * n` by reducing over `range(n)` inside a reduce over `range(n)`, so it takes time in proportion to `n * n`; `SlowBoom` and
 /// `FastBoom` count the same way, then divide by zero. `Split` calls them together (wave 1), then `Spin` on the result
 /// of the last one (wave 2); `Fan` calls `Spin` three times at once; `Main` is `runtime/30` §4's wired example.
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Spin(n: Number) -> Number:
     plan: \"Count up to n.\"
@@ -888,7 +888,7 @@ fn ac_run_12_a_hundred_and_twenty_eight_full_invocations_finish_within_the_watch
     fs::create_dir_all(&dir).expect("project directory");
     let lines: String = (0..CALLS).map(|i| format!("        c{i} = Spin(n)\n")).collect();
     let source = format!(
-        "language: velme/0.1\n\ngoal Spin(n: Number) -> Number:\n    plan: \"Count up to n.\"\n\n\
+        "language: velme/0.2\n\ngoal Spin(n: Number) -> Number:\n    plan: \"Count up to n.\"\n\n\
          goal Wide(n: Number) -> Number:\n    call:\n{lines}    plan: \"Take the first.\"\n"
     );
     let program = program(&source);

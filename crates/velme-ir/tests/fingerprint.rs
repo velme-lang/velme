@@ -44,7 +44,7 @@ fn key(program: &Program, goal: &str) -> Fingerprint {
     contract_key(program, goal_id(program, goal)).expect("contract key")
 }
 
-const SUMMARY: &str = r#"language: velme/0.1
+const SUMMARY: &str = r#"language: velme/0.2
 
 type Badge:
     label: Text

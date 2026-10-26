@@ -15,7 +15,7 @@ expression: redact(&pretty)
           "labels": [],
           "message": "The built version of `Add` was changed or damaged.",
           "notes": [
-            "artifact b3:27e0d330aefe3e5ed537d0a7d8eccbcf64b0801b3617d50c649e3dab31887374 now hashes to b3:5e91391be2a6e5fcd3399556b7dea87af8e9b114a499b5f4bc3cf3aac7d56d38"
+            "artifact b3:beed8edbc0335876ddaddd9317ecd4214b5ffba1e26551f5fb5673495ea096f6 now hashes to b3:2358d10f5c6becd586f7d3b057864d09615d0947dad561fc14289b8dd1e3120a"
           ],
           "severity": "error",
           "span": {

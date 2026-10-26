@@ -12,7 +12,7 @@ use std::process::{Child, Command, Stdio};
 use serde_json::json;
 use velme_test_support::{repo, velme_command};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"

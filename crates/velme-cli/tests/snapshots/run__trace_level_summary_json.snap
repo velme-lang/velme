@@ -21,7 +21,7 @@ expression: printed
         "reproducible": true,
         "goal": {
           "goal": "CreateLevelSummary",
-          "artifact": "b3:a771091a79e5648d4468b81715a778c053e860d17746a966f46d16f62342298f",
+          "artifact": "b3:da68c39fe452870cafc0a288e664178663df34cd7aac2fc5a52f08bc47ae8327",
           "kind": "composite",
           "inputs": [
             {
@@ -59,7 +59,7 @@ expression: printed
               "value": 7,
               "run": {
                 "goal": "CountEnemies",
-                "artifact": "b3:89894a93af8cc56352ae81bfd0bd02cf92cb286886b718f42d1135a6d3974ec8",
+                "artifact": "b3:7ab8947e8c782f01e5e45a4ec6b06c34f12183fe9f4ca4afb1b5805099ab3eb4",
                 "kind": "leaf",
                 "inputs": [
                   {
@@ -106,7 +106,7 @@ expression: printed
               "value": 3,
               "run": {
                 "goal": "CountTreasures",
-                "artifact": "b3:18943682dd2ba62f170c10a83203572ed7009df8ff70ace68ad7e1169e7819d0",
+                "artifact": "b3:c82e61da9d276973175d51a19e7d179bb95c2e30ea1379defcedf543cf03b87b",
                 "kind": "leaf",
                 "inputs": [
                   {
@@ -153,7 +153,7 @@ expression: printed
               "value": 120,
               "run": {
                 "goal": "CalculateLevelScore",
-                "artifact": "b3:1ab239b3cbcf89fa9ec224da481fc9298e65540ab0e2cb853f9619f2c1d905a6",
+                "artifact": "b3:556404da7707e63d27c8ed9a20747409bc176ab67fb50e4fa5f2ced15b10376c",
                 "kind": "leaf",
                 "inputs": [
                   {
@@ -199,7 +199,7 @@ expression: printed
               "value": "Medium",
               "run": {
                 "goal": "RateDifficulty",
-                "artifact": "b3:a2efc258d77e726433bd204bb804d5604c360d828426f88e9ca20bbad1f6bd11",
+                "artifact": "b3:68a386be60df583884a8444ca099fd29d2fcfb371b1921832ebc9a657dddd2a2",
                 "kind": "leaf",
                 "inputs": [
                   {
@@ -235,7 +235,7 @@ expression: printed
               "value": 270,
               "run": {
                 "goal": "CalculateReward",
-                "artifact": "b3:adefc080f899e3e9bc52a6c98f1070cace5f445a3fed443ff73a82d6026673f1",
+                "artifact": "b3:8c5471e6ad7491e0fecf019907a293103cc7aad524f6ffde0bf3b6ebe541bdf7",
                 "kind": "leaf",
                 "inputs": [
                   {

@@ -3,7 +3,7 @@ source: crates/velme-ir/tests/validate.rs
 expression: "format!(\"{}\\n{}\", render_human(&diags, file, Some(&source), false),\nserde_json::to_string_pretty(&json).expect(\"diagnostics serialize\"))"
 input_file: tests/golden/ir/reject/version_newer.json
 ---
-Error: The generated program broke a rule: it uses format version 0.2, newer than the 0.1 this version of Velme reads.  [VL0402]
+Error: The generated program broke a rule: it uses format version 0.3, newer than the 0.2 this version of Velme reads.  [VL0402]
     ╭─[ tests/golden/ir/goals.velme:30:1 ]
     │
  30 │ ╭─▶ goal FindBadge(player: Player) -> Text:
@@ -18,7 +18,7 @@ Error: The generated program broke a rule: it uses format version 0.2, newer tha
   {
     "code": "VL0402",
     "severity": "error",
-    "message": "The generated program broke a rule: it uses format version 0.2, newer than the 0.1 this version of Velme reads.",
+    "message": "The generated program broke a rule: it uses format version 0.3, newer than the 0.2 this version of Velme reads.",
     "file": "tests/golden/ir/goals.velme",
     "span": {
       "start": 662,

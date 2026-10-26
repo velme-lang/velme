@@ -8,7 +8,7 @@ pub mod hir;
 mod resolve;
 
 use velme_diagnostics::Diagnostic;
-use velme_syntax::LANGUAGE_VERSION;
+pub use velme_syntax::LANGUAGE_VERSION;
 /// The input of [`analyze`], so its callers need not depend on `velme-syntax`.
 pub use velme_syntax::SourceFile;
 

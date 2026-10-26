@@ -87,7 +87,7 @@ fn the_schema_rejects_an_artifact_missing_its_format_or_ir() {
     let hash = format!("b3:{}", "0".repeat(64));
     let artifact = serde_json::json!({"artifact": hash, "ir": {"goal": "G"}, "manifest": {
         "format": "velme-artifact/1", "goal": "G", "kind": "leaf", "signature": hash, "contract_key": hash,
-        "synthesis_key": hash, "language_version": "velme/0.1", "compiler_version": "0", "ir_version": "1",
+        "synthesis_key": hash, "language_version": "velme/0.2", "compiler_version": "0", "ir_version": "1",
         "builtins_version": "1", "provider": "scripted", "children": [],
         "verification": {"examples": 0, "generated_inputs": 0, "input_set": hash, "max_fuel_observed": 0}}});
     let envelope = |artifact: &Value| {

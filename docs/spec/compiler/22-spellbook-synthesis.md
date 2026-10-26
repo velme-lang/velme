@@ -1,6 +1,6 @@
 # 22 — Spellbook: Synthesis & Verification
 
-**Status:** v0.1 · **Area:** SYNTH
+**Status:** v0.2 · **Area:** SYNTH
 **Read when:** touching the provider interface, a provider (LLM or external backend), the synthesis request, the prompt, the retry loop, the verification pipeline, generated test inputs, or synthesis cost/config.
 **Depends on:** [SPEC](../SPEC.md), [20-compiler-architecture](20-compiler-architecture.md), [21-ir](21-ir.md), [runtime/32](../runtime/32-artifacts-cache.md), [tooling/41](../tooling/41-security-privacy.md)
 

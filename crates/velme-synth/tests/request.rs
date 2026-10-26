@@ -12,7 +12,7 @@ use velme_synth::{
 use velme_test_support::{goal_id, program, read, repo};
 
 /// The golden goals: a leaf with a check and examples, and a composite over two children.
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 type Player:
     name: Text

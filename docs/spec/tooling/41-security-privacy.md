@@ -1,6 +1,6 @@
 # 41 — Security & Learner Privacy
 
-**Status:** v0.1 · **Area:** SEC
+**Status:** v0.2 · **Area:** SEC
 **Read when:** touching a trust boundary (IR validation, host functions, sandbox limits, artifact loading, provider
 calls), handling secrets, adding telemetry, or preparing a release.
 **Depends on:** [SPEC](../SPEC.md), [21-ir](../compiler/21-ir.md), [22-spellbook-synthesis](../compiler/22-spellbook-synthesis.md), [31-wasm-sandbox](../runtime/31-wasm-sandbox.md), [32-artifacts-cache](../runtime/32-artifacts-cache.md)

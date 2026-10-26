@@ -309,7 +309,7 @@ fn ac_run_06_a_call_tree_of_129_invocations_is_rejected_before_execution() {
     let tree = |calls: usize| {
         let lines: String = (0..calls).map(|i| format!("        c{i} = Leaf(x)\n")).collect();
         format!(
-            "language: velme/0.1\n\ngoal Leaf(x: Number) -> Number:\n    plan: \"Return x.\"\n\n\
+            "language: velme/0.2\n\ngoal Leaf(x: Number) -> Number:\n    plan: \"Return x.\"\n\n\
              goal Wide(x: Number) -> Number:\n    call:\n{lines}    plan: \"Add them.\"\n"
         )
     };

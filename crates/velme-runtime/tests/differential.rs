@@ -143,7 +143,7 @@ fn ac_qa_06_the_differential_corpus_replays_and_ci_fuzzes_every_target() {
 fn leaf(params: &[(&str, &str)], output: &str, body: Json) -> (Program, GoalId, ValidIr) {
     let signature: Vec<String> = params.iter().map(|(name, ty)| format!("{name}: {ty}")).collect();
     let source = format!(
-        "language: velme/0.1\n\ngoal G({}) -> {output}:\n    plan: \"x\"\n",
+        "language: velme/0.2\n\ngoal G({}) -> {output}:\n    plan: \"x\"\n",
         signature.join(", ")
     );
     let program = program(&source);

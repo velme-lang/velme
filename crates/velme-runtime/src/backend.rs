@@ -399,7 +399,7 @@ mod tests {
     use velme_sema::hir::Program as Checked;
     use velme_test_support::{goal_id, program, valid_ir};
 
-    const SOURCE: &str = "language: velme/0.1\n\ngoal Half(x: Number) -> Number:\n    plan: \"Halve x.\"\n";
+    const SOURCE: &str = "language: velme/0.2\n\ngoal Half(x: Number) -> Number:\n    plan: \"Halve x.\"\n";
 
     /// `Half`, which divides `x` by 2, and its IR.
     fn half() -> (Checked, ValidIr) {

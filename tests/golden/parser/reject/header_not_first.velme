@@ -3,4 +3,4 @@
 type A:
     x: Number
 
-language: velme/0.1
+language: velme/0.2

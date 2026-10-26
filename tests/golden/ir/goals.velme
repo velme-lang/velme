@@ -1,4 +1,4 @@
-language: velme/0.1
+language: velme/0.2
 
 # The goals the golden IR files implement; `crates/velme-ir/tests/validate.rs` validates each file against its goal.
 

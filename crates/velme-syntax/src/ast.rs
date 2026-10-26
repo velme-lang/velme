@@ -28,7 +28,7 @@ pub struct Program {
     pub span: Span,
 }
 
-/// `language: velme/0.1` (§4).
+/// `language: velme/0.2` (§4).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Header {
     /// The language name; must be `velme`.

@@ -16,7 +16,7 @@ use velme_test_support::workload::{FAN_FILE, fan_ir, fan_out, fan_source, nested
 use velme_test_support::{goal_id, program, valid_ir};
 
 fn reduce(c: &mut Criterion) {
-    let program = program("language: velme/0.1\n\ngoal G() -> Number:\n    plan: \"Count to a million.\"\n");
+    let program = program("language: velme/0.2\n\ngoal G() -> Number:\n    plan: \"Count to a million.\"\n");
     let document = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "G", "types": {},
         "inputs": [], "output": {"t": "Number"}, "body": nested_reduce(1000)});
     let (goal, ir) = (&program.goals[0], valid_ir(&program, &document.to_string()));

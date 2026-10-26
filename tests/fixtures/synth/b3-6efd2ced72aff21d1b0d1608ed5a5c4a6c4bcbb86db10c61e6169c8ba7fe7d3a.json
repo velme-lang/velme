@@ -1,1 +1,0 @@
-[{"reply":"{\"body\":{\"kind\":\"binary\",\"left\":{\"kind\":\"input\",\"name\":\"x\"},\"op\":\"add\",\"right\":{\"kind\":\"literal\",\"type\":{\"t\":\"Number\"},\"value\":1}}}","request":"b3:998da1ce4d0cef94a54085bb7417ba7234392cb6e1564b99fc8befc0b3f71109","usage":{"cache_read_tokens":0,"cache_write_tokens":0,"input_tokens":0,"output_tokens":0}}]

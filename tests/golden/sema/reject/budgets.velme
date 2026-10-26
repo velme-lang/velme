@@ -1,6 +1,6 @@
 # `budget` can only lower the system caps, and the run tree below a goal must fit its limits (language/12 §6,
 # R-GOAL-20, runtime/30 §7).
-language: velme/0.1
+language: velme/0.2
 
 goal Leaf(x: Number) -> Number:
     plan: "Return x."

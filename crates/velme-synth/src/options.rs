@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn ac_synth_54_notation_versions_rekey_only_notation_synthesis() {
         let program = velme_test_support::program(
-            "language: velme/0.1\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n",
+            "language: velme/0.2\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n",
         );
         let goal = velme_sema::hir::GoalId(0);
         let contract = velme_ir::contract_key(&program, goal).expect("contract");

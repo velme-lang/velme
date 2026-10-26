@@ -147,7 +147,7 @@ fn ac_cli_01_check_prints_five_lines_and_a_type_error_exits_1_with_a_caret() {
     );
     fs::write(
         dir.join("bad.velme"),
-        "language: velme/0.1\n\ngoal Show(p: Playr) -> Number:\n    plan: \"Show it.\"\n",
+        "language: velme/0.2\n\ngoal Show(p: Playr) -> Number:\n    plan: \"Show it.\"\n",
     )
     .expect("source");
     let run = velme(&dir, &["check", "bad.velme"]);
@@ -255,7 +255,7 @@ fn ac_goal_17_checks_run_on_examples_and_fail_as_on_generated_inputs() {
     let b = serde_json::json!({"kind": "input", "name": "b"});
     let number = serde_json::json!({"t": "Number"});
     let ir = serde_json::json!({
-        "ir_version": "0.1", "builtins_version": "0.1", "goal": "Add", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.1", "goal": "Add", "types": {},
         "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "binary", "op": "mul", "left": a, "right": b}
     });
@@ -320,7 +320,7 @@ fn test_runs_examples_before_generated_inputs(name: &str) -> Value {
     let input = serde_json::json!({"kind": "input", "name": "x"});
     let literal = |n: i64| serde_json::json!({"kind": "literal", "type": number, "value": n});
     let ir = serde_json::json!({
-        "ir_version": "0.1", "builtins_version": "0.1", "goal": "AddOne", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.1", "goal": "AddOne", "types": {},
         "inputs": [["x", number]], "output": number,
         "body": {"kind": "binary", "op": "add", "left": input, "right": literal(2)}
     });
@@ -690,7 +690,7 @@ fn ac_cli_24_bad_flags_are_vl0902_in_the_envelope_and_quiet_drops_only_progress(
     assert_eq!((quiet.stdout.as_str(), quiet.stderr.as_str(), quiet.code), ("", "", 0));
     fs::write(
         dir.join("bad.velme"),
-        "language: velme/0.1\n\ngoal Show(p: Playr) -> Number:\n    plan: \"x\"\n",
+        "language: velme/0.2\n\ngoal Show(p: Playr) -> Number:\n    plan: \"x\"\n",
     )
     .expect("source");
     let quiet = velme(&dir, &["check", "bad.velme", "-q"]);
@@ -705,7 +705,7 @@ fn ac_cli_25_color_is_decided_for_each_stream() {
     let dir = copy("add", "ac_cli_25");
     fs::write(
         dir.join("bad.velme"),
-        "language: velme/0.1\n\ngoal Show(p: Playr) -> Number:\n    plan: \"x\"\n",
+        "language: velme/0.2\n\ngoal Show(p: Playr) -> Number:\n    plan: \"x\"\n",
     )
     .expect("source");
     let always = velme(&dir, &["check", "bad.velme", "--color", "always"]);
@@ -985,4 +985,76 @@ fn ac_blt_10_an_artifact_built_on_an_older_compatibility_unit_is_stale() {
     );
     assert!(envelope["results"][0].get("result").is_none());
     assert_eq!(tree(&dir), before, "nothing is written");
+}
+
+/// AC-CLI-30: `velme.toml` with `project.language = "velme/0.1"` yields `VL0902`, exit 64, with help to change the
+/// setting and rebuild the lock. Newer unsupported config versions and source headers receive no downgrade help;
+/// old headers use `VL0106` (R-CLI-29, R-SYN-15).
+#[test]
+fn ac_cli_30_project_language_validation() {
+    let dir = copy("add", "ac_cli_30");
+    // 0.1 gets VL0902, exit 64, with migration help
+    write_project_config(&dir, "[project]\nlanguage = \"velme/0.1\"\n");
+    let run = velme(&dir, &["check", ADD]);
+    assert_eq!(run.code, 64, "{}", run.stderr);
+    assert!(run.stderr.contains("[VL0902]"), "{}", run.stderr);
+    assert!(
+        run.stderr
+            .contains("Change `project.language` to `velme/0.2` and rebuild the lock."),
+        "{}",
+        run.stderr
+    );
+
+    // Newer unsupported version gets VL0902, exit 64, with no downgrade help
+    write_project_config(&dir, "[project]\nlanguage = \"velme/0.3\"\n");
+    let run = velme(&dir, &["check", ADD]);
+    assert_eq!(run.code, 64, "{}", run.stderr);
+    assert!(run.stderr.contains("[VL0902]"), "{}", run.stderr);
+    assert!(
+        !run.stderr.contains("rebuild the lock"),
+        "no downgrade help: {}",
+        run.stderr
+    );
+
+    // Current version 0.2 succeeds
+    write_project_config(&dir, "[project]\nlanguage = \"velme/0.2\"\n");
+    let run = velme(&dir, &["check", ADD]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+}
+
+/// AC-ERR-06: Config `project.language` uses `VL0902` and the same migration wording for the setting (R-SYN-15, R-CLI-29).
+#[test]
+fn ac_err_06_config_migration_help() {
+    let dir = copy("add", "ac_err_06");
+    write_project_config(&dir, "[project]\nlanguage = \"velme/0.1\"\n");
+    let run = velme(&dir, &["check", ADD, "--json"]);
+    assert_eq!(run.code, 64, "{}", run.stderr);
+    let envelope = parsed(&run);
+    assert_eq!(codes(&envelope), ["VL0902"]);
+    let diag = &envelope["diagnostics"][0];
+    assert_eq!(
+        diag["help"].as_str(),
+        Some("Change `project.language` to `velme/0.2` and rebuild the lock.")
+    );
+}
+
+/// AC-REL-06: The `0.2.0-alpha.1` release reports language/IR/builtins `0.2`, publishes the `language/spec/0.2/` mirror,
+/// explains the `0.1` header break and one lock invalidation in CHANGELOG, and re-blesses fixtures without a provider
+/// (R-REL-02, R-REL-14).
+#[test]
+fn ac_rel_06_version_and_json_report_0_2() {
+    let dir = copy("add", "ac_rel_06");
+    let version = velme(&dir, &["--version"]);
+    assert_eq!(version.code, 0);
+    assert_eq!(version.stdout.trim(), "velme 0.2.0-alpha.1");
+
+    let art = velme(&dir, &["artifact", ADD, "--goal", "Add", "--json"]);
+    assert_eq!(art.code, 0, "{}", art.stderr);
+    let envelope = parsed(&art);
+    assert_eq!(envelope["format"], "velme-cli/1");
+    let result = &envelope["results"][0];
+    let manifest = &result["artifact"]["manifest"];
+    assert_eq!(manifest["language_version"], "0.2");
+    assert_eq!(manifest["ir_version"], "0.2");
+    assert_eq!(manifest["compiler_version"], "0.2.0-alpha.1");
 }

@@ -19,7 +19,7 @@ use velme_test_support::backend::{Config, Mode, On, Server};
 use velme_test_support::mock::{MockResponse, MockServer};
 use velme_test_support::{RecordingSleeper, goal_id, program, repo};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 type Player:
     name: Text

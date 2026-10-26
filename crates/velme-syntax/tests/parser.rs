@@ -280,10 +280,19 @@ fn ac_syn_07_three_errors_in_source_order() {
 
 #[test]
 fn ac_syn_08_header_version() {
-    let (_, diags) = parse_str("language: velme/0.2\n");
-    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    let (program, diags) = parse_str("language: velme/0.2\n");
+    assert!(diags.is_empty() && program.header.is_some());
     let (program, diags) = parse_str("type A:\n    x: Number\n");
     assert!(diags.is_empty() && program.header.is_none());
+    let (_, diags) = parse_str("language: velme/0.1\n");
+    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    assert_eq!(
+        diags[0].help.as_deref(),
+        Some("Change the header to `language: velme/0.2` and rebuild the lock.")
+    );
+    let (_, diags) = parse_str("language: velme/0.3\n");
+    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    assert_eq!(diags[0].help, None);
 }
 
 #[test]
@@ -409,7 +418,7 @@ mod totality {
 
     /// Pieces of Velme, so random input reaches deep into the grammar.
     const FRAGMENTS: &[&str] = &[
-        "language: velme/0.1\n",
+        "language: velme/0.2\n",
         "type ",
         "goal ",
         "plan",
@@ -524,10 +533,26 @@ fn ac_syn_16_number_range() {
 fn ac_syn_17_double_optional_and_version_text() {
     let (_, diags) = parse_str("type A:\n    p: Player??\n");
     assert_eq!(codes(&diags), [Code::UnexpectedToken]);
-    let (_, diags) = parse_str("language: velme/0.10\n");
+    let (_, diags) = parse_str("language: velme/0.20\n");
     assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
-    let (program, diags) = parse_str("language: velme/0.1\n");
+    let (program, diags) = parse_str("language: velme/0.2\n");
     assert!(diags.is_empty() && program.header.is_some());
+}
+
+#[test]
+fn ac_err_06_header_migration_help() {
+    let (_, diags) = parse_str("language: velme/0.1\n");
+    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    assert_eq!(
+        diags[0].help.as_deref(),
+        Some("Change the header to `language: velme/0.2` and rebuild the lock.")
+    );
+    let (_, diags) = parse_str("language: velme/0.20\n");
+    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    assert_eq!(diags[0].help, None);
+    let (_, diags) = parse_str("language: velme/0.3\n");
+    assert_eq!(codes(&diags), [Code::UnsupportedLanguageVersion]);
+    assert_eq!(diags[0].help, None);
 }
 
 #[test]

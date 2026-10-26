@@ -103,7 +103,7 @@ impl Generator {
 }
 
 /// The first line of every generated program.
-const HEADER: &str = "language: velme/0.1\n\n";
+const HEADER: &str = "language: velme/0.2\n\n";
 
 /// A checked program of exactly `lines` lines from the generator seeded with `seed` (D-131): declarations while the
 /// next one fits, then comment lines.

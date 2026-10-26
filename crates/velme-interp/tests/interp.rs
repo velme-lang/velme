@@ -13,7 +13,7 @@ use velme_ir::{IR_VERSION, Node, ValidIr, decode_str, encode_value, from_json_st
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 
 /// The goals the IR documents below implement.
-const GOALS: &str = r#"language: velme/0.1
+const GOALS: &str = r#"language: velme/0.2
 
 type Item:
     k: Number

@@ -1,6 +1,6 @@
 # 14 — Built-in Functions
 
-**Status:** v0.1 · **Area:** BLT
+**Status:** v0.2 · **Area:** BLT
 **Read when:** adding or changing a built-in, implementing one in a backend, writing the builtins section of the synthesis prompt, or bumping `builtins_version`.
 **Depends on:** [SPEC](../SPEC.md), [11-types](11-types.md), [13-check-dsl](13-check-dsl.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-22, D-36)
 

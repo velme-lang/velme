@@ -10,7 +10,7 @@ use velme_runtime::{MAX_INPUT_BYTES, decode_inputs, read_input};
 use velme_sema::hir::Program;
 use velme_test_support::{goal_id, program};
 
-const SOURCE: &str = "language: velme/0.1\n\ngoal Add(a: Number, b: Number) -> Number:\n    plan: \"Add.\"\n";
+const SOURCE: &str = "language: velme/0.2\n\ngoal Add(a: Number, b: Number) -> Number:\n    plan: \"Add.\"\n";
 
 fn add() -> Program {
     program(SOURCE)
@@ -83,7 +83,7 @@ fn values_nest_at_most_the_limit_either_way() {
 #[test]
 fn value_problems_follow_the_catalog_messages() {
     let program = program(
-        "language: velme/0.1\n\ntype Player:\n    name: Text\n    score: Number\n\n\
+        "language: velme/0.2\n\ntype Player:\n    name: Text\n    score: Number\n\n\
          goal Rank(player: Player, scores: List<Number>) -> Number:\n    plan: \"Rank.\"\n",
     );
     let decode = |player: &str, scores: &str| {

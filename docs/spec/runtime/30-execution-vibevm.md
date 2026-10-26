@@ -1,6 +1,6 @@
 # 30 — Execution: VibeVM & Reference Interpreter
 
-**Status:** v0.1 · **Area:** RUN
+**Status:** v0.2 · **Area:** RUN
 **Read when:** working on the interpreter, the composite-goal scheduler, budgets, failure handling, determinism, traces or `velme explain`.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [language/12](../language/12-goals-calls.md), [language/13](../language/13-check-dsl.md), [32-artifacts-cache](32-artifacts-cache.md)
 

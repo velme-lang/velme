@@ -10,7 +10,7 @@ use velme_test_support::velme_command;
 
 use serde_json::{Value, json};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
@@ -504,7 +504,7 @@ fn a_request_the_api_rejects_is_vl0405_with_its_message() {
 const WIRED_EXAMPLE: &str = include_str!("../../../examples/beginner/double_then_add_one.velme");
 
 /// `delivery/50` §5's AC-RDM-02 program.
-const WIRED_ROADMAP: &str = "language: velme/0.1
+const WIRED_ROADMAP: &str = "language: velme/0.2
 
 goal Double(x: Number) -> Number:
     plan: \"Multiply x by 2.\"

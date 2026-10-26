@@ -13,7 +13,7 @@ input_file: tests/golden/parser/accept/header.velme
       ]
     },
     "version": {
-      "text": "0.1",
+      "text": "0.2",
       "span": [
         94,
         97

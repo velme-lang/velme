@@ -523,7 +523,7 @@ fn jobs_must_be_a_positive_number() {
 #[test]
 fn failed_siblings_report_the_lowest_source_order_failure() {
     let dir = scratch("siblings");
-    let source = "language: velme/0.1\n\n\
+    let source = "language: velme/0.2\n\n\
 goal Slow(n: Number) -> Number:\n    plan: \"Count, then divide by zero.\"\n\n\
 goal Fast(n: Number) -> Number:\n    plan: \"Divide by zero.\"\n\n\
 goal Later(n: Number) -> Number:\n    plan: \"Return n.\"\n\n\
@@ -549,7 +549,7 @@ goal Top(n: Number) -> Number:\n    call:\n        a = Later(n)\n    plan: \"Ret
     ];
     for (goal, body) in bodies {
         let calls = velme_ir::calls(&program, goal_id(&program, goal)).expect("calls");
-        let ir = serde_json::json!({"ir_version": "0.1", "builtins_version": "0.1", "goal": goal, "types": {},
+        let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.1", "goal": goal, "types": {},
             "inputs": [["n", number]], "output": number, "calls": calls, "body": body});
         install(&dir, "both.velme", &program, &ir.to_string());
     }
@@ -766,14 +766,14 @@ fn a_path_that_isnt_utf8_is_a_file_error() {
 #[test]
 fn ac_run_08_division_by_zero_prints_no_value() {
     let dir = scratch("division_by_zero");
-    let source = "language: velme/0.1\n\ngoal Boom(x: Number) -> Number:\n    plan: \"Divide x by zero.\"\n";
+    let source = "language: velme/0.2\n\ngoal Boom(x: Number) -> Number:\n    plan: \"Divide x by zero.\"\n";
     fs::write(dir.join("boom.velme"), source).expect("source");
     let program = program(source);
     let number = serde_json::json!({"t": "Number"});
     let zero = serde_json::json!({"kind": "literal", "type": number, "value": 0});
     let body =
         serde_json::json!({"kind": "binary", "op": "div", "left": {"kind": "input", "name": "x"}, "right": zero});
-    let ir = serde_json::json!({"ir_version": "0.1", "builtins_version": "0.1", "goal": "Boom", "types": {},
+    let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.1", "goal": "Boom", "types": {},
         "inputs": [["x", number]], "output": number, "calls": [], "body": body});
     install(&dir, "boom.velme", &program, &ir.to_string());
     let file = dir.join("boom.velme");

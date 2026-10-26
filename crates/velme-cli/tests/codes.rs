@@ -17,7 +17,7 @@ use velme_test_support::ir_json::{binary, builtin, input, literal, number, numbe
 use velme_test_support::{install, program, repo, velme_command};
 
 /// A leaf goal for the build codes.
-const LEAF: &str = "language: velme/0.1
+const LEAF: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
@@ -26,7 +26,7 @@ goal Double(n: Number) -> Number:
 ";
 
 /// [`LEAF`] and a wired goal calling it, whose own example is wrong.
-const WIRED: &str = "language: velme/0.1
+const WIRED: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
@@ -42,7 +42,7 @@ goal Both(n: Number) -> Number:
 
 /// A goal for each runtime code: out of fuel, divided by zero, out of memory, a list too long, and a body the WASM
 /// backend declines.
-const RUNTIME: &str = "language: velme/0.1
+const RUNTIME: &str = "language: velme/0.2
 
 goal Spin(n: Number) -> Number:
     budget cpu=1ms

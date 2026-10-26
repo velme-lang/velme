@@ -11,7 +11,7 @@ use velme_test_support::velme_command;
 use serde_json::json;
 use velme_test_support::backend::{Config, Mode, On, Server};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
