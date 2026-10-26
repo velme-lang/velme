@@ -1,6 +1,6 @@
 # 40 — Command-Line Interface
 
-**Status:** v0.1 · **Area:** CLI
+**Status:** v0.2 · **Area:** CLI
 **Read when:** adding or changing a `velme` command, flag, config key, environment variable, exit code or output format.
 **Depends on:** [SPEC](../SPEC.md), [11-types](../language/11-types.md) (JSON mapping), [30-execution-vibevm](../runtime/30-execution-vibevm.md), [32-artifacts-cache](../runtime/32-artifacts-cache.md), [90-errors-glossary](../reference/90-errors-glossary.md)
 

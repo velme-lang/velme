@@ -34,7 +34,7 @@ impl WallClock for Ticking {
 
 fn source() -> String {
     format!(
-        "language: velme/0.1
+        "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it. {SECRET}\"

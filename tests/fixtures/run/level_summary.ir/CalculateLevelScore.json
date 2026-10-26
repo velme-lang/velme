@@ -1,5 +1,5 @@
 {
-  "ir_version": "0.1",
+  "ir_version": "0.2",
   "builtins_version": "0.1",
   "goal": "CalculateLevelScore",
   "types": {"Level": {"fields": [["enemy_count", {"t": "Number"}], ["treasure_count", {"t": "Number"}], ["base_score", {"t": "Number"}]]}},

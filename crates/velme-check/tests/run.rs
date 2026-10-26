@@ -13,7 +13,7 @@ use velme_ir::{SHOWN_ITEMS, decode_str};
 use velme_sema::hir::Program;
 use velme_test_support::{goal_id, program, read, repo, valid_ir};
 
-const SOURCE: &str = r#"language: velme/0.1
+const SOURCE: &str = r#"language: velme/0.2
 
 type Player:
     name: Text

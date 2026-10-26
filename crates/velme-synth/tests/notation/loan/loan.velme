@@ -1,4 +1,4 @@
-language: velme/0.1
+language: velme/0.2
 
 # P1 benchmark, DMN TCK 0087 (loan origination). Plan text restates requirements.md section by section;
 # the examples are the same ones the Python baseline gets (examples.json).

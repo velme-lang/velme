@@ -1,6 +1,6 @@
 # 20 — Compiler Architecture
 
-**Status:** v0.1 · **Area:** CMP
+**Status:** v0.2 · **Area:** CMP
 **Read when:** creating or wiring a crate, deciding where code belongs, adding a compiler phase, or changing how diagnostics are produced or rendered.
 **Depends on:** [SPEC](../SPEC.md), [21-ir](21-ir.md), [22-spellbook-synthesis](22-spellbook-synthesis.md), [90-errors-glossary](../reference/90-errors-glossary.md)
 

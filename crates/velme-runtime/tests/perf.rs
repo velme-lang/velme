@@ -21,7 +21,7 @@ use velme_test_support::{goal_id, program, valid_ir};
 
 /// `G() -> Number` whose body is the nested `reduce` over `range(1000)`, and its IR.
 fn reduce_goal() -> (Goal, ValidIr) {
-    let program = program("language: velme/0.1\n\ngoal G() -> Number:\n    plan: \"Count to a million.\"\n");
+    let program = program("language: velme/0.2\n\ngoal G() -> Number:\n    plan: \"Count to a million.\"\n");
     let document = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "G", "types": {},
         "inputs": [], "output": {"t": "Number"}, "body": nested_reduce(1000)});
     let ir = valid_ir(&program, &document.to_string());

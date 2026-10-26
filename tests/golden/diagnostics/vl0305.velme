@@ -1,5 +1,5 @@
 # A binding used before its line is VL0305.
-language: velme/0.1
+language: velme/0.2
 
 goal Double(x: Number) -> Number:
     plan: "Double x."

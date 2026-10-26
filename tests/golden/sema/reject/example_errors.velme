@@ -1,5 +1,5 @@
 # Examples call their own goal with values of the right types (R-GOAL-21, R-TYP-17, R-TYP-20, AC-TYP-12).
-language: velme/0.1
+language: velme/0.2
 
 type Player:
     name: Text

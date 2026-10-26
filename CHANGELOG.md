@@ -6,6 +6,23 @@ Versions follow semver (`delivery/52` §5). Version bumps that change a fingerpr
 
 ## [Unreleased]
 
+## [0.2.0-alpha.1] - 2026-10-26
+
+Coordinated language break to `velme/0.2` and IR `0.2` (R-REL-14, D-160). Invalidates locks: yes. Builtins 0.2 and request 0.2 land later in this release.
+
+This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)).
+
+### Changed
+
+- Supported language version is `velme/0.2` only; headerless files default to `0.2`.
+- A `language: velme/0.1` header or `project.language = "velme/0.1"` config setting is rejected with migration help (`VL0106` / `VL0902`).
+  - Migration: in source files, change the first line to `language: velme/0.2` (or omit the header); in `velme.toml`, change `project.language = "velme/0.2"` (or omit the setting); rebuild the lockfile with `velme build <file>` or `velme run --build <file>`.
+- Existing `0.1` locks are stale and invalidated under 0.2.
+
+### Removed
+
+- Support for `velme/0.1` headers and IR `0.1` schemas.
+
 ## [0.1.0-alpha.1] - 2026-10-02
 
 The first release, with language `velme/0.1`, IR `0.1` and builtins `0.1` (D-146). Invalidates locks: no (the keys

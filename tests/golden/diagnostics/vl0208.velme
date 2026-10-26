@@ -1,5 +1,5 @@
 # A record type that contains itself is VL0208.
-language: velme/0.1
+language: velme/0.2
 
 type Node:
     next: Node

@@ -53,7 +53,7 @@ fn goal(signature: &str, types: &str, body: &str) -> Module {
     let (params, output) = signature.split_once("->").expect("a signature");
     let declared = "type Item:\n    k: Number\n    name: Text\n\ntype Tag:\n    name: Text?\n    items: List<Item>\n";
     let source = format!(
-        "language: velme/0.1\n\n{declared}\ngoal G({}) -> {}:\n    plan: \"x\"\n",
+        "language: velme/0.2\n\n{declared}\ngoal G({}) -> {}:\n    plan: \"x\"\n",
         params.trim(),
         output.trim()
     );
@@ -364,7 +364,7 @@ fn values_of_every_layout_cross_the_boundary_both_ways() {
 fn a_list_of_nothing_is_read_back_as_its_length() {
     let nothing = r#"{"kind": "literal", "type": {"t": "Nothing"}, "value": null}"#;
     let body = collection("map", &builtin("range", &[&input("x")]), "v", nothing);
-    let source = "language: velme/0.1\n\ngoal G(x: Number) -> List<Nothing>:\n    plan: \"x\"\n";
+    let source = "language: velme/0.2\n\ngoal G(x: Number) -> List<Nothing>:\n    plan: \"x\"\n";
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
             "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "Nothing"}}}},
@@ -507,7 +507,7 @@ fn ac_sbx_02_a_module_importing_wasi_is_refused_by_name_and_never_compiled() {
 #[test]
 fn vl0801_a_module_importing_outside_the_whitelist() {
     let file = "game.velme";
-    let source = "language: velme/0.1\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n";
+    let source = "language: velme/0.2\n\ngoal G(x: Number) -> Number:\n    plan: \"Return x.\"\n";
     let span = program(source).goals[0].span;
     let like = goal("x: Number -> Number", "", &input("x"));
     let error = sandbox()
@@ -841,7 +841,7 @@ fn r_blt_07_a_failure_names_the_items_being_visited() {
 fn goal_ir(signature: &str, body: &str) -> velme_ir::ValidIr {
     let (params, output) = signature.split_once("->").expect("a signature");
     let source = format!(
-        "language: velme/0.1\n\ngoal G({}) -> {}:\n    plan: \"x\"\n",
+        "language: velme/0.2\n\ngoal G({}) -> {}:\n    plan: \"x\"\n",
         params.trim(),
         output.trim()
     );
@@ -1527,7 +1527,7 @@ fn wide_goal(width: usize, output: &str, body: &str) -> velme_ir::ValidIr {
     let fields: Vec<String> = (0..width).map(|i| format!("f{i}")).collect();
     let declared: String = fields.iter().map(|f| format!("    {f}: Number\n")).collect();
     let source = format!(
-        "language: velme/0.1\n\ntype W:\n{declared}\ngoal G(xs: List<W>, a: W, b: W) -> {output}:\n    plan: \"x\"\n"
+        "language: velme/0.2\n\ntype W:\n{declared}\ngoal G(xs: List<W>, a: W, b: W) -> {output}:\n    plan: \"x\"\n"
     );
     let listed: Vec<String> = fields
         .iter()

@@ -1,6 +1,6 @@
 # 11 — Types
 
-**Status:** v0.1 · **Area:** TYP
+**Status:** v0.2 · **Area:** TYP
 **Read when:** changing type checking, assignability, equality, `Number` arithmetic, narrowing, or the JSON value mapping.
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-3, D-6, D-23, D-36)
 

@@ -1,6 +1,6 @@
 # 52 — Repository, Release & Governance
 
-**Status:** v0.1 · **Area:** REL
+**Status:** v0.2 · **Area:** REL
 **Read when:** changing repo layout, adding a crate, editing CI or release workflows, versioning, publishing, licensing,
 or proposing a language change (RFC).
 **Depends on:** [SPEC](../SPEC.md), [51-testing-quality](51-testing-quality.md), [41-security-privacy](../tooling/41-security-privacy.md)

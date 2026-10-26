@@ -14,7 +14,7 @@ use velme_synth::{
 };
 use velme_test_support::{LeafRunner, RecordingSleeper, goal_id, program};
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
@@ -341,7 +341,7 @@ fn hints(source: &str, goal: &str, format: ReplyFormat, replies: Vec<String>) ->
 /// once per attempt, and none of the reply's text comes back (AC-SYNTH-43, R-SYNTH-49, D-104).
 #[test]
 fn ac_synth_43_feedback_for_a_wrong_name_lists_what_is_available() {
-    const RECORDS: &str = "language: velme/0.1
+    const RECORDS: &str = "language: velme/0.2
 
 type Player:
     name: Text

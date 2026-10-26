@@ -1930,7 +1930,7 @@ fn major_minor(version: &str) -> Option<(u64, u64)> {
 mod tests {
     #[test]
     fn ac_synth_59_ten_thousand_nodes_are_typed_once() {
-        let source = "language: velme/0.1\n\ngoal G() -> List<Number>:\n    plan: \"Return numbers.\"\n";
+        let source = "language: velme/0.2\n\ngoal G() -> List<Number>:\n    plan: \"Return numbers.\"\n";
         let (program, diagnostics) = velme_sema::analyze(&velme_sema::SourceFile::new("test.velme", source));
         assert!(diagnostics.is_empty());
         let program = program.expect("program");

@@ -1,6 +1,6 @@
 # 13 — The `check` Assertion Language
 
-**Status:** v0.1 · **Area:** CHK
+**Status:** v0.2 · **Area:** CHK
 **Read when:** changing check type rules, check evaluation, check failure reports, or how checks are lowered for the runtime.
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md) §4, [11-types](11-types.md), [14-builtins](14-builtins.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-6, D-20)
 

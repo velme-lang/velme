@@ -20,7 +20,7 @@ use velme_test_support::{fixture_manifest, goal_id, install, install_artifact, p
 /// The project file every goal below is declared in.
 const FILE: &str = "game.velme";
 
-const SOURCE: &str = "language: velme/0.1\n\n\
+const SOURCE: &str = "language: velme/0.2\n\n\
 type Player:\n    name: Text\n    score: Number\n\n\
 goal Score(player: Player) -> Number:\n    plan: \"Return the player's score.\"\n\n\
 goal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n\n\
@@ -287,10 +287,10 @@ fn a_stale_entry_names_the_version_it_was_built_for() {
         [Cause::Version {
             of: Versioned::Language,
             built: "0.0".to_owned(),
-            now: "0.1".to_owned(),
+            now: "0.2".to_owned(),
         }]
     );
-    assert_eq!(causes[0].to_string(), "built for language 0.0, the file says 0.1");
+    assert_eq!(causes[0].to_string(), "built for language 0.0, the file says 0.2");
 }
 
 #[test]

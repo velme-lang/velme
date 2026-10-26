@@ -1,4 +1,4 @@
-language: velme/0.1
+language: velme/0.2
 
 # `double.json` is a wrong implementation of `Double` (x + 1); `crates/velme-check/tests/run.rs` runs its example and
 # checks and snapshots the failures.

@@ -26,7 +26,7 @@ const FILE: &str = "game.velme";
 
 fn source(double_plan: &str) -> String {
     format!(
-        "language: velme/0.1
+        "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"{double_plan}\"
@@ -563,7 +563,7 @@ fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
 /// then `A`, and `A` and `B` follow it in the file, so the order is `A`, `B`, `P` (D-93, R-SYNTH-01).
 #[test]
 fn r_synth_01_goals_are_built_in_source_order_among_the_ready_ones() {
-    let text = "language: velme/0.1
+    let text = "language: velme/0.2
 
 goal P(n: Number) -> Number:
     call:
@@ -1042,7 +1042,7 @@ fn ac_synth_08_an_offline_build_needs_no_contact_and_skips_the_store() {
 /// and under `auto` leaves no note of a fallback (R-SBX-17, D-80, D-117).
 #[test]
 fn r_sbx_17_build_and_locked_verification_run_on_the_interpreter() {
-    let text = "language: velme/0.1
+    let text = "language: velme/0.2
 
 goal Hidden(xs: List<Number>) -> Boolean:
     plan: \"Say whether a list of nothing has nothing in it.\"

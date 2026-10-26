@@ -11,5 +11,5 @@ Error: The built version of `Add` is missing — run `velme build`.  [VL0701]
     │ │                                    
     │ ╰──────────────────────────────────── here
     │     
-    │     Note: there is no file for artifact b3:27e0d330aefe3e5ed537d0a7d8eccbcf64b0801b3617d50c649e3dab31887374
+    │     Note: there is no file for artifact b3:beed8edbc0335876ddaddd9317ecd4214b5ffba1e26551f5fb5673495ea096f6
 ────╯

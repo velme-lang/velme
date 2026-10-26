@@ -1,6 +1,6 @@
 # 50 — Roadmap, MVP Scope & Success Criteria
 
-**Status:** v0.1 · **Area:** RDM
+**Status:** v0.2 · **Area:** RDM
 **Read when:** deciding what to build next, whether something is in the MVP, or what "done" means for v0.1.
 **Depends on:** [SPEC](../SPEC.md), [51-testing-quality](51-testing-quality.md), all language/compiler/runtime specs (each owns its `AC-*`)
 

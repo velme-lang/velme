@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use velme_ir::{Node, Origin, Request, Type, infer_list_types};
 use velme_sema::SourceFile;
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 type Box:
     values: List<Number>

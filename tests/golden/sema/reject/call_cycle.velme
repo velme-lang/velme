@@ -1,5 +1,5 @@
 # Goals can't call themselves, directly or around a circle (language/12 R-GOAL-11, AC-GOAL-03, AC-RDM-05).
-language: velme/0.1
+language: velme/0.2
 
 goal A(x: Number) -> Number:
     call:

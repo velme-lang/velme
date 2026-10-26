@@ -18,13 +18,13 @@ fn lines(inputs: &TestInputs) -> Vec<&str> {
     inputs.inputs.iter().map(|i| i.json.as_str()).collect()
 }
 
-const V1: &str = "language: velme/0.1
+const V1: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
 ";
 
-const V2: &str = "language: velme/0.1
+const V2: &str = "language: velme/0.2
 
 goal Greet(name: Text, loud: Boolean) -> Text:
     plan: \"Greet.\"
@@ -32,7 +32,7 @@ goal Greet(name: Text, loud: Boolean) -> Text:
         - Greet(\"Lina\", false) == \"Hello, Lina\"
 ";
 
-const V3: &str = "language: velme/0.1
+const V3: &str = "language: velme/0.2
 
 type Item:
     name: Text

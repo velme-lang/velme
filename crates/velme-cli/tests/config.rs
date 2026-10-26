@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use velme_test_support::mock::{MockResponse, MockServer};
 use velme_test_support::schema::assert_cli_envelope;
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Double(n: Number) -> Number:
     plan: \"Double it.\"
@@ -409,7 +409,7 @@ fn the_ollama_url_and_output_limit_come_from_flag_env_config_and_ceiling() {
         let dir = project(name);
         fs::write(
             dir.join("game.velme"),
-            "language: velme/0.1\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
+            "language: velme/0.2\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
         )
         .expect("source");
         dir
@@ -523,7 +523,7 @@ fn bad_config_is_reported_beside_a_source_error_on_every_command() {
     let dir = project("bad_config_and_source");
     fs::write(
         dir.join("game.velme"),
-        "language: velme/0.1\n\ngoal Broken(n: Number -> Number:\n",
+        "language: velme/0.2\n\ngoal Broken(n: Number -> Number:\n",
     )
     .expect("source");
     fs::write(dir.join("velme.toml"), "[synthesis]\nmax_retries = 9\n").expect("velme.toml");
@@ -631,7 +631,7 @@ fn an_empty_url_source_is_skipped_and_ollama_retries_with_its_retry_model() {
     let dir = project("ollama_retry");
     fs::write(
         dir.join("game.velme"),
-        "language: velme/0.1\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
+        "language: velme/0.2\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
     )
     .expect("source");
     fs::write(dir.join("velme.toml"), "[synthesis]\nretry_model = \"r\"\n").expect("velme.toml");

@@ -1,5 +1,5 @@
 # Checks call only the check built-ins; record literals name their fields (R-CHK-02, R-CHK-03, R-SYN-16, R-BLT-01).
-language: velme/0.1
+language: velme/0.2
 
 type Player:
     name: Text

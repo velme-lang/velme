@@ -1,6 +1,6 @@
 # 10 — Syntax & Grammar
 
-**Status:** v0.1 · **Area:** SYN
+**Status:** v0.2 · **Area:** SYN
 **Read when:** writing or changing the lexer or parser, adding syntax, reading a parse diagnostic, or adding golden parser tests.
 **Depends on:** [SPEC](../SPEC.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-7, D-8, D-18, D-19, D-24, D-25)
 

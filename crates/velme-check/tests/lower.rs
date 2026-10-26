@@ -9,7 +9,7 @@ use velme_check::{Lowered, lower_check, lower_example};
 use velme_ir::CheckScope;
 use velme_test_support::{program, read, repo};
 
-const PROGRAM: &str = r#"language: velme/0.1
+const PROGRAM: &str = r#"language: velme/0.2
 
 type Ball:
     bounce: Number
@@ -111,7 +111,7 @@ fn lowered_checks_are_not_held_to_the_limits_of_synthesized_ir() {
     let chain = vec!["x"; 200].join(" + ");
     let numbers: Vec<String> = (0..1200).map(|i| i.to_string()).collect();
     let text = format!(
-        "language: velme/0.1\n\ngoal G(x: Number, xs: List<Number>) -> Number:\n    plan: \"p\"\n    check:\n        \
+        "language: velme/0.2\n\ngoal G(x: Number, xs: List<Number>) -> Number:\n    plan: \"p\"\n    check:\n        \
          - {chain} > 0\n        \
          - every a in xs has every b in xs has every c in xs has every d in xs has every e in xs has a == e\n        \
          - contains([{}], x)\n        - \"{}\" != \"\"\n",

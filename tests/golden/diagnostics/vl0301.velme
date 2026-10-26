@@ -1,5 +1,5 @@
 # A call of a goal that is not declared is VL0301.
-language: velme/0.1
+language: velme/0.2
 
 goal Main(x: Number) -> Number:
     call:

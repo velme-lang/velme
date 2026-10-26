@@ -1,5 +1,5 @@
 # Call blocks, waves, wired goals and budgets (language/12 §3, §4, §6, §8.3, §8.4).
-language: velme/0.1
+language: velme/0.2
 
 type Stats:
     jump_height: Number

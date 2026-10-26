@@ -1,5 +1,5 @@
 # Checks and examples type-check against the signatures (language/11 §8-9, language/13, language/12 R-GOAL-21).
-language: velme/0.1
+language: velme/0.2
 
 type Player:
     name: Text

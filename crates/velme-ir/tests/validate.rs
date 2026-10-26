@@ -455,10 +455,10 @@ fn ac_ir_09_newer_ir_version_names_both_versions() {
     let diag = invalid(
         &program,
         "FindBadge",
-        &edit(golden("find_badge"), "/ir_version", json!("0.2")),
+        &edit(golden("find_badge"), "/ir_version", json!("0.3")),
     );
     at(&diag, "/ir_version");
-    assert!(diag.message.contains("0.2") && diag.message.contains(IR_VERSION) && diag.message.contains("newer"));
+    assert!(diag.message.contains("0.3") && diag.message.contains(IR_VERSION) && diag.message.contains("newer"));
     let diag = invalid(
         &program,
         "FindBadge",
@@ -820,7 +820,7 @@ fn calls_must_equal_the_compiler_calls() {
 #[test]
 fn a_dropped_call_is_a_call_graph_error_not_an_unused_type() {
     let program = program(
-        "language: velme/0.1\n\n\
+        "language: velme/0.2\n\n\
          type Inner:\n    v: Number\n\n\
          goal Child(x: Number) -> Inner:\n    plan: \"Wrap x.\"\n\n\
          goal Parent(x: Number) -> Number:\n    call:\n        i = Child(x)\n    plan: \"Unwrap it.\"\n",
@@ -842,7 +842,7 @@ fn a_dropped_call_is_a_call_graph_error_not_an_unused_type() {
 #[test]
 fn compiler_calls_lower_every_argument_form() {
     let program = program(
-        "language: velme/0.1\n\n\
+        "language: velme/0.2\n\n\
          type Player:\n    name: Text\n    score: Number\n\n\
          goal Pick(players: List<Player>, best: Player?, tags: List<Text>, n: Number) -> Player:\n    plan: \"Test.\"\n\n\
          goal Label(name: Text, scores: List<Number>, flag: Boolean, p: Player) -> Text:\n    plan: \"Test.\"\n\n\
@@ -1006,7 +1006,7 @@ fn oversized_documents_are_rejected_before_parsing() {
 #[test]
 fn documents_whose_canonical_form_is_too_long_are_rejected() {
     let program =
-        program("language: velme/0.1\n\ngoal Big(x: Number) -> List<List<Number>>:\n    plan: \"Many big numbers.\"\n");
+        program("language: velme/0.2\n\ngoal Big(x: Number) -> List<List<Number>>:\n    plan: \"Many big numbers.\"\n");
     let numbers = vec!["1e27"; MAX_LIST_ITEMS].join(",");
     let item =
         format!(r#"{{"kind": "literal", "type": {{"t": "List", "of": {{"t": "Number"}}}}, "value": [{numbers}]}}"#);

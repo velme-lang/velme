@@ -1,6 +1,6 @@
 # 32 — Artifacts, Fingerprints, Lockfile & Cache
 
-**Status:** v0.1 · **Area:** ART
+**Status:** v0.2 · **Area:** ART
 **Read when:** computing a fingerprint, reading/writing an artifact or `velme.lock`, deciding whether synthesis is needed, or touching the WASM/derived caches or Coach.
 **Depends on:** [SPEC](../SPEC.md), [compiler/21](../compiler/21-ir.md), [compiler/22](../compiler/22-spellbook-synthesis.md), [30-execution-vibevm](30-execution-vibevm.md)
 

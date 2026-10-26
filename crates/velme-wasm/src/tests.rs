@@ -222,7 +222,7 @@ fn ac_ir_06_the_validate_corpus_emits_without_panic() {
     assert!(replayed > 20 && emitted > 0, "{replayed}, {emitted}");
 }
 
-pub(super) const EVERYTHING: &str = r#"language: velme/0.1
+pub(super) const EVERYTHING: &str = r#"language: velme/0.2
 
 type Item:
     k: Number
@@ -654,7 +654,7 @@ fn a_composite_goal_is_not_a_leaf() {
 /// A program whose record `Wide` holds `depth` levels of records of 100 fields, 100 numbers at the bottom, and a
 /// goal `Count` taking `input`; with the IR of a body that gives a number.
 fn wide(depth: usize, input: &str) -> (String, String) {
-    let mut source = "language: velme/0.1\n".to_owned();
+    let mut source = "language: velme/0.2\n".to_owned();
     let mut types = Vec::new();
     for level in 0..depth {
         let name = if level + 1 == depth {
@@ -710,7 +710,7 @@ fn a_record_is_declined_only_when_no_address_reaches_its_slot() {
 
 /// The IR document of a goal `G(xs: List<Number>)` giving `output`, and its source.
 pub(super) fn nothing_goal(output: &str, output_ir: &str, body: &str) -> ValidIr {
-    let source = format!("language: velme/0.1\n\ngoal G(xs: List<Number>) -> {output}:\n    plan: \"Nothing much.\"\n");
+    let source = format!("language: velme/0.2\n\ngoal G(xs: List<Number>) -> {output}:\n    plan: \"Nothing much.\"\n");
     let document = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
             "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {output_ir}, "body": {body}}}"#

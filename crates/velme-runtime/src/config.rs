@@ -3,6 +3,7 @@
 //! composed here (R-CLI-09) and names the key, the file, what was expected and what was found.
 
 use velme_diagnostics::{Code, Diagnostic, Span};
+use velme_sema::LANGUAGE_VERSION;
 use velme_synth::{ReplyFormat, RetryHistory, SchemaInPrompt};
 
 /// The file name a project's configuration has (`tooling/40` §5.1), which also marks the project root.
@@ -108,7 +109,18 @@ impl ProjectConfig {
         let mut r = Reader::new(text, file)?;
         let mut config = ProjectConfig::default();
         let mut project = r.table("project")?;
-        r.string(&mut project, "project", "language")?;
+        let expected = format!("velme/{LANGUAGE_VERSION}");
+        if let Some(lang) = r.string(&mut project, "project", "language")?
+            && lang != expected
+        {
+            let mut diag = r.bad("project.language", &format!("{expected:?}"), &format!("{lang:?}"));
+            if lang == "velme/0.1" {
+                diag = diag.with_help(format!(
+                    "Change `project.language` to `{expected}` and rebuild the lock."
+                ));
+            }
+            return Err(diag);
+        }
         r.finish(&project, "project")?;
         let mut s = r.table("synthesis")?;
         for url in ["external_url", "ollama_url"] {
@@ -498,7 +510,7 @@ mod tests {
 
     #[test]
     fn the_documented_project_file_is_read() {
-        let text = "[project]\nlanguage = \"velme/0.1\"\n[synthesis]\nprovider = \"ollama\"\nmodel = \"m\"\nmax_retries = 2\n\
+        let text = "[project]\nlanguage = \"velme/0.2\"\n[synthesis]\nprovider = \"ollama\"\nmodel = \"m\"\nmax_retries = 2\n\
                     reply_format = \"compact\"\nmax_prompt_examples = 4\n[budget]\ncpu = \"50ms\"\nmemory = \"16mb\"\n\
                     calls = 128\n";
         let config = ProjectConfig::parse(text, "velme.toml").expect("valid");

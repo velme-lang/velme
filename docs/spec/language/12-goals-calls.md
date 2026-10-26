@@ -1,6 +1,6 @@
 # 12 — Goals, Calls & the Call DAG
 
-**Status:** v0.1 · **Area:** GOAL
+**Status:** v0.2 · **Area:** GOAL
 **Read when:** changing goal declarations, call-block checking, the call graph, cycle detection, `budget` or `examples`, deciding what gets synthesized, or writing a plan (§8.4).
 **Depends on:** [SPEC](../SPEC.md), [10-syntax-grammar](10-syntax-grammar.md), [11-types](11-types.md), [92-decisions-questions](../reference/92-decisions-questions.md) (D-4, D-5, D-7, D-8, D-9, D-18)
 

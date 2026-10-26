@@ -1,5 +1,5 @@
 # Check items and operators have the types of the language/11 §8 table (R-CHK-01, R-TYP-09, R-TYP-10, R-TYP-21).
-language: velme/0.1
+language: velme/0.2
 
 type Player:
     name: Text

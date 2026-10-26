@@ -1,5 +1,5 @@
 {
-  "ir_version": "0.1",
+  "ir_version": "0.2",
   "builtins_version": "0.1",
   "goal": "OrderTotal",
   "types": {"Item": {"fields": [["price", {"t": "Number"}], ["quantity", {"t": "Number"}]]}},

@@ -789,7 +789,7 @@ impl Generator<'_, '_> {
 
     /// The program: its record types and the goal's signature.
     fn source(&self, output: &Ty) -> String {
-        let mut source = "language: velme/0.1\n\n".to_owned();
+        let mut source = "language: velme/0.2\n\n".to_owned();
         for (r, fields) in self.records.iter().enumerate() {
             source.push_str(&format!("type R{r}:\n"));
             for (name, ty) in fields {

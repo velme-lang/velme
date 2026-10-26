@@ -496,7 +496,7 @@ fn ir_at_the_depth_limit_stores_and_loads() {
 }
 
 fn stores_and_loads_ir_at_the_depth_limit() {
-    let program = program("language: velme/0.1\n\ngoal Words(xs: List<Number>) -> Text:\n    plan: \"Test.\"\n");
+    let program = program("language: velme/0.2\n\ngoal Words(xs: List<Number>) -> Text:\n    plan: \"Test.\"\n");
     // The literal's type starts 4 levels into the IR, under `body`, `cond` and `left`, and ends at the limit.
     let depth = MAX_JSON_DEPTH - 5;
     let ty = (0..depth).fold(r#"{"t": "Number"}"#.to_owned(), |of, _| {

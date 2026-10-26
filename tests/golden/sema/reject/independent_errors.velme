@@ -1,5 +1,5 @@
 # Three independent errors from three phases, all reported in one run by position (compiler/20 AC-CMP-03).
-language: velme/0.1
+language: velme/0.2
 
 goal Broken(x: Number) -> Number:
     plan: "Return x."

@@ -1,5 +1,5 @@
 # Records, lists and optionals resolve to HIR types (language/11 §2, §7).
-language: velme/0.1
+language: velme/0.2
 
 type Stats:
     jump_height: Number

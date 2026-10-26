@@ -1,5 +1,5 @@
 # A goal needs a plan or a `result` binding, whose type fits the output (language/12 R-GOAL-01, R-GOAL-12).
-language: velme/0.1
+language: velme/0.2
 
 goal Name(x: Number) -> Text:
     plan: "Spell x out."

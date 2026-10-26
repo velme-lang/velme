@@ -346,17 +346,20 @@ fn check_header(header: &Header, diags: &mut Vec<Diagnostic>) {
     if header.language.name == "velme" && header.version.text == LANGUAGE_VERSION {
         return;
     }
-    diags.push(
-        Diagnostic::new(
-            Code::UnsupportedLanguageVersion,
-            header.language.span.to(header.version.span),
-            format!(
-                "This file is written for `{}/{}`, but this Velme understands `velme/{LANGUAGE_VERSION}`.",
-                header.language.name, header.version.text
-            ),
-        )
-        .with_help(format!("change the first line to `language: velme/{LANGUAGE_VERSION}`")),
+    let mut diag = Diagnostic::new(
+        Code::UnsupportedLanguageVersion,
+        header.language.span.to(header.version.span),
+        format!(
+            "This file is written for `{}/{}`, but this Velme understands `velme/{LANGUAGE_VERSION}`.",
+            header.language.name, header.version.text
+        ),
     );
+    if header.language.name == "velme" && header.version.text == "0.1" {
+        diag = diag.with_help(format!(
+            "Change the header to `language: velme/{LANGUAGE_VERSION}` and rebuild the lock."
+        ));
+    }
+    diags.push(diag);
 }
 
 /// R-SYN-03: the exact decimal text of a `NUMBER`, or the message and help for one out of range.

@@ -26,7 +26,7 @@ const FILE: &str = "leaves.velme";
 /// `Spin` counts `n * n`; `Tight` too, within `cpu=1ms`; `Boom` divides by zero; `Checked` fails both its checks;
 /// `Items` and `Many` make `range(n)`, one within `memory=1kb`; `Echo` returns its text; `Hidden` finds in a list of
 /// `Nothing`, which the emitter declines; `Main` is wired and `Fan` composite.
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 goal Spin(n: Number) -> Number:
     plan: \"Count up to n.\"
@@ -380,7 +380,7 @@ fn r_sbx_20_a_refused_cache_directory_is_a_note_and_changes_nothing() {
 /// order (R-SBX-15, R-SBX-18).
 #[test]
 fn r_sbx_15_leaves_whose_modules_share_bytes_keep_their_own_types() {
-    let source = "language: velme/0.1
+    let source = "language: velme/0.2
 
 type P:
     a: Number

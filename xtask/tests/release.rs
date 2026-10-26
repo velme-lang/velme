@@ -304,3 +304,47 @@ fn d_147_the_security_baseline_is_in_place() {
     assert!(analyze.contains("languages: actions"));
     assert!(analyze.contains("    permissions:\n      contents: read\n      security-events: write\n"));
 }
+
+/// AC-REL-06: The `0.2.0-alpha.1` release publishes the `language/spec/0.2/` mirror, which must be byte-identical
+/// to `docs/spec/language/*.md` (R-REL-02, R-REL-14).
+#[test]
+fn ac_rel_06_spec_mirror_matches_docs_spec_language() {
+    let mirror_dir = path("language/spec/0.2");
+    assert!(
+        mirror_dir.join("README.md").is_file(),
+        "language/spec/0.2/README.md is missing"
+    );
+    let docs_dir = path("docs/spec/language");
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(&docs_dir).expect("read docs/spec/language") {
+        let entry = entry.expect("dir entry");
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy().to_string();
+        if name_str.ends_with(".md") {
+            files.push(name_str);
+        }
+    }
+    assert!(!files.is_empty(), "docs/spec/language has markdown files");
+    for file in &files {
+        let doc_bytes = std::fs::read(docs_dir.join(file)).unwrap_or_else(|e| panic!("docs/spec/language/{file}: {e}"));
+        let mirror_path = mirror_dir.join(file);
+        let mirror_bytes = std::fs::read(&mirror_path).unwrap_or_else(|_| {
+            panic!("language/spec/0.2/{file} is missing: re-copy with `cp docs/spec/language/*.md language/spec/0.2/`")
+        });
+        assert_eq!(
+            doc_bytes, mirror_bytes,
+            "language/spec/0.2/{file} differs from docs/spec/language/{file}: re-copy with `cp docs/spec/language/*.md language/spec/0.2/`"
+        );
+    }
+    for entry in std::fs::read_dir(&mirror_dir).expect("read language/spec/0.2") {
+        let entry = entry.expect("dir entry");
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy().to_string();
+        if name_str.ends_with(".md") && name_str != "README.md" {
+            assert!(
+                docs_dir.join(&name_str).is_file(),
+                "language/spec/0.2/{name_str} does not exist in docs/spec/language/: chapter removed or renamed in docs"
+            );
+        }
+    }
+}

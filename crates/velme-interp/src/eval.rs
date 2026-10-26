@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn an_evaluator_is_reusable_after_a_failure() {
         let program =
-            program("language: velme/0.1\n\ngoal Compute(n: Number) -> Number:\n    plan: \"Something of n.\"\n");
+            program("language: velme/0.2\n\ngoal Compute(n: Number) -> Number:\n    plan: \"Something of n.\"\n");
         let number = |n: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Number"}}, "value": {n}}}"#);
         let div = |left: &str| {
             format!(

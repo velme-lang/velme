@@ -21,7 +21,7 @@ use velme_test_support::{RecordingSleeper, goal_id, mock_anthropic, program};
 #[path = "../examples/render_prompt.rs"]
 mod tool;
 
-const SOURCE: &str = "language: velme/0.1
+const SOURCE: &str = "language: velme/0.2
 
 type Player:
     name: Text
