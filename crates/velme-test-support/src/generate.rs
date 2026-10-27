@@ -825,6 +825,7 @@ impl Generator<'_, '_> {
             builtins_version: BUILTINS_VERSION.to_owned(),
             goal: GOAL.to_owned(),
             types: types.collect(),
+            domains: BTreeMap::new(),
             inputs: self.inputs.iter().map(|(n, ty)| (n.clone(), ty.ir())).collect(),
             output: output.ir(),
             calls: Vec::new(),

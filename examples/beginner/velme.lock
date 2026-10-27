@@ -7,39 +7,39 @@ file          = "add.velme"
 name          = "Add"
 signature     = "b3:678ccec2a045f67022d91f8236b3d8f802baa08611aa6ea6caed4c95f35e97e7"
 contract_key  = "b3:e971fb1e21c5cdf040b795803f60132f0b4282b8cb8e56d3cfcc54529574510c"
-artifact      = "b3:1bb27b85dc1b7484141c78cd11af094be962b6f88ea3928604f6a55e15369341"
+artifact      = "b3:715ecb53bfe6b3fe9db55c496980803dd9a2d61be3fb7461b31f374875299c1a"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "AddOne"
 signature     = "b3:888c4a6a609473d2d3f073a1fd90f7bc40115c694ea79f0a36dad08a8a919893"
 contract_key  = "b3:5221009309f61b92a54ead2a970712f627bb5c37519a26a19e85bc2b81cc7f97"
-artifact      = "b3:36c6cab77113b010995958f8505abe47e7d1c48239b89961d437568a185bfd27"
+artifact      = "b3:7f6ef927973d63f4640151c8af56b68d499408575b5657db808b22197640cad7"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Double"
 signature     = "b3:a332dbb7cb1dc93349879b4110c117ab31464865a035805932fcf7226847d9f3"
 contract_key  = "b3:ce1abf75e6d107ef56e7757da5712d46fc37eaf11b9d4a17fc32fa7e240695c2"
-artifact      = "b3:6a6c026e2a0abbb361e056ae346056afa8b8d4f7efda9acaddd1975f7673caec"
+artifact      = "b3:e9dbb927ce62c45f44ab094af65fe20e41c3b2c178394c6c3610eda653bc55e8"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Main"
 signature     = "b3:8e5521ed45c05724e315850b21fe5060192047626329f20661bf62fe8aaf2d7a"
 contract_key  = "b3:7b1abcc3f37b6ec75a6630220198a3bcad4b5c92d5ed998e6abdf5dedb86994a"
-artifact      = "b3:4846740422367fb6386b98d2dc254fbfc3391c75c1d76979f7800e7268feebe7"
+artifact      = "b3:4499557d2befb1db874fdf1fb05f58ab12619fc511e65674dcb12c85ccb3e35b"
 
 [[goal]]
 file          = "find_badge.velme"
 name          = "FindBadge"
 signature     = "b3:095ab220df1f4cf220e8f8a11fa39ab94dce8b9af2db8ae422cdb43d87ebce8f"
 contract_key  = "b3:0030d41c9b13429a399e4b990f0169c91e0baf0f633044f67613d75f676296f6"
-artifact      = "b3:c1ebb6131d0f6605a070694fc16ee422e68974cd56c33783b4affe8159c64211"
+artifact      = "b3:670bb4f9f69f10d53d4e0deb5cf087141ab6c28a160f955d261e5410a06b920e"
 
 [[goal]]
 file          = "hello.velme"
 name          = "SayHello"
 signature     = "b3:efb1d46025f7ee82bccf202c4590556a40bf872fe73d10430c791b9b376fc60e"
 contract_key  = "b3:7efe89a3028fd31448d1da39ecb019b754421159b7416de3eda916e4e25ca232"
-artifact      = "b3:adf0835367b9719a42879f1782b2ddffacbd31cdf433a02111e81f3ca3af6810"
+artifact      = "b3:e4ff5f8c1a188fb31d8b2602329c895eb0098f27f506c57ce3ec00a51da4d0be"

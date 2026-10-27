@@ -10,15 +10,18 @@ use serde_json::{Value, json};
 use velme_builtins::{BUILTINS_VERSION, CATALOG, Shape, limits as caps};
 use velme_check::{GoalChecks, lower_check};
 use velme_diagnostics::{Diagnostic, Span};
-use velme_ir::{CheckScope, Fingerprint, IR_VERSION, Type, encode_value, ir_type, to_canonical_string};
-use velme_sema::hir::{self, GoalId, GoalKind, Program, Type as HirType, TypeId};
+use velme_ir::{
+    CheckScope, Domain, Fingerprint, IR_VERSION, Reachability, Type, declarations, encode_value, goal_tables, ir_type,
+    to_canonical_string,
+};
+use velme_sema::hir::{self, GoalId, GoalKind, Program, Type as HirType};
 
 use crate::options::ReplyFormat;
 use crate::schema::{reply_schema, reply_schema_for};
 
 /// The version of the request document and of the external protocol (`compiler/22` §3.2). A change to either changes
 /// the `input_version` of `external` backends and so every synthesis key.
-pub const REQUEST_VERSION: &str = "0.1";
+pub const REQUEST_VERSION: &str = "0.2";
 
 /// What is synthesized (`compiler/22` §2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -195,8 +198,17 @@ pub struct SynthRequest {
     pub goal: String,
     /// The goal's signature.
     pub signature: Signature,
-    /// Every record type reachable from the signature and the bindings, by name.
+    /// Every record type reachable from the signature and the bindings, by name: the IR's `types` (`compiler/21`
+    /// R-IR-01), a record domain's underlying record included.
     pub types: Vec<RecordType>,
+    /// The goal's IR `domains` table (`compiler/21` R-IR-24), which the IR assembled from a reply carries unchanged:
+    /// what a backend reads a domain's base from (D-166).
+    pub domains: BTreeMap<String, Domain>,
+    /// By declared name, the full source declaration, comments stripped, of every declaration the contract key reaches
+    /// (`runtime/32` R-ART-26) that `types` can't show as written: each domain, and each record only a domain
+    /// condition's constructor reaches (`compiler/22` R-SYNTH-60, D-166); empty when none. A record domain is here
+    /// once, in declaration form, though its underlying record is also in `types`.
+    pub declarations: BTreeMap<String, String>,
     /// The call bindings, for a composite goal.
     pub locals: Vec<LocalBinding>,
     /// The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).
@@ -240,7 +252,7 @@ fn reply_format_schema(generator: &mut schemars::SchemaGenerator) -> schemars::S
 
 /// The JSON Schema of [`SynthRequest`] at [`REQUEST_VERSION`], the body of an `external` `synthesize` request
 /// (`compiler/22` §3.2), generated from the Rust types
-/// like the IR schema (`compiler/21` R-IR-20). The committed copy is `crates/velme-synth/schema/synth-request-0.1.json`.
+/// like the IR schema (`compiler/21` R-IR-20). The committed copy is `crates/velme-synth/schema/synth-request-0.2.json`.
 pub fn request_schema() -> Value {
     schemars::schema_for!(SynthRequest).to_value()
 }
@@ -255,8 +267,9 @@ impl SynthRequest {
     }
 
     /// The IR goal a reply's `body` completes, as canonical JSON for the validator (D-103): the versions, the goal's name,
-    /// its `types`, `inputs` and `output` all come from the request, never from the reply. `calls` is left out: the
-    /// validator joins the compiler's in (`compiler/21` R-IR-02).
+    /// its `types`, `domains`, `inputs` and `output` all come from the request, never anything from the reply; the
+    /// request's `domains` is the compiler's table (`compiler/21` R-IR-24, D-166). `calls` is left out: the validator
+    /// joins the compiler's in (R-IR-02).
     pub fn assemble(&self, body: &Value) -> Result<String, Diagnostic> {
         let fail = |_| Diagnostic::internal_error();
         let field = |param: &Param| serde_json::to_value(&param.ty).map(|ty| json!([param.name, ty]));
@@ -281,6 +294,7 @@ impl SynthRequest {
             "builtins_version": self.builtins_version,
             "goal": self.goal,
             "types": types,
+            "domains": serde_json::to_value(&self.domains).map_err(fail)?,
             "inputs": inputs,
             "output": serde_json::to_value(&self.signature.output).map_err(fail)?,
             "body": body,
@@ -355,6 +369,8 @@ pub fn build_request(program: &Program, goal: GoalId, source: &str) -> Result<Sy
             roots.extend(child.params.iter().map(|p| &p.ty).chain([&child.output]));
         }
     }
+    let (types, declarations) = types(program, &roots, source)?;
+    let (_, domains) = goal_tables(program, goal)?;
     let budget = hir.budget;
     Ok(SynthRequest {
         request_version: REQUEST_VERSION.to_owned(),
@@ -363,7 +379,9 @@ pub fn build_request(program: &Program, goal: GoalId, source: &str) -> Result<Sy
         task,
         goal: hir.name.clone(),
         signature: signature(program, hir)?,
-        types: record_types(program, roots)?,
+        types,
+        domains,
+        declarations,
         locals,
         plan: hir.plan.clone().unwrap_or_default(),
         checks,
@@ -446,43 +464,83 @@ fn signature(program: &Program, goal: &hir::Goal) -> Result<Signature, Diagnosti
     })
 }
 
-/// Every record type reachable from `roots`, through fields too, by name.
-fn record_types(program: &Program, roots: Vec<&HirType>) -> Result<Vec<RecordType>, Diagnostic> {
-    let mut pending = Vec::new();
-    for ty in roots {
-        records_in(ty, &mut pending);
-    }
-    let mut found = BTreeMap::new();
-    while let Some(id) = pending.pop() {
-        let record = program.record(id).ok_or_else(Diagnostic::internal_error)?;
-        if found.contains_key(&record.name) {
-            continue;
-        }
-        let mut fields = Vec::new();
-        for field in &record.fields {
-            records_in(&field.ty, &mut pending);
-            fields.push(Param {
-                name: field.name.clone(),
-                ty: ir(program, &field.ty)?,
-            });
-        }
-        found.insert(
-            record.name.clone(),
-            RecordType {
+/// The request's `types` and `declarations` for `roots`. `types` are the IR's records (R-IR-01); the
+/// declarations are those the contract key reaches (`runtime/32` R-ART-26) that `types` can't show as they are written:
+/// every domain, and the records only domain conditions construct (`compiler/22` R-SYNTH-60).
+fn types(
+    program: &Program,
+    roots: &[&HirType],
+    source: &str,
+) -> Result<(Vec<RecordType>, BTreeMap<String, String>), Diagnostic> {
+    let reached = |reachability| {
+        declarations(program, roots.iter().copied(), reachability).ok_or_else(Diagnostic::internal_error)
+    };
+    let (tables, contract) = (reached(Reachability::Ir)?, reached(Reachability::Contract)?);
+    let mut types = tables
+        .records
+        .iter()
+        .map(|id| {
+            let record = program.record(*id).ok_or_else(Diagnostic::internal_error)?;
+            let fields = record
+                .fields
+                .iter()
+                .map(|f| {
+                    Ok(Param {
+                        name: f.name.clone(),
+                        ty: ir(program, &f.ty)?,
+                    })
+                })
+                .collect::<Result<_, Diagnostic>>()?;
+            Ok(RecordType {
                 name: record.name.clone(),
                 fields,
-            },
-        );
-    }
-    Ok(found.into_values().collect())
+            })
+        })
+        .collect::<Result<Vec<_>, Diagnostic>>()?;
+    types.sort_by(|a, b| a.name.cmp(&b.name));
+    let declared: Vec<(&str, Span)> = contract
+        .domains
+        .iter()
+        .map(|id| program.domain(*id).map(|d| (d.name.as_str(), d.span)))
+        .chain(
+            contract
+                .records
+                .difference(&tables.records)
+                .map(|id| program.record(*id).map(|r| (r.name.as_str(), r.span))),
+        )
+        .collect::<Option<_>>()
+        .ok_or_else(Diagnostic::internal_error)?;
+    let declarations = declared
+        .into_iter()
+        .map(|(name, span)| Ok((name.to_owned(), without_comments(text(source, span)?))))
+        .collect::<Result<_, Diagnostic>>()?;
+    Ok((types, declarations))
 }
 
-fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
-    match ty {
-        HirType::Optional(inner) | HirType::List(inner) | HirType::Domain(_, inner) => records_in(inner, out),
-        HirType::Record(id) => out.push(*id),
-        _ => {}
+/// A declaration's source text without its comments (`compiler/22` R-SYNTH-60, D-104): each `#` outside a Text literal
+/// ends its line's code (`language/10` R-SYN-04), and a line left blank goes. Indentation is kept.
+fn without_comments(text: &str) -> String {
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let (mut quoted, mut escaped, mut end) = (false, false, line.len());
+        for (i, c) in line.char_indices() {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' if quoted => escaped = true,
+                '"' => quoted = !quoted,
+                '#' if !quoted => {
+                    end = i;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let code = line.get(..end).unwrap_or(line).trim_end();
+        if !code.trim().is_empty() {
+            lines.push(code);
+        }
     }
+    lines.join("\n")
 }
 
 /// The source text of `span`.

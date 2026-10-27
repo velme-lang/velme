@@ -256,7 +256,7 @@ fn ac_goal_17_checks_run_on_examples_and_fail_as_on_generated_inputs() {
     let number = serde_json::json!({"t": "Number"});
     let ir = serde_json::json!({
         "ir_version": "0.2", "builtins_version": "0.1", "goal": "Add", "types": {},
-        "inputs": [["a", number], ["b", number]], "output": number,
+        "domains": {}, "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "binary", "op": "mul", "left": a, "right": b}
     });
     install(&dir, ADD, &program(source), &ir.to_string());
@@ -321,7 +321,7 @@ fn test_runs_examples_before_generated_inputs(name: &str) -> Value {
     let literal = |n: i64| serde_json::json!({"kind": "literal", "type": number, "value": n});
     let ir = serde_json::json!({
         "ir_version": "0.2", "builtins_version": "0.1", "goal": "AddOne", "types": {},
-        "inputs": [["x", number]], "output": number,
+        "domains": {}, "inputs": [["x", number]], "output": number,
         "body": {"kind": "binary", "op": "add", "left": input, "right": literal(2)}
     });
     install(&dir, DOUBLE, &program(&source), &ir.to_string());

@@ -1,0 +1,782 @@
+{
+  "$defs": {
+    "AttemptDiagnostic": {
+      "additionalProperties": false,
+      "description": "A diagnostic shown to the provider on a retry (`compiler/22` R-SYNTH-11).",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/AttemptPlace",
+          "description": "The notation place, only on the latest attempt (R-SYNTH-59)."
+        },
+        "code": {
+          "description": "The `VLnnnn` code.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "For a check or example failure: the input, the assertion and the actual values.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "description": "Velme's message.",
+          "type": "string"
+        },
+        "path": {
+          "description": "The JSON path of the fault in the reply, if it has one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quote": {
+          "description": "At most three body lines, each cut to 160 scalar values (R-SYNTH-59).",
+          "items": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "AttemptFeedback": {
+      "additionalProperties": false,
+      "description": "An earlier attempt at the same goal: the reply and why it was refused (`compiler/22` §5).",
+      "properties": {
+        "diagnostics": {
+          "description": "What Velme found wrong with it, most important first (R-SYNTH-31).",
+          "items": {
+            "$ref": "#/$defs/AttemptDiagnostic"
+          },
+          "type": "array"
+        },
+        "reply": {
+          "description": "The reply document as received.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply",
+        "diagnostics"
+      ],
+      "type": "object"
+    },
+    "AttemptPlace": {
+      "additionalProperties": false,
+      "description": "A place in a notation body, with 1-based scalar-value coordinates (R-SYNTH-59).",
+      "properties": {
+        "column": {
+          "description": "The column, starting at 1.",
+          "format": "uint",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "line": {
+          "description": "The line, starting at 1.",
+          "format": "uint",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "Bound": {
+      "additionalProperties": false,
+      "description": "One end of an interval: an exact Number and whether it is included (R-IR-24).",
+      "properties": {
+        "inclusive": {
+          "description": "`>=` / `<=` rather than `>` / `<`.",
+          "type": "boolean"
+        },
+        "value": {
+          "description": "The bound's exact value.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "inclusive"
+      ],
+      "type": "object"
+    },
+    "Budget": {
+      "additionalProperties": false,
+      "description": "The effective budget of the goal's own invocation and the static caps (`runtime/30` §7).",
+      "properties": {
+        "max_call_depth": {
+          "description": "Call depth below the goal.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_fuel": {
+          "description": "Fuel for the invocation.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_goal_calls": {
+          "description": "Goal invocations in the goal's subtree.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_list_size": {
+          "description": "Items in any one list.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_memory": {
+          "description": "Bytes the invocation may allocate.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "description": "Bytes of the goal's output as JSON.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_fuel",
+        "max_memory",
+        "max_goal_calls",
+        "max_call_depth",
+        "max_list_size",
+        "max_output_bytes"
+      ],
+      "type": "object"
+    },
+    "BuiltinSig": {
+      "additionalProperties": false,
+      "description": "One built-in a candidate may call (`language/14`), as the signatures of the catalog.",
+      "properties": {
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "One line per way of calling it: `(List<T>, T) -> Boolean`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "signatures"
+      ],
+      "type": "object"
+    },
+    "CheckItem": {
+      "additionalProperties": false,
+      "description": "One `check` item: as written, and lowered to IR (`language/13` R-CHK-11), which is what runs.",
+      "properties": {
+        "ir": {
+          "description": "Its lowered form: an IR expression node."
+        },
+        "source": {
+          "description": "The item's source text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "ir"
+      ],
+      "type": "object"
+    },
+    "Domain": {
+      "description": "A domain type's entry in `domains` (`compiler/21` R-IR-24): its base and the simple constraints extracted from its\ndeclaration. Residual conditions have no field: `velme-check` evaluates them from HIR (R-CHK-15). Number entries\nallow `lower`, `upper` and `whole`, Text entries `members` or `length`, and a record entry only `base`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NumberDomain"
+        },
+        {
+          "$ref": "#/$defs/TextSetDomain"
+        },
+        {
+          "$ref": "#/$defs/TextLengthDomain"
+        },
+        {
+          "$ref": "#/$defs/RecordDomain"
+        }
+      ]
+    },
+    "Example": {
+      "additionalProperties": false,
+      "description": "One `examples:` item, with literal values (D-7, R-SYNTH-38).",
+      "properties": {
+        "args": {
+          "description": "One input value per parameter, as JSON (D-23).",
+          "items": true,
+          "type": "array"
+        },
+        "expected": {
+          "description": "The expected output, as JSON."
+        },
+        "source": {
+          "description": "The item's source text, `Double(2) == 4`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "args",
+        "expected"
+      ],
+      "type": "object"
+    },
+    "Length": {
+      "additionalProperties": false,
+      "description": "The length bounds of a Text domain, in Unicode scalar values: at least one.",
+      "minProperties": 1,
+      "properties": {
+        "lower": {
+          "$ref": "#/$defs/Bound",
+          "description": "The least length."
+        },
+        "upper": {
+          "$ref": "#/$defs/Bound",
+          "description": "The greatest length."
+        }
+      },
+      "type": "object"
+    },
+    "LocalBinding": {
+      "additionalProperties": false,
+      "description": "A call binding of a composite goal, `name: Type = Child(args)`: the child's signature and never its IR (D-5, D-11).",
+      "properties": {
+        "args": {
+          "description": "The arguments as written, one per child parameter.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "child": {
+          "$ref": "#/$defs/Signature",
+          "description": "The child's signature."
+        },
+        "name": {
+          "description": "The bound name.",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/Type",
+          "description": "The binding's type, the child's output."
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "child",
+        "args"
+      ],
+      "type": "object"
+    },
+    "NumberDomain": {
+      "additionalProperties": false,
+      "description": "A Number domain: its bounds and `whole`, each absent when unconstrained.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Number\"}`.",
+          "properties": {
+            "t": {
+              "const": "Number"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "lower": {
+          "$ref": "#/$defs/Bound",
+          "description": "The lower bound."
+        },
+        "upper": {
+          "$ref": "#/$defs/Bound",
+          "description": "The upper bound."
+        },
+        "whole": {
+          "$ref": "#/$defs/Whole",
+          "description": "Present only when the domain holds whole numbers."
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
+    "Param": {
+      "additionalProperties": false,
+      "description": "A goal parameter or record field, `name: Type`.",
+      "properties": {
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/Type",
+          "description": "Its type."
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "RecordDomain": {
+      "additionalProperties": false,
+      "description": "A record domain: only its base, the domain's own underlying record in `types`.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Record\", \"name\": …}`.",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "const": "Record"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
+    "RecordType": {
+      "additionalProperties": false,
+      "description": "A record type and its fields.",
+      "properties": {
+        "fields": {
+          "description": "Its fields, in declaration order.",
+          "items": {
+            "$ref": "#/$defs/Param"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ReplyFormat": {
+      "description": "How a reply spells the IR (R-SYNTH-36).",
+      "oneOf": [
+        {
+          "const": "ir-json",
+          "description": "Canonical IR JSON.",
+          "type": "string"
+        },
+        {
+          "const": "compact",
+          "description": "The same tree with every property name and node `kind` tag replaced by a short alias.",
+          "type": "string"
+        },
+        {
+          "const": "notation",
+          "description": "Python-shaped text lowered to canonical IR (R-SYNTH-50).",
+          "type": "string"
+        }
+      ]
+    },
+    "Signature": {
+      "additionalProperties": false,
+      "description": "A goal's signature: `Name(params) -> Output`.",
+      "properties": {
+        "name": {
+          "description": "The goal's name.",
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/Type",
+          "description": "Its output type."
+        },
+        "params": {
+          "description": "Its parameters, in declaration order.",
+          "items": {
+            "$ref": "#/$defs/Param"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "params",
+        "output"
+      ],
+      "type": "object"
+    },
+    "TaskKind": {
+      "description": "What is synthesized (`compiler/22` §2).",
+      "oneOf": [
+        {
+          "const": "leaf",
+          "description": "The whole `body` of a goal with no `call` block.",
+          "type": "string"
+        },
+        {
+          "const": "composite",
+          "description": "The tail `body` over the inputs and call bindings (D-5).",
+          "type": "string"
+        }
+      ]
+    },
+    "TextLengthDomain": {
+      "additionalProperties": false,
+      "description": "A Text domain with length bounds, or with a residual condition only.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Text\"}`.",
+          "properties": {
+            "t": {
+              "const": "Text"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "length": {
+          "$ref": "#/$defs/Length",
+          "description": "The length bounds, absent when unconstrained."
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
+    "TextSetDomain": {
+      "additionalProperties": false,
+      "description": "A closed Text set.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Text\"}`.",
+          "properties": {
+            "t": {
+              "const": "Text"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "members": {
+          "description": "The members, in declaration order: nonempty and duplicate-free.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "base",
+        "members"
+      ],
+      "type": "object"
+    },
+    "Type": {
+      "description": "A value type (`compiler/21` §2.1).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Exact decimal number.",
+          "properties": {
+            "t": {
+              "const": "Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Text.",
+          "properties": {
+            "t": {
+              "const": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`true` or `false`.",
+          "properties": {
+            "t": {
+              "const": "Boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The type of `nothing`.",
+          "properties": {
+            "t": {
+              "const": "Nothing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`T?`: a value of `of`, or nothing.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The present type; never itself optional, since `T??` is `T?` (§2.1)."
+            },
+            "t": {
+              "const": "Optional",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`List<T>`.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/Type",
+              "description": "The element type."
+            },
+            "t": {
+              "const": "List",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A record type named in the goal's `types`.",
+          "properties": {
+            "name": {
+              "description": "The record type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A domain type named in the goal's `domains`; compiler-owned, never in a body (R-IR-24, R-IR-25).",
+          "properties": {
+            "name": {
+              "description": "The domain type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Domain",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Whole": {
+      "const": true,
+      "description": "`whole` is only ever `true` (R-IR-24).",
+      "type": "boolean"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Everything a provider is asked about one goal (`compiler/22` §3.1). Serialized, it is the body of the external\n`synthesize` request.",
+  "properties": {
+    "attempts": {
+      "description": "Earlier attempts at this goal, oldest first.",
+      "items": {
+        "$ref": "#/$defs/AttemptFeedback"
+      },
+      "type": "array"
+    },
+    "budget": {
+      "$ref": "#/$defs/Budget",
+      "description": "The effective budget."
+    },
+    "builtins": {
+      "description": "The builtins a candidate may use.",
+      "items": {
+        "$ref": "#/$defs/BuiltinSig"
+      },
+      "type": "array"
+    },
+    "builtins_version": {
+      "description": "The builtin catalog version the candidate must be written against (D-97).",
+      "type": "string"
+    },
+    "checks": {
+      "description": "The `check` items.",
+      "items": {
+        "$ref": "#/$defs/CheckItem"
+      },
+      "type": "array"
+    },
+    "declarations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "By declared name, the full source declaration, comments stripped, of every declaration the contract key reaches\n(`runtime/32` R-ART-26) that `types` can't show as written: each domain, and each record only a domain\ncondition's constructor reaches (`compiler/22` R-SYNTH-60, D-166); empty when none. A record domain is here\nonce, in declaration form, though its underlying record is also in `types`.",
+      "type": "object"
+    },
+    "domains": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Domain"
+      },
+      "description": "The goal's IR `domains` table (`compiler/21` R-IR-24), which the IR assembled from a reply carries unchanged:\nwhat a backend reads a domain's base from (D-166).",
+      "type": "object"
+    },
+    "examples": {
+      "description": "The `examples:` items, in source order.",
+      "items": {
+        "$ref": "#/$defs/Example"
+      },
+      "type": "array"
+    },
+    "goal": {
+      "description": "The goal's name.",
+      "type": "string"
+    },
+    "ir_version": {
+      "description": "The IR version the candidate must be written against (D-97).",
+      "type": "string"
+    },
+    "locals": {
+      "description": "The call bindings, for a composite goal.",
+      "items": {
+        "$ref": "#/$defs/LocalBinding"
+      },
+      "type": "array"
+    },
+    "output_schema": {
+      "description": "The JSON Schema the reply must satisfy: a goal body or a question (R-SYNTH-10, D-103), in the names of\n`reply_format`: the schema of that format's reply (R-SYNTH-36, D-156)."
+    },
+    "plan": {
+      "description": "The plan text, normalized (D-21). Untrusted user description (R-SYNTH-22).",
+      "type": "string"
+    },
+    "reply_format": {
+      "$ref": "#/$defs/ReplyFormat",
+      "description": "The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend\n(R-SYNTH-36, D-156): the default leaves the request's bytes as they were."
+    },
+    "request_version": {
+      "description": "[`REQUEST_VERSION`].",
+      "type": "string"
+    },
+    "signature": {
+      "$ref": "#/$defs/Signature",
+      "description": "The goal's signature."
+    },
+    "task": {
+      "$ref": "#/$defs/TaskKind",
+      "description": "What to write."
+    },
+    "types": {
+      "description": "Every record type reachable from the signature and the bindings, by name: the IR's `types` (`compiler/21`\nR-IR-01), a record domain's underlying record included.",
+      "items": {
+        "$ref": "#/$defs/RecordType"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "request_version",
+    "ir_version",
+    "builtins_version",
+    "task",
+    "goal",
+    "signature",
+    "types",
+    "domains",
+    "declarations",
+    "locals",
+    "plan",
+    "checks",
+    "examples",
+    "budget",
+    "builtins",
+    "attempts",
+    "output_schema"
+  ],
+  "title": "SynthRequest",
+  "type": "object"
+}

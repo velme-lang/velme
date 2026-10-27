@@ -363,7 +363,7 @@ fn broken_add(dir: &Path) {
 /// The IR document of goal `goal`, which makes no calls.
 fn ir(goal: &str, inputs: &Value, output: &Value, body: &Value) -> String {
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": {},
-           "inputs": inputs, "output": output, "body": body})
+           "domains": {}, "inputs": inputs, "output": output, "body": body})
     .to_string()
 }
 

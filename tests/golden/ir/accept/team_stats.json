@@ -8,6 +8,7 @@
                               ["top", {"t": "Optional", "of": {"t": "Record", "name": "Player"}}], ["all_jump", {"t": "Boolean"}],
                               ["any_star", {"t": "Boolean"}], ["tags", {"t": "List", "of": {"t": "Text"}}]] }
   },
+  "domains": {},
   "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}], ["target", {"t": "Number"}]],
   "output": {"t": "Record", "name": "TeamStats"},
   "body": {

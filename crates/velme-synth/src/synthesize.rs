@@ -867,6 +867,7 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest, ir: &Request<'
             LogCause::Reply("bad-number"),
         ));
     }
+    // The request's `domains`, the compiler's own, whatever the reply holds beside its body (R-SYNTH-10, D-166).
     match request.assemble(&body) {
         Ok(text) => Reply::Candidate(text, notation),
         Err(_) => Reply::Internal,

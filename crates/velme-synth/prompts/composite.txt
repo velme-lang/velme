@@ -44,7 +44,7 @@ you read with a `local` node. You cannot call goals yourself.
 Goal: {{signature}}
 
 Types:
-{{types}}
+{{types}}{{domain_rule}}
 
 Locals (`name: Type = Goal(args)`):
 {{locals}}

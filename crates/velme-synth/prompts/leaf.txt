@@ -43,7 +43,7 @@ Task: write the whole `{{body_key}}` of this goal.
 Goal: {{signature}}
 
 Types:
-{{types}}
+{{types}}{{domain_rule}}
 
 Plan:
 {{plan}}

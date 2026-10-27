@@ -7,25 +7,25 @@ file          = "order_total.velme"
 name          = "Discount"
 signature     = "b3:f7abf7965783745727214c7d3a328badce0414ed0d91ef5a16bcd8b201a492a3"
 contract_key  = "b3:a22225e981b14462131ababfb07b0a9840fb6f308096acd7d4f3186774999b79"
-artifact      = "b3:f61fa2968e9edad4859c0af880f2d99e51446fa92549200488cb20ffe445e5a5"
+artifact      = "b3:e5984d39fe0a12c97c5165b4de4d266b2d5b934df2a9547a620b6a8099ad2bb5"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "OrderTotal"
 signature     = "b3:2bdeddddbeb0792616c91de5bc153f97f9b3bcced8f369b57daa5f7107203338"
 contract_key  = "b3:59d2d75b9d6c03414722df1f2fa238101f70a76ff80872c07deec60fe9365a4b"
-artifact      = "b3:8cdb76a1d386cf22aa09ec7be4e6f6806f0f2f1f82b53acc4f808e29a54930ab"
+artifact      = "b3:26c9a9edb2a7dc03d942e4b8633345913af8d6affe772032271bbfdbd73f28ab"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "Shipping"
 signature     = "b3:ae9a52f8e12167731cc0d87b8681d96041cb97901f9219e2410d390a3ef37a83"
 contract_key  = "b3:abd2c075e87e400aebe49a98843265232782c59e149d15e70e7559cf70e24ffa"
-artifact      = "b3:a4b324f0517e65febbf5a21105dc58230a9ae4e737845657b93cee835468363f"
+artifact      = "b3:3f6f08b05bf0355fb4ff1fa0cdcfb31248b897cafe083f9aabf937fe914afc11"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "Subtotal"
 signature     = "b3:1dae5e57fdd5c157b42c8edade705d4e1c769755511f9111a41a6814e08ba356"
 contract_key  = "b3:13a1f9e1c1ad9f6521ef185d81abeaa643c4271295d920faa581f760c1a50059"
-artifact      = "b3:fcfa09ccfbc90a60c188a2e451129a344eb7acf739e6e65f46d0a7bdd1650280"
+artifact      = "b3:7ea806e1e9404b128bad8b5db9a850160e9deda8556927182722f8007efb521a"

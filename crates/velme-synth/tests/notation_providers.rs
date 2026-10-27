@@ -115,7 +115,7 @@ fn ac_synth_60_external_notation_requires_advertising_and_uses_the_grammar_versi
         config.reply_format = ReplyFormat::Notation;
         let identity = block_on(External::new(config).identify());
         if supported {
-            assert_eq!(identity.expect("identity").input_version, "0.1+reply_format=notation@1");
+            assert_eq!(identity.expect("identity").input_version, "0.2+reply_format=notation@1");
         } else {
             let error = identity.expect_err("unlisted");
             assert_eq!(

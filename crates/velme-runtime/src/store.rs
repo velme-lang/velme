@@ -222,6 +222,30 @@ impl Store {
     /// (R-ART-10). The IR in it is not validated and the manifest not cross-checked here: [`load`](crate::load) does
     /// both before trusting it.
     pub fn get(&self, id: Fingerprint) -> Result<Artifact, LoadError> {
+        decode(id, &self.read(id)?)
+    }
+
+    /// The manifest of artifact `id` alone, checked as [`Store::get`] checks the file: what an artifact of an older IR,
+    /// which no longer decodes as IR, says it was built for (`runtime/32` R-ART-14, R-ART-27). Its claims only word a
+    /// stale cause; they decide nothing (D-46).
+    pub fn manifest(&self, id: Fingerprint) -> Result<Manifest, LoadError> {
+        #[derive(serde::Deserialize)]
+        struct Only {
+            manifest: Manifest,
+            #[allow(dead_code)] // Read past, never used.
+            ir: serde::de::IgnoredAny,
+        }
+        let text = self.read(id)?;
+        from_json_str_within(&text, MAX_ARTIFACT_DEPTH)
+            .map(|only: Only| only.manifest)
+            .map_err(|e: ParseError| LoadError::Malformed {
+                id,
+                reason: e.to_string(),
+            })
+    }
+
+    /// The text of artifact `id`, whose bytes hash to its address.
+    fn read(&self, id: Fingerprint) -> Result<String, LoadError> {
         let path = self.path(id);
         let unreadable = |path: PathBuf, error| LoadError::Unreadable { path, error };
         refuse_links(&[&self.velme, &self.dir]).map_err(|e| unreadable(path.clone(), e))?;
@@ -240,11 +264,10 @@ impl Store {
         if found != id {
             return Err(LoadError::Corrupt { id, found });
         }
-        let text = String::from_utf8(bytes).map_err(|e| LoadError::Malformed {
+        String::from_utf8(bytes).map_err(|e| LoadError::Malformed {
             id,
             reason: e.to_string(),
-        })?;
-        decode(id, &text)
+        })
     }
 }
 

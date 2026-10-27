@@ -3,6 +3,7 @@
   "builtins_version": "0.1",
   "goal": "SayHello",
   "types": {},
+  "domains": {},
   "inputs": [["name", {"t": "Text"}]],
   "output": {"t": "Text"},
   "body": {"kind": "builtin", "name": "concat", "args": [

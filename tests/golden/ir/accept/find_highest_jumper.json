@@ -5,6 +5,7 @@
   "types": {
     "Player": { "fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]] }
   },
+  "domains": {},
   "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}]],
   "output": {"t": "Optional", "of": {"t": "Record", "name": "Player"}},
   "body": {

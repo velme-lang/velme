@@ -208,6 +208,8 @@ expression: "pretty(&request(\"FindBadge\"))"
       "source": "result == \"Gold\" or result == \"Silver\" or result == \"Bronze\""
     }
   ],
+  "declarations": {},
+  "domains": {},
   "examples": [
     {
       "args": [
@@ -225,7 +227,7 @@ expression: "pretty(&request(\"FindBadge\"))"
   "locals": [],
   "output_schema": "<reply schema>",
   "plan": "Give the player Gold for a score of at least 1000,\nSilver for a score of at least 500, Bronze otherwise.",
-  "request_version": "0.1",
+  "request_version": "0.2",
   "signature": {
     "name": "FindBadge",
     "output": {

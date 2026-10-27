@@ -23,8 +23,12 @@ struct LoanBackend {
 impl LoanBackend {
     fn new(format: ReplyFormat) -> Self {
         let version = match format {
-            ReplyFormat::IrJson => "0.1".to_owned(),
-            ReplyFormat::Notation => format!("0.1+reply_format=notation@{}", velme_synth::notation::GRAMMAR_VERSION),
+            ReplyFormat::IrJson => velme_synth::REQUEST_VERSION.to_owned(),
+            ReplyFormat::Notation => format!(
+                "{}+reply_format=notation@{}",
+                velme_synth::REQUEST_VERSION,
+                velme_synth::notation::GRAMMAR_VERSION
+            ),
             ReplyFormat::Compact => panic!("not a loan fixture format"),
         };
         Self { format, version }

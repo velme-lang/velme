@@ -76,7 +76,7 @@ fn literal(n: i64) -> Value {
 
 fn ir(goal: &str, body: &Value) -> String {
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": {},
-           "inputs": [["n", number()]], "output": number(), "body": body})
+           "domains": {}, "inputs": [["n", number()]], "output": number(), "body": body})
     .to_string()
 }
 
@@ -854,7 +854,7 @@ fn ac_art_10_a_rejected_store_hit_leaves_no_note_when_another_is_taken() {
         .artifact;
     // A wrong artifact under the same key whose name sorts before the good one, so it is tried first.
     let genuine = serde_json::to_value(store.get(good).expect("artifact")).expect("value");
-    let (id, bytes) = (3..64)
+    let (id, bytes) = (3..100_000)
         .find_map(|k| {
             let mut planted = genuine.clone();
             planted["ir"]["body"]["right"] = literal(k);
@@ -1055,7 +1055,7 @@ goal Hidden(xs: List<Number>) -> Boolean:
     let yes = json!({"kind": "literal", "type": {"t": "Boolean"}, "value": true});
     let found = json!({"kind": "find", "list": mapped, "fn": {"param": "y", "body": yes}});
     let hidden = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Hidden", "types": {},
-                        "inputs": [["xs", {"t": "List", "of": number()}]], "output": {"t": "Boolean"},
+                        "domains": {}, "inputs": [["xs", {"t": "List", "of": number()}]], "output": {"t": "Boolean"},
                         "body": {"kind": "unary", "op": "is_empty", "arg": found}})
     .to_string();
     let checked = program(text);

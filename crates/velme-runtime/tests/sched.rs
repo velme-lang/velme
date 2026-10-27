@@ -185,7 +185,7 @@ fn ir(program: &Program, name: &str) -> String {
     };
     let calls = calls(program, goal_id(program, name)).expect("calls");
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": name, "types": {},
-           "inputs": inputs, "output": number(), "calls": calls, "body": body})
+           "domains": {}, "inputs": inputs, "output": number(), "calls": calls, "body": body})
     .to_string()
 }
 
@@ -895,7 +895,7 @@ fn ac_run_12_a_hundred_and_twenty_eight_full_invocations_finish_within_the_watch
     for (name, body) in [("Spin", count("n")), ("Wide", local("c0"))] {
         let calls = calls(&program, goal_id(&program, name)).expect("calls");
         let ir = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": name, "types": {},
-                        "inputs": [["n", number()]], "output": number(), "calls": calls, "body": body});
+                        "domains": {}, "inputs": [["n", number()]], "output": number(), "calls": calls, "body": body});
         install(&dir, FILE, &program, &ir.to_string());
     }
     let id = goal_id(&program, "Wide");

@@ -22,6 +22,8 @@ pub struct Goal {
     pub goal: String,
     /// Every record type reachable from the goal, by name (R-IR-01).
     pub types: BTreeMap<String, RecordType>,
+    /// Every domain type reachable from the goal, by name, filled by the compiler only (R-IR-24).
+    pub domains: BTreeMap<String, Domain>,
     /// Goal inputs `[name, type]`, in declaration order.
     pub inputs: Vec<(String, Type)>,
     /// Declared output type.
@@ -39,6 +41,251 @@ pub struct Goal {
 pub struct RecordType {
     /// Fields `[name, type]`, in declaration order.
     pub fields: Vec<(String, Type)>,
+}
+
+/// A domain type's entry in `domains` (`compiler/21` R-IR-24): its base and the simple constraints extracted from its
+/// declaration. Residual conditions have no field: `velme-check` evaluates them from HIR (R-CHK-15). Number entries
+/// allow `lower`, `upper` and `whole`, Text entries `members` or `length`, and a record entry only `base`.
+// Its schema is one of those shapes, as `Deserialize` checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(with = "DomainSchema")]
+pub struct Domain {
+    /// `Number`, `Text`, or the domain's own underlying record in `types`.
+    pub base: Type,
+    /// The lower bound of a Number domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lower: Option<Bound>,
+    /// The upper bound of a Number domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upper: Option<Bound>,
+    /// `true` when a Number domain holds whole numbers only; absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub whole: bool,
+    /// The closed set of a Text domain, in declaration order: nonempty and duplicate-free.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<String>>,
+    /// The length bounds of a Text domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<Length>,
+}
+
+/// The schema of a [`Domain`] entry (R-IR-24): exactly one of a Number, a closed Text set, a Text length and a record
+/// shape, each closed, so an entry Velme would reject as malformed fails the schema too.
+#[allow(dead_code)] // Schema only.
+struct DomainSchema;
+
+impl JsonSchema for DomainSchema {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Domain".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "oneOf": [
+                generator.subschema_for::<NumberDomain>(),
+                generator.subschema_for::<TextSetDomain>(),
+                generator.subschema_for::<TextLengthDomain>(),
+                generator.subschema_for::<RecordDomain>(),
+            ]
+        })
+    }
+}
+
+/// A Number domain: its bounds and `whole`, each absent when unconstrained.
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Schema only.
+struct NumberDomain {
+    /// `{"t": "Number"}`.
+    #[schemars(schema_with = "number_base")]
+    base: (),
+    /// The lower bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Bound")]
+    lower: Option<Bound>,
+    /// The upper bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Bound")]
+    upper: Option<Bound>,
+    /// Present only when the domain holds whole numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Whole")]
+    whole: Option<Whole>,
+}
+
+/// A closed Text set.
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Schema only.
+struct TextSetDomain {
+    /// `{"t": "Text"}`.
+    #[schemars(schema_with = "text_base")]
+    base: (),
+    /// The members, in declaration order: nonempty and duplicate-free.
+    #[schemars(length(min = 1), extend("uniqueItems" = true))]
+    members: Vec<String>,
+}
+
+/// A Text domain with length bounds, or with a residual condition only.
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Schema only.
+struct TextLengthDomain {
+    /// `{"t": "Text"}`.
+    #[schemars(schema_with = "text_base")]
+    base: (),
+    /// The length bounds, absent when unconstrained.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Length")]
+    length: Option<Length>,
+}
+
+/// A record domain: only its base, the domain's own underlying record in `types`.
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Schema only.
+struct RecordDomain {
+    /// `{"t": "Record", "name": …}`.
+    #[schemars(schema_with = "record_base")]
+    base: (),
+}
+
+fn number_base(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    scalar_base("Number")
+}
+
+fn text_base(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    scalar_base("Text")
+}
+
+fn scalar_base(t: &str) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "object",
+        "properties": {"t": {"const": t}},
+        "required": ["t"],
+        "additionalProperties": false
+    })
+}
+
+fn record_base(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "object",
+        "properties": {"t": {"const": "Record"}, "name": {"type": "string"}},
+        "required": ["t", "name"],
+        "additionalProperties": false
+    })
+}
+
+/// `whole` is only ever `true` (R-IR-24).
+#[derive(JsonSchema)]
+#[schemars(extend("const" = true))]
+#[allow(dead_code)] // Schema only.
+struct Whole(bool);
+
+/// One end of an interval: an exact Number and whether it is included (R-IR-24).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Bound {
+    /// The bound's exact value.
+    #[schemars(schema_with = "number_schema")]
+    pub value: serde_json::Number,
+    /// `>=` / `<=` rather than `>` / `<`.
+    pub inclusive: bool,
+}
+
+fn number_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({"type": "number"})
+}
+
+/// The length bounds of a Text domain, in Unicode scalar values: at least one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("minProperties" = 1))]
+pub struct Length {
+    /// The least length.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "present")]
+    #[schemars(with = "Bound")]
+    pub lower: Option<Bound>,
+    /// The greatest length.
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "present")]
+    #[schemars(with = "Bound")]
+    pub upper: Option<Bound>,
+}
+
+/// An optional member that, when present, holds a value: an omitted constraint is no constraint, and `null` is not
+/// one of its spellings (R-IR-24).
+fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
+}
+
+/// The wire form of [`Domain`], whose shape [`Domain`]'s `Deserialize` checks (R-IR-24): a malformed entry is a schema
+/// error (`VL0401`), as an unknown field is.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DomainWire {
+    base: Type,
+    #[serde(default, deserialize_with = "present")]
+    lower: Option<Bound>,
+    #[serde(default, deserialize_with = "present")]
+    upper: Option<Bound>,
+    #[serde(default, deserialize_with = "present")]
+    whole: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
+    members: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present")]
+    length: Option<Length>,
+}
+
+impl<'de> Deserialize<'de> for Domain {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let wire = DomainWire::deserialize(deserializer)?;
+        let numeric = wire.lower.is_some() || wire.upper.is_some() || wire.whole.is_some();
+        let textual = wire.members.is_some() || wire.length.is_some();
+        let fault = match &wire.base {
+            Type::Number {} if textual => Some("a Number domain has no `members` or `length`"),
+            Type::Text {} if numeric => Some("a Text domain has no `lower`, `upper` or `whole`"),
+            Type::Text {} if wire.members.is_some() && wire.length.is_some() => {
+                Some("a Text domain has `members` or `length`, not both")
+            }
+            Type::Record { .. } if numeric || textual => Some("a record domain has only `base`"),
+            Type::Number {} | Type::Text {} | Type::Record { .. } => None,
+            _ => Some("a domain's base is `Number`, `Text` or a record"),
+        };
+        let fault = fault
+            .or_else(|| (wire.whole == Some(false)).then_some("`whole` is `true` when present"))
+            .or_else(|| {
+                let length = wire.length.as_ref()?;
+                (length.lower.is_none() && length.upper.is_none()).then_some("`length` has a bound")
+            })
+            .or_else(|| {
+                let members = wire.members.as_deref()?;
+                let unique: std::collections::BTreeSet<&String> = members.iter().collect();
+                (members.is_empty() || unique.len() != members.len())
+                    .then_some("`members` is nonempty and has no duplicates")
+            })
+            .or_else(|| {
+                let length = wire.length.as_ref();
+                let lengths = length.into_iter().flat_map(|l| [&l.lower, &l.upper]);
+                [&wire.lower, &wire.upper]
+                    .into_iter()
+                    .chain(lengths)
+                    .flatten()
+                    .any(|b| velme_builtins::Number::parse(b.value.as_str()).is_none())
+                    .then_some("a bound is a number Velme reads exactly")
+            });
+        if let Some(fault) = fault {
+            return Err(D::Error::custom(format!("invalid domain entry: {fault}")));
+        }
+        Ok(Domain {
+            base: wire.base,
+            lower: wire.lower,
+            upper: wire.upper,
+            whole: wire.whole.unwrap_or(false),
+            members: wire.members,
+            length: wire.length,
+        })
+    }
 }
 
 /// A value type (`compiler/21` §2.1).
@@ -72,6 +319,66 @@ pub enum Type {
         /// The record type's name.
         name: String,
     },
+    /// A domain type named in the goal's `domains`; compiler-owned, never in a body (R-IR-24, R-IR-25).
+    Domain {
+        /// The domain type's name.
+        name: String,
+    },
+}
+
+/// A body annotation type (`literal.type`, `list.of`): a [`Type`] with no Domain anywhere in it (R-IR-25). The
+/// schema's body definitions use it, and a Domain there fails the schema (`VL0401`).
+#[derive(Deserialize, JsonSchema)]
+#[serde(tag = "t", deny_unknown_fields)]
+enum BodyType {
+    /// Exact decimal number.
+    Number {},
+    /// Text.
+    Text {},
+    /// `true` or `false`.
+    Boolean {},
+    /// The type of `nothing`.
+    Nothing {},
+    /// `T?`: a value of `of`, or nothing.
+    Optional {
+        /// The present type; never itself optional, since `T??` is `T?` (§2.1).
+        of: Box<BodyType>,
+    },
+    /// `List<T>`.
+    List {
+        /// The element type.
+        of: Box<BodyType>,
+    },
+    /// A record type named in the goal's `types`.
+    Record {
+        /// The record type's name.
+        name: String,
+    },
+}
+
+impl From<BodyType> for Type {
+    fn from(ty: BodyType) -> Type {
+        match ty {
+            BodyType::Number {} => Type::Number {},
+            BodyType::Text {} => Type::Text {},
+            BodyType::Boolean {} => Type::Boolean {},
+            BodyType::Nothing {} => Type::Nothing {},
+            // `T??` is `T?` (§2.1), as `flat_optional` reads it.
+            BodyType::Optional { of } => match Type::from(*of) {
+                Type::Optional { of } => Type::Optional { of },
+                of => Type::Optional { of: Box::new(of) },
+            },
+            BodyType::List { of } => Type::List {
+                of: Box::new(Type::from(*of)),
+            },
+            BodyType::Record { name } => Type::Record { name },
+        }
+    }
+}
+
+/// Reads a body annotation: a [`Type`] with no Domain (R-IR-25).
+fn body_type<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Type, D::Error> {
+    BodyType::deserialize(deserializer).map(Type::from)
 }
 
 /// `Optional(Optional(T))` is `Optional(T)` (§2.1), both read and written, so both spellings hash alike (D-21).
@@ -103,8 +410,9 @@ mod flat_optional {
 pub enum Node {
     /// A constant; `value` is JSON decoded as `type` (D-23).
     Literal {
-        /// The literal's type.
-        #[serde(rename = "type")]
+        /// The literal's type, never a Domain (R-IR-25).
+        #[serde(rename = "type", deserialize_with = "body_type")]
+        #[schemars(with = "BodyType")]
         ty: Type,
         /// The value as JSON.
         #[schemars(with = "serde_json::Value")]
@@ -130,7 +438,9 @@ pub enum Node {
     },
     /// A list value; each item is assignable to `of`.
     List {
-        /// The element type.
+        /// The element type, never a Domain (R-IR-25).
+        #[serde(deserialize_with = "body_type")]
+        #[schemars(with = "BodyType")]
         of: Type,
         /// The items, in order.
         items: Vec<Node>,

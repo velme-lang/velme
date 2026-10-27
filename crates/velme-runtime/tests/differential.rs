@@ -150,7 +150,7 @@ fn leaf(params: &[(&str, &str)], output: &str, body: Json) -> (Program, GoalId, 
     let inputs: Vec<Json> = params.iter().map(|(name, ty)| json!([name, {"t": ty}])).collect();
     let document = json!({
         "ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "G", "types": {},
-        "inputs": inputs, "output": {"t": output}, "body": body,
+        "domains": {}, "inputs": inputs, "output": {"t": output}, "body": body,
     });
     let (ir, goal) = (valid_ir(&program, &document.to_string()), goal_id(&program, "G"));
     (program, goal, ir)

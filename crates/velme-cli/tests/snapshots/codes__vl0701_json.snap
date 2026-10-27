@@ -15,7 +15,7 @@ expression: redact(&pretty)
           "labels": [],
           "message": "The built version of `Add` is missing — run `velme build`.",
           "notes": [
-            "there is no file for artifact b3:beed8edbc0335876ddaddd9317ecd4214b5ffba1e26551f5fb5673495ea096f6"
+            "there is no file for artifact b3:aa392a729a7f285fd38034957d99dd2705c1c62c833fe3f33b464fbaf7f45eba"
           ],
           "severity": "error",
           "span": {

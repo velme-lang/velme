@@ -7,7 +7,7 @@ use velme_builtins::Number;
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_syntax::ast::{self, LiteralKind};
 
-use crate::hir::{BinaryOp, Bound, Constraints, DomainRule, DomainType, Expr, ExprKind, Type, UnaryOp};
+use crate::hir::{BinaryOp, Bound, Constraints, DomainRule, DomainType, Expr, ExprKind, Literal, Type, UnaryOp};
 
 /// Most members of one closed set (R-TYP-33).
 pub(crate) const MAX_MEMBERS: usize = 1_000;
@@ -286,30 +286,44 @@ fn empty(c: &Constraints) -> Option<&'static str> {
 /// (R-TYP-31); residual conditions are left to `velme-check` (R-CHK-15). `None` for anything that isn't a literal.
 pub(crate) fn literal_violation(domain: &DomainType, e: &Expr) -> Option<(String, String)> {
     if let ExprKind::Text { value } = &e.kind {
-        let shown = format!("\"{value}\"");
-        if let DomainRule::OneOf { members } = &domain.rule {
-            return (!members.contains(value)).then(|| (shown, "it isn't one of its members".to_owned()));
-        }
-        let c = &domain.constraints;
-        let length = i64::try_from(value.chars().count()).unwrap_or(i64::MAX);
-        let fails = |b: &Option<Bound>, lower: bool| {
-            b.as_ref().and_then(|b| {
-                let n = number(&b.value)?.to_i64()?;
-                let ok = match (lower, b.inclusive) {
-                    (true, true) => length >= n,
-                    (true, false) => length > n,
-                    (false, true) => length <= n,
-                    (false, false) => length < n,
-                };
-                (!ok).then(|| format!("its length must be {} {}", op_word(lower, b.inclusive), b.value))
-            })
-        };
-        return fails(&c.min_length, true)
-            .or_else(|| fails(&c.max_length, false))
-            .map(|reason| (shown, reason));
+        return value_violation(domain, &Literal::Text(value));
     }
-    let text = literal_number(e)?;
-    let n = number(&text)?;
+    value_violation(domain, &Literal::Number(number(&literal_number(e)?)?))
+}
+
+/// Why `literal` isn't a member of `domain` by its closed set or simple constraints, if it isn't: the literal as
+/// shown, and the reason (R-TYP-31, `compiler/21` R-IR-25). A literal of the other base is left to the type rules.
+pub(crate) fn value_violation(domain: &DomainType, literal: &Literal<'_>) -> Option<(String, String)> {
+    let n = match literal {
+        Literal::Text(value) => {
+            let shown = format!("\"{value}\"");
+            if let DomainRule::OneOf { members } = &domain.rule {
+                return (!members.iter().any(|m| m == value))
+                    .then(|| (shown, "it isn't one of its members".to_owned()));
+            }
+            let c = &domain.constraints;
+            let length = i64::try_from(value.chars().count()).unwrap_or(i64::MAX);
+            let fails = |b: &Option<Bound>, lower: bool| {
+                b.as_ref().and_then(|b| {
+                    let n = number(&b.value)?.to_i64()?;
+                    let ok = match (lower, b.inclusive) {
+                        (true, true) => length >= n,
+                        (true, false) => length > n,
+                        (false, true) => length <= n,
+                        (false, false) => length < n,
+                    };
+                    (!ok).then(|| format!("its length must be {} {}", op_word(lower, b.inclusive), b.value))
+                })
+            };
+            return fails(&c.min_length, true)
+                .or_else(|| fails(&c.max_length, false))
+                .map(|reason| (shown, reason));
+        }
+        Literal::Number(n) => n,
+    };
+    if domain.base != Type::Number {
+        return None;
+    }
     let shown = n.to_string();
     let c = &domain.constraints;
     if c.whole && !n.is_integer() {
@@ -319,10 +333,10 @@ pub(crate) fn literal_violation(domain: &DomainType, e: &Expr) -> Option<(String
         b.as_ref().and_then(|b| {
             let bound = number(&b.value)?;
             let ok = match (lower, b.inclusive) {
-                (true, true) => n >= bound,
-                (true, false) => n > bound,
-                (false, true) => n <= bound,
-                (false, false) => n < bound,
+                (true, true) => *n >= bound,
+                (true, false) => *n > bound,
+                (false, true) => *n <= bound,
+                (false, false) => *n < bound,
             };
             (!ok).then(|| format!("it must be {} {}", op_word(lower, b.inclusive), bound))
         })

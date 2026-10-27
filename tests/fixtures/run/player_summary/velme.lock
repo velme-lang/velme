@@ -7,18 +7,18 @@ file          = "player_summary.velme"
 name          = "BuildPlayerSummary"
 signature     = "b3:a5bec1365ee1c337e069394747bd8296272c5f790fd2e048613240fcbfea6f3f"
 contract_key  = "b3:19ed4252d06590df8463171a3427414dfb5314ecfba2c32e538252a324dba492"
-artifact      = "b3:462a87caba64f37e608034ae0dad86ba8e72ec3f223900065f7c58148b48c6a0"
+artifact      = "b3:a5c5e777e3274f59eb39d3790ae4369fbed36130d57daaad4e4f9a5116c1417a"
 
 [[goal]]
 file          = "player_summary.velme"
 name          = "CalculateScore"
 signature     = "b3:93d8c7902fedad3d56f7de91641cc500546563a9305d265cf96f2771f163d876"
 contract_key  = "b3:a2919ffd8a01fcc6dd3de3e74afe4f1ea046c3c364f1e504a441d7907941b8ae"
-artifact      = "b3:6279e217ba7389bc0e7a9433a5a59d90a129f87497788d66d4f260569f4a0b4d"
+artifact      = "b3:8f008dcb1db99f33fdb26a4935bb5ccf12f1bf60681e85bb7530adf676b4535e"
 
 [[goal]]
 file          = "player_summary.velme"
 name          = "FindBadge"
 signature     = "b3:fae14969bcded347fe0b153a9462bb105843b8a5f869179359077e8cccc9ce5d"
 contract_key  = "b3:1a1ed7c5a16df8404aeb54c39cd870de46f7c1bd5d2301c289665519cf622b28"
-artifact      = "b3:5b44bbc4548c9143bff4d294a9c9f2e5fea2b0fa882edf1872a27388281b00f7"
+artifact      = "b3:6cd6c2e771cf879dbb92c7c9df620fc7100efb428694320f78f43221b52e91c2"

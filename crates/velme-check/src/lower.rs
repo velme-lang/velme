@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde_json::Value as Json;
 use velme_diagnostics::{Diagnostic, Span};
 use velme_ir::{
-    BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator, ir_type,
+    BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator, body_type,
 };
 use velme_sema::hir::{BinaryOp, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp};
 
@@ -175,7 +175,8 @@ impl<'p> Lowering<'p> {
                 let Type::List(element) = &e.ty else { return None };
                 let (items, spans) = split(self.exprs(items)?);
                 let node = Node::List {
-                    of: ir_type(self.program, element)?,
+                    // A body annotation is the recursive base (`compiler/21` R-IR-25).
+                    of: body_type(self.program, element)?,
                     items,
                 };
                 Tree::new(span, node, spans)
@@ -295,7 +296,7 @@ impl<'p> Lowering<'p> {
             }
         };
         if matches!(self.declared(e)?, Some(Type::Optional(_))) && !matches!(e.ty, Type::Optional(_)) {
-            let default = literal(ir_type(self.program, &e.ty)?, zero(self.program, &e.ty)?);
+            let default = literal(body_type(self.program, &e.ty)?, zero(self.program, &e.ty)?);
             let node = Node::Narrow {
                 of: Box::new(tree.node),
                 default: Box::new(default),
