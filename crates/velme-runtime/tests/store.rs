@@ -507,7 +507,7 @@ fn stores_and_loads_ir_at_the_depth_limit() {
     let text = |t: &str| format!(r#"{{"kind": "literal", "type": {{"t": "Text"}}, "value": "{t}"}}"#);
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Words", "types": {{}},
-            "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {{"t": "Text"}},
+            "domains": {{}}, "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {{"t": "Text"}},
             "body": {{"kind": "if", "cond": {{"kind": "binary", "op": "eq", "left": {literal}, "right": {literal}}},
                 "then": {}, "else": {}}}}}"#,
         text("same"),

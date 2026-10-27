@@ -40,7 +40,15 @@ pub fn load(program: &Program, goal: GoalId, file: &str, lock: &Lock, store: &St
         // What the source was built from is known only from the stored artifact, which is read here just to word
         // the causes; its claims decide nothing (D-46). Without it, the source changed is all that is known.
         let Ok(artifact) = store.get(entry.artifact) else {
-            return Err(EntryError::Stale(vec![Cause::Source]));
+            // An artifact of an older IR no longer decodes; its manifest still says what it was built for (R-ART-27).
+            let causes = store
+                .manifest(entry.artifact)
+                .ok()
+                .filter(|manifest| manifest.goal == target.name)
+                .map(|manifest| versions(&manifest, program))
+                .filter(|causes| !causes.is_empty())
+                .unwrap_or_else(|| vec![Cause::Source]);
+            return Err(EntryError::Stale(causes));
         };
         let manifest = &artifact.manifest;
         // Another goal's artifact says nothing about how this goal changed, and one built from the current source
@@ -95,35 +103,8 @@ fn mismatches(manifest: &Manifest, entry: &Entry) -> Vec<Cause> {
 /// What changed between the source `artifact` was built from and the current one, as far as the artifact shows it
 /// (R-ART-14); empty if only the parts it doesn't record changed. `None` for HIR `analyze` doesn't return.
 fn changes(program: &Program, id: GoalId, goal: &hir::Goal, artifact: &Artifact) -> Option<Vec<Cause>> {
-    let manifest = &artifact.manifest;
     let ir = &artifact.ir;
-    let mut causes = Vec::new();
-    let versions = [
-        (
-            Versioned::Language,
-            manifest.language_version.as_str(),
-            program.language_version.as_str(),
-        ),
-        (
-            Versioned::Ir,
-            compatibility(&manifest.ir_version),
-            compatibility(IR_VERSION),
-        ),
-        (
-            Versioned::Builtins,
-            compatibility(&manifest.builtins_version),
-            compatibility(BUILTINS_VERSION),
-        ),
-    ];
-    for (of, built, current) in versions {
-        if built != current {
-            causes.push(Cause::Version {
-                of,
-                built: built.to_owned(),
-                now: current.to_owned(),
-            });
-        }
-    }
+    let mut causes = versions(&artifact.manifest, program);
     for (name, built) in &ir.types {
         let Some(record) = program.types.iter().find(|r| &r.name == name) else {
             causes.push(Cause::Record {
@@ -186,6 +167,38 @@ fn changes(program: &Program, id: GoalId, goal: &hir::Goal, artifact: &Artifact)
         }
     }
     Some(causes)
+}
+
+/// The versions `manifest` was built for that differ from the current ones (R-ART-14).
+fn versions(manifest: &Manifest, program: &Program) -> Vec<Cause> {
+    let mut causes = Vec::new();
+    let versions = [
+        (
+            Versioned::Language,
+            manifest.language_version.as_str(),
+            program.language_version.as_str(),
+        ),
+        (
+            Versioned::Ir,
+            compatibility(&manifest.ir_version),
+            compatibility(IR_VERSION),
+        ),
+        (
+            Versioned::Builtins,
+            compatibility(&manifest.builtins_version),
+            compatibility(BUILTINS_VERSION),
+        ),
+    ];
+    for (of, built, current) in versions {
+        if built != current {
+            causes.push(Cause::Version {
+                of,
+                built: built.to_owned(),
+                now: current.to_owned(),
+            });
+        }
+    }
+    causes
 }
 
 /// How a record type's fields changed, by name: added, removed or of another type, else reordered.

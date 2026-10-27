@@ -3,7 +3,7 @@
 //! unattended recording of the examples' replay fixtures need no live provider. It uses `std` networking on 127.0.0.1 and
 //! no async runtime, so it runs on every OS. Not a product: nothing here is reachable from `velme`.
 //!
-//! `GET /v1/describe` answers `{"backend", "backend_version"}`. `POST /v1/synthesize` for goal `G` answers with
+//! `GET /v2/describe` answers `{"backend", "backend_version"}`. `POST /v2/synthesize` for goal `G` answers with
 //! `DIR/G.json` (`DIR/G.N.json` when the request carries `N` earlier attempts, else `G.json`): a file holding a body
 //! (an expression node, so it has a `kind`) is wrapped as `{"body": …}`, any other file is sent as it is. A goal with no file is an `{"error"}` reply.
 
@@ -33,16 +33,16 @@ pub enum Mode {
     Huge,
     /// Accepts the request and never answers, until the client gives up.
     Hang,
-    /// Answers `302` to `/v1/elsewhere`, which counts as a hit in the log if it is followed.
+    /// Answers `302` to `/v2/elsewhere`, which counts as a hit in the log if it is followed.
     Redirect,
 }
 
 /// Which request a [`Mode`] applies to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum On {
-    /// `GET /v1/describe`.
+    /// `GET /v2/describe`.
     Describe,
-    /// `POST /v1/synthesize`.
+    /// `POST /v2/synthesize`.
     Synthesize,
     /// Both.
     Both,
@@ -206,8 +206,8 @@ fn serve(mut stream: TcpStream, config: &Config) {
         (goal, earlier)
     };
     let kind = match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/v1/describe") => On::Describe,
-        ("POST", "/v1/synthesize") => On::Synthesize,
+        ("GET", "/v2/describe") => On::Describe,
+        ("POST", "/v2/synthesize") => On::Synthesize,
         _ => {
             log(config, &format!("unknown {}", request.path));
             reply(&mut stream, 404, &[], r#"{"error":"no such endpoint"}"#);
@@ -304,7 +304,7 @@ fn misbehave(stream: &mut TcpStream, mode: &Mode) {
         Mode::Garbage => reply(stream, 200, &[], "this is \u{1b}[31mnot JSON"),
         Mode::Hostile => reply(stream, 200, &[], "\u{1b}]52;c;Zm9v\u{7} evil \u{202e}txet \u{85} end"),
         Mode::Huge => reply(stream, 200, &[], &"x".repeat(3 * 1024 * 1024)),
-        Mode::Redirect => reply(stream, 302, &[("location", "/v1/elsewhere")], "moved"),
+        Mode::Redirect => reply(stream, 302, &[("location", "/v2/elsewhere")], "moved"),
         Mode::Hang => {
             // Held open until the client hangs up.
             let mut sink = [0_u8; 64];

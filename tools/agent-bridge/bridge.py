@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dev tooling: an `external` backend (compiler/22 section 3.2) that lets a coding agent stand in for the provider.
 
-`GET /v1/describe` names the bridge and lists the reply formats it answers in. `POST /v1/synthesize` is keyed by the SHA-256 of the request body, which Velme sends
+`GET /v2/describe` names the bridge and lists the reply formats it answers in. `POST /v2/synthesize` is keyed by the SHA-256 of the request body, which Velme sends
 as canonical JSON, so the same request always gets the same id:
 
 * `<answers>/<id>.json` exists: its content is the reply. For a default (`ir-json`) request a file holding an expression node
@@ -104,7 +104,7 @@ def make_handler(answers: str, pending: str, token):
         def do_GET(self):
             if not self.authorized():
                 return self.send_json(401, {"error": "token required"})
-            if self.path == "/v1/describe":
+            if self.path == "/v2/describe":
                 return self.send_json(
                     200, {"backend": BACKEND, "backend_version": VERSION, "reply_formats": REPLY_FORMATS}
                 )
@@ -122,7 +122,7 @@ def make_handler(answers: str, pending: str, token):
             body = self.rfile.read(length)
             if not self.authorized():
                 return self.send_json(401, {"error": "token required"})
-            if self.path != "/v1/synthesize":
+            if self.path != "/v2/synthesize":
                 return self.send_json(404, {"error": "not found"})
             self.send_json(200, reply_for(answers, pending, body))
 

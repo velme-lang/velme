@@ -23,7 +23,7 @@ use velme_test_support::{goal_id, program, valid_ir};
 fn reduce_goal() -> (Goal, ValidIr) {
     let program = program("language: velme/0.2\n\ngoal G() -> Number:\n    plan: \"Count to a million.\"\n");
     let document = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "G", "types": {},
-        "inputs": [], "output": {"t": "Number"}, "body": nested_reduce(1000)});
+        "domains": {}, "inputs": [], "output": {"t": "Number"}, "body": nested_reduce(1000)});
     let ir = valid_ir(&program, &document.to_string());
     (program.goals[0].clone(), ir)
 }

@@ -64,7 +64,7 @@ fn ir(program: &Program, goal: &str) -> String {
     };
     let calls = calls(program, goal_id(program, goal)).expect("calls");
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": types,
-           "inputs": inputs, "output": number, "calls": calls, "body": body})
+           "domains": {}, "inputs": inputs, "output": number, "calls": calls, "body": body})
     .to_string()
 }
 

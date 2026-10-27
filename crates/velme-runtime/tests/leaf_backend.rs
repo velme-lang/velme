@@ -121,7 +121,7 @@ fn ir(program: &Program, name: &str) -> String {
     };
     let calls = calls(program, goal_id(program, name)).expect("calls");
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": name, "types": {},
-           "inputs": inputs, "output": output, "calls": calls, "body": body})
+           "domains": {}, "inputs": inputs, "output": output, "calls": calls, "body": body})
     .to_string()
 }
 
@@ -403,13 +403,13 @@ goal L(xs: List<Number>) -> List<Number>:
     let checked = program(source);
     let record = |goal: &str, ty: &str, field: &str| {
         json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal,
-               "types": {ty: {"fields": [[field, number()]]}}, "inputs": [["x", number()]],
+               "types": {ty: {"fields": [[field, number()]]}}, "domains": {}, "inputs": [["x", number()]],
                "output": {"t": "Record", "name": ty}, "calls": [],
                "body": {"kind": "record", "type": ty, "fields": {field: input("x")}}})
     };
     let echo = |goal: &str, name: &str, ty: Json| {
         json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": {},
-               "inputs": [[name, ty]], "output": ty, "calls": [], "body": input(name)})
+               "domains": {}, "inputs": [[name, ty]], "output": ty, "calls": [], "body": input(name)})
     };
     let pairs = [
         (

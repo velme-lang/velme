@@ -11,7 +11,7 @@ Error: The generated program wasn't in the right shape.  [VL0401]
     │ │                                                                                                                          
     │ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── here
     │     
-    │     Note: unknown variant `loop`, expected one of `literal`, `input`, `local`, `record`, `list`, `field`, `binary`, `unary`, `let`, `if`, `unwrap_or`, `map`, `filter`, `find`, `reduce`, `sort_by`, `all`, `any`, `builtin`, `call` at line 42 column 18
+    │     Note: unknown variant `loop`, expected one of `literal`, `input`, `local`, `record`, `list`, `field`, `binary`, `unary`, `let`, `if`, `unwrap_or`, `map`, `filter`, `find`, `reduce`, `sort_by`, `all`, `any`, `builtin`, `call` at line 43 column 18
 ────╯
 
 [
@@ -28,7 +28,7 @@ Error: The generated program wasn't in the right shape.  [VL0401]
     },
     "labels": [],
     "notes": [
-      "unknown variant `loop`, expected one of `literal`, `input`, `local`, `record`, `list`, `field`, `binary`, `unary`, `let`, `if`, `unwrap_or`, `map`, `filter`, `find`, `reduce`, `sort_by`, `all`, `any`, `builtin`, `call` at line 42 column 18"
+      "unknown variant `loop`, expected one of `literal`, `input`, `local`, `record`, `list`, `field`, `binary`, `unary`, `let`, `if`, `unwrap_or`, `map`, `filter`, `find`, `reduce`, `sort_by`, `all`, `any`, `builtin`, `call` at line 43 column 18"
     ]
   }
 ]

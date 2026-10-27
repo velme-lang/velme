@@ -102,7 +102,7 @@ fn edit(mut value: Value, pointer: &str, with: Value) -> String {
 fn document(goal: &str, inputs: Value, output: Value, body: &str) -> String {
     format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "{goal}", "types": {{}},
-            "inputs": {inputs}, "output": {output}, "body": {body}}}"#
+            "domains": {{}}, "inputs": {inputs}, "output": {output}, "body": {body}}}"#
     )
 }
 
@@ -521,7 +521,7 @@ fn ac_ir_11_sort_by_key_is_a_number() {
         format!(
             r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Rank",
                 "types": {{"Player": {{"fields": [["name", {{"t": "Text"}}], ["score", {{"t": "Number"}}]]}}}},
-                "inputs": [["players", {{"t": "List", "of": {player}}}]], "output": {{"t": "List", "of": {player}}},
+                "domains": {{}}, "inputs": [["players", {{"t": "List", "of": {player}}}]], "output": {{"t": "List", "of": {player}}},
                 "body": {body}}}"#
         )
     };
@@ -828,7 +828,7 @@ fn a_dropped_call_is_a_call_graph_error_not_an_unused_type() {
     let mut ir = json!({
         "ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Parent",
         "types": {"Inner": {"fields": [["v", {"t": "Number"}]]}},
-        "inputs": [["x", {"t": "Number"}]], "output": {"t": "Number"},
+        "domains": {}, "inputs": [["x", {"t": "Number"}]], "output": {"t": "Number"},
         "calls": serde_json::to_value(compiler_calls(&program, "Parent")).expect("calls"),
         "body": {"kind": "input", "name": "x"},
     });
@@ -879,7 +879,7 @@ fn compiler_calls_lower_every_argument_form() {
     let player = json!({"fields": [["name", {"t": "Text"}], ["score", {"t": "Number"}]]});
     let doc = json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Show",
                      "types": {"Player": player},
-                     "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}]],
+                     "domains": {}, "inputs": [["players", {"t": "List", "of": {"t": "Record", "name": "Player"}}]],
                      "output": {"t": "Text"}, "calls": calls, "body": {"kind": "local", "name": "label"}});
     accepts(&program, "Show", &doc.to_string());
 }
@@ -975,7 +975,7 @@ fn types_list_the_record_types_of_called_goals() {
     .expect("calls");
     let doc = |types: Value| {
         json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Show", "types": types,
-               "inputs": [["player", {"t": "Record", "name": "Player"}]], "output": {"t": "Text"}, "calls": calls,
+               "domains": {}, "inputs": [["player", {"t": "Record", "name": "Player"}]], "output": {"t": "Text"}, "calls": calls,
                "body": {"kind": "field", "of": {"kind": "local", "name": "badge"}, "field": "label"}})
         .to_string()
     };
@@ -1013,7 +1013,7 @@ fn documents_whose_canonical_form_is_too_long_are_rejected() {
     let doc = |items: usize| {
         format!(
             r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Big", "types": {{}},
-                "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "List", "of": {{"t": "Number"}}}}}},
+                "domains": {{}}, "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "List", "of": {{"t": "Number"}}}}}},
                 "body": {{"kind": "list", "of": {{"t": "List", "of": {{"t": "Number"}}}}, "items": [{}]}}}}"#,
             vec![item.as_str(); items].join(",")
         )

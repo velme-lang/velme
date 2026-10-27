@@ -65,6 +65,23 @@ pub struct DomainType {
     pub span: Span,
 }
 
+impl DomainType {
+    /// Why `literal` isn't a member by the closed set or simple constraints, if it isn't: the literal as shown and the
+    /// reason (`language/11` R-TYP-31). Residual conditions aren't evaluated here (R-CHK-15).
+    pub fn literal_violation(&self, literal: &Literal<'_>) -> Option<(String, String)> {
+        crate::domain::value_violation(self, literal)
+    }
+}
+
+/// A Text or Number literal, checked against a domain's simple constraints.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal<'a> {
+    /// A Text literal.
+    Text(&'a str),
+    /// A Number literal, signed.
+    Number(velme_builtins::Number),
+}
+
 /// What a domain admits (`language/11` R-TYP-28).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

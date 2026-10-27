@@ -109,7 +109,7 @@ fn document(goal: &str, body: &str) -> String {
     };
     format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "{goal}",
-            "types": {{{types}}}, "inputs": {inputs}, "output": {output}, "body": {body}}}"#
+            "types": {{{types}}}, "domains": {{}}, "inputs": {inputs}, "output": {output}, "body": {body}}}"#
     )
 }
 

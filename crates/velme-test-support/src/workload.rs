@@ -165,7 +165,7 @@ pub fn fan_ir(program: &Program, name: &str) -> String {
     let body = if name == "Id" { input("x") } else { local("c0") };
     let calls = calls(program, goal_id(program, name)).expect("calls");
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": name, "types": {},
-           "inputs": [["x", number()]], "output": number(), "calls": calls, "body": body})
+           "domains": {}, "inputs": [["x", number()]], "output": number(), "calls": calls, "body": body})
     .to_string()
 }
 

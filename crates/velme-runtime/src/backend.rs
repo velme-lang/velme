@@ -406,7 +406,7 @@ mod tests {
         let program = program(SOURCE);
         let ir = format!(
             r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Half", "types": {{}},
-                "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "Number"}}, "calls": [],
+                "domains": {{}}, "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "Number"}}, "calls": [],
                 "body": {{"kind": "binary", "op": "div", "left": {{"kind": "input", "name": "x"}},
                           "right": {{"kind": "literal", "type": {{"t": "Number"}}, "value": 2}}}}}}"#
         );

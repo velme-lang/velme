@@ -103,6 +103,9 @@ pub fn prompt_version() -> String {
     VERSION.clone()
 }
 
+/// The line after the Types section of a goal that reaches a domain (R-SYNTH-60); part of [`prompt_version`].
+const DOMAIN_RULE: &str = "\nDeclared types are their base in the body.";
+
 fn compute_version() -> String {
     let doc = json!({
         "leaf": {"id": LEAF_ID, "template": LEAF},
@@ -111,6 +114,7 @@ fn compute_version() -> String {
         "alias_table": compact::table(),
         "examples": EXAMPLES,
         "operators": operators(),
+        "domain_rule": DOMAIN_RULE,
     });
     let hash = Fingerprint::of(&doc).map(|f| f.hex()).unwrap_or_default();
     format!("prompt-3:{hash}")
@@ -288,7 +292,14 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
             .join("\n"),
     );
     fields.insert("signature", signature(&request.signature));
-    fields.insert("types", or_none(request.types.iter().map(record).collect()));
+    fields.insert("types", or_none(types(request)));
+    // Only a goal that reaches a domain gets the rule (R-SYNTH-60).
+    let rule = if request.declarations.is_empty() {
+        ""
+    } else {
+        DOMAIN_RULE
+    };
+    fields.insert("domain_rule", rule.to_owned());
     fields.insert(
         "locals",
         or_none(
@@ -418,6 +429,19 @@ fn signature(signature: &Signature) -> String {
     )
 }
 
+/// The Types section (`compiler/22` R-SYNTH-60): each record as its fields, then each full declaration as written,
+/// comments stripped. A record domain is shown once, in declaration form, not again as its underlying record, which
+/// `domains` names (D-166).
+fn types(request: &SynthRequest) -> Vec<String> {
+    request
+        .types
+        .iter()
+        .filter(|r| !request.domains.contains_key(&r.name))
+        .map(record)
+        .chain(request.declarations.values().cloned())
+        .collect()
+}
+
 fn record(record: &RecordType) -> String {
     let fields: Vec<String> = record
         .fields
@@ -436,6 +460,6 @@ pub(crate) fn type_name(ty: &Type) -> String {
         Type::Nothing {} => "Nothing".to_owned(),
         Type::Optional { of } => format!("{}?", type_name(of)),
         Type::List { of } => format!("List<{}>", type_name(of)),
-        Type::Record { name } => name.clone(),
+        Type::Record { name } | Type::Domain { name } => name.clone(),
     }
 }

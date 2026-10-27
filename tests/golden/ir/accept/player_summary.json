@@ -6,6 +6,7 @@
     "Player":  { "fields": [["name", {"t": "Text"}], ["jump_height", {"t": "Number"}], ["score", {"t": "Number"}]] },
     "Summary": { "fields": [["score", {"t": "Number"}], ["rank", {"t": "Number"}], ["badge", {"t": "Text"}]] }
   },
+  "domains": {},
   "inputs": [["player", {"t": "Record", "name": "Player"}]],
   "output": {"t": "Record", "name": "Summary"},
   "calls": [

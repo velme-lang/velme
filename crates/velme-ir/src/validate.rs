@@ -12,11 +12,15 @@ use serde::Serialize;
 use serde_json::Value;
 use velme_builtins::{BUILTINS_VERSION, Builtin, CATALOG, Shape};
 use velme_diagnostics::{Code, Diagnostic, Span, did_you_mean};
-use velme_sema::hir::{self, GoalId, Keyword, Program, Type as HirType, TypeId, assignable, join, signature_output};
+use velme_sema::hir::{
+    self, DomainId, DomainRule, GoalId, Keyword, Literal, Program, Type as HirType, TypeId, assignable, compat, join,
+    signature_output,
+};
 
+use crate::fingerprint::{Declarations, Reachability, declarations};
 use crate::json::pointer;
 use crate::limits::{MAX_COLLECTION_NESTING, MAX_DEPTH, MAX_IR_BYTES, MAX_LIST_ITEMS, MAX_NODES, MAX_TEXT_BYTES};
-use crate::lower::ir_type;
+use crate::lower::{body_type, domain_entry, ir_type};
 use crate::mapping::{DecodeProblem, decode_value};
 use crate::node::{
     BinaryOperator, Call, CallNode, Goal, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type, UnaryOperator,
@@ -180,6 +184,7 @@ impl<'p> CheckScope<'p> {
             builtins_version: BUILTINS_VERSION.to_owned(),
             goal: target.name.clone(),
             types: BTreeMap::new(),
+            domains: BTreeMap::new(),
             inputs: Vec::new(),
             output: Type::Nothing {},
             calls: Vec::new(),
@@ -188,6 +193,7 @@ impl<'p> CheckScope<'p> {
         let findings = {
             let mut v = Validator::new(self.program, target, &holder, &[], Origin::Complete, Vec::new());
             v.compiler_names = true;
+            v.placeholders = true;
             let result = Keyword::Result.as_str();
             // A wired goal's `result` binding is its output.
             for binding in target.bindings.iter().filter(|b| b.name != result) {
@@ -195,7 +201,8 @@ impl<'p> CheckScope<'p> {
             }
             v.scope.push((result, target.output.clone()));
             let ty = v.expr(&holder.body, 1, 0);
-            if !assignable(&ty, expected) {
+            // An example's base literal stands for a domain value, as in source (R-IR-25).
+            if !compat(&ty, expected) {
                 let rule = format!("it is {}, where {} is needed", v.name(&ty), v.name(expected));
                 v.find(Stage::Types, "types-1", rule);
             }
@@ -454,6 +461,12 @@ struct Validator<'a> {
     /// Set while walking what the compiler wrote — a candidate's joined-in `calls`, or a lowered check — whose names
     /// resolve against the program and the goal's signature, not against declarations in the IR.
     compiler_names: bool,
+    /// Set for a lowered check, whose `unwrap_or` defaults are velme-check's placeholders: zero values standing in for
+    /// a present one, never a result, so they aren't held to R-IR-25's literal checks (`""` for a closed set, `0` for
+    /// `value > 0`).
+    placeholders: bool,
+    /// Set while walking such a placeholder default.
+    placeholder: bool,
     /// The goal's inputs, with their types resolved.
     inputs: Vec<(&'a str, HirType)>,
     /// Call bindings, `let` names and lambda parameters in scope, innermost last.
@@ -464,6 +477,10 @@ struct Validator<'a> {
     nodes: usize,
     too_deep: bool,
     too_nested: bool,
+    /// The type expected where the node being checked stands, carried through `let` bodies, branches, record fields,
+    /// list items and `unwrap_or` defaults: the expected-type pass (R-IR-25), and in [`infer_list_types`] the list
+    /// types (R-SYNTH-58).
+    expected: Option<HirType>,
     inference: Option<Inference>,
 }
 
@@ -483,6 +500,8 @@ impl<'a> Validator<'a> {
             calls,
             origin,
             compiler_names: false,
+            placeholders: false,
+            placeholder: false,
             inputs: Vec::new(),
             scope: Vec::new(),
             path: Vec::new(),
@@ -490,6 +509,7 @@ impl<'a> Validator<'a> {
             nodes: 0,
             too_deep: false,
             too_nested: false,
+            expected: None,
             inference: None,
         }
     }
@@ -576,13 +596,13 @@ impl<'a> Validator<'a> {
                 None,
             );
         }
-        self.record_types();
+        let reached = self.reached();
+        self.record_types(&reached);
+        self.domain_types(&reached);
         self.signature();
         self.calls();
-        self.path.push("body".to_owned());
-        let body = self.expr(&goal.body, 1, 0);
-        self.path.pop();
-        if !assignable(&body, &target.output) {
+        let body = self.expected_child("body", &goal.body, 1, 0, Some(target.output.clone()));
+        if !compat(&body, &target.output) {
             let rule = format!(
                 "its result is {}, but the goal `{}` gives {}",
                 self.name(&body),
@@ -603,9 +623,8 @@ impl<'a> Validator<'a> {
 
     /// `types` equal the program's record types of the same names (R-IR-01, R-IR-14), and are only those the goal's
     /// inputs, output and calls reach (D-84).
-    fn record_types(&mut self) {
+    fn record_types(&mut self, reached: &Declarations) {
         let goal = self.goal;
-        let reached = self.reached();
         self.path.push("types".to_owned());
         for (name, record) in &goal.types {
             self.path.push(name.clone());
@@ -619,7 +638,7 @@ impl<'a> Validator<'a> {
                         help,
                     );
                 }
-                Some((id, _)) if !reached.contains(&TypeId(id)) => self.find(
+                Some((id, _)) if !reached.records.contains(&TypeId(id)) => self.find(
                     Stage::Names,
                     "names-3",
                     format!("it describes a record type `{name}` that the goal's inputs, output and calls don't use"),
@@ -651,31 +670,78 @@ impl<'a> Validator<'a> {
         self.path.pop();
     }
 
-    /// The record types the goal's inputs and output and its calls' goals reach, through fields too (D-84). The calls
-    /// are the compiler's, so IR that drops or changes one is reported at stage 6, not as a type it doesn't use.
-    fn reached(&self) -> Vec<TypeId> {
+    /// The record and domain types the goal's inputs and output and its calls' goals reach, through fields and domain
+    /// bases too (D-84, R-IR-24). The calls are the compiler's, so IR that drops or changes one is reported at stage 6,
+    /// not as a type it doesn't use.
+    fn reached(&self) -> Declarations {
         let target = self.target;
         let callees = self
             .calls
             .iter()
             .filter_map(|CallNode::Call(call)| self.program.goals.iter().find(|g| g.name == call.goal));
-        let mut pending = Vec::new();
-        for goal in [target].into_iter().chain(callees) {
-            for ty in goal.params.iter().map(|p| &p.ty).chain([&goal.output]) {
-                records_in(ty, &mut pending);
+        let roots = [target]
+            .into_iter()
+            .chain(callees)
+            .flat_map(|goal| goal.params.iter().map(|p| &p.ty).chain([&goal.output]));
+        declarations(self.program, roots, Reachability::Ir).unwrap_or_default()
+    }
+
+    /// `domains` holds exactly the domain types the goal reaches, each equal to the program's (R-IR-13, R-IR-14,
+    /// R-IR-24). Bounds compare by value, as canonical JSON writes them (R-IR-26).
+    fn domain_types(&mut self, reached: &Declarations) {
+        let goal = self.goal;
+        self.path.push("domains".to_owned());
+        for (name, entry) in &goal.domains {
+            self.path.push(name.clone());
+            match self.program.domains.iter().enumerate().find(|(_, d)| &d.name == name) {
+                None => {
+                    let help = did_you_mean(name, self.program.domains.iter().map(|d| d.name.as_str()));
+                    self.help(
+                        Stage::Names,
+                        "names-12",
+                        format!("it describes a domain type `{name}` that the program doesn't have"),
+                        help,
+                    );
+                }
+                Some((id, _)) if !reached.domains.contains(&DomainId(id)) => self.find(
+                    Stage::Names,
+                    "names-13",
+                    format!("it describes a domain type `{name}` that the goal's inputs, output and calls don't use"),
+                ),
+                Some((_, declared)) => {
+                    // Resolving the base names its record against `types` (R-IR-13).
+                    self.resolve_at("base", &entry.base);
+                    let canonical = |d: Option<&crate::node::Domain>| d.and_then(|d| to_canonical_string(d).ok());
+                    let wanted = domain_entry(self.program, declared);
+                    if canonical(Some(entry)) != canonical(wanted.as_ref()) {
+                        let help = wanted
+                            .as_ref()
+                            .and_then(|d| to_canonical_string(d).ok())
+                            .map(|d| format!("the program's is `{d}`"));
+                        self.help(
+                            Stage::Types,
+                            "types-27",
+                            format!("its domain type `{name}` differs from the program's"),
+                            help,
+                        );
+                    }
+                }
             }
+            self.path.pop();
         }
-        let mut reached = Vec::new();
-        while let Some(id) = pending.pop() {
-            if reached.contains(&id) {
+        for id in &reached.domains {
+            let Some(domain) = self.program.domain(*id) else {
                 continue;
-            }
-            reached.push(id);
-            for field in self.program.record(id).into_iter().flat_map(|r| &r.fields) {
-                records_in(&field.ty, &mut pending);
+            };
+            if !goal.domains.contains_key(&domain.name) {
+                let rule = format!(
+                    "it doesn't describe the domain type `{}`, which the goal uses",
+                    domain.name
+                );
+                self.find(Stage::Names, "names-14", rule);
             }
         }
-        reached
+        self.path.pop();
     }
 
     /// A `types` entry's fields, with their types resolved.
@@ -790,7 +856,7 @@ impl<'a> Validator<'a> {
                     self.find_at(&["args"], Stage::Types, "types-6", rule, None);
                 }
                 for (j, (arg, param)) in args.iter().zip(&callee.params).enumerate() {
-                    if !assignable(arg, &param.ty) {
+                    if !compat(arg, &param.ty) {
                         let rule = format!(
                             "the call `{}` gives `{}` {} for `{}`, which needs {}",
                             call.binding,
@@ -891,6 +957,12 @@ impl<'a> Validator<'a> {
                 self.path.pop();
                 ty
             }
+            Type::Domain { name } => {
+                self.path.push("name".to_owned());
+                let ty = self.domain_named(name);
+                self.path.pop();
+                ty
+            }
         }
     }
 
@@ -920,6 +992,31 @@ impl<'a> Validator<'a> {
             .iter()
             .position(|r| r.name == name)
             .map_or(HirType::Error, |i| HirType::Record(TypeId(i)))
+    }
+
+    /// The domain type `name`: listed in `domains` (R-IR-24) and declared by the program.
+    fn domain_named(&mut self, name: &str) -> HirType {
+        let goal = self.goal;
+        if !self.compiler_names && !goal.domains.contains_key(name) {
+            let help = did_you_mean(name, goal.domains.keys().map(String::as_str));
+            self.help(
+                Stage::Names,
+                "names-15",
+                format!("there's no domain type called `{name}`"),
+                help,
+            );
+            return HirType::Error;
+        }
+        // One missing from the program has its finding at `/domains`.
+        self.program
+            .domains
+            .iter()
+            .position(|d| d.name == name)
+            .and_then(|i| {
+                let domain = self.program.domains.get(i)?;
+                Some(HirType::Domain(DomainId(i), Box::new(domain.base.clone())))
+            })
+            .unwrap_or(HirType::Error)
     }
 
     /// Binds a local; no local may shadow another (R-IR-12).
@@ -952,21 +1049,136 @@ impl<'a> Validator<'a> {
         nesting: usize,
         expected: Option<HirType>,
     ) -> HirType {
-        let saved = self
-            .inference
-            .as_mut()
-            .and_then(|i| std::mem::replace(&mut i.expected, expected));
+        let saved = std::mem::replace(&mut self.expected, expected);
         self.path.push(segment.to_owned());
         let ty = self.expr(node, depth, nesting);
         self.path.pop();
-        if let Some(inference) = &mut self.inference {
-            inference.expected = saved;
-        }
+        self.expected = saved;
         ty
     }
 
     fn expected(&self) -> Option<HirType> {
-        self.inference.as_ref().and_then(|i| i.expected.clone())
+        self.expected.clone()
+    }
+
+    /// R-IR-25: whether checking expected types applies. [`infer_list_types`] reports only untyped lists, so it skips it.
+    fn checking(&self) -> bool {
+        self.inference.is_none()
+    }
+
+    /// R-IR-25: a direct expression of one domain where a different one is expected — a branch or a list item — is
+    /// `VL0402` even where a join or the list's base annotation would widen it away. Only a mismatch of domains is
+    /// reported here; any other one is the containing position's.
+    fn domain_mismatch(&mut self, segments: &[&str], found: &HirType, expected: Option<&HirType>) {
+        let Some(expected) = expected else { return };
+        if !self.checking() || compat(found, expected) || !compat(&found.erased(), &expected.erased()) {
+            return;
+        }
+        let rule = format!("this is {}, where {} is needed", self.name(found), self.name(expected));
+        self.find_at(segments, Stage::Types, "types-28", rule, None);
+    }
+
+    /// R-IR-25, R-TYP-31: a literal where a domain is expected — at the top, in a list item, a record field or an
+    /// optional — is a member by the domain's closed set and simple constraints; residual conditions aren't evaluated.
+    fn literal_members(&mut self, value: &velme_builtins::Value, ty: &HirType) {
+        use velme_builtins::Value as V;
+        match (ty, value) {
+            (HirType::Optional(inner), _) => self.literal_members(value, inner),
+            (HirType::Domain(id, base), _) => {
+                let literal = match value {
+                    V::Number(n) => Literal::Number(*n),
+                    V::Text(text) => Literal::Text(text),
+                    V::Record(_) => return self.literal_members(value, base),
+                    _ => return,
+                };
+                let Some(domain) = self.program.domain(*id) else { return };
+                if let Some((shown, reason)) = domain.literal_violation(&literal) {
+                    let rule = format!("`{shown}` isn't a valid `{}`: {reason}", domain.name);
+                    self.help(
+                        Stage::Types,
+                        "types-29",
+                        rule,
+                        Some(format!("use a value `{}` allows", domain.name)),
+                    );
+                }
+            }
+            (HirType::List(element), V::List(items)) => {
+                for item in items.iter() {
+                    self.literal_members(item, element);
+                }
+            }
+            (HirType::Record(id), V::Record(record)) => {
+                let Some(declared) = self.program.record(*id) else {
+                    return;
+                };
+                for field in &declared.fields {
+                    if let Some(value) = record.get(&field.name) {
+                        self.literal_members(value, &field.ty);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// R-IR-25 on a literal node, or `-` before a Number one: its value checked against the expected type, or against
+    /// its own type, whose record fields may be domains.
+    fn literal_node(&mut self, node: &Node, ty: &HirType) {
+        if !self.checking() || self.placeholder {
+            return;
+        }
+        let target = match self.expected() {
+            Some(expected) if compat(ty, &expected) => expected,
+            _ => ty.clone(),
+        };
+        match node {
+            Node::Literal { value, .. } => {
+                if let Some(decoded) = value.decoded() {
+                    self.literal_members(&decoded.clone(), &target);
+                }
+            }
+            Node::UnaryOp {
+                op: UnaryOperator::Neg,
+                arg,
+            } => {
+                if let Node::Literal { value, .. } = &**arg
+                    && let Some(velme_builtins::Value::Number(n)) = value.decoded()
+                    && let Ok(negated) = velme_builtins::Number::from(0_i64).checked_sub(*n)
+                {
+                    self.literal_members(&velme_builtins::Value::Number(negated), &target);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// R-TYP-32: `eq`/`ne` of a closed-set domain (or `?` of one) with a Text literal that isn't a member is `VL0402`,
+    /// in either operand order, before both sides widen.
+    fn closed_set_literal(&mut self, domain_side: &HirType, other: &Node, segment: &str) {
+        if !self.checking() {
+            return;
+        }
+        let ty = match domain_side {
+            HirType::Optional(inner) => &**inner,
+            ty => ty,
+        };
+        let (HirType::Domain(id, _), Node::Literal { value, .. }) = (ty, other) else {
+            return;
+        };
+        let (Some(domain), Some(Value::String(text))) = (self.program.domain(*id), Some(value.json())) else {
+            return;
+        };
+        if let DomainRule::OneOf { members } = &domain.rule
+            && !members.contains(text)
+        {
+            let rule = format!(
+                "`\"{text}\"` isn't a valid `{}`: it isn't one of its members",
+                domain.name
+            );
+            let listed: Vec<String> = members.iter().map(|m| format!("`\"{m}\"`")).collect();
+            let help = Some(format!("a `{}` is one of {}", domain.name, listed.join(", ")));
+            self.find_at(&[segment], Stage::Types, "types-30", rule, help);
+        }
     }
 
     /// The type of `node` at nesting `depth` (the root is 1), inside `nesting` collection nodes (R-IR-14, R-IR-17).
@@ -988,14 +1200,22 @@ impl<'a> Validator<'a> {
         }
         let inner = depth + 1;
         let ty = match node {
-            Node::Literal { ty, value } => self.literal(ty, value),
+            Node::Literal { ty, value } => {
+                let ty = self.literal(ty, value);
+                self.literal_node(node, &ty);
+                ty
+            }
             Node::Input { name } => self.input(name),
             Node::Local { name } => self.local(name),
             Node::Record { ty, fields } => self.record(ty, fields, inner, nesting),
             Node::List { of, items } => self.inferred_list(node, of, items, inner, nesting),
             Node::FieldGet { of, field } => self.field(of, field, inner, nesting),
             Node::BinaryOp { op, left, right } => self.binary(*op, left, right, inner, nesting),
-            Node::UnaryOp { op, arg } => self.unary(*op, arg, inner, nesting),
+            Node::UnaryOp { op, arg } => {
+                let ty = self.unary(*op, arg, inner, nesting);
+                self.literal_node(node, &ty);
+                ty
+            }
             Node::Let { bind, body } => self.let_in(bind, body, inner, nesting),
             Node::Condition { cond, then, otherwise } => self.condition(cond, then, otherwise, inner, nesting),
             Node::Narrow { of, default } => self.narrow(of, default, inner, nesting),
@@ -1178,7 +1398,7 @@ impl<'a> Validator<'a> {
                     self.find_at(&[field], Stage::Names, "names-9", rule, help);
                     self.about(Subject::Record(record.name.clone()));
                 }
-                Some(f) if !assignable(&found, &f.ty) => {
+                Some(f) if !compat(&found, &f.ty) => {
                     let rule = format!(
                         "the field `{field}` of `{}` holds {}, not {}",
                         record.name,
@@ -1235,7 +1455,8 @@ impl<'a> Validator<'a> {
             }
             return HirType::Error;
         };
-        let wire = ir_type(self.program, &element).unwrap_or(Type::Nothing {});
+        // The annotation is the recursive base; the items keep the domain as their expected type (R-IR-25).
+        let wire = body_type(self.program, &element).unwrap_or(Type::Nothing {});
         if let Some(inference) = &mut self.inference {
             inference.lists.insert(std::ptr::from_ref(node) as usize, wire.clone());
         }
@@ -1293,16 +1514,30 @@ impl<'a> Validator<'a> {
                 ),
             );
         }
+        // The list's own expected element type, which may be a domain its base annotation can't name (R-IR-25).
+        let element = match self.expected() {
+            Some(HirType::List(element)) => Some(*element),
+            Some(HirType::Optional(inner)) => match *inner {
+                HirType::List(element) => Some(*element),
+                _ => None,
+            },
+            _ => None,
+        }
+        .filter(|element| compat(&of, &element.erased()));
         self.path.push("items".to_owned());
         for (i, item) in items.iter().enumerate() {
-            let found = self.child(&i.to_string(), item, depth, nesting);
-            if !assignable(&found, &of) {
+            let at = i.to_string();
+            let expected = element.clone().unwrap_or_else(|| of.clone());
+            let found = self.expected_child(&at, item, depth, nesting, Some(expected));
+            if !compat(&found, &of) {
                 let rule = format!(
                     "this item is {}, but the list holds {}",
                     self.name(&found),
                     self.name(&of)
                 );
-                self.find_at(&[&i.to_string()], Stage::Types, "types-11", rule, None);
+                self.find_at(&[&at], Stage::Types, "types-11", rule, None);
+            } else {
+                self.domain_mismatch(&[&at], &found, element.as_ref());
             }
         }
         self.path.pop();
@@ -1312,7 +1547,8 @@ impl<'a> Validator<'a> {
     /// A field of a record that is not optional (R-IR-05).
     fn field(&mut self, of: &'a Node, field: &str, depth: usize, nesting: usize) -> HirType {
         let base = self.child("of", of, depth, nesting);
-        match &base {
+        // A record domain's fields are its underlying record's (R-TYP-30).
+        match base.widened() {
             HirType::Record(id) => {
                 let Some(record) = self.program.record(*id) else {
                     return HirType::Error;
@@ -1356,6 +1592,12 @@ impl<'a> Validator<'a> {
                 self.child("right", right, depth, nesting),
             )
         };
+        if matches!(op, BinaryOperator::Eq | BinaryOperator::Ne) {
+            self.closed_set_literal(&l, right, "right");
+            self.closed_set_literal(&r, left, "left");
+        }
+        // Operators see bases: distinct Number domains compare as Numbers (R-TYP-30, R-IR-25).
+        let (l, r) = (l.erased(), r.erased());
         let (operand, result) = match op {
             BinaryOperator::Add | BinaryOperator::Sub | BinaryOperator::Mul | BinaryOperator::Div => {
                 (HirType::Number, HirType::Number)
@@ -1394,7 +1636,7 @@ impl<'a> Validator<'a> {
 
     /// `compiler/21` §3 `unary`: `is_empty` takes an optional, a list or text (D-60).
     fn unary(&mut self, op: UnaryOperator, arg: &'a Node, depth: usize, nesting: usize) -> HirType {
-        let found = self.child("arg", arg, depth, nesting);
+        let found = self.child("arg", arg, depth, nesting).erased();
         let (fits, wanted, result) = match op {
             UnaryOperator::Neg => (is(&found, &HirType::Number), "a Number", HirType::Number),
             UnaryOperator::Not => (is(&found, &HirType::Boolean), "a Boolean", HirType::Boolean),
@@ -1446,13 +1688,16 @@ impl<'a> Validator<'a> {
             let rule = format!("the condition of `if` must be a Boolean, not {}", self.name(&c));
             self.find_at(&["cond"], Stage::Types, "types-17", rule, None);
         }
+        let expected = self.expected();
         let (a, b) = if self.inference.is_some() {
-            self.siblings("then", then, "else", otherwise, depth, nesting, self.expected())
+            self.siblings("then", then, "else", otherwise, depth, nesting, expected)
         } else {
-            (
-                self.child("then", then, depth, nesting),
-                self.child("else", otherwise, depth, nesting),
-            )
+            let a = self.expected_child("then", then, depth, nesting, expected.clone());
+            let b = self.expected_child("else", otherwise, depth, nesting, expected.clone());
+            // Each branch against the expectation before they join, since a join widens distinct domains (R-IR-25).
+            self.domain_mismatch(&["then"], &a, expected.as_ref());
+            self.domain_mismatch(&["else"], &b, expected.as_ref());
+            (a, b)
         };
         join(&a, &b).unwrap_or_else(|| {
             let rule = format!(
@@ -1468,11 +1713,22 @@ impl<'a> Validator<'a> {
     /// `of: T?` and `default: T` give `T` (R-IR-05).
     fn narrow(&mut self, of: &'a Node, default: &'a Node, depth: usize, nesting: usize) -> HirType {
         let found = self.child("of", of, depth, nesting);
-        let expected = match &found {
-            HirType::Optional(of) => Some(*of.clone()),
-            _ => None,
+        // A list default takes its type from the optional (R-SYNTH-53). A checked default takes only what is expected
+        // of the whole `unwrap_or`: a base default outside the optional's domain widens the result to the base
+        // (R-IR-25). A lowered check's placeholder default takes nothing.
+        let expected = if self.placeholders {
+            None
+        } else if self.checking() {
+            self.expected()
+        } else {
+            match &found {
+                HirType::Optional(of) => Some(*of.clone()),
+                _ => None,
+            }
         };
+        let outer = std::mem::replace(&mut self.placeholder, self.placeholders);
         let fallback = self.expected_child("default", default, depth, nesting, expected);
+        self.placeholder = outer;
         let present = match found {
             HirType::Optional(inner) => *inner,
             HirType::Nothing => fallback.clone(),
@@ -1486,14 +1742,21 @@ impl<'a> Validator<'a> {
                 other
             }
         };
-        if !assignable(&fallback, &present) {
-            let rule = format!(
-                "the default of `unwrap_or` is {}, but the value is {}",
-                self.name(&fallback),
-                self.name(&present)
-            );
-            self.find_at(&["default"], Stage::Types, "types-20", rule, None);
+        if assignable(&fallback, &present) {
+            return present;
         }
+        // A default of another domain, or of the base, widens the result to the base (R-IR-25).
+        if (fallback.has_domain() || present.has_domain())
+            && let Some(joined) = join(&fallback, &present)
+        {
+            return joined;
+        }
+        let rule = format!(
+            "the default of `unwrap_or` is {}, but the value is {}",
+            self.name(&fallback),
+            self.name(&present)
+        );
+        self.find_at(&["default"], Stage::Types, "types-20", rule, None);
         present
     }
 
@@ -1589,7 +1852,7 @@ impl<'a> Validator<'a> {
         let (element, nesting) = self.list_of(node, list, depth, nesting);
         let ty = self.lambda("key", key, element.clone(), depth, nesting);
         if !is(&ty, &HirType::Number) {
-            let (rule, help) = if ty == HirType::Text {
+            let (rule, help) = if *ty.widened() == HirType::Text {
                 (
                     "`sort_by` can't sort by text yet; its key must give a Number".to_owned(),
                     Some("sort by a number instead".to_owned()),
@@ -1655,7 +1918,6 @@ impl<'a> Validator<'a> {
 
 #[derive(Default)]
 struct Inference {
-    expected: Option<HirType>,
     types: BTreeMap<usize, HirType>,
     lists: BTreeMap<usize, Type>,
     untyped: Vec<String>,
@@ -1682,6 +1944,7 @@ fn infer_types(body: &Node, request: &Request<'_>) -> Inference {
         builtins_version: BUILTINS_VERSION.to_owned(),
         goal: target.name.clone(),
         types: BTreeMap::new(),
+        domains: BTreeMap::new(),
         inputs: Vec::new(),
         output: Type::Nothing {},
         calls: Vec::new(),
@@ -1700,10 +1963,8 @@ fn infer_types(body: &Node, request: &Request<'_>) -> Inference {
         for binding in &target.bindings {
             validator.scope.push((&binding.name, binding.ty.clone()));
         }
-        validator.inference = Some(Inference {
-            expected: Some(target.output.clone()),
-            ..Inference::default()
-        });
+        validator.expected = Some(target.output.clone());
+        validator.inference = Some(Inference::default());
         validator.path.push("body".to_owned());
         validator.expr(body, 1, 0);
         let inference = validator.inference.unwrap_or_default();
@@ -1874,18 +2135,18 @@ fn fixed_parameter(name: &str, arity: usize, index: usize) -> Option<HirType> {
         .then_some(first)
 }
 
-/// The record types in `ty`, each once, in the order first met.
+/// The record types in `ty`, a record domain's underlying record included, each once, in the order first met.
 fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
     match ty {
-        HirType::Optional(inner) | HirType::List(inner) => records_in(inner, out),
+        HirType::Optional(inner) | HirType::List(inner) | HirType::Domain(_, inner) => records_in(inner, out),
         HirType::Record(id) if !out.contains(id) => out.push(*id),
         _ => {}
     }
 }
 
-/// `ty` is `wanted`, or already has a finding.
+/// `ty` is `wanted`, or a domain of it (R-TYP-30), or already has a finding.
 fn is(ty: &HirType, wanted: &HirType) -> bool {
-    *ty == HirType::Error || ty == wanted
+    *ty == HirType::Error || ty.widened() == wanted
 }
 
 /// `T?`, where `T??` is `T?` (§2.1).

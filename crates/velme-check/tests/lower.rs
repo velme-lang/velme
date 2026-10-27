@@ -136,3 +136,38 @@ fn lowered_checks_are_not_held_to_the_limits_of_synthesized_ir() {
         .expect("lowers");
     assert_eq!(lowered, 4);
 }
+
+/// R1 (D3 fix round 1): a narrowed optional of a domain lowers through `unwrap_or` with a placeholder default the
+/// domain doesn't admit (`""` for a closed set, `0` for `value > 0`, an all-zero record whose field is an `Age`), also
+/// where a domain is expected of it (a record field, a list item). The default only stands in for a present value, so
+/// the lowered IR validates in the check scope (`compiler/21` R-IR-25).
+#[test]
+fn r1_narrowed_domain_optionals_lower_with_placeholder_defaults() {
+    let source = r#"language: velme/0.2
+
+type Risk = Text one of "LOW", "HIGH"
+type Score = Number where value > 0
+type Age = Number where value >= 18
+type Person:
+    age: Age
+    risk: Risk?
+    score: Score?
+
+goal Rate(person: Person, other: Person?) -> Text:
+    plan: "Rate."
+    check:
+        - person.risk is not empty and person.risk == "LOW"
+        - person.score is not empty and person.score > 1
+        - other is not empty and other.age >= 18
+        - other is not empty and contains([person], other)
+        - person.risk is not empty and contains(["LOW"], person.risk)
+        - person.risk is not empty and Person(age: 20, risk: person.risk, score: nothing) != person
+        - other is not empty and [other] != [person]
+"#;
+    let program = program(source);
+    let goal = &program.goals[0];
+    let scope = CheckScope::new(&program, goal).expect("scope");
+    for check in &goal.checks {
+        lower_check(&program, goal, &scope, check).expect("lowers and validates");
+    }
+}

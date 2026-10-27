@@ -548,7 +548,7 @@ mod tests {
             .map(|body| {
                 let doc = format!(
                     r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Compute",
-                        "types": {{}}, "inputs": [["n", {{"t": "Number"}}]], "output": {{"t": "Number"}}, "body": {body}}}"#
+                        "types": {{}}, "domains": {{}}, "inputs": [["n", {{"t": "Number"}}]], "output": {{"t": "Number"}}, "body": {body}}}"#
                 );
                 valid_ir(&program, &doc)
             })

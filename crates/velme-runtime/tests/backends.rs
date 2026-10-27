@@ -77,7 +77,7 @@ fn literal(n: i64) -> Value {
 
 fn ir(goal: &str, body: &Value) -> Value {
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": goal, "types": {},
-           "inputs": [["n", number()]], "output": number(), "body": body})
+           "domains": {}, "inputs": [["n", number()]], "output": number(), "body": body})
 }
 
 /// The reply that carries `ir`'s body alone (D-103).

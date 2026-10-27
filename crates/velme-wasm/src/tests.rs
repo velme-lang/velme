@@ -293,7 +293,7 @@ pub(super) fn document(body: &str) -> String {
     format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Everything",
             "types": {{"Item": {{"fields": [["k", {number}], ["name", {{"t": "Text"}}]]}}}},
-            "inputs": [["xs", {{"t": "List", "of": {number}}}], ["items", {{"t": "List", "of": {item}}}],
+            "domains": {{}}, "inputs": [["xs", {{"t": "List", "of": {number}}}], ["items", {{"t": "List", "of": {item}}}],
                 ["s", {{"t": "Text"}}], ["n", {{"t": "Optional", "of": {number}}}]],
             "output": {item}, "body": {body}}}"#
     )
@@ -686,7 +686,7 @@ fn wide(depth: usize, input: &str) -> (String, String) {
     ));
     let document = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "Count",
-            "types": {{{}}}, "inputs": [["book", {ty}]], "output": {{"t": "Number"}}, "body": {}}}"#,
+            "types": {{{}}}, "domains": {{}}, "inputs": [["book", {ty}]], "output": {{"t": "Number"}}, "body": {}}}"#,
         types.join(", "),
         number("20000")
     );
@@ -713,7 +713,7 @@ pub(super) fn nothing_goal(output: &str, output_ir: &str, body: &str) -> ValidIr
     let source = format!("language: velme/0.2\n\ngoal G(xs: List<Number>) -> {output}:\n    plan: \"Nothing much.\"\n");
     let document = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
-            "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {output_ir}, "body": {body}}}"#
+            "domains": {{}}, "inputs": [["xs", {{"t": "List", "of": {{"t": "Number"}}}}]], "output": {output_ir}, "body": {body}}}"#
     );
     valid_ir(&program(&source), &document)
 }

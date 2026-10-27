@@ -170,6 +170,8 @@ expression: "pretty(&request(\"Summary\"))"
       "source": "result != \"\""
     }
   ],
+  "declarations": {},
+  "domains": {},
   "examples": [],
   "goal": "Summary",
   "ir_version": "0.2",
@@ -225,7 +227,7 @@ expression: "pretty(&request(\"Summary\"))"
   ],
   "output_schema": "<reply schema>",
   "plan": "Join the badge and the score.",
-  "request_version": "0.1",
+  "request_version": "0.2",
   "signature": {
     "name": "Summary",
     "output": {

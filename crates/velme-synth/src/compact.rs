@@ -40,8 +40,41 @@ pub fn version() -> String {
     Fingerprint::of(table()).map_or_else(|_| String::new(), |hash| hash.hex().chars().take(12).collect())
 }
 
+/// A definition of `schema` that nothing else in it refers to.
+fn unused_definition(schema: &Value) -> Option<String> {
+    let definitions = schema.get("$defs")?.as_object()?;
+    definitions.keys().find_map(|name| {
+        let reference = Value::String(format!("#/$defs/{name}"));
+        let mut rest = schema.clone();
+        if let Some(Value::Object(definitions)) = rest.get_mut("$defs") {
+            definitions.remove(name);
+        }
+        (!refers(&rest, &reference)).then(|| name.clone())
+    })
+}
+
+fn refers(value: &Value, reference: &Value) -> bool {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .any(|(key, v)| (key == "$ref" && v == reference) || refers(v, reference)),
+        Value::Array(items) => items.iter().any(|v| refers(v, reference)),
+        _ => false,
+    }
+}
+
 fn build() -> AliasTable {
-    let schema = velme_ir::schema();
+    let mut schema = velme_ir::schema();
+    // The `domains` table is the compiler's alone (`compiler/21` R-IR-24): no reply spells its names, so they take no
+    // alias and leave the reply's aliases as they were. The definitions only it uses go with it.
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        properties.remove("domains");
+    }
+    while let Some(unused) = unused_definition(&schema) {
+        if let Some(Value::Object(definitions)) = schema.get_mut("$defs") {
+            definitions.remove(&unused);
+        }
+    }
     let mut keys = BTreeSet::new();
     let mut kinds = BTreeSet::new();
     collect(&schema, &mut keys, &mut kinds);

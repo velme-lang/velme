@@ -138,9 +138,9 @@ pub fn has_certificate(pem: &[u8]) -> bool {
 
 /// What is asked of the service.
 enum Call<'a> {
-    /// `GET /v1/describe` (R-SYNTH-26).
+    /// `GET /v2/describe` (R-SYNTH-26).
     Describe,
-    /// `POST /v1/synthesize` with the canonical request as the body.
+    /// `POST /v2/synthesize` with the canonical request as the body.
     Synthesize(&'a str),
 }
 
@@ -227,7 +227,7 @@ impl External {
         let mut response = match call {
             Call::Describe => {
                 let mut request = agent
-                    .get(&self.config.url.endpoint("/v1/describe"))
+                    .get(&self.config.url.endpoint("/v2/describe"))
                     .header("accept", "application/json");
                 if let Some(auth) = &auth {
                     request = request.header("authorization", auth.as_str());
@@ -236,7 +236,7 @@ impl External {
             }
             Call::Synthesize(body) => {
                 let mut request = agent
-                    .post(&self.config.url.endpoint("/v1/synthesize"))
+                    .post(&self.config.url.endpoint("/v2/synthesize"))
                     .header("content-type", "application/json")
                     .header("accept", "application/json");
                 if let Some(auth) = &auth {
@@ -554,8 +554,8 @@ mod tests {
         let url = ExternalUrl::parse(" https://svc.example.com:8443/base/ ").expect("a URL");
         assert_eq!(url.host(), "svc.example.com");
         assert_eq!(
-            url.endpoint("/v1/describe"),
-            "https://svc.example.com:8443/base/v1/describe"
+            url.endpoint("/v2/describe"),
+            "https://svc.example.com:8443/base/v2/describe"
         );
         assert_eq!(ExternalUrl::parse("http://[::1]:80").expect("a URL").host(), "[::1]");
     }

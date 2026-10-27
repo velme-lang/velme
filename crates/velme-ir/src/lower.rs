@@ -7,8 +7,8 @@ use velme_builtins::Number;
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType};
 
-use crate::fingerprint::reachable;
-use crate::node::{Call, CallNode, Goal, ItemShape, Lambda, Node, RecordType, Type};
+use crate::fingerprint::tables;
+use crate::node::{Bound, Call, CallNode, Domain, Goal, ItemShape, Lambda, Length, Node, RecordType, Type};
 use crate::{IR_VERSION, signature};
 
 /// The call section of `goal`: one `call` node per binding, in source order, each with its child's signature
@@ -49,19 +49,7 @@ pub fn calls(program: &Program, goal: GoalId) -> Result<Vec<CallNode>, Diagnosti
 /// provider and needs none.
 pub fn wired_goal(program: &Program, goal: GoalId) -> Result<Goal, Diagnostic> {
     let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
-    let mut roots: Vec<&HirType> = target.params.iter().map(|p| &p.ty).chain([&target.output]).collect();
-    for binding in &target.bindings {
-        let callee = program
-            .goals
-            .get(binding.callee.0)
-            .ok_or_else(Diagnostic::internal_error)?;
-        roots.extend(callee.params.iter().map(|p| &p.ty).chain([&callee.output]));
-    }
-    let types: BTreeMap<String, RecordType> = reachable(program, roots.into_iter())
-        .ok_or_else(Diagnostic::internal_error)?
-        .into_iter()
-        .map(|(name, record)| (name.to_owned(), record))
-        .collect();
+    let (types, domains) = goal_tables(program, goal)?;
     let inputs = target
         .params
         .iter()
@@ -77,6 +65,7 @@ pub fn wired_goal(program: &Program, goal: GoalId) -> Result<Goal, Diagnostic> {
         builtins_version: velme_builtins::BUILTINS_VERSION.to_owned(),
         goal: target.name.clone(),
         types,
+        domains,
         inputs,
         output: ir_type(program, &target.output).ok_or_else(Diagnostic::internal_error)?,
         calls: calls(program, goal)?,
@@ -84,6 +73,25 @@ pub fn wired_goal(program: &Program, goal: GoalId) -> Result<Goal, Diagnostic> {
             name: "result".to_owned(),
         },
     })
+}
+
+/// An IR goal's `types` and `domains`, by name (`compiler/21` R-IR-01, R-IR-24).
+pub type Tables = (BTreeMap<String, RecordType>, BTreeMap<String, Domain>);
+
+/// The IR's `types` and `domains` of `goal`, by name: the records and domains its inputs, output and calls' signatures
+/// reach (`compiler/21` R-IR-01, R-IR-24). What the compiler writes, and a candidate is completed with (`compiler/22`
+/// R-SYNTH-10).
+pub fn goal_tables(program: &Program, goal: GoalId) -> Result<Tables, Diagnostic> {
+    let target = program.goals.get(goal.0).ok_or_else(Diagnostic::internal_error)?;
+    let mut roots: Vec<&HirType> = target.params.iter().map(|p| &p.ty).chain([&target.output]).collect();
+    for binding in &target.bindings {
+        let callee = program
+            .goals
+            .get(binding.callee.0)
+            .ok_or_else(Diagnostic::internal_error)?;
+        roots.extend(callee.params.iter().map(|p| &p.ty).chain([&callee.output]));
+    }
+    tables(program, roots).ok_or_else(Diagnostic::internal_error)
 }
 
 /// `ty` as IR (`compiler/21` §2.1); `None` for a type with an error, which a checked program never has.
@@ -102,9 +110,42 @@ pub fn ir_type(program: &Program, ty: &HirType) -> Option<Type> {
         HirType::Record(id) => Type::Record {
             name: program.record(*id)?.name.clone(),
         },
-        // Domains reach the IR as their bases until the IR has a Domain type (D-158, D2).
-        HirType::Domain(_, base) => return ir_type(program, base),
+        HirType::Domain(id, _) => Type::Domain {
+            name: program.domain(*id)?.name.clone(),
+        },
         HirType::Error => return None,
+    })
+}
+
+/// `ty` as a body annotation (`literal.type`, `list.of`): its IR type with every domain replaced by its base, since a
+/// body never names a Domain (`compiler/21` R-IR-25).
+pub fn body_type(program: &Program, ty: &HirType) -> Option<Type> {
+    ir_type(program, &ty.erased())
+}
+
+/// The `domains` entry of `domain` (`compiler/21` R-IR-24): its base and the simple constraints extracted from its
+/// condition (R-CHK-14), bounds as their exact values; residual conditions stay in HIR (R-CHK-15).
+pub(crate) fn domain_entry(program: &Program, domain: &hir::DomainType) -> Option<Domain> {
+    let bound = |b: &Option<hir::Bound>| -> Option<Option<Bound>> {
+        let Some(b) = b else { return Some(None) };
+        Some(Some(Bound {
+            value: serde_json::from_str(&number(&b.value)?).ok()?,
+            inclusive: b.inclusive,
+        }))
+    };
+    let c = &domain.constraints;
+    let members = match &domain.rule {
+        hir::DomainRule::OneOf { members } => Some(members.clone()),
+        hir::DomainRule::Where { .. } => None,
+    };
+    let (min, max) = (bound(&c.min_length)?, bound(&c.max_length)?);
+    Some(Domain {
+        base: ir_type(program, &domain.base)?,
+        lower: bound(&c.lower)?,
+        upper: bound(&c.upper)?,
+        whole: c.whole,
+        members,
+        length: (min.is_some() || max.is_some()).then_some(Length { lower: min, upper: max }),
     })
 }
 
@@ -171,7 +212,7 @@ impl Args<'_> {
             ExprKind::List { items } => {
                 let HirType::List(element) = &e.ty else { return None };
                 Node::List {
-                    of: ir_type(self.program, element)?,
+                    of: body_type(self.program, element)?,
                     items: items.iter().map(|item| self.arg(item)).collect::<Option<_>>()?,
                 }
             }

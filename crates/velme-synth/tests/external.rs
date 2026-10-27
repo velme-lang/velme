@@ -333,7 +333,7 @@ fn a_redirect_is_not_followed() {
     );
     // Another host that the redirect names gets nothing.
     let elsewhere = MockServer::start([MockResponse::ok(r#"{"question": "followed"}"#)]);
-    let target = format!("{}/v1/synthesize", elsewhere.url());
+    let target = format!("{}/v2/synthesize", elsewhere.url());
     let mock = MockServer::start([MockResponse::status(307, "").header("location", &target)]);
     let (backend, _) = at(mock.url(), Some("tok-redirect-0123456"), PATIENT);
     assert!(failure(complete(&backend, &request())).contains("redirect"));
@@ -376,9 +376,9 @@ fn the_token_is_sent_as_a_bearer_and_a_rejection_is_named() {
         let sent = mock.requests();
         assert_eq!(sent[0].headers["authorization"], "Bearer tok-123-0123456789");
         assert_eq!(sent[0].method, "GET");
-        assert_eq!(sent[0].path, "/v1/describe");
+        assert_eq!(sent[0].path, "/v2/describe");
         assert_eq!(sent[1].method, "POST");
-        assert_eq!(sent[1].path, "/v1/synthesize");
+        assert_eq!(sent[1].path, "/v2/synthesize");
         assert_eq!(sent[1].headers["authorization"], "Bearer tok-123-0123456789");
     }
     // Without a token there is no header at all.
@@ -661,4 +661,17 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
             );
         }
     }
+}
+
+/// AC-SYNTH-63: `describe` is a `/v2` route, and a backend that serves only `/v1` answers it with a 404: it is never
+/// used, as a backend failure (`VL0406`), and Velme tries no other route.
+#[test]
+fn ac_synth_63_an_old_only_backend_is_not_used() {
+    let mock = MockServer::start([MockResponse::status(404, "no route")]);
+    let (backend, _) = at(mock.url(), None, PATIENT);
+    let error = block_on(backend.identify()).expect_err("no identity");
+    assert!(matches!(error, ProviderError::BackendFailed { .. }), "{error:?}");
+    let sent = mock.requests();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].path, "/v2/describe");
 }

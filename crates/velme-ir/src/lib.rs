@@ -10,18 +10,18 @@ mod node;
 mod validate;
 
 pub use fingerprint::{
-    Fingerprint, FingerprintError, Synthesis, compatibility, contract_key, declaration_document, declaration_hash,
-    execution_id, signature, signature_document, synthesis_key,
+    Declarations, Fingerprint, FingerprintError, Reachability, Synthesis, compatibility, contract_key,
+    declaration_document, declaration_hash, declarations, execution_id, signature, signature_document, synthesis_key,
 };
 pub use json::{CanonicalError, MAX_JSON_DEPTH, ParseError, from_json_str, from_json_str_within, to_canonical_string};
-pub use lower::{calls, ir_type, wired_goal};
+pub use lower::{Tables, body_type, calls, goal_tables, ir_type, wired_goal};
 pub use mapping::{
     DecodeError, DecodeProblem, OutputTooBig, SHOWN_CHARS, SHOWN_ITEMS, SHOWN_TOTAL, decode_str, decode_value,
     display_value, encode_value, json_kind,
 };
 pub use node::{
-    BinaryOperator, Call, CallNode, Goal, ItemShape, Lambda, LiteralValue, Node, RecordType, ReduceLambda, Type,
-    UnaryOperator,
+    BinaryOperator, Bound, Call, CallNode, Domain, Goal, ItemShape, Lambda, Length, LiteralValue, Node, RecordType,
+    ReduceLambda, Type, UnaryOperator,
 };
 pub use validate::{
     CheckScope, Invalid, Origin, Request, Subject, Trusted, TrustedExpr, ValidIr, infer_list_types, validate,

@@ -217,7 +217,7 @@ fn p0c_the_bridge_follows_the_request_format_and_survives_a_half_written_answer(
 
     let mut stream = std::net::TcpStream::connect(bridge.url.trim_start_matches("http://")).expect("connects");
     stream
-        .write_all(b"POST /v1/synthesize HTTP/1.1\r\nHost: x\r\nContent-Length: -5\r\n\r\n")
+        .write_all(b"POST /v2/synthesize HTTP/1.1\r\nHost: x\r\nContent-Length: -5\r\n\r\n")
         .expect("writes");
     let mut reply = String::new();
     stream.read_to_string(&mut reply).expect("reads");

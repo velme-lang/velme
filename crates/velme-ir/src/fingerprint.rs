@@ -16,7 +16,7 @@ use velme_builtins::limits::{MAX_LIST_SIZE, MAX_OUTPUT_BYTES};
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, DomainId, DomainRule, Expr, ExprKind, GoalId, Program, Type as HirType, TypeId};
 
-use crate::lower::{ir_type, number};
+use crate::lower::{Tables, domain_entry, ir_type, number};
 use crate::node::RecordType;
 use crate::{CanonicalError, IR_VERSION, to_canonical_string};
 
@@ -181,7 +181,7 @@ fn signature_doc(program: &Program, goal: &hir::Goal) -> Option<Json> {
         .iter()
         .map(|p| Some(json!([p.name, sig_type(program, &p.ty)?])))
         .collect::<Option<Vec<_>>>()?;
-    let mut reach = Reach::default();
+    let mut reach = Reach::new(Reachability::Contract);
     for ty in goal.params.iter().map(|p| &p.ty).chain([&goal.output]) {
         reach.ty(program, ty)?;
     }
@@ -210,7 +210,7 @@ pub fn declaration_hash(program: &Program, id: DomainId) -> Result<Fingerprint, 
 /// The JSON document whose hash is [`declaration_hash`] (R-ART-26), for golden tests.
 #[doc(hidden)]
 pub fn declaration_document(program: &Program, id: DomainId) -> Option<Json> {
-    let mut reach = Reach::default();
+    let mut reach = Reach::new(Reachability::Contract);
     reach.domain_parts(program, id)?;
     let mut dependencies: Vec<(&str, Json)> = reach
         .records
@@ -231,18 +231,10 @@ pub fn declaration_document(program: &Program, id: DomainId) -> Option<Json> {
     Some(json!({"declaration": declaration, "dependencies": dependencies}))
 }
 
-/// A type in a signature: the IR's JSON form, with a domain written `{"t": "Domain", "name": …}` (R-ART-26).
+/// A type in a signature: exactly the IR's own serialization, a domain written `{"t": "Domain", "name": …}`
+/// (R-ART-26), so domain-free signatures keep their D1 bytes (R-ART-27).
 fn sig_type(program: &Program, ty: &HirType) -> Option<Json> {
-    if !ty.has_domain() {
-        // Exactly the IR's own serialization, so domain-free signatures keep their D1 bytes (R-ART-27).
-        return serde_json::to_value(ir_type(program, ty)?).ok();
-    }
-    Some(match ty {
-        HirType::Domain(id, _) => json!({"t": "Domain", "name": program.domain(*id)?.name}),
-        HirType::Optional(inner) => json!({"t": "Optional", "of": sig_type(program, inner)?}),
-        HirType::List(element) => json!({"t": "List", "of": sig_type(program, element)?}),
-        other => serde_json::to_value(ir_type(program, other)?).ok()?,
-    })
+    serde_json::to_value(ir_type(program, ty)?).ok()
 }
 
 /// `[[name, type], …]` of `fields`.
@@ -291,29 +283,80 @@ fn record_domain(program: &Program, id: TypeId) -> Option<DomainId> {
         .map(DomainId)
 }
 
-/// The declarations a signature or a declaration reaches (R-ART-26): records through fields, and domains through
-/// fields, bases and the record constructors in their conditions, transitively.
-#[derive(Default)]
+/// Which declarations a type reaches: the IR's tables or a signature's (`compiler/21` R-IR-24, `runtime/32` R-ART-26).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reachability {
+    /// The IR's `types` and `domains` (R-IR-01): records and domains through fields and domain bases, a record
+    /// domain's underlying record included; domain conditions aren't shipped in IR, so their constructors reach nothing.
+    Ir,
+    /// A signature's and a declaration hash's (R-ART-26), and the prompt's Types (`compiler/22` R-SYNTH-60): also the
+    /// records the constructors in domain conditions name, transitively; a record domain stands for its underlying
+    /// record, which isn't listed again.
+    Contract,
+}
+
+/// The declarations some types reach, by [`Reachability`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Declarations {
+    /// The record types.
+    pub records: BTreeSet<TypeId>,
+    /// The domain types.
+    pub domains: BTreeSet<DomainId>,
+}
+
+/// The declarations `roots` reach under `reachability`: the one reachability every IR table, signature and prompt
+/// uses. `None` for HIR [`velme_sema::analyze`] doesn't return.
+pub fn declarations<'p>(
+    program: &'p Program,
+    roots: impl IntoIterator<Item = &'p HirType>,
+    reachability: Reachability,
+) -> Option<Declarations> {
+    let mut reach = Reach::new(reachability);
+    for ty in roots {
+        reach.ty(program, ty)?;
+    }
+    Some(Declarations {
+        records: reach.records,
+        domains: reach.domains,
+    })
+}
+
+/// The declarations a signature, a declaration or an IR goal reaches (R-ART-26, R-IR-01): records through fields, and
+/// domains through fields and bases, transitively; for a contract also through the record constructors in their
+/// conditions.
 struct Reach {
+    reachability: Reachability,
     records: BTreeSet<TypeId>,
     domains: BTreeSet<DomainId>,
 }
 
 impl Reach {
+    fn new(reachability: Reachability) -> Self {
+        Reach {
+            reachability,
+            records: BTreeSet::new(),
+            domains: BTreeSet::new(),
+        }
+    }
+
     fn ty(&mut self, program: &Program, ty: &HirType) -> Option<()> {
         match ty {
             HirType::Optional(inner) | HirType::List(inner) => self.ty(program, inner)?,
             HirType::Domain(id, _) => self.domain(program, *id)?,
             HirType::Record(id) => match record_domain(program, *id) {
                 Some(domain) => self.domain(program, domain)?,
-                None if self.records.insert(*id) => {
-                    for field in &program.record(*id)?.fields {
-                        self.ty(program, &field.ty)?;
-                    }
-                }
-                None => {}
+                None => self.record(program, *id)?,
             },
             _ => {}
+        }
+        Some(())
+    }
+
+    fn record(&mut self, program: &Program, id: TypeId) -> Option<()> {
+        if self.records.insert(id) {
+            for field in &program.record(id)?.fields {
+                self.ty(program, &field.ty)?;
+            }
         }
         Some(())
     }
@@ -329,11 +372,16 @@ impl Reach {
     fn domain_parts(&mut self, program: &Program, id: DomainId) -> Option<()> {
         let domain = program.domain(id)?;
         if let HirType::Record(record) = &domain.base {
+            if self.reachability == Reachability::Ir {
+                self.records.insert(*record);
+            }
             for field in &program.record(*record)?.fields {
                 self.ty(program, &field.ty)?;
             }
         }
-        if let DomainRule::Where { condition } = &domain.rule {
+        if self.reachability == Reachability::Contract
+            && let DomainRule::Where { condition } = &domain.rule
+        {
             self.constructors(program, condition)?;
         }
         Some(())
@@ -403,37 +451,32 @@ fn children(e: &Expr) -> Vec<&Expr> {
     }
 }
 
-/// Every record type reachable from `roots`, through fields too, as IR (`compiler/21` R-IR-01).
-pub(crate) fn reachable<'p>(
-    program: &'p Program,
-    roots: impl Iterator<Item = &'p HirType>,
-) -> Option<BTreeMap<&'p str, RecordType>> {
-    let mut pending = Vec::new();
-    for ty in roots {
-        records_in(ty, &mut pending);
-    }
-    let mut types = BTreeMap::new();
-    while let Some(id) = pending.pop() {
-        let record = program.record(id)?;
-        if types.contains_key(record.name.as_str()) {
-            continue;
-        }
-        let mut fields = Vec::new();
-        for field in &record.fields {
-            records_in(&field.ty, &mut pending);
-            fields.push((field.name.clone(), ir_type(program, &field.ty)?));
-        }
-        types.insert(record.name.as_str(), RecordType { fields });
-    }
-    Some(types)
-}
-
-fn records_in(ty: &HirType, out: &mut Vec<TypeId>) {
-    match ty {
-        HirType::Optional(inner) | HirType::List(inner) | HirType::Domain(_, inner) => records_in(inner, out),
-        HirType::Record(id) => out.push(*id),
-        _ => {}
-    }
+/// The IR's `types` and `domains` of a goal whose inputs, output and calls' signatures are `roots`, by name
+/// (`compiler/21` R-IR-01, R-IR-24).
+pub(crate) fn tables<'p>(program: &'p Program, roots: impl IntoIterator<Item = &'p HirType>) -> Option<Tables> {
+    let reached = declarations(program, roots, Reachability::Ir)?;
+    let types = reached
+        .records
+        .iter()
+        .map(|id| {
+            let record = program.record(*id)?;
+            let fields = record
+                .fields
+                .iter()
+                .map(|f| Some((f.name.clone(), ir_type(program, &f.ty)?)))
+                .collect::<Option<_>>()?;
+            Some((record.name.clone(), RecordType { fields }))
+        })
+        .collect::<Option<_>>()?;
+    let domains = reached
+        .domains
+        .iter()
+        .map(|id| {
+            let domain = program.domain(*id)?;
+            Some((domain.name.clone(), domain_entry(program, domain)?))
+        })
+        .collect::<Option<_>>()?;
+    Some((types, domains))
 }
 
 /// The normalized source of one goal, or of a domain condition with no goal. `None` anywhere below means HIR that

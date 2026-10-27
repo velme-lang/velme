@@ -356,6 +356,11 @@ fn rule_words(rule: &str) -> &'static str {
         "types-19" | "types-20" => "misuses a value that may be nothing",
         "types-21" | "types-22" | "types-23" | "types-24" => "misuses a list operation",
         "types-25" => "calls a list operation as a built-in",
+        "names-12" | "names-13" | "names-14" | "names-15" | "types-27" => {
+            "describes a declared type the goal doesn't have, or describes one wrongly"
+        }
+        "types-28" => "gives a value of one declared type where another is needed",
+        "types-29" | "types-30" => "uses a literal its declared type doesn't allow",
         "callgraph-1" | "callgraph-2" => "lists calls that differ from the goal's `call` block",
         "resources-1" | "resources-2" | "resources-6" => "is too large or too deeply nested",
         "resources-3" | "resources-4" | "resources-5" => "holds a text or list that is too long",

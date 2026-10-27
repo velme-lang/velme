@@ -1,0 +1,1 @@
+[{"reply":"{\"body\":{\"field\":\"score\",\"kind\":\"field\",\"of\":{\"kind\":\"input\",\"name\":\"player\"}}}","request":"b3:612cf98ce601ecfe9dbfa7d57fb163005dc6fc412582d91e3ae81fab121a389c","usage":{"cache_read_tokens":0,"cache_write_tokens":0,"input_tokens":0,"output_tokens":0}}]

@@ -66,7 +66,7 @@ fn goal(signature: &str, types: &str, body: &str) -> Module {
         .collect();
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{{types}}},
-            "inputs": [{}], "output": {}, "body": {body}}}"#,
+            "domains": {{}}, "inputs": [{}], "output": {}, "body": {body}}}"#,
         inputs.join(", "),
         ty_ir(output)
     );
@@ -367,7 +367,7 @@ fn a_list_of_nothing_is_read_back_as_its_length() {
     let source = "language: velme/0.2\n\ngoal G(x: Number) -> List<Nothing>:\n    plan: \"x\"\n";
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
-            "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "Nothing"}}}},
+            "domains": {{}}, "inputs": [["x", {{"t": "Number"}}]], "output": {{"t": "List", "of": {{"t": "Nothing"}}}},
             "body": {body}}}"#
     );
     let module = emit(&valid_ir(&program(source), &ir)).expect("a module");
@@ -854,7 +854,7 @@ fn goal_ir(signature: &str, body: &str) -> velme_ir::ValidIr {
         .collect();
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G", "types": {{}},
-            "inputs": [{}], "output": {}, "body": {body}}}"#,
+            "domains": {{}}, "inputs": [{}], "output": {}, "body": {body}}}"#,
         inputs.join(", "),
         ty_ir(output)
     );
@@ -1537,7 +1537,7 @@ fn wide_goal(width: usize, output: &str, body: &str) -> velme_ir::ValidIr {
     let ir = format!(
         r#"{{"ir_version": "{IR_VERSION}", "builtins_version": "{BUILTINS_VERSION}", "goal": "G",
             "types": {{"W": {{"fields": [{}]}}}},
-            "inputs": [["xs", {{"t": "List", "of": {w}}}], ["a", {w}], ["b", {w}]], "output": {}, "body": {body}}}"#,
+            "domains": {{}}, "inputs": [["xs", {{"t": "List", "of": {w}}}], ["a", {w}], ["b", {w}]], "output": {}, "body": {body}}}"#,
         listed.join(", "),
         ty_ir(output)
     );

@@ -15,6 +15,11 @@ goal Lists(xs: List<Number>, opt: List<Number>?, c: Boolean) -> List<Number>:
 
 goal Nested() -> List<List<Number>>:
     plan: \"Return nested lists.\"
+
+type Age = Number where value >= 18
+
+goal Ages(ages: List<Age>) -> List<List<Age>?>:
+    plan: \"Return lists of ages.\"
 ";
 
 fn empty() -> Value {
@@ -114,4 +119,27 @@ fn ac_synth_59_siblings_items_and_unknown_types_follow_the_table() {
             ..
         }
     )));
+}
+
+/// AC-SYNTH-59 (D3): a list where a domain list is expected is annotated with the recursive base, never a Domain
+/// (R-IR-25), while its items still take the domain as their expected type.
+#[test]
+fn ac_synth_59_domain_list_annotations_are_their_bases() {
+    let inner = json!({"kind":"list", "of":{"t":"Text"}, "items":[number()]});
+    let (node, untyped) = infer(json!({"kind":"list", "of":{"t":"Text"}, "items":[empty(), inner]}), 2);
+    assert!(untyped.is_empty(), "{untyped:?}");
+    let Node::List { of, items } = node else {
+        panic!("a list")
+    };
+    let number = Type::Number {};
+    let base = Type::Optional {
+        of: Box::new(Type::List {
+            of: Box::new(number.clone()),
+        }),
+    };
+    assert_eq!(of, base);
+    for item in items {
+        let Node::List { of, .. } = item else { panic!("a list") };
+        assert_eq!(of, number);
+    }
 }

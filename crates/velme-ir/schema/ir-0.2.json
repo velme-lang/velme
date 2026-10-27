@@ -65,6 +65,143 @@
         }
       ]
     },
+    "BodyType": {
+      "description": "A body annotation type (`literal.type`, `list.of`): a [`Type`] with no Domain anywhere in it (R-IR-25). The\nschema's body definitions use it, and a Domain there fails the schema (`VL0401`).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Exact decimal number.",
+          "properties": {
+            "t": {
+              "const": "Number",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Text.",
+          "properties": {
+            "t": {
+              "const": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`true` or `false`.",
+          "properties": {
+            "t": {
+              "const": "Boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The type of `nothing`.",
+          "properties": {
+            "t": {
+              "const": "Nothing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`T?`: a value of `of`, or nothing.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/BodyType",
+              "description": "The present type; never itself optional, since `T??` is `T?` (§2.1)."
+            },
+            "t": {
+              "const": "Optional",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`List<T>`.",
+          "properties": {
+            "of": {
+              "$ref": "#/$defs/BodyType",
+              "description": "The element type."
+            },
+            "t": {
+              "const": "List",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "of"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A record type named in the goal's `types`.",
+          "properties": {
+            "name": {
+              "description": "The record type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Record",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Bound": {
+      "additionalProperties": false,
+      "description": "One end of an interval: an exact Number and whether it is included (R-IR-24).",
+      "properties": {
+        "inclusive": {
+          "description": "`>=` / `<=` rather than `>` / `<`.",
+          "type": "boolean"
+        },
+        "value": {
+          "description": "The bound's exact value.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "inclusive"
+      ],
+      "type": "object"
+    },
     "CallNode": {
       "description": "An entry of a goal's `calls`: a call node, tagged `\"kind\": \"call\"` as in an expression (R-IR-09).",
       "oneOf": [
@@ -107,6 +244,23 @@
         }
       ]
     },
+    "Domain": {
+      "description": "A domain type's entry in `domains` (`compiler/21` R-IR-24): its base and the simple constraints extracted from its\ndeclaration. Residual conditions have no field: `velme-check` evaluates them from HIR (R-CHK-15). Number entries\nallow `lower`, `upper` and `whole`, Text entries `members` or `length`, and a record entry only `base`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NumberDomain"
+        },
+        {
+          "$ref": "#/$defs/TextSetDomain"
+        },
+        {
+          "$ref": "#/$defs/TextLengthDomain"
+        },
+        {
+          "$ref": "#/$defs/RecordDomain"
+        }
+      ]
+    },
     "Lambda": {
       "additionalProperties": false,
       "description": "The `fn` or `key` of a collection node; lambdas are not values (R-IR-04).",
@@ -126,6 +280,22 @@
       ],
       "type": "object"
     },
+    "Length": {
+      "additionalProperties": false,
+      "description": "The length bounds of a Text domain, in Unicode scalar values: at least one.",
+      "minProperties": 1,
+      "properties": {
+        "lower": {
+          "$ref": "#/$defs/Bound",
+          "description": "The least length."
+        },
+        "upper": {
+          "$ref": "#/$defs/Bound",
+          "description": "The greatest length."
+        }
+      },
+      "type": "object"
+    },
     "Node": {
       "description": "An expression node, tagged by `kind` (`compiler/21` §3).",
       "oneOf": [
@@ -138,8 +308,8 @@
               "type": "string"
             },
             "type": {
-              "$ref": "#/$defs/Type",
-              "description": "The literal's type."
+              "$ref": "#/$defs/BodyType",
+              "description": "The literal's type, never a Domain (R-IR-25)."
             },
             "value": {
               "description": "The value as JSON."
@@ -233,8 +403,8 @@
               "type": "string"
             },
             "of": {
-              "$ref": "#/$defs/Type",
-              "description": "The element type."
+              "$ref": "#/$defs/BodyType",
+              "description": "The element type, never a Domain (R-IR-25)."
             }
           },
           "required": [
@@ -655,6 +825,68 @@
         }
       ]
     },
+    "NumberDomain": {
+      "additionalProperties": false,
+      "description": "A Number domain: its bounds and `whole`, each absent when unconstrained.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Number\"}`.",
+          "properties": {
+            "t": {
+              "const": "Number"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "lower": {
+          "$ref": "#/$defs/Bound",
+          "description": "The lower bound."
+        },
+        "upper": {
+          "$ref": "#/$defs/Bound",
+          "description": "The upper bound."
+        },
+        "whole": {
+          "$ref": "#/$defs/Whole",
+          "description": "Present only when the domain holds whole numbers."
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
+    "RecordDomain": {
+      "additionalProperties": false,
+      "description": "A record domain: only its base, the domain's own underlying record in `types`.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Record\", \"name\": …}`.",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "t": {
+              "const": "Record"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
     "RecordType": {
       "additionalProperties": false,
       "description": "A record type: its fields `[name, type]` in declaration order (R-IR-01).",
@@ -703,6 +935,66 @@
         "acc",
         "param",
         "body"
+      ],
+      "type": "object"
+    },
+    "TextLengthDomain": {
+      "additionalProperties": false,
+      "description": "A Text domain with length bounds, or with a residual condition only.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Text\"}`.",
+          "properties": {
+            "t": {
+              "const": "Text"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "length": {
+          "$ref": "#/$defs/Length",
+          "description": "The length bounds, absent when unconstrained."
+        }
+      },
+      "required": [
+        "base"
+      ],
+      "type": "object"
+    },
+    "TextSetDomain": {
+      "additionalProperties": false,
+      "description": "A closed Text set.",
+      "properties": {
+        "base": {
+          "additionalProperties": false,
+          "description": "`{\"t\": \"Text\"}`.",
+          "properties": {
+            "t": {
+              "const": "Text"
+            }
+          },
+          "required": [
+            "t"
+          ],
+          "type": "object"
+        },
+        "members": {
+          "description": "The members, in declaration order: nonempty and duplicate-free.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "base",
+        "members"
       ],
       "type": "object"
     },
@@ -821,6 +1113,25 @@
             "name"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A domain type named in the goal's `domains`; compiler-owned, never in a body (R-IR-24, R-IR-25).",
+          "properties": {
+            "name": {
+              "description": "The domain type's name.",
+              "type": "string"
+            },
+            "t": {
+              "const": "Domain",
+              "type": "string"
+            }
+          },
+          "required": [
+            "t",
+            "name"
+          ],
+          "type": "object"
         }
       ]
     },
@@ -843,6 +1154,11 @@
           "type": "string"
         }
       ]
+    },
+    "Whole": {
+      "const": true,
+      "description": "`whole` is only ever `true` (R-IR-24).",
+      "type": "boolean"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -863,6 +1179,13 @@
         "$ref": "#/$defs/CallNode"
       },
       "type": "array"
+    },
+    "domains": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Domain"
+      },
+      "description": "Every domain type reachable from the goal, by name, filled by the compiler only (R-IR-24).",
+      "type": "object"
     },
     "goal": {
       "description": "Name of the goal this IR implements.",
@@ -906,6 +1229,7 @@
     "builtins_version",
     "goal",
     "types",
+    "domains",
     "inputs",
     "output",
     "body"

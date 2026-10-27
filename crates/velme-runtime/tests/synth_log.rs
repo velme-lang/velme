@@ -56,7 +56,7 @@ fn double() -> String {
     let body = json!({"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
         "right": {"kind": "literal", "type": n, "value": 2}});
     json!({"ir_version": IR_VERSION, "builtins_version": BUILTINS_VERSION, "goal": "Double", "types": {},
-           "inputs": [["n", n]], "output": n, "body": body})
+           "domains": {}, "inputs": [["n", n]], "output": n, "body": body})
     .to_string()
 }
 

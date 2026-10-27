@@ -2,7 +2,7 @@
 //! carry their shape; emitted code has only the types, so every node is typed here first, by the validator's rules
 //! (`compiler/21` §6, stage 4) over IR the validator has already accepted.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use velme_builtins::memory::{BOOLEAN_BYTES, HEADER_BYTES, NUMBER_BYTES};
 use velme_builtins::{Builtin, Function};
@@ -78,6 +78,8 @@ pub(crate) struct Field {
 pub(crate) struct Types {
     names: Vec<String>,
     records: Vec<Result<Record, &'static str>>,
+    /// Each domain's base: a domain is laid out as its base (`compiler/21` R-IR-24).
+    domains: BTreeMap<String, Type>,
 }
 
 impl Types {
@@ -85,6 +87,11 @@ impl Types {
         let mut types = Types {
             names: goal.types.keys().cloned().collect(),
             records: Vec::new(),
+            domains: goal
+                .domains
+                .iter()
+                .map(|(name, d)| (name.clone(), d.base.clone()))
+                .collect(),
         };
         let mut fields = Vec::with_capacity(types.names.len());
         for record in goal.types.values() {
@@ -128,6 +135,8 @@ impl Types {
             // A list of `Nothing` is a length: its items take no slot and no bytes (`runtime/30` §7.1).
             Type::List { of } => Ty::List(Box::new(self.resolve(of)?)),
             Type::Record { name } => Ty::Record(self.names.iter().position(|n| n == name).ok_or_else(internal)?),
+            // Erased to its base, which is never a domain (R-IR-24); membership is checked outside the module.
+            Type::Domain { name } => self.resolve(self.domains.get(name).ok_or_else(internal)?)?,
         })
     }
 

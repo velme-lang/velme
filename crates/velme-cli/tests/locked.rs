@@ -111,7 +111,7 @@ fn broken_with(test: &str, at: i64, then: Value) -> PathBuf {
     let sum = json!({"kind": "binary", "op": "add", "left": input("a"), "right": input("b")});
     let ir = json!({
         "ir_version": "0.2", "builtins_version": "0.1", "goal": "Add", "types": {},
-        "inputs": [["a", number], ["b", number]], "output": number,
+        "domains": {}, "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "if",
                  "cond": {"kind": "binary", "op": "eq", "left": input("a"),
                           "right": {"kind": "literal", "type": number, "value": at}},
@@ -567,7 +567,7 @@ fn artifact_text_keeps_the_ir_parseable_with_unsafe_characters() {
     let text = "a\u{7f}b\u{202e}c\u{2028}d";
     let ir = json!({
         "ir_version": "0.2", "builtins_version": "0.1", "goal": "Greet", "types": {},
-        "inputs": [["n", {"t": "Number"}]], "output": {"t": "Text"},
+        "domains": {}, "inputs": [["n", {"t": "Number"}]], "output": {"t": "Text"},
         "body": {"kind": "literal", "type": {"t": "Text"}, "value": text}
     });
     install(&dir, "greet.velme", &program(source), &ir.to_string());

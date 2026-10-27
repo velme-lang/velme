@@ -155,6 +155,8 @@ fn ac_synth_40_only_the_body_is_read_from_a_reply() {
         "body": double(), "goal": "Other", "ir_version": "9.9", "builtins_version": "9.9",
         "inputs": [["a", {"t": "Record", "name": "Number"}]], "output": {"t": "Text"},
         "types": {"Ghost": {"fields": []}},
+        // A reply's own `domains` is ignored like its `types`: the compiler's table completes the IR (AC-SYNTH-62).
+        "domains": {"Ghost": {"base": {"t": "Number"}, "lower": {"value": 0, "inclusive": true}}},
     })
     .to_string();
     let plain = run(SynthOptions::default(), vec![good()]);
