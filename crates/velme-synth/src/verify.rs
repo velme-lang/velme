@@ -3,13 +3,13 @@
 //! the store (R-SYNTH-16).
 
 use velme_builtins::Value;
-use velme_check::{GoalChecks, Invocation, Membership, Refused};
+use velme_check::{GoalChecks, Invocation};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Fingerprint, ValidIr, display_value};
 use velme_sema::hir::{GoalId, Program};
 
 use crate::attempt::{Cause, LogCause, Rejection};
-use crate::generate::{TestInput, test_inputs};
+use crate::generate::{TestInput, TestInputs, test_inputs};
 use crate::request::AttemptDiagnostic;
 
 /// Runs a whole candidate goal on one input, its already-accepted children included, through the scheduler that runs
@@ -18,6 +18,11 @@ use crate::request::AttemptDiagnostic;
 pub trait ChildRunner: Send + Sync {
     /// The invocation of `candidate` on `inputs`, or why it failed: a `VL06xx`, `VL0603` from the watchdog being one.
     fn run(&self, candidate: &ValidIr, inputs: Vec<Value>) -> Result<Invocation, Vec<Diagnostic>>;
+
+    /// Walks each of the goal's `inputs` for membership on the goal's own budget, before its first provider request: a
+    /// stop ends the goal with its own code and no billed call (`compiler/22` R-SYNTH-63, D-167). A non-member is no stop;
+    /// [`ChildRunner::run`] reports it (`VL0607`). Only the runtime calls the walk (`runtime/30` R-RUN-27, INV-9).
+    fn admit(&self, inputs: &[TestInput]) -> Result<(), Diagnostic>;
 }
 
 /// What a candidate that passed verification was checked on (`runtime/32` §3 `verification`).
@@ -42,60 +47,49 @@ pub enum Verdict {
     Rejected(Rejection),
     /// The watchdog stopped a run (`VL0603`): never a verdict on the candidate (D-51, R-SYNTH-14).
     Watchdog(Diagnostic),
-    /// A bug of ours (`VL0607`).
-    Internal,
+    /// A bug of ours (`VL0607`), with its notes: the runtime's entry walk names the input and domain it refused.
+    Internal(Diagnostic),
 }
 
-/// Verifies `candidate` for `goal` of `program`, whose source is `source` (`compiler/22` §6, §7).
-pub fn verify(
+/// The inputs `goal` of `program`, whose source is `source`, is verified on (`compiler/22` §7): its examples, then
+/// those generated for `contract_key`, domain members by construction (R-SYNTH-62–64). They are made once per goal,
+/// before its first provider request, and once per lock-hit verification (D-167). A domain predicate out of budget
+/// while they are made ends the goal with its code, placed at the domain and naming the goal in a note; it is no
+/// verdict on a candidate and is never wrapped (R-SYNTH-63).
+pub fn goal_inputs(
     program: &Program,
     goal: GoalId,
     source: &str,
     contract_key: Fingerprint,
+) -> Result<TestInputs, Diagnostic> {
+    let checks = GoalChecks::new(program, goal, source)?;
+    let examples: Vec<Vec<Value>> = checks.examples().iter().map(|e| e.args.clone()).collect();
+    test_inputs(program, goal, source, contract_key, &examples).map_err(|d| match program.goals.get(goal.0) {
+        Some(target) if d.code != Code::InternalError => d.with_note(format!(
+            "this happened while generating the inputs to check `{}` on",
+            target.name
+        )),
+        _ => d,
+    })
+}
+
+/// Verifies `candidate` for `goal` of `program`, whose source is `source`, on `generated`, made by [`goal_inputs`]
+/// (`compiler/22` §6, §7).
+pub fn verify(
+    program: &Program,
+    goal: GoalId,
+    source: &str,
+    generated: &TestInputs,
     candidate: &ValidIr,
     runner: &dyn ChildRunner,
 ) -> Verdict {
     let Ok(checks) = GoalChecks::new(program, goal, source) else {
-        return Verdict::Internal;
-    };
-    let examples: Vec<Vec<Value>> = checks.examples().iter().map(|e| e.args.clone()).collect();
-    let Ok(mut generated) = test_inputs(program, goal, contract_key, &examples) else {
-        return Verdict::Internal;
+        return Verdict::Internal(Diagnostic::internal_error());
     };
     let Some(target) = program.goals.get(goal.0) else {
-        return Verdict::Internal;
+        return Verdict::Internal(Diagnostic::internal_error());
     };
     let names: Vec<&str> = target.params.iter().map(|p| p.name.as_str()).collect();
-    // Until D5's generator draws domain members (R-SYNTH-64), a domain generates as its base: the generated inputs
-    // outside a domain are filtered out here (R-CHK-15), so the runtime's entry walk never sees one (R-RUN-28). A walk
-    // that stops on a budget instead ends verification with its code, as the entry walk would.
-    if !program.domains.is_empty() {
-        let Ok(membership) = Membership::new(program, source) else {
-            return Verdict::Internal;
-        };
-        let mut kept = Vec::with_capacity(generated.inputs.len());
-        for (i, input) in generated.inputs.into_iter().enumerate() {
-            let mut member = true;
-            if i >= generated.examples {
-                for (n, (param, arg)) in target.params.iter().zip(&input.args).enumerate() {
-                    match membership.admits(&param.ty, arg, &param.name) {
-                        Ok(()) => {}
-                        Err(Refused::Outside(_)) => {
-                            member = false;
-                            break;
-                        }
-                        Err(stop @ Refused::Stopped(_)) => {
-                            return stopped(vec![stop.input_diagnostic(target, n)], &input, &names);
-                        }
-                    }
-                }
-            }
-            if member {
-                kept.push(input);
-            }
-        }
-        generated.inputs = kept;
-    }
     let mut max_fuel = 0;
     for (i, input) in generated.inputs.iter().enumerate() {
         let invocation = match runner.run(candidate, input.args.clone()) {
@@ -134,7 +128,7 @@ pub fn verify(
         }
     }
     let Ok(input_set) = Fingerprint::of(&generated.inputs.iter().map(|i| i.json.as_str()).collect::<Vec<_>>()) else {
-        return Verdict::Internal;
+        return Verdict::Internal(Diagnostic::internal_error());
     };
     Verdict::Accepted(Verified {
         examples: generated.examples as u64,
@@ -158,10 +152,10 @@ fn stopped(found: Vec<Diagnostic>, input: &TestInput, names: &[&str]) -> Verdict
         return Verdict::Watchdog(d.clone());
     }
     let Some(first) = found.first() else {
-        return Verdict::Internal;
+        return Verdict::Internal(Diagnostic::internal_error());
     };
     if first.code == Code::InternalError {
-        return Verdict::Internal;
+        return Verdict::Internal(first.clone());
     }
     let id = LogCause::Runtime(first.code);
     Verdict::Rejected(wrap(first.code, String::new(), id, first, input, names))

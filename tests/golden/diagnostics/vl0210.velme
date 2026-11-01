@@ -1,0 +1,7 @@
+# A domain whose condition admits only 7 of the probe's 64 draws is VL0210: at least 8 are needed.
+language: velme/0.2
+
+type Rare = Number where value >= 1 and value <= 64 and value is whole and (value <= 4 or value > 1000)
+
+goal Pick(n: Rare) -> Number:
+    plan: "Return n."

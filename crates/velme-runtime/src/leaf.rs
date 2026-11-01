@@ -10,7 +10,7 @@ use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::{ValidIr, contract_key, encode_value};
 use velme_sema::hir::{Goal, GoalId, GoalKind, Program};
-use velme_synth::{ChildRunner, Verdict, verify};
+use velme_synth::{ChildRunner, Verdict, goal_inputs, verify};
 
 use std::sync::Arc;
 
@@ -243,7 +243,8 @@ pub fn test_goal(
     }
     let contract = contract_key(program, goal).map_err(|_| internal())?;
     checks.watch(None);
-    match verify(program, goal, source, contract, &locked.ir, &runner) {
+    let inputs = goal_inputs(program, goal, source, contract).map_err(|d| vec![d])?;
+    match verify(program, goal, source, &inputs, &locked.ir, &runner) {
         Verdict::Accepted(verified) => Ok(Tested {
             examples: usize::try_from(verified.examples).unwrap_or(usize::MAX),
             generated_inputs: usize::try_from(verified.generated_inputs).unwrap_or(usize::MAX),
@@ -266,7 +267,7 @@ pub fn test_goal(
             Err(vec![d.with_note(format!("input: {}", rejection.input))])
         }
         Verdict::Watchdog(diagnostic) => Err(vec![diagnostic]),
-        Verdict::Internal => Err(internal()),
+        Verdict::Internal(diagnostic) => Err(vec![diagnostic]),
     }
 }
 
@@ -290,6 +291,12 @@ impl ChildRunner for RegistryRunner<'_> {
             self.options,
             inputs,
         )
+    }
+
+    /// `velme test` bills nothing, so it has nothing to stop early for: a walk that stops in a run is reported with its
+    /// own code by [`test_goal`] (D-107).
+    fn admit(&self, _inputs: &[velme_synth::TestInput]) -> Result<(), Diagnostic> {
+        Ok(())
     }
 }
 

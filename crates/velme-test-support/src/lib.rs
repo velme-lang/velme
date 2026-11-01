@@ -324,6 +324,11 @@ impl ChildRunner for LeafRunner {
             Err(failure) => Err(vec![failure.diagnostic(&candidate.goal().goal, Default::default())]),
         }
     }
+
+    /// It has no membership walk.
+    fn admit(&self, _inputs: &[velme_synth::TestInput]) -> Result<(), velme_diagnostics::Diagnostic> {
+        Ok(())
+    }
 }
 
 /// The `anthropic` provider pointed at `server` with the sentinel-able key `key` and a sleeper that never waits (D-98,

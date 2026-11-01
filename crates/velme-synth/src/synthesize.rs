@@ -16,7 +16,7 @@ use crate::compact;
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
 use crate::provider::{ProviderError, ReplyMeta, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{AttemptFeedback, SynthRequest, build_request};
-use crate::verify::{ChildRunner, Verdict, Verified, verify};
+use crate::verify::{ChildRunner, Verdict, Verified, goal_inputs, verify};
 
 /// A source of wall-clock time for the synth log's `time` (`compiler/22` R-SYNTH-23): injected, so tests read the log
 /// exactly.
@@ -253,7 +253,8 @@ pub struct Built {
 /// A goal that ended with no artifact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failure {
-    /// Why: `VL0403`..`VL0408`, `VL0603` or `VL0607`.
+    /// Why: `VL0403`..`VL0408`, `VL0603`, `VL0607`, or a stop before the first request with its own code, `VL0601` or
+    /// `VL0604` (R-SYNTH-63).
     pub diagnostic: Diagnostic,
     /// One line per failed attempt, for `--verbose` (R-SYNTH-13).
     pub attempts: Vec<String>,
@@ -329,6 +330,10 @@ async fn run(
     let options = session.options.clone();
     let base = build_request(task.program, task.goal, task.source).map_err(Failure::of)?;
     let compiler_calls = calls(task.program, task.goal).map_err(Failure::of)?;
+    // Generated once and walked on the goal's budget, before the first request: a domain predicate out of budget in
+    // either ends the goal with its own code, with no request and no log line (R-SYNTH-63, D-167).
+    let inputs = goal_inputs(task.program, task.goal, task.source, task.contract_key).map_err(Failure::of)?;
+    runner.admit(&inputs.inputs).map_err(Failure::of)?;
     let mut history: Vec<Rejection> = Vec::new();
     let mut earlier: Vec<AttemptFeedback> = task.feedback.clone();
     // An external backend (or a replay of one) is told the format when it is not `ir-json` (R-SYNTH-36, D-156).
@@ -473,7 +478,7 @@ async fn run(
                     );
                     rejection
                 }
-                Ok(ir) => match verify(task.program, task.goal, task.source, task.contract_key, &ir, runner) {
+                Ok(ir) => match verify(task.program, task.goal, task.source, &inputs, &ir, runner) {
                     Verdict::Accepted(verified) => {
                         record(session, "ok", None, Some(Response::of(&reply)));
                         return Ok(Built { ir, verified });
@@ -499,14 +504,14 @@ async fn run(
                         );
                         return Err(Failure::of(d));
                     }
-                    Verdict::Internal => {
+                    Verdict::Internal(d) => {
                         record(
                             session,
                             Code::InternalError.as_str(),
                             Some(LogCause::Internal),
                             Some(Response::of(&reply)),
                         );
-                        return Err(internal());
+                        return Err(Failure::of(d));
                     }
                 },
             },

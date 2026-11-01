@@ -1272,11 +1272,13 @@ fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause(
     );
 }
 
-/// Review finding D4-1: a generated input whose domain condition stops on a budget is not dropped as a non-member, which
-/// would build the goal on no generated input at all; verification ends with the stop's code, as the runtime's entry
-/// walk would (`runtime/30` R-RUN-28).
+/// Review finding D4-1, F2 and F4 of D5 (AC-SYNTH-71): a domain condition that stops on a budget while inputs are
+/// generated is not dropped as a non-member, which would build the goal on no generated input at all. Generation comes
+/// before the goal's first request, so the goal ends with the stop's own code, at the domain and naming the goal in a
+/// note: nothing is billed or logged for a fault of the program, and it is no verdict on a candidate (`compiler/22`
+/// R-SYNTH-63). The walk's own stop on the goal's budget is `ac_synth_71_f1_*` in `velme-runtime`.
 #[test]
-fn r_run_28_a_budget_stop_in_a_generated_input_walk_is_not_a_silent_drop() {
+fn ac_synth_71_a_budget_stop_while_generating_makes_no_request_and_no_log_line() {
     let source = "language: velme/0.2
 
 type Heavy = Number where every i in range(10000) has every j in range(10000) has i + j >= 0
@@ -1304,10 +1306,18 @@ goal Keep(n: Heavy) -> Number:
         panic!("it was built on no generated input");
     };
     let d = &failure.diagnostic;
-    assert_eq!(d.code, Code::SynthesisFailed);
-    assert!(
-        d.message.contains("`Keep` took too many steps and was stopped"),
+    assert_eq!(d.code, Code::BudgetExceeded, "{}", shown(d));
+    assert_eq!(
+        d.message,
+        "Checking whether a value is a `Heavy` took too many steps.",
         "{}",
         shown(d)
     );
+    assert_eq!(d.help.as_deref(), Some("make its `where` condition cheaper"));
+    let declared = source.find("type Heavy").expect("the declaration");
+    assert!(d.span.start >= declared && d.span.end <= source.find("goal Keep").expect("the goal"));
+    assert!(d.notes.iter().any(|n| n.contains("`Keep`")), "{}", shown(d));
+    assert_eq!(provider.calls(), 0);
+    assert_eq!(session.calls(), 0);
+    assert!(session.take_records().is_empty(), "no synth-log line");
 }

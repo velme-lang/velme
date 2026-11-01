@@ -101,6 +101,10 @@ this is one coordinated compatibility break, not a separate invalidation for eac
 }
 ```
 
+**R-ART-28** `verification.input_set` is the fingerprint of the goal's whole input set, examples included: `b3:` and the
+BLAKE3 of the canonical JSON array of strings, each string one input's canonical JSON text, in the order the inputs are
+checked (`compiler/22` R-SYNTH-15, R-SYNTH-18).
+
 **R-ART-05** The artifact document is deterministic: no timestamps, hostnames, usernames, token counts or retry
 counts (those go to the local synth log, 22 R-SYNTH-23). Two machines accepting the same IR with the same compiler
 version produce the same `artifact` hash; the manifest records `compiler_version`, so another compiler version gives

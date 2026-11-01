@@ -7,6 +7,7 @@
 mod anthropic;
 mod attempt;
 mod compact;
+mod domain;
 #[cfg(feature = "provider-external")]
 mod external;
 pub mod fsio;
@@ -21,6 +22,7 @@ pub mod notation;
 #[cfg(feature = "provider-ollama")]
 mod ollama;
 mod options;
+mod probe;
 mod prompt;
 mod provider;
 mod record;
@@ -40,13 +42,14 @@ pub use attempt::{Cause, LogCause, Rejection};
 pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 #[cfg(feature = "provider-external")]
 pub use external::{External, ExternalConfig, ExternalToken, TOKEN_VARIABLE, TokenMalformed, has_certificate};
-pub use generate::{TestInput, TestInputs, test_inputs};
+pub use generate::{TestInput, TestInputs, test_inputs, test_inputs_within, value_sets};
 #[cfg(feature = "provider-ollama")]
 pub use ollama::{
     DEFAULT_MAX_OUTPUT_TOKENS as OLLAMA_DEFAULT_MAX_OUTPUT_TOKENS, DEFAULT_URL as OLLAMA_URL, Ollama, OllamaConfig,
     normalize_model,
 };
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
+pub use probe::{PROBE_DRAWS, PROBE_MIN_VALID, Probe, ProbeDraw, probe, probe_domain, probe_domain_within};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{
     Called, DEFAULT_MAX_OUTPUT_TOKENS, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend,
@@ -67,4 +70,4 @@ pub use synthesize::{
 pub use transport::{Sleeper, StdSleeper, with_generation_retries, with_transport_retries};
 #[cfg(any(feature = "provider-ollama", feature = "provider-external"))]
 pub use url::{ExternalUrl, UrlError};
-pub use verify::{ChildRunner, Verdict, Verified, verify};
+pub use verify::{ChildRunner, Verdict, Verified, goal_inputs, verify};
