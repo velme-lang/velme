@@ -117,9 +117,25 @@ impl<'ir> Evaluator<'ir> {
         }
     }
 
+    /// Charges `fuel` for work outside any expression — a membership walk's visits and closed-set scans (`runtime/30`
+    /// R-RUN-27) — as a step is charged: `VL0601` past the limit, and the watchdog looked at on the same meter.
+    pub fn debit(&mut self, fuel: u64) -> Result<(), Failure> {
+        self.charge(fuel)
+    }
+
     /// The value of `expr`.
     pub fn eval(&mut self, expr: Trusted<'ir>) -> Eval {
         self.eval_probed(expr, &mut NoProbe)
+    }
+
+    /// The value of `expr` with the local `name` bound to `value` for it alone: a domain condition's `value`, evaluated
+    /// once per member tested (`language/13` R-CHK-15). `value` exists already, so binding it allocates nothing.
+    pub fn eval_bound(&mut self, name: &'ir str, value: Value, expr: Trusted<'ir>) -> Eval {
+        let scope = self.locals.len();
+        self.locals.push((name, value));
+        let result = self.eval(expr);
+        self.locals.truncate(scope);
+        result
     }
 
     /// The value of `expr`, showing `probe` every value computed on the way and every element visited.

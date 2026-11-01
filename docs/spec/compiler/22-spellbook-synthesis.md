@@ -944,7 +944,9 @@ when `players` is `[]`"), so they can refine the check; the message suggests the
 
 D5 completes domain-aware generation and the probe. Until D5, `build` on a domain program uses base-type
 generated values; D2–D4 establish syntax, typing, IR and membership only and do not claim end-to-end builds
-of domain programs. This is implementation sequencing, not an alternative 0.2 generator contract.
+of domain programs. This is implementation sequencing, not an alternative 0.2 generator contract. Until then,
+`velme-synth` also drops generated values outside a domain by calling `velme-check`'s membership check directly;
+this is the one exception to AC-CMP-09's invocation rule and D5 removes it.
 
 **R-SYNTH-62** Construct domain value sets recursively before constructing goal tuples. A Text closed set's `B`
 is its first 16 members in declaration order (all members if at most 16), and its `S` is the first two

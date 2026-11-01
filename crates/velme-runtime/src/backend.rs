@@ -9,7 +9,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use velme_builtins::Value;
 use velme_diagnostics::{Diagnostic, REPORT_URL, Span};
-use velme_interp::{Budget, Interrupt, Limits, Spent};
+use velme_interp::{Budget, Error, Interrupt, Limits, Spent};
 use velme_ir::ValidIr;
 use velme_sema::hir::{Goal, GoalKind};
 pub use velme_wasm::MAX_WASM_RUNS;
@@ -333,13 +333,35 @@ pub fn eval_leaf(
     limits: Limits,
     interrupt: Option<Interrupt>,
 ) -> (Result<Value, Diagnostic>, Spent) {
+    eval_leaf_after(backend, goal, ir, inputs, limits, Spent::default(), interrupt)
+}
+
+/// [`eval_leaf`] for an invocation that has already spent `spent` of `limits` walking its inputs (`runtime/30`
+/// R-RUN-27): the body is given only what is left — on WASM as its initial `velme_fuel_left` and `velme_memory_left` —
+/// and the figures returned count all of it, as the interpreter's do.
+pub fn eval_leaf_after(
+    backend: &Backend,
+    goal: &Goal,
+    ir: &ValidIr,
+    inputs: Vec<Value>,
+    limits: Limits,
+    spent: Spent,
+    interrupt: Option<Interrupt>,
+) -> (Result<Value, Diagnostic>, Spent) {
     let (wasm, explicit) = match backend {
         Backend::Wasm(wasm) if goal.kind == GoalKind::Leaf => (wasm, true),
         Backend::Auto(wasm) if goal.kind == GoalKind::Leaf => (wasm, false),
-        _ => return interpret(goal, ir, inputs, limits, interrupt),
+        _ => return interpret(goal, ir, inputs, limits, spent, interrupt),
     };
     let watchdog = interrupt.clone().unwrap_or_else(|| Interrupt::new(|| false));
-    match wasm.run(ir, &inputs, limits, &watchdog) {
+    let left = Limits {
+        fuel: limits.fuel.saturating_sub(spent.fuel),
+        memory: limits.memory.saturating_sub(spent.memory),
+    };
+    match wasm
+        .run(ir, &inputs, left, &watchdog)
+        .map(|run| resumed(run, limits, spent))
+    {
         Ok(run) => {
             if let Some(backstop) = run.backstop {
                 let which = match backstop {
@@ -368,10 +390,27 @@ pub fn eval_leaf(
             } else {
                 wasm.note(format!("`{}` ran on the interpreter: {}", goal.name, unrun.why()));
             }
-            interpret(goal, ir, inputs, limits, interrupt)
+            interpret(goal, ir, inputs, limits, spent, interrupt)
         }
-        Err(unrun) => (Err(unrun.diagnostic(&goal.name, goal.span)), Spent::default()),
+        Err(unrun) => (Err(unrun.diagnostic(&goal.name, goal.span)), spent),
     }
+}
+
+/// `run`, given what was left of `limits` after `spent`, as the invocation sees it: its figures count `spent` too, and
+/// running out names the invocation's own limit, as on the interpreter.
+fn resumed(mut run: Run, limits: Limits, spent: Spent) -> Run {
+    run.spent = Spent {
+        fuel: run.spent.fuel.saturating_add(spent.fuel),
+        memory: run.spent.memory.saturating_add(spent.memory),
+    };
+    if let Err(failure) = &mut run.result {
+        match &mut failure.error {
+            Error::OutOfFuel { max_fuel } => *max_fuel = limits.fuel,
+            Error::OutOfMemory { max_memory } => *max_memory = limits.memory,
+            _ => {}
+        }
+    }
+    run
 }
 
 /// The body on the reference interpreter.
@@ -380,9 +419,10 @@ fn interpret(
     ir: &ValidIr,
     inputs: Vec<Value>,
     limits: Limits,
+    spent: Spent,
     interrupt: Option<Interrupt>,
 ) -> (Result<Value, Diagnostic>, Spent) {
-    let budget = Budget::new(limits).watched(interrupt);
+    let budget = Budget::new(limits).after(spent).watched(interrupt);
     let (value, spent) = velme_interp::run_measured(ir, inputs, Vec::new(), budget);
     (
         value.map_err(|failure| failure.diagnostic(&goal.name, goal.span)),

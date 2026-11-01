@@ -1,0 +1,32 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&pretty)
+---
+{
+  "diagnostics": [],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [
+    {
+      "diagnostics": [
+        {
+          "code": "VL0504",
+          "file": "game.velme",
+          "labels": [],
+          "message": "`Shift` returned a value outside `Score` at `result`: it must be at least 0.",
+          "notes": [],
+          "severity": "error",
+          "span": {
+            "column": 1,
+            "end": 118,
+            "line": 5,
+            "start": 59
+          }
+        }
+      ],
+      "goal": "Shift",
+      "status": "failed"
+    }
+  ],
+  "status": "failed"
+}

@@ -408,6 +408,34 @@ fn run(code: &str, goal: &str, args: &[&str]) {
     snapshot_pair(code, &dir, &[&["run", FILE, "--goal", goal], args].concat(), &[], &[]);
 }
 
+/// A goal whose body returns `n - 1` where a `Score` is expected: a computed base value the validator accepts, which the
+/// output walk refuses (`runtime/30` R-RUN-26).
+const DOMAIN: &str = "language: velme/0.2
+
+type Score = Number where value >= 0
+
+goal Shift(n: Number) -> Score:
+    plan: \"Take one off n.\"
+";
+
+#[test]
+fn vl0504_an_output_outside_its_domain() {
+    let dir = project("vl0504", DOMAIN);
+    let program = program(DOMAIN);
+    let goal = velme_ir::wired_goal(&program, velme_test_support::goal_id(&program, "Shift")).expect("IR");
+    let mut ir = serde_json::to_value(goal).expect("IR");
+    ir["body"] = binary("sub", input("n"), literal(1));
+    install(&dir, FILE, &program, &ir.to_string());
+    fs::remove_dir_all(dir.join(".velme/tmp")).expect("temporary directory");
+    snapshot_pair(
+        "VL0504",
+        &dir,
+        &["run", FILE, "--goal", "Shift", "--arg", "n=0"],
+        &[],
+        &[],
+    );
+}
+
 #[test]
 fn vl0601_a_goal_out_of_fuel() {
     // 300 × 300 elements at four fuel each is more than `cpu=1ms`, 100 000 fuel.

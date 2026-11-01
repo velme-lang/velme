@@ -154,23 +154,10 @@ pub struct CheckScope<'p> {
 impl<'p> CheckScope<'p> {
     /// The check scope of `goal`, a goal of the checked `program`.
     pub fn new(program: &'p Program, goal: &'p hir::Goal) -> Result<Self, Diagnostic> {
-        let types = program
-            .types
-            .iter()
-            .map(|record| {
-                let fields = record
-                    .fields
-                    .iter()
-                    .map(|f| Some((f.name.clone(), ir_type(program, &f.ty)?)))
-                    .collect::<Option<Vec<_>>>()?;
-                Some((record.name.clone(), RecordType { fields }))
-            })
-            .collect::<Option<BTreeMap<_, _>>>()
-            .ok_or_else(Diagnostic::internal_error)?;
         Ok(CheckScope {
             program,
             goal,
-            types: Arc::new(types),
+            types: Arc::new(check_types(program).ok_or_else(Diagnostic::internal_error)?),
         })
     }
 
@@ -222,6 +209,89 @@ impl<'p> CheckScope<'p> {
             types: Arc::clone(&self.types),
         })
     }
+}
+
+/// Every record type of `program`, by name, for a lowered check or condition that may build any of them.
+fn check_types(program: &Program) -> Option<BTreeMap<String, RecordType>> {
+    program
+        .types
+        .iter()
+        .map(|record| {
+            let fields = record
+                .fields
+                .iter()
+                .map(|f| Some((f.name.clone(), ir_type(program, &f.ty)?)))
+                .collect::<Option<Vec<_>>>()?;
+            Some((record.name.clone(), RecordType { fields }))
+        })
+        .collect()
+}
+
+/// `node`, the condition of the domain `domain` of the checked `program` lowered by `velme-check` (`language/13`
+/// R-CHK-15), validated at stages 2–4 as a lowered check is ([`CheckScope::validate`]), with one name in scope: the
+/// local `value`, of the domain's base. It names no input, binding or `result` (R-CHK-13), so it belongs to no goal. A
+/// finding is a lowering bug: the source was checked.
+pub fn validate_condition(
+    program: &Program,
+    domain: DomainId,
+    node: Node,
+    value: &str,
+) -> Result<TrustedExpr, Vec<Diagnostic>> {
+    let internal = || vec![Diagnostic::internal_error()];
+    let declared = program.domain(domain).ok_or_else(internal)?;
+    let types = check_types(program).ok_or_else(internal)?;
+    // The goal a condition is walked as: no inputs, no calls, and the declaration's place for any finding.
+    let target = hir::Goal {
+        name: declared.name.clone(),
+        params: Vec::new(),
+        output: HirType::Boolean,
+        kind: hir::GoalKind::Leaf,
+        budget: hir::Budget::SYSTEM,
+        bindings: Vec::new(),
+        plan: None,
+        checks: Vec::new(),
+        examples: Vec::new(),
+        span: declared.span,
+    };
+    let holder = Goal {
+        ir_version: IR_VERSION.to_owned(),
+        builtins_version: BUILTINS_VERSION.to_owned(),
+        goal: target.name.clone(),
+        types: BTreeMap::new(),
+        domains: BTreeMap::new(),
+        inputs: Vec::new(),
+        output: Type::Nothing {},
+        calls: Vec::new(),
+        body: node,
+    };
+    let findings = {
+        let mut v = Validator::new(program, &target, &holder, &[], Origin::Complete, Vec::new());
+        v.compiler_names = true;
+        v.placeholders = true;
+        v.scope.push((value, declared.base.clone()));
+        let ty = v.expr(&holder.body, 1, 0);
+        if !compat(&ty, &HirType::Boolean) {
+            v.find(
+                Stage::Types,
+                "types-1",
+                format!("it is {}, where Boolean is needed", v.name(&ty)),
+            );
+        }
+        v.findings
+    };
+    let mut diags: Vec<Diagnostic> = findings
+        .into_iter()
+        .filter(|f| f.stage != Stage::Resources)
+        .map(|f| f.diagnostic(target.span))
+        .collect();
+    if !diags.is_empty() {
+        velme_diagnostics::sort(&mut diags);
+        return Err(diags);
+    }
+    Ok(TrustedExpr {
+        node: holder.body,
+        types: Arc::new(types),
+    })
 }
 
 /// Validates the IR document `text` against `request` (`compiler/21` §6). On failure, returns every diagnostic of the

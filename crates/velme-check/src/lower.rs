@@ -8,8 +8,11 @@ use serde_json::Value as Json;
 use velme_diagnostics::{Diagnostic, Span};
 use velme_ir::{
     BinaryOperator, CheckScope, ItemShape, Lambda, Node, TrustedExpr, Type as IrType, UnaryOperator, body_type,
+    validate_condition,
 };
-use velme_sema::hir::{BinaryOp, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp};
+use velme_sema::hir::{
+    BinaryOp, DomainId, DomainRule, Example, Expr, ExprKind, Goal, Keyword, Program, Quantifier, Type, UnaryOp,
+};
 
 /// The local a lowered check reads the goal's output from (`language/13` R-CHK-02).
 pub fn result_local() -> &'static str {
@@ -37,7 +40,7 @@ pub fn lower_check(
     scope: &CheckScope<'_>,
     check: &Expr,
 ) -> Result<Lowered, Diagnostic> {
-    let tree = Lowering::new(program, goal)
+    let tree = Lowering::new(program, Some(goal))
         .expr(check)
         .ok_or_else(Diagnostic::internal_error)?;
     tree.lowered(scope, &Type::Boolean)
@@ -51,7 +54,7 @@ pub fn lower_example(
     scope: &CheckScope<'_>,
     example: &Example,
 ) -> Result<(Vec<Lowered>, Lowered), Diagnostic> {
-    let mut lowering = Lowering::new(program, goal);
+    let mut lowering = Lowering::new(program, Some(goal));
     if example.args.len() != goal.params.len() {
         return Err(Diagnostic::internal_error());
     }
@@ -69,6 +72,41 @@ pub fn lower_example(
         .ok_or_else(Diagnostic::internal_error)?
         .lowered(scope, &goal.output)?;
     Ok((args, expected))
+}
+
+/// The local a lowered domain condition reads its `value` from: a name no source can write, so it hides nothing.
+pub(crate) const VALUE_LOCAL: &str = "#value";
+
+/// The condition of the `where` domain `domain`, lowered as a check is (R-CHK-11) and validated with only `value` in
+/// scope (`language/13` R-CHK-15); `None` for a closed set.
+pub(crate) fn lower_condition(program: &Program, domain: DomainId) -> Result<Option<Lowered>, Diagnostic> {
+    let declared = program.domain(domain).ok_or_else(Diagnostic::internal_error)?;
+    let DomainRule::Where { condition } = &declared.rule else {
+        return Ok(None);
+    };
+    let tree = Lowering::new(program, None)
+        .expr(condition)
+        .ok_or_else(Diagnostic::internal_error)?;
+    let node = validate_condition(program, domain, tree.node, VALUE_LOCAL).map_err(|_| Diagnostic::internal_error())?;
+    Ok(Some(Lowered {
+        node,
+        spans: tree.spans,
+    }))
+}
+
+/// The source literal `literal`, expected as `ty` at a call argument or example of `goal`, lowered and validated in
+/// `scope` as an example's value is (`language/11` R-TYP-31).
+pub(crate) fn lower_literal(
+    program: &Program,
+    goal: &Goal,
+    scope: &CheckScope<'_>,
+    literal: &Expr,
+    ty: &Type,
+) -> Result<Lowered, Diagnostic> {
+    Lowering::new(program, Some(goal))
+        .expr(literal)
+        .ok_or_else(Diagnostic::internal_error)?
+        .lowered(scope, ty)
 }
 
 /// A node being built, with its spans in [`Node::preorder`].
@@ -111,7 +149,8 @@ fn split(trees: Vec<Tree>) -> (Vec<Node>, Vec<Vec<Span>>) {
 /// an index out of range or a type with an error.
 struct Lowering<'p> {
     program: &'p Program,
-    goal: &'p Goal,
+    /// The goal of a check or example; `None` for a domain condition, which names none of a goal's names (R-CHK-13).
+    goal: Option<&'p Goal>,
     /// The quantifier variables in scope, outermost first, with their declared types.
     vars: Vec<(&'p str, Type)>,
     /// Lambda parameters made for projections so far.
@@ -119,7 +158,7 @@ struct Lowering<'p> {
 }
 
 impl<'p> Lowering<'p> {
-    fn new(program: &'p Program, goal: &'p Goal) -> Self {
+    fn new(program: &'p Program, goal: Option<&'p Goal>) -> Self {
         Lowering {
             program,
             goal,
@@ -142,10 +181,10 @@ impl<'p> Lowering<'p> {
             ExprKind::Input { index } => Tree::leaf(
                 span,
                 Node::Input {
-                    name: self.goal.params.get(*index)?.name.clone(),
+                    name: self.goal?.params.get(*index)?.name.clone(),
                 },
             ),
-            ExprKind::Binding { index } => Tree::leaf(span, local(&self.goal.bindings.get(*index)?.name)),
+            ExprKind::Binding { index } => Tree::leaf(span, local(&self.goal?.bindings.get(*index)?.name)),
             ExprKind::Result => Tree::leaf(span, local(result_local())),
             ExprKind::Var { depth } => Tree::leaf(span, local(self.vars.get(*depth)?.0)),
             ExprKind::Builtin { name, args } => {
@@ -257,7 +296,8 @@ impl<'p> Lowering<'p> {
                 let whole = Tree::new(span, node, vec![floor.spans, again.spans]);
                 if *negated { not(span, whole) } else { whole }
             }
-            // A domain condition is evaluated from HIR by D4's membership walk, never lowered as a check.
+            // Only a domain condition has `value`, and no check does (R-CHK-13).
+            ExprKind::Value if self.goal.is_none() => Tree::leaf(span, local(VALUE_LOCAL)),
             ExprKind::Value => return None,
             // `if a then b` is `not a or b`, so `b` is evaluated only when `a` holds.
             ExprKind::If { condition, then } => {
@@ -309,9 +349,9 @@ impl<'p> Lowering<'p> {
     /// The declared type of `e` if it is a path (`language/11` R-TYP-22), before any narrowing.
     fn declared(&self, e: &Expr) -> Option<Option<Type>> {
         Some(Some(match &e.kind {
-            ExprKind::Input { index } => self.goal.params.get(*index)?.ty.clone(),
-            ExprKind::Binding { index } => self.goal.bindings.get(*index)?.ty.clone(),
-            ExprKind::Result => self.goal.output.clone(),
+            ExprKind::Input { index } => self.goal?.params.get(*index)?.ty.clone(),
+            ExprKind::Binding { index } => self.goal?.bindings.get(*index)?.ty.clone(),
+            ExprKind::Result => self.goal?.output.clone(),
             ExprKind::Var { depth } => self.vars.get(*depth)?.1.clone(),
             ExprKind::Field { base, field } => self.field(&base.ty, *field)?.1,
             _ => return Some(None),
