@@ -1,4 +1,4 @@
-//! Layering check tests (AC-REL-01, AC-REL-02, AC-CMP-01).
+//! Layering check tests (AC-REL-01, AC-REL-02, AC-CMP-01, AC-CMP-09).
 
 mod common;
 
@@ -100,4 +100,86 @@ fn ac_cmp_01_the_real_workspace_passes_the_layering_check() {
     let root = workspace_root().expect("workspace root");
     let violations = layering::check_manifest(&root.join("Cargo.toml")).expect("cargo metadata succeeds");
     assert!(violations.is_empty(), "{violations:?}");
+}
+
+/// AC-CMP-09 (D4): membership is evaluated in `velme-check` and invoked only by `velme-runtime`; no body backend has an
+/// edge to `velme-check` (the real `cargo metadata`), and no other crate's source calls the membership walk, except
+/// `velme-synth`'s interim filter of generated inputs, which D5 removes (`compiler/22` §7.5).
+#[test]
+fn ac_cmp_09_membership_stays_in_velme_check_and_no_backend_reaches_it() {
+    let root = workspace_root().expect("workspace root");
+    let json = layering::metadata_json(&root.join("Cargo.toml")).expect("cargo metadata succeeds");
+    let packages = layering::packages_from_metadata(&json).expect("valid metadata");
+    let deps = |name: &str| {
+        &packages
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("{name} is in the workspace"))
+            .deps
+    };
+    assert!(
+        deps("velme-runtime").iter().any(|d| d.name == "velme-check" && !d.dev),
+        "velme-runtime must depend on velme-check"
+    );
+    for backend in ["velme-interp", "velme-wasm"] {
+        assert!(
+            deps(backend).iter().all(|d| d.name != "velme-check"),
+            "{backend} has an edge to velme-check"
+        );
+    }
+
+    let mut found = Vec::new();
+    let crates = root.join("crates");
+    for entry in std::fs::read_dir(&crates).expect("crates directory") {
+        let dir = entry.expect("a crate").path();
+        let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned();
+        if name == "velme-check" || name == "velme-runtime" {
+            continue;
+        }
+        let mut stack = vec![dir.join("src")];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries {
+                let path = entry.expect("an entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).expect("a source file");
+                    let shown = path
+                        .strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string()
+                        .replace('\\', "/");
+                    found.extend(membership_calls(&shown, &text));
+                }
+            }
+        }
+    }
+    assert!(found.is_empty(), "membership invoked outside velme-runtime: {found:#?}");
+}
+
+/// The membership calls in the source `text` of the file `path` that AC-CMP-09 forbids: any walk through `inputs` or
+/// `output`, and `admits` anywhere but `velme-synth`'s verification, where a comment within the lines above it must say
+/// it lasts until D5.
+fn membership_calls(path: &str, text: &str) -> Vec<String> {
+    if !text.contains("Membership") {
+        return Vec::new();
+    }
+    let lines: Vec<&str> = text.lines().collect();
+    let mut found = Vec::new();
+    for (n, line) in lines.iter().enumerate() {
+        let walk = [".inputs(", ".output("].iter().any(|call| line.contains(call)) && line.contains("membership");
+        let admits = line.contains(".admits(")
+            && !(path == "crates/velme-synth/src/verify.rs"
+                && lines
+                    .get(n.saturating_sub(15)..n)
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|l| l.trim_start().starts_with("//") && l.contains("Until D5")));
+        if walk || admits {
+            found.push(format!("{path}:{}: {}", n + 1, line.trim()));
+        }
+    }
+    found
 }

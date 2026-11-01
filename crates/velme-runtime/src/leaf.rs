@@ -5,7 +5,7 @@
 
 use velme_builtins::Value;
 use velme_builtins::limits::MAX_OUTPUT_BYTES;
-use velme_check::{GoalChecks, Invocation};
+use velme_check::{GoalChecks, Invocation, Membership};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Budget, Interrupt, Limits, Spent};
 use velme_ir::{ValidIr, contract_key, encode_value};
@@ -14,7 +14,7 @@ use velme_synth::{ChildRunner, Verdict, verify};
 
 use std::sync::Arc;
 
-use crate::backend::{Backend, eval_leaf};
+use crate::backend::{Backend, eval_leaf_after};
 use crate::build::invoke_registry;
 use crate::clock::Watchdog;
 use crate::locked::LockedGoal;
@@ -38,17 +38,18 @@ pub fn run_leaf(
     if target.kind != GoalKind::Leaf {
         return Err(vec![Diagnostic::internal_error()]);
     }
-    run_body(
-        program,
-        goal,
-        source,
-        locked,
-        inputs,
-        Vec::new(),
-        Progress::default(),
-        true,
-    )
-    .result
+    let membership = Arc::new(Membership::new(program, source).map_err(|d| vec![d])?);
+    // The requested goal's inputs are walked first, on its own budget (R-RUN-28).
+    let (walked, spent) = membership.inputs(target, &inputs, Budget::new(limits(target)));
+    if let Err((param, refused)) = walked {
+        return Err(vec![refused.input_diagnostic(target, param)]);
+    }
+    let progress = Progress {
+        spent,
+        membership: Some(membership),
+        ..Progress::default()
+    };
+    run_body(program, goal, source, locked, inputs, Vec::new(), progress, true).result
 }
 
 /// The limits of one invocation of `goal`: its effective `max_fuel` and `max_memory` (R-RUN-16).
@@ -59,13 +60,15 @@ pub(crate) fn limits(goal: &Goal) -> Limits {
     }
 }
 
-/// What an invocation brings to its body: what it already spent evaluating its calls' arguments, the run's watchdog,
-/// if it has one, and the backend of a leaf's body.
+/// What an invocation brings to its body: what it already spent walking its inputs and evaluating its calls'
+/// arguments, the run's watchdog, if it has one, the backend of a leaf's body, and the program's domains, made once a
+/// run (`None` makes them for this body alone).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Progress {
     pub(crate) spent: Spent,
     pub(crate) interrupt: Option<Interrupt>,
     pub(crate) backend: Backend,
+    pub(crate) membership: Option<Arc<Membership>>,
 }
 
 /// What running a body left, for the goal's trace event (`runtime/30` §8 `goal`, `check`).
@@ -97,9 +100,10 @@ impl Body {
 }
 
 /// Runs the body of `goal` on `inputs` and, for a goal with calls, on `bindings`, one value per call in block order,
-/// then its checks on the invocation (`runtime/30` §4 steps 6–7), `progress` being how far the invocation already is.
-/// Without `checked` the checks are left to the caller: verification judges an example before the checks
-/// (`compiler/22` §6).
+/// then walks its output for membership (`runtime/30` R-RUN-26), runs its checks on the invocation and enforces the
+/// output size last (§4 steps 7–9), `progress` being how far the invocation already is. Without `checked` the checks
+/// are left to the caller: verification judges an example after the output walk and before the checks (`compiler/22`
+/// §6), and the size is enforced right after the walk.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_body(
     program: &Program,
@@ -111,8 +115,29 @@ pub(crate) fn run_body(
     progress: Progress,
     checked: bool,
 ) -> Body {
-    if !checked {
-        return match invoke(program, goal, locked, inputs, bindings, progress) {
+    let membership = match progress.membership.clone() {
+        Some(membership) => membership,
+        None => match Membership::new(program, source) {
+            Ok(membership) => Arc::new(membership),
+            Err(diagnostic) => return Body::failed(diagnostic, progress.spent),
+        },
+    };
+    let checks = match checked.then(|| GoalChecks::new(program, goal, source)).transpose() {
+        Ok(checks) => checks.map(|checks| checks.watched(progress.interrupt.clone())),
+        Err(diagnostic) => return Body::failed(diagnostic, progress.spent),
+    };
+    let interrupt = progress.interrupt.clone();
+    let invoked = invoke(program, goal, locked, inputs, bindings, progress)
+        .and_then(|invocation| member(program, goal, &membership, invocation, interrupt));
+    let Some(checks) = checks else {
+        return match invoked {
+            Ok(invocation) if let Some(diagnostic) = oversized(program, goal, &invocation.result) => Body::failed(
+                diagnostic,
+                Spent {
+                    fuel: invocation.fuel,
+                    memory: invocation.memory,
+                },
+            ),
             Ok(invocation) => Body {
                 fuel: invocation.fuel,
                 memory: invocation.memory,
@@ -121,12 +146,8 @@ pub(crate) fn run_body(
             },
             Err(stopped) => Body::failed(stopped.0, stopped.1),
         };
-    }
-    let checks = match GoalChecks::new(program, goal, source) {
-        Ok(checks) => checks.watched(progress.interrupt.clone()),
-        Err(diagnostic) => return Body::failed(diagnostic, progress.spent),
     };
-    let invocation = match invoke(program, goal, locked, inputs, bindings, progress) {
+    let invocation = match invoked {
         Ok(invocation) => invocation,
         Err(stopped) => return Body::failed(stopped.0, stopped.1),
     };
@@ -135,10 +156,15 @@ pub(crate) fn run_body(
         Ok(checked) => (checked.items, None),
         Err(stopped) => (stopped.finished.clone(), Some(stopped)),
     };
-    let failures = match &stopped {
+    let mut failures: Vec<Diagnostic> = match &stopped {
         Some(stopped) => vec![stopped.diagnostic.clone()],
         None => items.iter().filter_map(|item| item.failure.clone()).collect(),
     };
+    if failures.is_empty()
+        && let Some(diagnostic) = oversized(program, goal, &invocation.result)
+    {
+        failures.push(diagnostic);
+    }
     let ran = items
         .into_iter()
         .map(|item| CheckRun {
@@ -267,8 +293,54 @@ impl ChildRunner for RegistryRunner<'_> {
     }
 }
 
-/// The goal's body evaluated on `inputs`, within its fuel and memory budget (R-RUN-16) and with an answer of at most
-/// `max_output_bytes` of JSON (`runtime/30` §7). A failure comes with what the invocation had spent by then.
+/// The `VL0606` of `goal`'s answer `value` if it is more than `max_output_bytes` of JSON (`runtime/30` §7), enforced
+/// last, after the membership walk and the checks (§4 step 9).
+fn oversized(program: &Program, goal: GoalId, value: &Value) -> Option<Diagnostic> {
+    if encode_value(value).is_ok() {
+        return None;
+    }
+    let Some(target) = program.goals.get(goal.0) else {
+        return Some(Diagnostic::internal_error());
+    };
+    Some(
+        Diagnostic::new(
+            Code::SizeLimitExceeded,
+            target.span,
+            format!("`{}` made a list or answer that's too big.", target.name),
+        )
+        .with_note(format!("its answer is more than {MAX_OUTPUT_BYTES} bytes as JSON")),
+    )
+}
+
+/// `invocation` once its output has passed the membership walk, from what the body left of its budget (R-RUN-26–27):
+/// what the walk spent is the invocation's, and its own checks spend after it. A non-member is `VL0504`; a budget
+/// failure keeps its code.
+fn member(
+    program: &Program,
+    goal: GoalId,
+    membership: &Membership,
+    mut invocation: Invocation,
+    interrupt: Option<Interrupt>,
+) -> Result<Invocation, Box<(Diagnostic, Spent)>> {
+    let spent = Spent {
+        fuel: invocation.fuel,
+        memory: invocation.memory,
+    };
+    let target = program
+        .goals
+        .get(goal.0)
+        .ok_or_else(|| Box::new((Diagnostic::internal_error(), spent)))?;
+    let budget = Budget::new(limits(target)).after(spent).watched(interrupt);
+    let (walked, spent) = membership.output(target, &invocation.result, budget);
+    if let Err(refused) = walked {
+        return Err(Box::new((refused.output_diagnostic(target), spent)));
+    }
+    (invocation.fuel, invocation.memory) = (spent.fuel, spent.memory);
+    Ok(invocation)
+}
+
+/// The goal's body evaluated on `inputs`, within its fuel and memory budget (R-RUN-16). A failure comes with what the
+/// invocation had spent by then.
 fn invoke(
     program: &Program,
     goal: GoalId,
@@ -281,15 +353,17 @@ fn invoke(
         .goals
         .get(goal.0)
         .ok_or_else(|| Box::new((Diagnostic::internal_error(), progress.spent)))?;
-    // A leaf's body is the backend's; a body with calls, after its arguments, is the interpreter's (R-SBX-17).
-    let (value, spent) = if target.kind == GoalKind::Leaf && bindings.is_empty() && progress.spent == Spent::default() {
+    // A leaf's body is the backend's, after its input walk; a body with calls, after its arguments, is the
+    // interpreter's (R-SBX-17, `runtime/30` R-RUN-27).
+    let (value, spent) = if target.kind == GoalKind::Leaf && bindings.is_empty() {
         let limits = limits(target);
-        eval_leaf(
+        eval_leaf_after(
             &progress.backend,
             target,
             &locked.ir,
             inputs.clone(),
             limits,
+            progress.spent,
             progress.interrupt,
         )
     } else {
@@ -303,15 +377,6 @@ fn invoke(
         )
     };
     let value = value.map_err(|diagnostic| Box::new((diagnostic, spent)))?;
-    if encode_value(&value).is_err() {
-        let diagnostic = Diagnostic::new(
-            Code::SizeLimitExceeded,
-            target.span,
-            format!("`{}` made a list or answer that's too big.", target.name),
-        )
-        .with_note(format!("its answer is more than {MAX_OUTPUT_BYTES} bytes as JSON"));
-        return Err(Box::new((diagnostic, spent)));
-    }
     Ok(Invocation {
         inputs,
         bindings,

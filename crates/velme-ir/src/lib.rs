@@ -25,7 +25,7 @@ pub use node::{
 };
 pub use validate::{
     CheckScope, Invalid, Origin, Request, Subject, Trusted, TrustedExpr, ValidIr, infer_list_types, validate,
-    validate_detailed,
+    validate_condition, validate_detailed,
 };
 
 /// The IR version this crate reads and writes (`compiler/21` R-IR-22).

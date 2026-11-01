@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: redact(&human.stderr)
+---
+Error: `Shift` returned a value outside `Score` at `result`: it must be at least 0.  [VL0504]
+   ╭─[ game.velme:5:1 ]
+   │
+ 5 │ ╭─▶ goal Shift(n: Number) -> Score:
+ 6 │ ├─▶     plan: "Take one off n."
+   │ │                                 
+   │ ╰───────────────────────────────── here
+───╯

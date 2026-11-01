@@ -244,7 +244,13 @@ fn analyze(cli: &Cli) -> Analyzed {
             // A thread of its own, so a bug in analysis is reported like any other (R-SYN-19).
             Ok(file) => match on_big_stack(|| {
                 let (ast, diags) = timed("parse", || velme_syntax::parse(&file));
-                timed("check", || velme_sema::analyze_parsed(&file, &ast, diags, defaults))
+                let (program, mut diags) = timed("check", || velme_sema::analyze_parsed(&file, &ast, diags, defaults));
+                // A program without errors has its domain-typed source literals checked in full (`language/11`
+                // R-TYP-31).
+                if let Some(program) = program.as_ref().filter(|_| !diags.iter().any(Diagnostic::is_error)) {
+                    diags.extend(velme_check::check_literals(program, &file.text));
+                }
+                (program, diags)
             }) {
                 Some((program, diagnostics)) => (Some(file.text), program, diagnostics),
                 // Shown without source lines: it belongs to no place in the file.
@@ -1372,8 +1378,8 @@ fn code_exit(code: Code) -> u8 {
         | SynthesisPending
         | SynthesisBlocked
         | VerificationFailed => EXIT_BUILD_FAILED,
-        CheckFailed | ExampleFailed | BudgetExceeded | ArithmeticError | Timeout | MemoryLimitExceeded
-        | CallLimitExceeded | SizeLimitExceeded | CapabilityDenied => EXIT_EXECUTION_FAILED,
+        CheckFailed | ExampleFailed | OutputOutsideDomain | BudgetExceeded | ArithmeticError | Timeout
+        | MemoryLimitExceeded | CallLimitExceeded | SizeLimitExceeded | CapabilityDenied => EXIT_EXECUTION_FAILED,
         InternalError => EXIT_INTERNAL,
         ArtifactUnavailable | LockStale | ArtifactCorrupt => EXIT_ARTIFACT,
         FileError | InvalidInput | GoalNotFound => EXIT_USAGE,

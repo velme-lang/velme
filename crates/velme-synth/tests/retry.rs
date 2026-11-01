@@ -1271,3 +1271,43 @@ fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause(
             .contains("didn't call exactly one tool")
     );
 }
+
+/// Review finding D4-1: a generated input whose domain condition stops on a budget is not dropped as a non-member, which
+/// would build the goal on no generated input at all; verification ends with the stop's code, as the runtime's entry
+/// walk would (`runtime/30` R-RUN-28).
+#[test]
+fn r_run_28_a_budget_stop_in_a_generated_input_walk_is_not_a_silent_drop() {
+    let source = "language: velme/0.2
+
+type Heavy = Number where every i in range(10000) has every j in range(10000) has i + j >= 0
+
+goal Keep(n: Heavy) -> Number:
+    plan: \"Return n.\"
+";
+    let program = program(source);
+    let id = goal_id(&program, "Keep");
+    let task = Task {
+        program: &program,
+        goal: id,
+        source,
+        contract_key: contract_key(&program, id).expect("a key"),
+        synthesis_key: Fingerprint::of_bytes(b"synthesis"),
+        feedback: Vec::new(),
+    };
+    let provider = Scripted::new(vec![Step::Reply(reply(&input()))]);
+    let mut session = Session::new(SynthOptions {
+        max_retries: 0,
+        ..SynthOptions::default()
+    });
+    let outcome = block_on(synthesize(&mut session, &provider, &task, &LeafRunner::new()));
+    let Outcome::Failed(failure) = outcome else {
+        panic!("it was built on no generated input");
+    };
+    let d = &failure.diagnostic;
+    assert_eq!(d.code, Code::SynthesisFailed);
+    assert!(
+        d.message.contains("`Keep` took too many steps and was stopped"),
+        "{}",
+        shown(d)
+    );
+}

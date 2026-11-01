@@ -3,7 +3,7 @@
 //! the store (R-SYNTH-16).
 
 use velme_builtins::Value;
-use velme_check::{GoalChecks, Invocation};
+use velme_check::{GoalChecks, Invocation, Membership, Refused};
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Fingerprint, ValidIr, display_value};
 use velme_sema::hir::{GoalId, Program};
@@ -59,14 +59,43 @@ pub fn verify(
         return Verdict::Internal;
     };
     let examples: Vec<Vec<Value>> = checks.examples().iter().map(|e| e.args.clone()).collect();
-    let Ok(generated) = test_inputs(program, goal, contract_key, &examples) else {
+    let Ok(mut generated) = test_inputs(program, goal, contract_key, &examples) else {
         return Verdict::Internal;
     };
-    let names: Vec<&str> = program
-        .goals
-        .get(goal.0)
-        .map(|g| g.params.iter().map(|p| p.name.as_str()).collect())
-        .unwrap_or_default();
+    let Some(target) = program.goals.get(goal.0) else {
+        return Verdict::Internal;
+    };
+    let names: Vec<&str> = target.params.iter().map(|p| p.name.as_str()).collect();
+    // Until D5's generator draws domain members (R-SYNTH-64), a domain generates as its base: the generated inputs
+    // outside a domain are filtered out here (R-CHK-15), so the runtime's entry walk never sees one (R-RUN-28). A walk
+    // that stops on a budget instead ends verification with its code, as the entry walk would.
+    if !program.domains.is_empty() {
+        let Ok(membership) = Membership::new(program, source) else {
+            return Verdict::Internal;
+        };
+        let mut kept = Vec::with_capacity(generated.inputs.len());
+        for (i, input) in generated.inputs.into_iter().enumerate() {
+            let mut member = true;
+            if i >= generated.examples {
+                for (n, (param, arg)) in target.params.iter().zip(&input.args).enumerate() {
+                    match membership.admits(&param.ty, arg, &param.name) {
+                        Ok(()) => {}
+                        Err(Refused::Outside(_)) => {
+                            member = false;
+                            break;
+                        }
+                        Err(stop @ Refused::Stopped(_)) => {
+                            return stopped(vec![stop.input_diagnostic(target, n)], &input, &names);
+                        }
+                    }
+                }
+            }
+            if member {
+                kept.push(input);
+            }
+        }
+        generated.inputs = kept;
+    }
     let mut max_fuel = 0;
     for (i, input) in generated.inputs.iter().enumerate() {
         let invocation = match runner.run(candidate, input.args.clone()) {

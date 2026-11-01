@@ -13,11 +13,11 @@ use tokio::runtime::Builder;
 use tokio::task::JoinSet;
 use velme_builtins::Value;
 use velme_builtins::limits::MAX_WALL_CLOCK_MS;
-use velme_check::Part;
+use velme_check::{Membership, Part, Refused};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_interp::{Budget, Error, Failure, Interrupt, Spent};
 use velme_ir::Fingerprint;
-use velme_sema::hir::{GoalId, GoalKind, Program};
+use velme_sema::hir::{Goal, GoalId, GoalKind, Program};
 use velme_synth::{SystemWallClock, WallClock};
 
 use crate::backend::Backend;
@@ -313,6 +313,8 @@ struct Shared {
     /// The goal whose own checks are not run (verification runs them, `compiler/22` §6).
     unchecked: Option<GoalId>,
     backend: Backend,
+    /// The program's domains, for the requested goal's input walk and every output walk (`runtime/30` R-RUN-26–28).
+    membership: Arc<Membership>,
 }
 
 /// Runs the goal `goal` of `program`, whose source is `source`, on `inputs`, with every locked artifact it needs in
@@ -369,7 +371,7 @@ fn run_goal_with(
         .max_blocking_threads(options.jobs.max(1))
         .thread_stack_size(EVAL_STACK)
         .build();
-    let Ok(runtime) = runtime else {
+    let (Ok(runtime), Ok(membership)) = (runtime, Membership::new(program, source)) else {
         let kind = program.goals.get(goal.0).map_or(GoalKind::Leaf, |g| g.kind);
         return (GoalRun::unstarted(name, kind), 0);
     };
@@ -383,8 +385,9 @@ fn run_goal_with(
         peak: AtomicUsize::new(0),
         unchecked: unchecked.then_some(goal),
         backend: options.backend.clone(),
+        membership: Arc::new(membership),
     });
-    let run = runtime.block_on(invocation(Arc::clone(&shared), goal, inputs));
+    let run = runtime.block_on(invocation(Arc::clone(&shared), goal, inputs, true));
     (run, shared.peak.load(Ordering::SeqCst))
 }
 
@@ -417,12 +420,31 @@ fn stop_timed_out(shared: &Shared, run: GoalRun, span: Span, started: Duration) 
     fail(shared, run, started, failed)
 }
 
-/// One invocation, boxed because a goal's calls are invocations too.
-fn invocation(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> Pin<Box<dyn Future<Output = GoalRun> + Send>> {
-    Box::pin(invoke(shared, goal, inputs))
+/// Why the requested goal's input `param` was refused at its entry: `VL0902` for the caller's JSON, and a bug of
+/// ours (`VL0607`) for an example or generated input that verification runs, which is a member by construction; a
+/// budget failure keeps its code either way (R-RUN-28).
+fn entry_refusal(shared: &Shared, target: &Goal, param: usize, refused: &Refused) -> Diagnostic {
+    match refused {
+        Refused::Outside(outside) if shared.unchecked.is_some() => Diagnostic::internal_error().with_note(format!(
+            "an input verification ran, `{}`, is outside `{}`: {}",
+            outside.path, outside.domain, outside.reason
+        )),
+        _ => refused.input_diagnostic(target, param),
+    }
 }
 
-async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRun {
+/// One invocation, boxed because a goal's calls are invocations too; `entry` for the requested goal's, whose inputs
+/// are walked for membership (`runtime/30` R-RUN-28), a call's arguments being typed already.
+fn invocation(
+    shared: Arc<Shared>,
+    goal: GoalId,
+    inputs: Vec<Value>,
+    entry: bool,
+) -> Pin<Box<dyn Future<Output = GoalRun> + Send>> {
+    Box::pin(invoke(shared, goal, inputs, entry))
+}
+
+async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>, entry: bool) -> GoalRun {
     let started = shared.origin.elapsed();
     let Some(target) = shared.program.goals.get(goal.0) else {
         return GoalRun::unstarted("", GoalKind::Leaf);
@@ -458,8 +480,33 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
     }
     let mut values: Vec<Option<Value>> = vec![None; target.bindings.len()];
     let limits = limits(target);
-    // What this invocation has spent on its calls' arguments, which its body spends after (R-RUN-17).
+    // What this invocation has spent on its input walk and its calls' arguments, which its body spends after (R-RUN-17,
+    // R-RUN-27).
     let mut spent = Spent::default();
+    if entry {
+        let walked = {
+            let shared = Arc::clone(&shared);
+            let (inputs, interrupt) = (inputs.clone(), watchdog(&shared));
+            tokio::task::spawn_blocking(move || {
+                let Some(target) = shared.program.goals.get(goal.0) else {
+                    return (Err(Diagnostic::internal_error()), Spent::default());
+                };
+                let budget = Budget::new(limits).watched(Some(interrupt));
+                let (walked, spent) = shared.membership.inputs(target, &inputs, budget);
+                let walked = walked.map_err(|(param, refused)| entry_refusal(&shared, target, param, &refused));
+                (walked, spent)
+            })
+            .await
+        };
+        let Ok((walked, total)) = walked else {
+            return run;
+        };
+        spent = total;
+        (run.fuel, run.memory) = (spent.fuel, spent.memory);
+        if let Err(diagnostic) = walked {
+            return fail(&shared, run, started, Failed::new(name, vec![diagnostic]));
+        }
+    }
     for wave in waves(target) {
         if shared.timed_out() {
             return stop_timed_out(&shared, run, target.span, started);
@@ -514,7 +561,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
                 call.args.clone_from(&args);
             }
             let shared = Arc::clone(&shared);
-            children.spawn(async move { (i, invocation(shared, callee, args).await) });
+            children.spawn(async move { (i, invocation(shared, callee, args, false).await) });
         }
         // Every call of the wave runs to completion, whatever the others do (D-9); they finish in any order.
         let mut done = Vec::new();
@@ -568,6 +615,7 @@ async fn invoke(shared: Arc<Shared>, goal: GoalId, inputs: Vec<Value>) -> GoalRu
             spent,
             interrupt: Some(watchdog(&shared)),
             backend: shared.backend.clone(),
+            membership: Some(Arc::clone(&shared.membership)),
         };
         let checked = shared.unchecked != Some(goal);
         let shared = Arc::clone(&shared);

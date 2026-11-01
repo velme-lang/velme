@@ -81,6 +81,7 @@ codes! {
     CheckFailed = "VL0501", Error;
     ExampleFailed = "VL0502", Error;
     VerificationFailed = "VL0503", Error;
+    OutputOutsideDomain = "VL0504", Error;
     BudgetExceeded = "VL0601", Error;
     ArithmeticError = "VL0602", Error;
     Timeout = "VL0603", Error;
