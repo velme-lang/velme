@@ -1,0 +1,27 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: pretty
+input_file: tests/golden/diagnostics/vl0210.velme
+---
+{
+  "diagnostics": [
+    {
+      "code": "VL0210",
+      "file": "vl0210.velme",
+      "labels": [],
+      "message": "Domain `Rare` produced only 7/64 valid values; at least 8 are needed. Loosen its condition.",
+      "notes": [],
+      "severity": "error",
+      "span": {
+        "column": 1,
+        "end": 223,
+        "line": 4,
+        "start": 120
+      }
+    }
+  ],
+  "format": "velme-cli/1",
+  "notices": [],
+  "results": [],
+  "status": "failed"
+}

@@ -21,7 +21,7 @@ use velme_runtime::{
 use velme_sema::hir::Program;
 use velme_synth::{Scripted, SynthOptions};
 use velme_test_support::ir_json::{binary, input, literal, local};
-use velme_test_support::{goal_id, install, program};
+use velme_test_support::{PanicProvider, goal_id, install, program};
 
 const FILE: &str = "members.velme";
 
@@ -505,4 +505,82 @@ fn ac_synth_69_verification_walks_inputs_and_outputs_as_run_does() {
     // The input walk (2), `value >= 0` (3), the body (1) and the check (3), on every input alike.
     assert_eq!(ran.fuel, 9);
     assert_eq!(artifact.manifest.verification.max_fuel_observed, ran.fuel);
+}
+
+/// A condition within the system budget generation gives it, past `Keep`'s lowered one at `0`, its first boundary input.
+const LOWERED: &str = "language: velme/0.2
+
+type Heavy = Number where value != 0 or (every i in range(10000) has every j in range(20) has i + j >= value)
+
+goal Keep(h: Heavy) -> Number:
+    budget cpu=1ms
+    plan: \"Return h.\"
+";
+
+/// AC-SYNTH-71, F1 of D5's recheck, R-RUN-28's "budget failure retains its code": a condition that fits generation's
+/// system budget can run past the goal's own in the entry walk of a generated input. No candidate could pass, so the
+/// goal ends before its first request with `VL0601`: no billed call, no log line, and no `VL0503`.
+#[test]
+fn ac_synth_71_f1_a_walk_stop_on_the_goals_budget_makes_no_request() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("membership")
+        .join("f1_build");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("project directory");
+    let program = program(LOWERED);
+    let backend = Scripted::replies([json!({"body": input("h")}).to_string()]);
+    let input = BuildInput {
+        mode: Mode::Build,
+        program: &program,
+        source: LOWERED,
+        project: &dir,
+        file: FILE,
+        backend: Some(&backend),
+        options: SynthOptions {
+            max_retries: 0,
+            ..SynthOptions::default()
+        },
+        run: Options::default(),
+    };
+    let report = build(&input, &mut || {});
+    let keep = &report.goals[0];
+    assert_eq!(keep.status, Status::Failed, "{report:#?}");
+    assert_eq!(keep.diagnostics.len(), 1, "{report:#?}");
+    let d = &keep.diagnostics[0];
+    assert_eq!(d.code, Code::BudgetExceeded, "{d:?}");
+    assert_eq!(d.message, "`Keep` took too many steps and was stopped.");
+    assert_eq!(d.notes.last().map(String::as_str), Some(r#"input: {"h":0}"#), "{d:?}");
+    assert!(keep.attempts.is_empty(), "{report:#?}");
+    assert_eq!(backend.calls(), 0);
+    assert!(!dir.join(".velme/synth-log.jsonl").exists(), "no request, no log line");
+}
+
+/// AC-SYNTH-71, F1 of D5's recheck: on a lock hit the same stop ends the goal too, no provider built, not a stale entry
+/// going on to a billed synthesis.
+#[test]
+fn ac_synth_71_f1_a_walk_stop_on_a_lock_hit_reaches_no_provider() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join("membership")
+        .join("f1_lock");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("project directory");
+    let program = program(LOWERED);
+    let mut ir = serde_json::to_value(wired_goal(&program, goal_id(&program, "Keep")).expect("IR")).expect("IR");
+    ir["body"] = input("h");
+    install(&dir, FILE, &program, &ir.to_string());
+    let input = BuildInput {
+        mode: Mode::Build,
+        program: &program,
+        source: LOWERED,
+        project: &dir,
+        file: FILE,
+        backend: Some(&PanicProvider),
+        options: SynthOptions::default(),
+        run: Options::default(),
+    };
+    let report = build(&input, &mut || {});
+    let keep = &report.goals[0];
+    assert_eq!(keep.status, Status::Failed, "{report:#?}");
+    assert_eq!(keep.diagnostics[0].code, Code::BudgetExceeded, "{report:#?}");
+    assert!(!dir.join(".velme/synth-log.jsonl").exists(), "no request, no log line");
 }

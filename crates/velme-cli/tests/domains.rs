@@ -17,8 +17,8 @@ const FILE: &str = "cards.velme";
 const SOURCE: &str = "language: velme/0.2
 
 type Score = Number where value >= 0
-type Ratio = Number where 10 / value > 1
-type Heavy = Number where every i in range(10000) has every j in range(20) has i + j >= value
+type Ratio = Number where 10 / value != 0
+type Heavy = Number where value != 0 or (every i in range(10000) has every j in range(20) has i + j >= value)
 type Pair where value.low <= value.high:
     low: Number
     high: Number
@@ -131,7 +131,7 @@ fn ac_cli_27_invalid_nested_json_input_exits_64_before_the_body() {
         assert_eq!(diag["code"], "VL0902");
         assert_eq!(
             diag["message"],
-            "Input `r` is outside `Ratio`: `10 / value > 1` tried to divide 10 by 0, which has no answer."
+            "Input `r` is outside `Ratio`: `10 / value != 0` tried to divide 10 by 0, which has no answer."
         );
         assert_eq!(diag["notes"], json!(["cause: VL0602"]));
         // Valid base JSON runs the body, which divides by zero: exit 3.
@@ -180,7 +180,7 @@ fn ac_typ_30_velme_check_rejects_a_literal_outside_a_residual_condition() {
     assert_eq!(out.code, 1, "{}{}", out.stdout, out.stderr);
     assert!(
         out.stderr.contains(
-            "`0` isn't a valid `Ratio`: `10 / value > 1` tried to divide 10 by 0, which has no answer.  [VL0204]"
+            "`0` isn't a valid `Ratio`: `10 / value != 0` tried to divide 10 by 0, which has no answer.  [VL0204]"
         ),
         "{}",
         out.stderr
@@ -198,7 +198,7 @@ fn ac_err_05_membership_failures_render_domain_path_and_cause() {
     let divide = run(&dir, "Divide", &["--arg", "r=0"], "interp");
     assert!(
         divide.stderr.contains(
-            "Error: Input `r` is outside `Ratio`: `10 / value > 1` tried to divide 10 by 0, which has no answer.  [VL0902]"
+            "Error: Input `r` is outside `Ratio`: `10 / value != 0` tried to divide 10 by 0, which has no answer.  [VL0902]"
         ),
         "{}",
         divide.stderr
@@ -225,4 +225,95 @@ fn ac_err_05_membership_failures_render_domain_path_and_cause() {
         "{}",
         busy.stderr
     );
+}
+
+/// AC-CLI-29, AC-SYNTH-67, AC-CMP-09 (the probe): `velme check` probes every domain and reports a scarce one with
+/// `VL0210` and exit 1; `velme build` stops on it before any provider is set up, where it would otherwise report that
+/// none is (`VL0405`).
+#[test]
+fn ac_cli_29_velme_check_reports_a_scarce_domain_without_a_provider() {
+    let dir = project("ac_cli_29");
+    // 7 of the probe's 64 draws are 4 or less (`compiler/22` R-SYNTH-66's threshold fixture).
+    let scarce =
+        "type Rare = Number where value >= 1 and value <= 64 and value is whole and (value <= 4 or value > 1000)\n";
+    let source = SOURCE.replace("type Card:\n", &format!("{scarce}type Card:\n"));
+    fs::write(dir.join(FILE), &source).expect("source");
+    let out = velme(&dir, &["check", FILE]);
+    assert_eq!(out.code, 1, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr.contains(
+            "Error: Domain `Rare` produced only 7/64 valid values; at least 8 are needed. Loosen its condition.  [VL0210]"
+        ),
+        "{}",
+        out.stderr
+    );
+    let build = velme(&dir, &["build", FILE]);
+    assert_eq!(build.code, 1, "{}{}", build.stdout, build.stderr);
+    assert!(build.stderr.contains("[VL0210]"), "{}", build.stderr);
+    assert!(
+        !build.stderr.contains("VL0405"),
+        "no provider was looked for: {}",
+        build.stderr
+    );
+    // At 8 of 64 it passes.
+    fs::write(dir.join(FILE), source.replace("value <= 4 or", "value <= 6 or")).expect("source");
+    let out = velme(&dir, &["check", FILE]);
+    assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
+}
+
+/// AC-SYNTH-67, AC-CMP-02, F4 of D5: `velme build` on a scarce domain constructs no provider: with none configured it
+/// reports the domain alone, while the same build with no scarce domain goes on to look for one (`VL0405`).
+#[test]
+fn ac_synth_67_build_with_a_scarce_domain_constructs_no_provider() {
+    let dir = project("ac_synth_67_build");
+    let scarce =
+        "type Rare = Number where value >= 1 and value <= 64 and value is whole and (value <= 4 or value > 1000)\n";
+    let stale = SOURCE.replace("plan: \"Return h.\"", "plan: \"Give back h.\"");
+    let build = |source: &str| {
+        fs::write(dir.join(FILE), source).expect("source");
+        let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
+            .args(["build", FILE])
+            .current_dir(&dir)
+            .env("NO_COLOR", "1")
+            .env_remove("VELME_SYNTH_SCRIPT")
+            .env_remove("VELME_API_KEY")
+            .env_remove("ANTHROPIC_API_KEY")
+            .output()
+            .expect("velme runs");
+        String::from_utf8(out.stderr).expect("utf-8")
+    };
+    let reported = build(&stale.replace("type Card:\n", &format!("{scarce}type Card:\n")));
+    assert!(reported.contains("[VL0210]"), "{reported}");
+    assert!(!reported.contains("[VL0405]"), "{reported}");
+    let reached = build(&stale);
+    assert!(reached.contains("[VL0405]"), "{reached}");
+    assert!(!reached.contains("[VL0210]"), "{reached}");
+    assert!(!dir.join(".velme/synth-log.jsonl").exists(), "nothing was requested");
+}
+
+/// AC-CLI-29, AC-SYNTH-67: a predicate out of budget in `velme check`'s probe is no scarcity: `VL0601` at the domain,
+/// keeping its runtime exit code (R-CLI-29).
+#[test]
+fn ac_cli_29_a_probe_budget_stop_keeps_its_runtime_exit_code() {
+    let dir = project("ac_cli_29_budget");
+    let busy = "type Slow = Number where every i in range(10000) has every j in range(10000) has i + j >= value\n";
+    fs::write(
+        dir.join(FILE),
+        SOURCE.replace("type Card:\n", &format!("{busy}type Card:\n")),
+    )
+    .expect("source");
+    let out = velme(&dir, &["check", FILE]);
+    assert_eq!(out.code, 3, "{}{}", out.stdout, out.stderr);
+    assert!(
+        out.stderr
+            .contains("Error: Checking whether a value is a `Slow` took too many steps.  [VL0601]"),
+        "{}",
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("make its `where` condition cheaper"),
+        "{}",
+        out.stderr
+    );
+    assert!(!out.stderr.contains("VL0210"), "{}", out.stderr);
 }

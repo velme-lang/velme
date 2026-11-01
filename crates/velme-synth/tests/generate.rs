@@ -11,7 +11,7 @@ use velme_test_support::{goal_id, program};
 fn generate(source: &str, goal: &str, key: &str, examples: &[Vec<Value>]) -> TestInputs {
     let program = program(source);
     let key: Fingerprint = key.parse().expect("a fingerprint");
-    test_inputs(&program, goal_id(&program, goal), key, examples).expect("inputs")
+    test_inputs(&program, goal_id(&program, goal), source, key, examples).expect("inputs")
 }
 
 fn lines(inputs: &TestInputs) -> Vec<&str> {

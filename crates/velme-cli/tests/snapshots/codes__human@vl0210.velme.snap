@@ -1,0 +1,12 @@
+---
+source: crates/velme-cli/tests/codes.rs
+expression: human.stderr
+input_file: tests/golden/diagnostics/vl0210.velme
+---
+Error: Domain `Rare` produced only 7/64 valid values; at least 8 are needed. Loosen its condition.  [VL0210]
+   ╭─[ vl0210.velme:4:1 ]
+   │
+ 4 │ type Rare = Number where value >= 1 and value <= 64 and value is whole and (value <= 4 or value > 1000)
+   │ ───────────────────────────────────────────────────┬───────────────────────────────────────────────────  
+   │                                                    ╰───────────────────────────────────────────────────── here
+───╯

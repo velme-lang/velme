@@ -1,8 +1,8 @@
 //! Domain membership (`language/13` R-CHK-15, `runtime/30` R-RUN-26–28): the closed set or the complete `where`
 //! condition of a domain, evaluated from validated HIR on the reference interpreter, and the deep walk over a value that
 //! tests every domain it reaches. `velme-runtime` calls the walk around each body, whatever backend ran it (R-RUN-27);
-//! source literals and generated values are tested one domain position at a time, each on a fresh budget
-//! ([`Membership::admits`]).
+//! source literals and generated values are tested one domain at a time, each on a fresh budget
+//! ([`Membership::member`]).
 
 use velme_builtins::{Value, equals};
 use velme_diagnostics::{Code, Diagnostic};
@@ -110,17 +110,18 @@ enum Step<'v> {
     Index(usize),
 }
 
-/// How a walk pays: from an invocation's meter, or each domain position on a fresh system budget at no visit cost.
+/// How a walk pays: from an invocation's meter, or one predicate on a fresh budget of `fuel` at no visit cost, what it
+/// spent recorded.
 enum Meter<'e, 's> {
     Invocation(&'e mut Evaluator<'s>),
-    Fresh,
+    Fresh { fuel: u64, spent: u64 },
 }
 
 impl<'s> Meter<'_, 's> {
     fn debit(&mut self, fuel: u64) -> Result<(), Refused> {
         match self {
             Meter::Invocation(evaluator) => evaluator.debit(fuel).map_err(Refused::Stopped),
-            Meter::Fresh => Ok(()),
+            Meter::Fresh { .. } => Ok(()),
         }
     }
 
@@ -128,7 +129,15 @@ impl<'s> Meter<'_, 's> {
         let expr = condition.node.trusted();
         match self {
             Meter::Invocation(evaluator) => evaluator.eval_bound(VALUE_LOCAL, value.clone(), expr),
-            Meter::Fresh => Evaluator::new(Limits::SYSTEM).eval_bound(VALUE_LOCAL, value.clone(), expr),
+            Meter::Fresh { fuel, spent } => {
+                let mut evaluator = Evaluator::new(Limits {
+                    fuel: *fuel,
+                    ..Limits::SYSTEM
+                });
+                let result = evaluator.eval_bound(VALUE_LOCAL, value.clone(), expr);
+                *spent = spent.saturating_add(evaluator.spent().fuel);
+                result
+            }
         }
     }
 }
@@ -217,17 +226,25 @@ impl Membership {
         (walked, evaluator.spent())
     }
 
-    /// Whether `value` is a member of every domain `ty` reaches in it, each domain position tested on a fresh system
-    /// budget: what source literals (`language/11` R-TYP-31) and generated values (R-CHK-15) are held to. `root` names
-    /// the value in a report.
-    pub fn admits(&self, ty: &Type, value: &Value, root: &str) -> Result<(), Refused> {
-        self.walk(ty, value, root, &mut Meter::Fresh)
+    /// Whether `value` is a member of the domain `id` alone, on a fresh system budget (R-CHK-15): the predicate the
+    /// source-literal pass supplies each constant to (`language/11` R-TYP-31), and `velme-synth`'s generator and probe
+    /// each value they make (`compiler/22` R-SYNTH-63, R-SYNTH-65), the walk not being one.
+    pub fn member(&self, id: DomainId, value: &Value) -> Result<(), Refused> {
+        self.member_within(id, value, Limits::SYSTEM.fuel).0
     }
 
-    /// Whether `value` is a member of the domain `id` alone, on a fresh system budget (R-CHK-15): the predicate the
-    /// source-literal pass supplies each constant to, the walk not being one (`language/11` R-TYP-31).
-    pub fn member(&self, id: DomainId, value: &Value) -> Result<(), Refused> {
-        self.test(id, value, &mut Meter::Fresh)
+    /// [`Membership::member`] on a fresh system budget whose fuel is at most `fuel`, and the fuel it spent: what
+    /// `velme-synth` totals across one domain's probe or one goal's generation (`compiler/22` R-SYNTH-67, D-167).
+    pub fn member_within(&self, id: DomainId, value: &Value, fuel: u64) -> (Result<(), Refused>, u64) {
+        let mut meter = Meter::Fresh {
+            fuel: fuel.min(Limits::SYSTEM.fuel),
+            spent: 0,
+        };
+        let result = self.test(id, value, &mut meter);
+        let Meter::Fresh { spent, .. } = meter else {
+            return (result, 0);
+        };
+        (result, spent)
     }
 
     /// The domain `id`'s name.

@@ -61,6 +61,7 @@ codes! {
     NullableAccess = "VL0207", Error;
     RecursiveType = "VL0208", Error;
     InvalidDomain = "VL0209", Error;
+    TooFewValidValues = "VL0210", Error;
     UnknownGoal = "VL0301", Error;
     CallArityMismatch = "VL0302", Error;
     InvalidCall = "VL0303", Error;

@@ -9,8 +9,9 @@ use std::sync::Arc;
 
 use tokio::runtime::Builder;
 use velme_builtins::Value;
-use velme_check::Invocation;
+use velme_check::{Invocation, Membership, Refused};
 use velme_diagnostics::{Code, Diagnostic, Span};
+use velme_interp::Budget;
 use velme_ir::{
     CallNode, Fingerprint, Origin, Request, Synthesis, ValidIr, calls, contract_key, signature, synthesis_key,
     to_canonical_string, validate, wired_goal,
@@ -18,11 +19,13 @@ use velme_ir::{
 use velme_sema::hir::{GoalId, GoalKind, Program};
 use velme_synth::{
     AttemptFeedback, ChildRunner, Identity, Outcome, Rejection, Session, SynthBackend, SynthOptions, SynthProvider,
-    Task, Usage, Verdict, Verified, provider_diagnostic, reaches_no_further, synthesize, verify,
+    Task, TestInput, TestInputs, Usage, Verdict, Verified, goal_inputs, provider_diagnostic, reaches_no_further,
+    synthesize, verify,
 };
 
 use crate::artifact::{ArtifactFormat, Child, Manifest, Verification};
 use crate::backend::Backend;
+use crate::leaf::limits;
 use crate::lock::{Entry, Lock};
 use crate::locked::{LockedGoal, load};
 use crate::registry::Registry;
@@ -208,6 +211,8 @@ struct Build<'a> {
     touched: BTreeSet<GoalId>,
     /// The goals whose locked artifact failed its examples or checks in this build.
     rejected: BTreeSet<GoalId>,
+    /// Each goal's inputs for checking what the lock and the store hold, made and walked once (D-167).
+    inputs: BTreeMap<GoalId, Result<Arc<TestInputs>, Diagnostic>>,
     identity: Option<Result<Identity, velme_synth::ProviderError>>,
     provider: Option<Box<dyn SynthProvider>>,
     summary: Summary,
@@ -228,6 +233,7 @@ impl<'a> Build<'a> {
             failed: BTreeMap::new(),
             touched: BTreeSet::new(),
             rejected: BTreeSet::new(),
+            inputs: BTreeMap::new(),
             identity: None,
             provider: None,
             summary: Summary::default(),
@@ -302,7 +308,11 @@ impl<'a> Build<'a> {
             // the current ones on every build, on the interpreter and with no provider (R-ART-22). One that no longer
             // passes is stale and goes through ordinary synthesis.
             let candidate = locked.ir.clone();
-            match self.verify(id, &candidate) {
+            let verdict = match self.verify(id, &candidate) {
+                Ok(verdict) => verdict,
+                Err(d) => return outcome(&name, Status::Failed, vec![d]),
+            };
+            match verdict {
                 Verdict::Accepted(_) => {
                     self.summary.lock_hits += 1;
                     // Only a goal with a callee that changed is itself changed for the note of its own callers.
@@ -327,7 +337,7 @@ impl<'a> Build<'a> {
                     feedback.push(previous(&candidate, &rejection));
                 }
                 Verdict::Watchdog(d) => return outcome(&name, Status::Failed, vec![retarget(d, span)]),
-                Verdict::Internal => return outcome(&name, Status::Failed, vec![Diagnostic::internal_error()]),
+                Verdict::Internal(d) => return outcome(&name, Status::Failed, vec![d]),
             }
         }
         let mut result = if self.input.mode == Mode::Offline {
@@ -373,7 +383,11 @@ impl<'a> Build<'a> {
         if let Some(blocked) = self.blocked(id, name, span) {
             return blocked;
         }
-        match self.verify(id, &locked.ir) {
+        let verdict = match self.verify(id, &locked.ir) {
+            Ok(verdict) => verdict,
+            Err(d) => return outcome(name, Status::Failed, vec![d]),
+        };
+        match verdict {
             Verdict::Accepted(_) => {
                 self.summary.lock_hits += 1;
                 let source = if program.goals.get(id.0).is_some_and(|g| g.bindings.is_empty()) {
@@ -394,7 +408,7 @@ impl<'a> Build<'a> {
                 outcome(name, Status::Failed, vec![d])
             }
             Verdict::Watchdog(d) => outcome(name, Status::Failed, vec![retarget(d, span)]),
-            Verdict::Internal => outcome(name, Status::Failed, vec![Diagnostic::internal_error()]),
+            Verdict::Internal(d) => outcome(name, Status::Failed, vec![d]),
         }
     }
 
@@ -437,13 +451,32 @@ impl<'a> Build<'a> {
         }
     }
 
-    /// Verifies `candidate` for `id` against the children built so far.
-    fn verify(&self, id: GoalId, candidate: &ValidIr) -> Verdict {
-        let Ok(contract) = contract_key(self.input.program, id) else {
-            return Verdict::Internal;
-        };
+    /// Verifies `candidate` for `id` against the children built so far, on the goal's inputs. A domain predicate out of
+    /// budget while they are made or walked is the goal's failure, not a verdict: a lock hit in this state is that stop,
+    /// not a stale entry going on to a billed synthesis (R-SYNTH-63, D-167).
+    fn verify(&mut self, id: GoalId, candidate: &ValidIr) -> Result<Verdict, Diagnostic> {
+        let inputs = self.goal_inputs(id)?;
+        let (program, source) = (self.input.program, self.input.source);
         let runner = Runner { build: self, goal: id };
-        verify(self.input.program, id, self.input.source, contract, candidate, &runner)
+        Ok(verify(program, id, source, &inputs, candidate, &runner))
+    }
+
+    /// The inputs of `id`, made and walked on its first verification in this build and reused by the rest (D-167).
+    fn goal_inputs(&mut self, id: GoalId) -> Result<Arc<TestInputs>, Diagnostic> {
+        if let Some(made) = self.inputs.get(&id) {
+            return made.clone();
+        }
+        let made = self.make_inputs(id).map(Arc::new);
+        self.inputs.insert(id, made.clone());
+        made
+    }
+
+    fn make_inputs(&self, id: GoalId) -> Result<TestInputs, Diagnostic> {
+        let (program, source) = (self.input.program, self.input.source);
+        let contract = contract_key(program, id).map_err(|_| Diagnostic::internal_error())?;
+        let made = goal_inputs(program, id, source, contract)?;
+        Runner { build: self, goal: id }.admit(&made.inputs)?;
+        Ok(made)
     }
 
     /// A wired goal: the compiler's IR, verified like any candidate, needing no provider (D-4, AC-CMP-06).
@@ -465,7 +498,11 @@ impl<'a> Build<'a> {
         let Ok(ir) = validate(&text, &request) else {
             return internal();
         };
-        let verified = match self.verify(id, &ir) {
+        let verdict = match self.verify(id, &ir) {
+            Ok(verdict) => verdict,
+            Err(d) => return outcome(name, Status::Failed, vec![d]),
+        };
+        let verified = match verdict {
             Verdict::Accepted(verified) => verified,
             Verdict::Rejected(rejection) => {
                 let check = if rejection.cause.name.is_empty() {
@@ -482,7 +519,7 @@ impl<'a> Build<'a> {
                 return outcome(name, Status::Failed, vec![d]);
             }
             Verdict::Watchdog(d) => return outcome(name, Status::Failed, vec![retarget(d, span)]),
-            Verdict::Internal => return internal(),
+            Verdict::Internal(d) => return outcome(name, Status::Failed, vec![d]),
         };
         let synthesis = Synthesis {
             input_version: COMPILER,
@@ -566,7 +603,11 @@ impl<'a> Build<'a> {
                 if pinned == Some(artifact) && !feedback.is_empty() {
                     continue;
                 }
-                match self.verify(id, &locked.ir) {
+                let verdict = match self.verify(id, &locked.ir) {
+                    Ok(verdict) => verdict,
+                    Err(d) => return fail(d),
+                };
+                match verdict {
                     Verdict::Accepted(_) => {}
                     Verdict::Rejected(rejection) => {
                         notes.push(self.stored_note(id, &rejection.line));
@@ -574,7 +615,7 @@ impl<'a> Build<'a> {
                         continue;
                     }
                     Verdict::Watchdog(d) => return fail(retarget(d, span)),
-                    Verdict::Internal => return fail(Diagnostic::internal_error()),
+                    Verdict::Internal(d) => return fail(d),
                 }
                 // A locked build writes nothing, not even a modification time (D-111).
                 if self.input.mode != Mode::Locked {
@@ -865,6 +906,25 @@ impl ChildRunner for Runner<'_, '_> {
         let registry = Registry::of(goals);
         let options = &self.build.verification;
         invoke_registry(input.program, self.goal, input.source, &registry, options, inputs)
+    }
+
+    fn admit(&self, inputs: &[TestInput]) -> Result<(), Diagnostic> {
+        let input = self.build.input;
+        let target = input
+            .program
+            .goals
+            .get(self.goal.0)
+            .ok_or_else(Diagnostic::internal_error)?;
+        let membership = Membership::new(input.program, input.source)?;
+        for test in inputs {
+            let (walked, _) = membership.inputs(target, &test.args, Budget::new(limits(target)));
+            if let Err((param, refused @ Refused::Stopped(_))) = walked {
+                return Err(refused
+                    .input_diagnostic(target, param)
+                    .with_note(format!("input: {}", test.json)));
+            }
+        }
+        Ok(())
     }
 }
 

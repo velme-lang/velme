@@ -246,9 +246,13 @@ fn analyze(cli: &Cli) -> Analyzed {
                 let (ast, diags) = timed("parse", || velme_syntax::parse(&file));
                 let (program, mut diags) = timed("check", || velme_sema::analyze_parsed(&file, &ast, diags, defaults));
                 // A program without errors has its domain-typed source literals checked in full (`language/11`
-                // R-TYP-31).
+                // R-TYP-31); one still without errors has every domain probed for scarcity, the last analysis step,
+                // before anything is generated or synthesized (`compiler/22` R-SYNTH-65).
                 if let Some(program) = program.as_ref().filter(|_| !diags.iter().any(Diagnostic::is_error)) {
                     diags.extend(velme_check::check_literals(program, &file.text));
+                    if !diags.iter().any(Diagnostic::is_error) {
+                        diags.extend(velme_synth::probe(program, &file.text));
+                    }
                 }
                 (program, diags)
             }) {
@@ -1360,6 +1364,7 @@ fn code_exit(code: Code) -> u8 {
         | NullableAccess
         | RecursiveType
         | InvalidDomain
+        | TooFewValidValues
         | UnknownGoal
         | CallArityMismatch
         | InvalidCall

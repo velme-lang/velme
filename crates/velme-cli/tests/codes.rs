@@ -241,8 +241,8 @@ fn check_codes() {
     });
 }
 
-/// AC-ERR-04 (the `VL0209` half; `VL0210` is D5's): each invalid declaration names its precise reason, with the same
-/// code and message in human and JSON output.
+/// AC-ERR-04 (the `VL0209` half): each invalid declaration names its precise reason, with the same code and message in
+/// human and JSON output.
 #[test]
 fn ac_err_04_vl0209_names_the_reason_in_human_and_json() {
     for (decl, reason) in [
@@ -271,6 +271,33 @@ fn ac_err_04_vl0209_names_the_reason_in_human_and_json() {
         assert!(message.contains(reason), "{decl}: {message}");
         assert!(human.stderr.contains(message), "{decl}: {}", human.stderr);
     }
+}
+
+/// AC-ERR-04 (the `VL0210` half): a scarce domain gives its success count out of 64, with the same code and message in
+/// human and JSON output.
+#[test]
+fn ac_err_04_vl0210_gives_the_count_in_human_and_json() {
+    let source = "language: velme/0.2\n\ntype Rare = Number where value >= 1 and value <= 64 and value is whole and \
+                  (value <= 4 or value > 1000)\n\ngoal G(x: Rare) -> Number:\n    plan: \"p\"\n";
+    let dir = project("ac_err_04_vl0210", source);
+    let human = velme(&dir, &["check", FILE], &[]);
+    assert_eq!(human.code, 1, "{}", human.stderr);
+    let json = velme(&dir, &["check", "--json", FILE], &[]);
+    assert_eq!(json.code, human.code);
+    let envelope: Value = serde_json::from_str(&json.stdout).expect("--json prints one JSON document");
+    let diagnostics = envelope["diagnostics"].as_array().expect("a diagnostics array");
+    assert_eq!(diagnostics.len(), 1, "{}", json.stdout);
+    assert_eq!(diagnostics[0]["code"], "VL0210");
+    let message = diagnostics[0]["message"].as_str().expect("a message");
+    assert_eq!(
+        message,
+        "Domain `Rare` produced only 7/64 valid values; at least 8 are needed. Loosen its condition."
+    );
+    assert!(
+        human.stderr.contains(&format!("{message}  [VL0210]")),
+        "{}",
+        human.stderr
+    );
 }
 
 // ---- synthesis ----

@@ -13,7 +13,7 @@ use velme_builtins::Value;
 use velme_ir::{Origin, Request, to_canonical_string, validate};
 use velme_runtime::{Backend, BuildInput, Lock, Mode, Options, Status, Store, Wasm, build, eval_leaf};
 use velme_synth::{ReplyFormat, Scripted, SynthOptions, compress};
-use velme_test_support::{goal_id, program};
+use velme_test_support::{PanicProvider, goal_id, install, program};
 
 const FILE: &str = "loans.velme";
 
@@ -207,4 +207,41 @@ fn a_domain_program_runs_on_both_back_ends() {
             assert_eq!(value.expect("a value"), expected, "{name}");
         }
     }
+}
+
+/// AC-SYNTH-71: a lock hit generates the inputs it verifies on too. A domain predicate out of budget there ends the goal
+/// with its own code, at the domain, naming the goal, with no provider built: no verdict on the locked IR.
+#[test]
+fn ac_synth_71_a_budget_stop_while_verifying_a_lock_hit_reaches_no_provider() {
+    let source = "language: velme/0.2
+
+type Busy = Number where every i in range(10000) has every j in range(10000) has i + j >= 0
+
+goal Keep(n: Busy) -> Number:
+    plan: \"Return n.\"
+";
+    let dir = project("ac_synth_71");
+    let program = program(source);
+    let mut ir =
+        serde_json::to_value(velme_ir::wired_goal(&program, goal_id(&program, "Keep")).expect("IR")).expect("IR");
+    ir["body"] = json!({"kind": "input", "name": "n"});
+    install(&dir, FILE, &program, &ir.to_string());
+    let input = BuildInput {
+        mode: Mode::Build,
+        program: &program,
+        source,
+        project: &dir,
+        file: FILE,
+        backend: Some(&PanicProvider),
+        options: SynthOptions::default(),
+        run: Options::default(),
+    };
+    let report = build(&input, &mut || {});
+    let keep = &report.goals[0];
+    assert_eq!(keep.status, Status::Failed, "{report:#?}");
+    let d = &keep.diagnostics[0];
+    assert_eq!(d.code, velme_diagnostics::Code::BudgetExceeded, "{d:?}");
+    assert_eq!(d.message, "Checking whether a value is a `Busy` took too many steps.");
+    assert!(d.notes.iter().any(|n| n.contains("`Keep`")), "{d:?}");
+    assert!(!dir.join(".velme/synth-log.jsonl").exists(), "no request, no log line");
 }

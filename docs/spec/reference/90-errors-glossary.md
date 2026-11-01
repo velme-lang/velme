@@ -59,7 +59,7 @@ diagnostic's data.
 | VL0502 | ExampleFailed | checks | an `examples:` item produced a different value | For {given}, `{goal}` gave {got} but the example expects {expected}. | A009 |
 | VL0503 | VerificationFailed | checks | candidate IR failed checks/examples during build (per-attempt; final is VL0403, except a compiler-built wired goal that fails its own examples or checks, whose final code is VL0503) | The generated program didn't pass `{check}` for {input}. | A009 |
 | VL0504 | OutputOutsideDomain | checks | a goal output is outside its declared domain, deeply, before its own checks; a condition value error counts as non-membership, budget failures keep their code (R-RUN-26) | `{goal}` returned a value outside `{domain}` at `{path}`: {reason}. | — |
-| VL0601 | BudgetExceeded | runtime | fuel exhausted (deterministic, D-10) | `{goal}` took too many steps and was stopped. | A010 |
+| VL0601 | BudgetExceeded | runtime | fuel exhausted (deterministic, D-10); a domain predicate out of budget while values are generated or probed, alone or past the totals of R-SYNTH-67 (D-167) | `{goal}` took too many steps and was stopped. For a domain: Checking whether a value is a `{domain}` took too many steps. | A010 |
 | VL0602 | ArithmeticError | runtime | divide by zero, overflow, non-integer or out-of-range integer argument (D-22, D-36) | `{goal}` tried to {op}, which has no answer. | — |
 | VL0603 | Timeout | runtime | wall-clock watchdog fired (non-reproducible, D-10) | `{goal}` ran too long and was stopped. | A011 |
 | VL0604 | MemoryLimitExceeded | runtime | memory limit reached | `{goal}` needed more memory than it's allowed. | A012 |

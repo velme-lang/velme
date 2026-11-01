@@ -818,8 +818,9 @@ carries the previous artifact's IR and that failure's diagnostics as an earlier 
 would; this uses up no retry. The learner sees the failure as a note naming the child that changed (D-95).
 **R-SYNTH-47** A candidate that passes verification but that the store then refuses (runtime/32 R-ART-10, R-ART-11) is
 `VL0607`, a Velme bug, not a failed attempt (D-93).
-**R-SYNTH-15** Any failure in steps 8–9 but `VL0603` (R-SYNTH-14) wraps as `VL0503 VerificationFailed` with the first
-failing case (examples before generated inputs, then generation order) as the primary cause.
+**R-SYNTH-15** Any failure in steps 8–9 but `VL0603` (R-SYNTH-14) and a budget stop in an input's entry walk, which ends
+the goal before its first request (R-SYNTH-63), wraps as `VL0503 VerificationFailed` with the first failing case
+(examples before generated inputs, then generation order) as the primary cause.
 **R-SYNTH-16** Only a fully verified candidate is eligible for the artifact store (runtime/32 R-ART-11).
 
 ## 7. Generated test inputs (D-96)
@@ -940,13 +941,7 @@ V3  type Item: name: Text, price: Number
 when `players` is `[]`"), so they can refine the check; the message suggests the `if … then …` rewrite
 (`if price >= 0 then result >= 0`, D-6). An `assume:` precondition block is Future; the word is reserved (D-39).
 
-### 7.5 Domain values (D-151, D-161, D-162, D-164)
-
-D5 completes domain-aware generation and the probe. Until D5, `build` on a domain program uses base-type
-generated values; D2–D4 establish syntax, typing, IR and membership only and do not claim end-to-end builds
-of domain programs. This is implementation sequencing, not an alternative 0.2 generator contract. Until then,
-`velme-synth` also drops generated values outside a domain by calling `velme-check`'s membership check directly;
-this is the one exception to AC-CMP-09's invocation rule and D5 removes it.
+### 7.5 Domain values (D-151, D-161, D-162, D-164, D-167)
 
 **R-SYNTH-62** Construct domain value sets recursively before constructing goal tuples. A Text closed set's `B`
 is its first 16 members in declaration order (all members if at most 16), and its `S` is the first two
@@ -955,9 +950,14 @@ start with the base `B`/`S`, project each value into the simple constraints as b
 upper edge when present, and de-duplicate in first-occurrence order. For Text length domains do the same, appending
 `"a"` repeated the lower-edge length then the upper-edge length. Edges belong to both `B` and `S`.
 An inclusive edge is its bound. For an exclusive non-whole Number edge use the bound ± 0.01 toward the interval;
-if the interval is narrower than that step, use its midpoint instead. With `is whole` use the nearest integer inside. A Text edge is the nearest integer length inside the
+if that is not inside the interval (it is at most 0.01 wide), use the interval's midpoint `(lo + hi) / 2` instead: the sum exact; absent if no Number holds it, then rounded per R-TYP-04, and absent too if the rounded midpoint isn't inside. With `is whole` use the nearest integer inside. A Text edge is the nearest integer length inside the
 bound. A missing lower or upper bound adds no edge. This covers both edges, including strict, negative and whole
 bounds. Representable Number limits are `language/11` §3; a simple constraint with no representable member is `VL0209`.
+Edges, grid points and one-bound draws are exact Numbers. Whether a Number holds a value depends on its coefficient at
+its scale being below 2⁹⁶ (`language/11` §3), not on its magnitude: a sum of two small bounds can have none. Where bound ±
+0.01 is not a Number, the exclusive edge is the nearest integer inside the interval. A drawn point or edge-plus-offset
+that no Number holds exactly fails its value draw like an oversized constructor: no retry, the random attempt is skipped
+(R-SYNTH-18), and in the probe it is a failed draw.
 
 Projection of the base `B`/`S` values clamps to the admissible interval's edges, taking `floor` first for `is whole`;
 Text projection truncates on scalar boundaries or appends `"a"`. It never rejects a candidate for a simple bound.
@@ -975,11 +975,13 @@ bound, keep the base draw, taking `floor` for `is whole`. For Text, let `lo` be 
 `lo + below(min(hi, lo + 16) − lo + 1)`. Boundary edges still cover `hi` when present.
 Then draw scalars from §7.3's alphabet. Set draws choose `below(member_count)`
 in declaration order. If exactly one Number grid is empty, every draw uses the other grid and consumes no
-`below(2)`. If both are empty (e.g. `0 < value < 0.001`), draw the midpoint `(lo + hi) / 2`, rounded per
-R-TYP-04, as for a narrow exclusive edge above; consume no grid-selection or grid-index draw. Duplicate midpoint
-draws count as usual in R-SYNTH-65's probe.
+`below(2)`. If both are empty (e.g. `0 < value < 0.001`), draw the midpoint, as for a narrow exclusive edge above; if it
+is absent the draw fails. Consume no grid-selection or grid-index draw. Duplicate midpoint draws count as usual in
+R-SYNTH-65's probe.
 
-Constructors check the existing size limits before allocation; an oversized candidate is skipped as in R-SYNTH-18.
+Constructors check the existing size limits before allocation; an oversized candidate is skipped as in R-SYNTH-18:
+an oversized value keeps its position in a list, record or diagonal, and any input holding it is skipped; a domain's own
+candidates are dropped before filtering.
 Other base generators, and List/optional traversal, retain §7.1–7.3's order and draw consumption.
 
 **R-SYNTH-63** Evaluate every residual condition on a complete value, using R-CHK-15. Filter each domain's finite
@@ -987,12 +989,18 @@ Other base generators, and List/optional traversal, retain §7.1–7.3's order a
 random draw, construct the complete simple-valid value, evaluate its condition, and, on non-membership, retry that
 value with the same advancing stream up to **K = 16 retries after the initial draw** (at most 17 candidates).
 Exhaustion fails this value draw; the containing random input attempt is skipped and consumes one of R-SYNTH-18's
-256 attempts. It does not restart the goal's stream or discard independently drawn sibling values. For a record
+256 attempts. It does not restart the goal's stream, and a retry doesn't redraw siblings drawn before it. For a record
 domain, first construct all fields (including nested domains); evaluate the record condition with `value` bound
 to the whole record. A retry redraws that whole record, allowing relations such as `value.discount <= value.price`.
 A nested domain is filtered at its own value level before its container's condition is evaluated. A failed child
 draw fails its containing candidate. A condition's value error counts as rejection; fuel and other budget failures
-retain their codes (R-CHK-15). No residual condition is serialized into artifact IR.
+retain their codes (R-CHK-15). No residual condition is serialized into artifact IR. A budget stop while a goal's
+inputs are generated ends that goal with its code, worded for the domain and placed at its declaration; it is not a
+failed attempt, is not wrapped as VL0503 or VL0403, and happens before the goal's first provider request, since
+generation runs once per goal before synthesis. A budget stop in the entry walk of a generated or example input, on the
+goal's own budget, ends the goal before its first request, with its own code and no billed call; `velme-runtime` makes
+this walk, as it makes every membership walk (R-RUN-27, R-RUN-28). A lock hit in this state is that stop, not a stale
+entry going on to synthesis.
 
 **R-SYNTH-64** After filtering, construct record diagonals, List/optional sets and goal tuples in the existing
 order. Empty sets propagate explicitly: `B(T?) = [nothing]` when `B(T)` is empty, `B(List<T>) = [[]]`, and a record's
@@ -1017,9 +1025,14 @@ with indices 0–63 to make **64 raw simple-valid draws**. Do not apply the doma
 nested field domains still use R-SYNTH-63. Count draws whose complete value satisfies the full condition and
 input-size limits; duplicates count as successes, so a singleton domain can pass. Fewer than **8** successes is
 `VL0210`, with domain name and `n/64`; 8 passes. False or value-error results count as failures. Probe predicate evaluation by `velme-check`
-uses the reference interpreter, system fuel/memory/size caps (`runtime/30` §7), a fresh fuel budget per draw, and no goal
-budget override. Budget exhaustion retains its diagnostic. Changing a goal's plan, model or parameter name cannot
-change this probe. Probe failure stops `check` before any provider call and exits 1; it is not synthesis feedback.
+uses the reference interpreter, system fuel/memory/size caps (`runtime/30` §7), and no goal budget override; each
+predicate evaluation, nested field domains included, runs on its own fresh system budget, within the totals of
+R-SYNTH-67. Budget exhaustion retains its diagnostic. The probe's size limits apply to the drawn value alone: its
+canonical JSON is at most 262 144 bytes and input decoding accepts it as the domain's base type. They are checked first;
+a value over them is a failed draw and its condition is not evaluated. Changing a goal's plan, model or parameter name
+cannot change this probe. Probe failure stops `check` before any provider call and exits 1; it is not synthesis
+feedback. The probe is the last analysis step of every command that analyzes a file, run only when no earlier phase
+reported an error; its diagnostics are file errors for each such command.
 
 **R-SYNTH-66** Golden vectors V4–V6 supplement §7.4's V1–V3. V4: `type Risk = Text one of "B", "A"`
 has `B = ["B", "A"]`, `S = ["B", "A"]`, and a singleton set has 64 successful probe draws. V5:
@@ -1030,6 +1043,64 @@ has edge values `"a"` and `"aa"`. V6: a record with `x: Number`, `y: Number` and
 stages, and can draw admissible random records. D5 freezes the declaration hashes, probe draws, retry counts and
 accepted random tuples for these fixtures as executable golden vectors using the algorithms above; tests include
 thresholds 7 and 8, all-rejected and value-error filters, 16-member coverage, and declaration-local seeds.
+
+*Golden vectors* (canonical JSON, generation order; a conforming generator reproduces them exactly). `draws` and
+`inputs` are fingerprints: `b3:` and the BLAKE3 of the canonical JSON array of strings, each string a line's canonical
+JSON text. `draws` has a probe's 64 lines in order: a rejected draw's value with `✗` (U+2717) appended inside the string,
+and a failed draw with no value as `-✗`. `inputs` has the accepted lines in generation order, and is the form of
+`verification.input_set` (`runtime/32` §3):
+
+```
+V4  type Risk = Text one of "B", "A"
+    type Solo = Text one of "X"
+    G(risk: Risk, solo: Solo) -> Number
+    Risk: B = S = ["B", "A"]
+      declaration hash b3:0846652a752844479df914980ff87ce79a0afdc390233ad57d8480342a056496 (seed 0x474428752a654608)
+      64/64 valid: "B" "B" "A" "A" "A" "A" "B" "A" …
+      draws b3:e4410dc4d42eee86d0afa13f410bd97c9158513ff86f764f617f91605451e24b
+    Solo: B = S = ["X"]
+      declaration hash b3:a4551115242dbe5821e36b312c29189bef52b3223c644ed21b9da0e1bbac848a (seed 0x58be2d24151155a4)
+      64/64 valid, every draw "X"
+    contract_key b3:0000000000000000000000000000000000000000000000000000000000000000 (seed 0)
+    2 boundary, 0 pairwise, 0 random (every attempt repeats one), 0 retries
+    {"risk":"B","solo":"X"} {"risk":"A","solo":"X"}
+
+V5  type Age = Number where value > 18 and value <= 20 and value is whole
+    type Code = Text where value.length > 0 and value.length < 3
+    G(age: Age, code: Code) -> Boolean
+    Age: B = S = [19, 20]
+      declaration hash b3:6684e28443f5e3a1e0360f23df9b01cc6f63c21e6eb7019baa04a89bae475465 (seed 0xa1e3f54384e28466)
+      64/64 valid: 20 20 20 20 20 19 19 19 …
+      draws b3:ccc34c3fa40ba150c8be81d03b0448504e6e68672e0a221e88746c4523f04d88
+    Code: B = ["a", "Li", "é🙂", "aa"], S = ["a", "aa"]
+      declaration hash b3:c69deaab9f8e41d9dea47d1cd41704d81f18ed682f50df8c025e6dc9eb7a0dc4 (seed 0xd9418e9fabea9dc6)
+      64/64 valid: "o" "t" "w" "aw" "m" "qt" "0y" "rl" …
+      draws b3:4c78a26e6fd2a6ab44d400dc8bf666704e5999f94f97a08ba058531b6ab1e6ca
+    contract_key b3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef (seed 0xefcdab8967452301)
+    4 boundary, 2 pairwise, 58 random, 0 retries
+    {"age":19,"code":"a"} {"age":20,"code":"Li"} {"age":19,"code":"é🙂"} {"age":20,"code":"aa"}
+    {"age":19,"code":"aa"} {"age":20,"code":"a"}
+    {"age":20,"code":"b"} {"age":19,"code":"c"} {"age":20,"code":"éy"} {"age":19,"code":"vl"} …
+    inputs b3:d4017ea97ab107c6388fe6041406c41df2b77264e138ee7b11957cc408def8b4
+
+V6  type Span where value.x < value.y: x: Number, y: Number
+    G(span: Span) -> Number
+    Span: B = S = []
+      declaration hash b3:85fb4b381ff9147d49c87009529c3e32b30011efb5320f51ad11e9d7739c88e4 (seed 0x7d14f91f384bfb85)
+      29/64 valid:
+      {"x":-928,"y":-528.57} {"x":-305,"y":768} {"x":-775.32,"y":97.74} {"x":495,"y":-369}✗
+      {"x":682,"y":925.1} {"x":101.56,"y":-66}✗ {"x":375.02,"y":549.91} {"x":-573.25,"y":-949}✗ …
+      draws b3:2622abf4aa792958a07671074087d8856625a1ad7f24e87f071da8c8ca6de64b
+    contract_key b3:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 (seed 0x1032547698badcfe)
+    0 boundary, 0 pairwise, 64 random, 60 retries
+    {"span":{"x":-621.2,"y":337}} {"span":{"x":-850.13,"y":19}} {"span":{"x":-870.61,"y":249}}
+    {"span":{"x":-171,"y":227.02}} …
+    inputs b3:5e039283b84abe537540ba769a4b1c1e5f6f68d75f3748a41b86f920d6acef94
+```
+
+**R-SYNTH-67** Predicate evaluation spends at most 64 × `max_fuel` across one domain's probe and 256 × `max_fuel` across
+one goal's generation (`runtime/30` §7); past either, the probe or generation stops with VL0601 naming the domain.
+Wherever §7.5 says type-name order, it means byte order of the names.
 
 ## 8. Configuration & secrets
 
@@ -1171,10 +1242,12 @@ leaves the machine (tooling/41).
 | AC-SYNTH-61 | A body with a syntax error before a lexical one is rejected for the syntax error; one with a `notation-6` before a `notation-13` for the `notation-13`; one with two untyped lists for the first. Each golden rejected body of AC-SYNTH-51 is placed at the line and column R-SYNTH-59 gives, a `%` after a Text holding non-ASCII counted one column per scalar value; a validator finding on a chain's added `and` is placed at the chain's start. The caps are exact: a 65 536-byte body passes the size check and a 65 537-byte one is `notation-12`, as are IR 129 deep and 10 001 nodes, while 128 deep and 10 000 nodes lower; every `notation-12` is placed at line 1, column 1; a body ending in an assignment is `notation-5` at the end of the text, and an untyped `[]` as a chain's middle operand (`a == [] == b`, both sides untyped) is reported once, at its own place, from the first of its two equal spans in a pre-order walk (R-SYNTH-59, D-157). |
 | AC-SYNTH-62 | The prompt/external request use full declaration source text with comments stripped, reached as the contract key does; record domains appear once in declaration form, residuals included, removed from the record list by the request's `domains` (D-166). Domain-reachable goals alone get the base-in-body rule line, whose text enters `prompt_version`. The model's extra `domains` is ignored; all reply formats assemble the compiler table. Token estimates count uncached declaration text on every retry (R-SYNTH-60–61). Tested by D3. |
 | AC-SYNTH-63 | The external schema, `/v2` routes, `request_version`, IR/builtins versions and `input_version` follow R-SYNTH-61, including the required `domains` table and `declarations` object (D-166), both empty when no domain is reached, notation suffix and rejection of an old-only backend. Tested by D3. |
-| AC-SYNTH-64 | Closed sets of 1, 16 and 17 members, inclusive/exclusive Number bounds, whole bounds and Text scalar-length bounds produce R-SYNTH-62's sets and valid random values; both edges appear, with size checks before allocation. Text lengths from 5 through 100 draw only from 5 through 21, while boundary sets still contain length 100. Tested by D5. |
+| AC-SYNTH-64 | Closed sets of 1, 16 and 17 members, inclusive/exclusive Number bounds, whole bounds and Text scalar-length bounds produce R-SYNTH-62's sets and valid random values; both edges appear, with size checks before allocation. Text lengths from 5 through 100 draw only from 5 through 21, while boundary sets still contain length 100. Edges, grid points and one-bound draws are exact or absent: where bound ± 0.01 is no Number the exclusive edge is the nearest integer inside, a point no Number holds fails its value draw, a midpoint whose sum no Number holds is absent (`value > 5.0000000000000000000000000001 and value < 5.0000000000000000000000000003` is VL0210 0/64), and a bound that won't parse is `VL0607`. An oversized value keeps its position and any input holding it is skipped. Tested by D5. |
 | AC-SYNTH-65 | Residual conditions filter complete scalar/record values, redraw only the failed value, use at most 17 candidates per draw, and propagate a failed child draw; value errors reject candidates and budget exhaustion keeps its code (R-SYNTH-63). Tested by D5. |
 | AC-SYNTH-66 | Empty domain `B`/`S` propagates to `[nothing]` for Optional, `[[]]` for List, empty record and parameter diagonals, skipping only the resulting empty stages; random records can still succeed. Finite closed-set `B` truncates at 16; examples affect only observed coverage and existing tuple de-duplication, never value sets or candidate order (R-SYNTH-64). Tested by D5. |
 | AC-SYNTH-67 | The `velme-synth` probe, called during `velme check`, evaluates predicates via `velme-check`, makes 64 raw draws, permits duplicate successes, rejects 7 and accepts 8, and reports `VL0210` before provider construction. Goal/model changes preserve its seed; declaration/dependency changes alter it; nested domains/budget errors follow R-SYNTH-65 (D5). |
 | AC-SYNTH-68 | V4–V6 freeze finite sets, declaration hashes, seeded probe/random outputs and retry counts, with regression cases listed in R-SYNTH-66. Tested by D5. |
 | AC-SYNTH-69 | Verification/examples use the runtime input walk and include its fuel in `max_fuel_observed`; invalid generated/example membership is `VL0607`, output non-membership is `VL0504` wrapped as `VL0503`, and output checks precede example comparison/own checks (R-SYNTH-14–15, R-RUN-26–28). Tested by D4. |
 | AC-SYNTH-70 | Number intervals with more than 2⁶⁴ whole or 0.01-grid points (e.g. 0 through 10²⁵) draw only from the first 2⁶⁴ points counted from the lower admissible index; `below(2⁶⁴)` returns the stream output using the 128-bit product. Finite non-whole intervals with exactly one empty grid always draw from the other grid without consuming `below(2)`; with both grids empty (`0 < value < 0.001`), every draw is the R-TYP-04-rounded midpoint, with no grid-selection/index draw, and duplicate valid midpoints count toward the 64-draw probe (R-SYNTH-62, R-SYNTH-65). Golden seeded draws freeze these cases and their stream consumption. Tested by D5. |
+| AC-SYNTH-71 | Inputs are generated once per goal, before its first provider request, and once per lock-hit verification; a budget stop there ends the goal with its code, worded for the domain and placed at its declaration, with zero provider calls and no synth-log line. So does a budget stop in the entry walk of a generated or example input on the goal's own budget, on `build` and on a lock hit, which doesn't go on to synthesis (R-SYNTH-63, D-167). Tested by D5. |
+| AC-SYNTH-72 | Predicate evaluation past 64 × `max_fuel` in one domain's probe or 256 × `max_fuel` in one goal's generation stops with VL0601 naming the domain, while each evaluation keeps its own fresh system budget and a flat domain well under them is unaffected (R-SYNTH-67, D-167). Tested by D5. |
