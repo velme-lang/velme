@@ -160,6 +160,7 @@ fn external(project: &Path, replies: &Path, tune: impl FnOnce(Config) -> Config,
     let server = Server::start(tune(Config::replying(replies).logging(project.join("backend.log"))));
     let mut config = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
     config.timeout = timeout;
+    config.reply_format = velme_synth::ReplyFormat::IrJson;
     let sleeper = RecordingSleeper::default();
     let backend = External::new(config).with_sleeper(Arc::new(sleeper.clone()));
     Held {
@@ -203,7 +204,10 @@ struct Built {
     contacts: usize,
 }
 
-fn build_with(dir: &Path, text: &str, backend: &dyn SynthBackend, options: SynthOptions) -> Built {
+fn build_with(dir: &Path, text: &str, backend: &dyn SynthBackend, mut options: SynthOptions) -> Built {
+    if options.reply_format == velme_synth::ReplyFormat::Notation {
+        options.reply_format = velme_synth::ReplyFormat::IrJson;
+    }
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
@@ -224,6 +228,7 @@ fn build_with(dir: &Path, text: &str, backend: &dyn SynthBackend, options: Synth
 fn no_retries() -> SynthOptions {
     SynthOptions {
         max_retries: 0,
+        reply_format: velme_synth::ReplyFormat::IrJson,
         ..SynthOptions::default()
     }
 }
@@ -608,6 +613,7 @@ const DIGEST_B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 fn ollama(server: &MockServer, model: &str) -> Ollama {
     let mut config = OllamaConfig::new(model);
+    config.options.reply_format = velme_synth::ReplyFormat::IrJson;
     config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     Ollama::new(config).with_sleeper(Arc::new(RecordingSleeper::default()))
 }

@@ -33,6 +33,7 @@ fn project(name: &str) -> (PathBuf, PathBuf) {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("replies")).expect("project directory");
     fs::write(dir.join("game.velme"), SOURCE).expect("source");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let double = json!({"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
                         "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}});
     fs::write(dir.join("replies/Double.json"), double.to_string()).expect("reply");
@@ -678,7 +679,7 @@ fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     let sent =
         || serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&capture).expect("capture")).expect("JSON");
 
-    // The default: no `reply_format` member, so the request is what it always was.
+    // An ir-json build: no `reply_format` member (D-156, D-169).
     let plain = build(&dir, server.url(), &[]);
     assert_eq!(plain.code, 0, "{}", shown(&plain));
     assert!(sent().get("reply_format").is_none());
@@ -778,4 +779,59 @@ fn ac_synth_57_a_recorded_external_compact_build_replays_to_the_same_lock_and_ar
     all_text(&dir.join(".velme/artifacts"), &mut first);
     all_text(&copy.join(".velme/artifacts"), &mut second);
     assert!(!first.is_empty() && first == second, "the artifacts differ");
+}
+
+/// `SynthOptions::default()` and runtime project config default `reply_format` to `notation`; a default `external`
+/// build against a backend without `reply_formats` ends the goal with `VL0406` using the unset wording before any
+/// `synthesize` request, while setting `reply_format = "notation"` explicitly gives the explicit wording; and the
+/// `anthropic` system prompt asks to write no text before or after calling the one tool (AC-SYNTH-73, R-SYNTH-26,
+/// R-SYNTH-36, R-SYNTH-44, D-169).
+#[test]
+fn ac_synth_73_notation_is_the_default_reply_format() {
+    assert_eq!(
+        velme_synth::SynthOptions::default().reply_format,
+        velme_synth::ReplyFormat::Notation
+    );
+    assert_eq!(velme_runtime::ProjectConfig::default().reply_format, None);
+
+    let (dir, replies) = project("default-notation-vl0406");
+    let _ = fs::remove_file(dir.join("velme.toml"));
+
+    let log = dir.join("backend.log");
+    let server = Server::start(Config::replying(&replies).logging(&log));
+
+    // 1. Default (unset) build against backend without reply_formats: unset VL0406 message and help.
+    let unset_build = build(&dir, server.url(), &[]);
+    let unset_text = shown(&unset_build);
+    assert_ne!(unset_build.code, 0, "{unset_text}");
+    assert!(
+        unset_text.contains("VL0406")
+            && unset_text.contains("it answers only in `ir-json`")
+            && !unset_text.contains("and velme.toml asks for")
+            && unset_text.contains("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it"),
+        "{unset_text}"
+    );
+    let log_content = fs::read_to_string(&log).expect("backend log exists");
+    assert!(log_content.contains("describe"), "{log_content}");
+    assert!(!log_content.contains("synthesize"), "{log_content}");
+
+    // 2. Explicit reply_format = "notation": explicit VL0406 message and help.
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"notation\"\n").expect("velme.toml");
+    let explicit_build = build(&dir, server.url(), &[]);
+    let explicit_text = shown(&explicit_build);
+    assert_ne!(explicit_build.code, 0, "{explicit_text}");
+    assert!(
+        explicit_text.contains("VL0406")
+            && explicit_text.contains("it answers only in `ir-json`")
+            && explicit_text.contains("and velme.toml asks for `reply_format = \"notation\"`")
+            && explicit_text.contains("remove `reply_format` from `[synthesis]`, or use a backend that lists it"),
+        "{explicit_text}"
+    );
+
+    // 3. Anthropic system prompt asks to write no text before or after the call.
+    let system_prompt = velme_synth::Anthropic::system_prompt();
+    assert!(
+        system_prompt.contains("Write no text before or after the call: put everything in the tool input."),
+        "{system_prompt}"
+    );
 }

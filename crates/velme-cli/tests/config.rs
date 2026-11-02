@@ -109,6 +109,7 @@ fn files_text(dir: &Path, found: &mut String) {
 #[test]
 fn ac_cli_08_an_api_key_never_appears_in_any_output_or_file() {
     let dir = project("ac_cli_08");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let script = script(&dir, &[reply("mul", 2), reply("add", 1)]);
     let script = script.to_string_lossy().into_owned();
     let envs = [
@@ -152,7 +153,11 @@ fn ac_cli_08_an_api_key_never_appears_in_any_output_or_file() {
 #[test]
 fn ac_cli_17_a_user_ceiling_stops_the_build_and_the_notice_names_both_values() {
     let dir = project("ac_cli_17");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nmax_calls_per_build = 3\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[synthesis]\nmax_calls_per_build = 3\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     user_config(&dir, "[synthesis]\nmax_calls_per_build = 1\n");
     let script = script(&dir, &[reply("mul", 2), reply("add", 1)]);
     let script = script.to_string_lossy().into_owned();
@@ -287,7 +292,11 @@ fn a_project_names_its_provider_and_the_flag_wins() {
     let out = velme(&dir, &["build", "game.velme"], &[]);
     assert_eq!(out.code, 64, "{}{}", out.stdout, out.stderr);
     let fresh = project("provider_choice_flag");
-    fs::write(fresh.join("velme.toml"), "[synthesis]\nprovider = \"anthropic\"\n").expect("velme.toml");
+    fs::write(
+        fresh.join("velme.toml"),
+        "[synthesis]\nprovider = \"anthropic\"\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     let none = velme(&fresh, &["build", "game.velme"], &[]);
     assert_eq!(
         none.code, 2,
@@ -313,6 +322,7 @@ fn a_project_names_its_provider_and_the_flag_wins() {
 #[test]
 fn build_on_run_test_and_trace_builds_first() {
     let dir = project("build_flag");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let script = script(&dir, &[reply("mul", 2), reply("add", 1)]);
     let script = script.to_string_lossy().into_owned();
     let envs = [("VELME_SYNTH_SCRIPT", script.as_str())];
@@ -412,6 +422,7 @@ fn the_ollama_url_and_output_limit_come_from_flag_env_config_and_ceiling() {
             "language: velme/0.2\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
         )
         .expect("source");
+        fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
         dir
     };
     let args = ["build", "game.velme", "--provider", "ollama", "--model", "m"];
@@ -451,7 +462,11 @@ fn the_ollama_url_and_output_limit_come_from_flag_env_config_and_ceiling() {
     // Then the user-level config, with the project's output limit clamped by the user's ceiling.
     let server = serve();
     let dir = one_goal("ollama_config");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nmax_output_tokens = 500\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[synthesis]\nmax_output_tokens = 500\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     user_config(
         &dir,
         &format!(
@@ -472,7 +487,11 @@ fn the_ollama_url_and_output_limit_come_from_flag_env_config_and_ceiling() {
     // The project's own limit, when no ceiling is lower.
     let server = serve();
     let dir = one_goal("ollama_project_limit");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nmax_output_tokens = 500\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[synthesis]\nmax_output_tokens = 500\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     let out = velme(&dir, &args, &[("VELME_OLLAMA_URL", server.url())]);
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
     assert_eq!(chat(&server).expect("the chat")["options"]["num_predict"], 500);
@@ -561,6 +580,7 @@ fn bad_config_is_reported_beside_a_source_error_on_every_command() {
 #[test]
 fn a_project_budget_reaches_the_contract_key_and_bad_values_are_vl0902() {
     let dir = project("budget");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let script = script(&dir, &[reply("mul", 2), reply("add", 1)]);
     let script = script.to_string_lossy().into_owned();
     let out = velme(
@@ -589,12 +609,16 @@ fn a_project_budget_reaches_the_contract_key_and_bad_values_are_vl0902() {
     // Above every cap: the same limits, so the same key.
     fs::write(
         dir.join("velme.toml"),
-        "[budget]\ncpu = \"99999999ms\"\nmemory = \"99999mb\"\ncalls = 99999999\ndepth = 99999999\n",
+        "[budget]\ncpu = \"99999999ms\"\nmemory = \"99999mb\"\ncalls = 99999999\ndepth = 99999999\n\n[synthesis]\nreply_format = \"ir-json\"\n",
     )
     .expect("velme.toml");
     assert_eq!(run(&dir).code, 0, "a budget above the caps is the caps");
     // Below one: a different key.
-    fs::write(dir.join("velme.toml"), "[budget]\ncpu = \"50ms\"\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[budget]\ncpu = \"50ms\"\n\n[synthesis]\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     let stale = run(&dir);
     assert_eq!(stale.code, 4, "{}{}", stale.stdout, stale.stderr);
     assert!(stale.stdout.contains("VL0702"), "{}", stale.stdout);
@@ -634,7 +658,11 @@ fn an_empty_url_source_is_skipped_and_ollama_retries_with_its_retry_model() {
         "language: velme/0.2\n\ngoal Double(n: Number) -> Number:\n    plan: \"Double it.\"\n    examples:\n        - Double(2) == 4\n",
     )
     .expect("source");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nretry_model = \"r\"\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[synthesis]\nretry_model = \"r\"\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     user_config(&dir, &format!("[synthesis]\nollama_url = \"{}\"\n", server.url()));
     let out = velme(
         &dir,
@@ -665,7 +693,11 @@ fn an_empty_url_source_is_skipped_and_ollama_retries_with_its_retry_model() {
 fn a_missing_ollama_retry_model_is_named_and_allowed_models_ignore_latest() {
     let server = MockServer::start([MockResponse::ollama_tags(&[("m:latest", DIGEST)])]);
     let dir = project("ollama_missing_retry");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nretry_model = \"r\"\n").expect("velme.toml");
+    fs::write(
+        dir.join("velme.toml"),
+        "[synthesis]\nretry_model = \"r\"\nreply_format = \"ir-json\"\n",
+    )
+    .expect("velme.toml");
     user_config(
         &dir,
         &format!(

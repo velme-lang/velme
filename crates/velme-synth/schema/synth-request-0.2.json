@@ -736,7 +736,7 @@
     },
     "reply_format": {
       "$ref": "#/$defs/ReplyFormat",
-      "description": "The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend\n(R-SYNTH-36, D-156): the default leaves the request's bytes as they were."
+      "description": "The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend\n(R-SYNTH-36, D-156, D-169): an `ir-json` build leaves the request member out."
     },
     "request_version": {
       "description": "[`REQUEST_VERSION`].",

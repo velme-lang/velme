@@ -151,6 +151,7 @@ fn record_all() -> Recorded {
     for (example, ir) in EXAMPLES {
         let name = format!("{}-record", stem(example));
         let (dir, file) = project(example, &name);
+        fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
         let server = Server::start(Config::replying(replies(ir, &name)));
         let out = velme_command(env!("CARGO_BIN_EXE_velme"), env!("CARGO_TARGET_TMPDIR"))
             .args(["build", &file, "--provider", "external", "--external-url", server.url()])
@@ -332,12 +333,24 @@ fn every_example_has_its_ir_and_no_example_is_missing() {
 }
 
 /// The committed replay fixtures are what recording every example through the test backend gives now (D-99).
+/// A legacy `replay.json` written before 0.2.0-alpha.1 without `reply_format` matches the newly recorded
+/// `reply_format = "ir-json"` (D-169, review finding 1).
 #[test]
 fn the_committed_replay_fixtures_are_what_the_test_backend_records() {
     let (recorded, _) = record();
     let committed = tree(&repo(FIXTURES));
+    let mut recorded_norm = recorded.clone();
+    if let Some(bytes) = recorded_norm.get_mut("replay.json")
+        && let Some(committed_bytes) = committed.get("replay.json")
+    {
+        let c: serde_json::Value = serde_json::from_slice(committed_bytes).expect("committed json");
+        let r: serde_json::Value = serde_json::from_slice(bytes).expect("recorded json");
+        if c.get("reply_format").is_none() && r.get("reply_format") == Some(&serde_json::json!("ir-json")) {
+            *bytes = committed_bytes.clone();
+        }
+    }
     assert!(
-        committed == *recorded,
+        committed == recorded_norm,
         "{FIXTURES} is out of date: run `{BLESS}=1 cargo test -p velme-cli --test examples` and review the diff"
     );
 }

@@ -65,7 +65,16 @@ fn run(dir: &Path, backend: &dyn SynthBackend, mode: Mode) -> BuildReport {
 }
 
 fn run_source(dir: &Path, backend: &dyn SynthBackend, mode: Mode, text: &str) -> BuildReport {
-    run_with(dir, backend, mode, text, SynthOptions::default())
+    run_with(
+        dir,
+        backend,
+        mode,
+        text,
+        SynthOptions {
+            reply_format: velme_synth::ReplyFormat::IrJson,
+            ..SynthOptions::default()
+        },
+    )
 }
 
 fn run_with(dir: &Path, backend: &dyn SynthBackend, mode: Mode, text: &str, options: SynthOptions) -> BuildReport {
@@ -518,37 +527,31 @@ fn scripted_cause(name: &str, step: Step, options: SynthOptions) -> Value {
 #[test]
 fn ac_synth_49_each_reply_problem_logs_its_own_cause() {
     let reply = |text: &str| Step::Reply(text.to_owned());
+    let ir_json = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::IrJson,
+        ..SynthOptions::default()
+    };
     let compact = SynthOptions {
         reply_format: velme_synth::ReplyFormat::Compact,
         ..SynthOptions::default()
     };
     let body_alias = velme_synth::alias_table().keys["body"].clone();
     let cases = [
-        ("not_json", reply("not json"), "not-json", SynthOptions::default()),
-        (
-            "dup_key",
-            reply(r#"{"body":1,"body":2}"#),
-            "schema-1",
-            SynthOptions::default(),
-        ),
-        ("no_body", reply(r#"{"x":1}"#), "no-body", SynthOptions::default()),
+        ("not_json", reply("not json"), "not-json", ir_json.clone()),
+        ("dup_key", reply(r#"{"body":1,"body":2}"#), "schema-1", ir_json.clone()),
+        ("no_body", reply(r#"{"x":1}"#), "no-body", ir_json.clone()),
         (
             "both",
             reply(r#"{"body":{"kind":"input","name":"n"},"question":"Which?"}"#),
             "body-and-question",
-            SynthOptions::default(),
+            ir_json.clone(),
         ),
-        (
-            "bad_q",
-            reply(r#"{"question":""}"#),
-            "bad-question",
-            SynthOptions::default(),
-        ),
+        ("bad_q", reply(r#"{"question":""}"#), "bad-question", ir_json.clone()),
         (
             "bad_number",
             reply(r#"{"body":{"kind":"literal","value":1e999}}"#),
             "bad-number",
-            SynthOptions::default(),
+            ir_json.clone(),
         ),
         (
             "alias",
@@ -560,14 +563,9 @@ fn ac_synth_49_each_reply_problem_logs_its_own_cause() {
             "refused",
             Step::Error(ProviderError::Refused(String::new())),
             "refused",
-            SynthOptions::default(),
+            ir_json.clone(),
         ),
-        (
-            "timeout",
-            Step::Error(ProviderError::Timeout),
-            "timeout",
-            SynthOptions::default(),
-        ),
+        ("timeout", Step::Error(ProviderError::Timeout), "timeout", ir_json),
     ];
     for (name, step, cause, options) in cases {
         let line = scripted_cause(&format!("v2_cause_{name}"), step, options);

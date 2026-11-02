@@ -35,10 +35,7 @@ fn block_on<T>(future: impl Future<Output = T>) -> T {
 
 /// The reply `n * 2`.
 fn double() -> Value {
-    let number = json!({"t": "Number"});
-    json!({"body": {"kind": "binary", "op": "mul",
-        "left": {"kind": "input", "name": "n"},
-        "right": {"kind": "literal", "type": number, "value": 2}}})
+    json!({"body": "return n * 2\n"})
 }
 
 /// Runs the loop for `Double` on `provider` with `options`.

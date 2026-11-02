@@ -39,6 +39,7 @@ fn project(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("project directory");
     fs::write(dir.join("game.velme"), SOURCE).expect("source");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     dir
 }
 
@@ -373,12 +374,9 @@ fn a_warm_store_builds_with_no_api_key() {
         [double(), add_one()]
             .map(|reply| MockResponse::tool_call("write_goal", &serde_json::from_str::<Value>(&reply).expect("JSON"))),
     );
-    let anthropic = mock_anthropic(
-        AnthropicConfig::new("claude-test"),
-        &server,
-        "sk-ant-mock",
-        &RecordingSleeper::default(),
-    );
+    let mut config = AnthropicConfig::new("claude-test");
+    config.options.reply_format = velme_synth::ReplyFormat::IrJson;
+    let anthropic = mock_anthropic(config, &server, "sk-ant-mock", &RecordingSleeper::default());
     let mut contacts = 0;
     let report = velme_runtime::build(
         &velme_runtime::BuildInput {
@@ -388,7 +386,10 @@ fn a_warm_store_builds_with_no_api_key() {
             project: &dir,
             file: "game.velme",
             backend: Some(&anthropic),
-            options: SynthOptions::default(),
+            options: SynthOptions {
+                reply_format: velme_synth::ReplyFormat::IrJson,
+                ..SynthOptions::default()
+            },
             run: velme_runtime::Options::default(),
         },
         &mut || contacts += 1,
@@ -477,7 +478,10 @@ fn a_request_the_api_rejects_is_vl0405_with_its_message() {
             project: &dir,
             file: "game.velme",
             backend: Some(&anthropic),
-            options: SynthOptions::default(),
+            options: SynthOptions {
+                reply_format: velme_synth::ReplyFormat::IrJson,
+                ..SynthOptions::default()
+            },
             run: velme_runtime::Options::default(),
         },
         &mut || {},

@@ -260,6 +260,8 @@ pub enum ProviderError {
         offered: Vec<&'static str>,
         /// The format `[synthesis] reply_format` asks for.
         asked: &'static str,
+        /// Whether `reply_format` was set explicitly in configuration (D-169).
+        explicit: bool,
     },
     /// An external backend queued the request for later (`VL0408`, R-SYNTH-41). The text is untrusted.
     Pending(String),

@@ -171,13 +171,30 @@ fn p0c_render_prompt_refuses_a_missing_goal_and_a_bad_flag() {
     }
 }
 
-/// The `external` body is the canonical request itself.
+/// The default `external` body names the notation format (D-169).
+#[test]
+fn p0c_render_prompt_external_default_names_notation() {
+    let program = program(SOURCE);
+    let request = build_request(&program, goal_id(&program, "FindBadge"), SOURCE)
+        .expect("a request")
+        .for_external(ReplyFormat::Notation);
+    let expected = velme_ir::to_canonical_string(&request).expect("canonical");
+    assert_eq!(rendered("external", &["--provider", "external"]), expected);
+}
+
+/// Under `ir-json` the `external` body is the canonical request itself without a format member (D-156).
 #[test]
 fn p0c_render_prompt_external_is_the_canonical_request() {
     let program = program(SOURCE);
     let request = build_request(&program, goal_id(&program, "FindBadge"), SOURCE).expect("a request");
     let expected = velme_ir::to_canonical_string(&request).expect("canonical");
-    assert_eq!(rendered("external", &["--provider", "external"]), expected);
+    assert_eq!(
+        rendered(
+            "external-ir-json",
+            &["--provider", "external", "--reply-format", "ir-json"]
+        ),
+        expected
+    );
 }
 
 /// Under `compact` the `external` body names the format, as the provider's request does (D-156).

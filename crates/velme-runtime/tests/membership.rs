@@ -19,7 +19,7 @@ use velme_runtime::{
     run_goal_unchecked, test_goal,
 };
 use velme_sema::hir::Program;
-use velme_synth::{Scripted, SynthOptions};
+use velme_synth::{ReplyFormat, Scripted, SynthOptions};
 use velme_test_support::ir_json::{binary, input, literal, local};
 use velme_test_support::{PanicProvider, goal_id, install, program};
 
@@ -466,6 +466,7 @@ fn ac_synth_69_verification_walks_inputs_and_outputs_as_run_does() {
         file: FILE,
         backend: Some(&backend),
         options: SynthOptions {
+            reply_format: ReplyFormat::IrJson,
             max_retries: 0,
             ..SynthOptions::default()
         },
@@ -537,6 +538,7 @@ fn ac_synth_71_f1_a_walk_stop_on_the_goals_budget_makes_no_request() {
         file: FILE,
         backend: Some(&backend),
         options: SynthOptions {
+            reply_format: ReplyFormat::IrJson,
             max_retries: 0,
             ..SynthOptions::default()
         },

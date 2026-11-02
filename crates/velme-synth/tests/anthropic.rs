@@ -69,10 +69,9 @@ fn complete(provider: &Anthropic, request: &SynthRequest) -> Result<SynthReply, 
 /// with usage (R-SYNTH-05, R-SYNTH-44, D-150, AC-SYNTH-46).
 #[test]
 fn ac_synth_46_a_request_asks_for_one_of_two_tools_and_the_tool_input_is_the_reply() {
-    let (provider, server, sleeper) = mock(
-        AnthropicConfig::new("claude-test"),
-        [MockResponse::tool_call("write_goal", &goal_reply())],
-    );
+    let mut config = AnthropicConfig::new("claude-test");
+    config.options.reply_format = ReplyFormat::IrJson;
+    let (provider, server, sleeper) = mock(config, [MockResponse::tool_call("write_goal", &goal_reply())]);
     let (request, _) = requests();
     let reply = complete(&provider, &request).expect("a reply");
     assert_eq!(reply.reply_json, r#"{"body":{"kind":"input","name":"n"},"note":1.5}"#);
@@ -97,7 +96,12 @@ fn ac_synth_46_a_request_asks_for_one_of_two_tools_and_the_tool_input_is_the_rep
     assert_eq!(body["max_tokens"], 8192);
     assert_eq!(body["tool_choice"], json!({"type": "auto"}));
     let system = body["system"].as_str().expect("a system prompt");
-    assert!(system.contains("exactly one") && system.contains("`write_goal`") && system.contains("`ask_question`"));
+    assert!(
+        system.contains("exactly one")
+            && system.contains("`write_goal`")
+            && system.contains("`ask_question`")
+            && system.contains("Write no text before or after the call")
+    );
     let tools = body["tools"].as_array().expect("tools");
     assert_eq!(tools.len(), 2);
     assert_eq!(tools[0]["name"], "write_goal");

@@ -21,6 +21,7 @@ This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)) and th
 
 ### Changed
 
+- Synthesis defaults to reply format `notation` across every provider, `external` included (D-169).
 - Supported language version is `velme/0.2` only; headerless files default to `0.2`.
 - A `language: velme/0.1` header or `project.language = "velme/0.1"` config setting is rejected with migration help (`VL0106` / `VL0902`).
   - Migration: in source files, change the first line to `language: velme/0.2` (or omit the header); in `velme.toml`, change `project.language = "velme/0.2"` (or omit the setting); rebuild the lockfile with `velme build <file>` or `velme run --build <file>`.

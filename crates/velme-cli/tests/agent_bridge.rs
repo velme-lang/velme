@@ -130,14 +130,14 @@ fn p0c_the_bridge_queues_a_request_and_accepts_the_answer() {
     let request: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&pending).expect("request")).expect("JSON");
     assert_eq!(request["goal"], "Double");
+    assert_eq!(request["reply_format"], "notation");
 
     // The same request gets the same id, so nothing new is queued.
     let (_, again) = build(&dir, &bridge.url, None);
     assert!(again.contains(&id), "{again}");
     assert_eq!(fs::read_dir(dir.join("pending")).expect("pending").count(), 1);
 
-    let body = json!({"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
-                      "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}});
+    let body = json!({"body": "return n * 2\n"});
     fs::write(dir.join("answers").join(format!("{id}.json")), body.to_string()).expect("answer");
     let (code, text) = build(&dir, &bridge.url, None);
     assert_eq!(code, 0, "{text}");
