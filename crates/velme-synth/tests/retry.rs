@@ -105,6 +105,13 @@ fn task(program: &velme_sema::hir::Program) -> Task<'_> {
     }
 }
 
+fn options() -> SynthOptions {
+    SynthOptions {
+        reply_format: ReplyFormat::IrJson,
+        ..SynthOptions::default()
+    }
+}
+
 fn run_with(options: SynthOptions, steps: Vec<Step>, runner: &LeafRunner) -> Run {
     let program = program(SOURCE);
     let provider = Scripted::new(steps);
@@ -139,7 +146,7 @@ fn shown(d: &velme_diagnostics::Diagnostic) -> String {
 /// A reply with a `call` node fails validation, and the retry turn cites `VL0402` (AC-SYNTH-04, INV-6).
 #[test]
 fn ac_synth_04_a_call_node_is_refused_and_the_retry_cites_vl0402() {
-    let run = run(SynthOptions::default(), vec![call_node(), good()]);
+    let run = run(options(), vec![call_node(), good()]);
     assert!(matches!(run.outcome, Outcome::Built(_)));
     let requests = run.provider.requests();
     assert_eq!(requests.len(), 2);
@@ -159,8 +166,8 @@ fn ac_synth_40_only_the_body_is_read_from_a_reply() {
         "domains": {"Ghost": {"base": {"t": "Number"}, "lower": {"value": 0, "inclusive": true}}},
     })
     .to_string();
-    let plain = run(SynthOptions::default(), vec![good()]);
-    let extra = run(SynthOptions::default(), vec![noisy]);
+    let plain = run(options(), vec![good()]);
+    let extra = run(options(), vec![noisy]);
     let (Outcome::Built(a), Outcome::Built(b)) = (&plain.outcome, &extra.outcome) else {
         panic!("both build");
     };
@@ -171,7 +178,7 @@ fn ac_synth_40_only_the_body_is_read_from_a_reply() {
     // The same holds in the compact format: the body member is expanded alone, whatever else the reply holds.
     let options = SynthOptions {
         reply_format: ReplyFormat::Compact,
-        ..SynthOptions::default()
+        ..options()
     };
     let mut compact = compress(&serde_json::from_str::<Value>(&good()).expect("json"));
     compact["goal"] = json!("Other");
@@ -192,7 +199,7 @@ fn ac_synth_41_the_help_follows_the_kind_of_failure() {
     const BUILTINS: &str = "the plan may need more than the listed builtins can do: simplify it or split the goal";
     let once = || SynthOptions {
         max_retries: 0,
-        ..SynthOptions::default()
+        ..options()
     };
     // The message, the first attempt's line and the help of the one attempt that `reply` is.
     let outcome = |reply: String| {
@@ -262,7 +269,7 @@ fn ac_synth_41_a_notation_rejection_gets_the_reply_form_help() {
 fn ac_synth_41_a_reply_body_that_cannot_be_read_is_a_failed_attempt() {
     let once = || SynthOptions {
         max_retries: 0,
-        ..SynthOptions::default()
+        ..options()
     };
     let failed = |reply: &str| {
         let run = self::run(once(), vec![reply.to_owned()]);
@@ -294,7 +301,7 @@ fn ac_synth_41_a_reply_body_that_cannot_be_read_is_a_failed_attempt() {
         SynthOptions {
             max_retries: 1,
             stop_on_repeat: false,
-            ..SynthOptions::default()
+            ..options()
         },
         vec![r#"{"body": {"kind": "input"}}"#.to_owned(), good()],
     );
@@ -326,7 +333,7 @@ fn hints(source: &str, goal: &str, format: ReplyFormat, replies: Vec<String>) ->
         stop_on_repeat: false,
         retry_history: RetryHistory::All,
         reply_format: format,
-        ..SynthOptions::default()
+        ..options()
     };
     let provider = Scripted::replies(replies.iter().cloned().chain([good()]));
     let mut session = Session::new(options);
@@ -515,7 +522,7 @@ goal Twice(n: Number) -> Number:
 /// found before (AC-SYNTH-02, AC-SYNTH-04).
 #[test]
 fn ac_synth_02_retry_turns_carry_the_previous_diagnostics() {
-    let run = run(SynthOptions::default(), vec![call_node(), wrong_example_two(), good()]);
+    let run = run(options(), vec![call_node(), wrong_example_two(), good()]);
     assert!(matches!(run.outcome, Outcome::Built(_)));
     let requests = run.provider.requests();
     assert_eq!(requests.len(), 3);
@@ -539,7 +546,7 @@ fn ac_synth_02_retry_turns_carry_the_previous_diagnostics() {
 #[test]
 fn ac_synth_03_four_invalid_replies_end_in_vl0403() {
     let run = run(
-        SynthOptions::default(),
+        options(),
         vec![
             call_node(),
             wrong_example_two(),
@@ -565,7 +572,7 @@ fn ac_synth_05_a_failed_example_is_rejected() {
     let run = run(
         SynthOptions {
             max_retries: 0,
-            ..SynthOptions::default()
+            ..options()
         },
         vec![wrong_example_two()],
     );
@@ -586,7 +593,7 @@ fn ac_synth_05_a_failed_example_is_rejected() {
 fn ac_synth_20_the_most_common_cause_is_named_with_the_latest_details() {
     let options = SynthOptions {
         stop_on_repeat: false,
-        ..SynthOptions::default()
+        ..options()
     };
     let run = run(
         options,
@@ -608,7 +615,7 @@ fn ac_synth_20_the_most_common_cause_is_named_with_the_latest_details() {
 #[test]
 fn ac_synth_21_a_tie_goes_to_the_later_attempt() {
     let run = run(
-        SynthOptions::default(),
+        options(),
         vec![
             wrong_example_two(),
             wrong_example_zero(),
@@ -624,10 +631,7 @@ fn ac_synth_21_a_tie_goes_to_the_later_attempt() {
 /// A question ends the goal at once, after one call, showing the question (R-SYNTH-32).
 #[test]
 fn r_synth_32_a_question_ends_synthesis_at_once() {
-    let run = run(
-        SynthOptions::default(),
-        vec![r#"{"question": "Round up?"}"#.to_owned(), good()],
-    );
+    let run = run(options(), vec![r#"{"question": "Round up?"}"#.to_owned(), good()]);
     let d = failure(&run);
     assert_eq!(d.code, Code::PlanUnclear);
     assert!(d.notes.iter().any(|n| n.contains("Round up?")), "{:?}", d.notes);
@@ -645,7 +649,7 @@ fn r_synth_32_a_question_ends_synthesis_at_once() {
 #[test]
 fn ac_synth_23_a_question_is_cleaned_and_bounded() {
     let messy = json!({"question": "Round\nup\u{1b}[31m red\u{1b}[0m or\tdown\u{200b}\u{e0041}\u{202e}?"}).to_string();
-    let run = run(SynthOptions::default(), vec![messy]);
+    let run = run(options(), vec![messy]);
     let d = failure(&run);
     assert!(
         d.notes.iter().any(|n| n.contains("\"Round up red or down \u{202e}?\"")),
@@ -657,7 +661,7 @@ fn ac_synth_23_a_question_is_cleaned_and_bounded() {
         let run = self::run(
             SynthOptions {
                 max_retries: 0,
-                ..SynthOptions::default()
+                ..options()
             },
             vec![reply],
         );
@@ -666,10 +670,7 @@ fn ac_synth_23_a_question_is_cleaned_and_bounded() {
         assert!(d.message.contains("question"), "{}", d.message);
     }
     let edge = json!({"question": "x".repeat(280)}).to_string();
-    assert_eq!(
-        failure(&self::run(SynthOptions::default(), vec![edge])).code,
-        Code::PlanUnclear
-    );
+    assert_eq!(failure(&self::run(options(), vec![edge])).code, Code::PlanUnclear);
 }
 
 /// A compact reply expands to the same IR as the same reply in `ir-json`; an unknown alias is a failed attempt
@@ -679,10 +680,10 @@ fn ac_synth_26_a_compact_reply_expands_to_canonical_ir() {
     let canonical: Value = serde_json::from_str(&good()).expect("json");
     let compact = compress(&canonical).to_string();
     assert_ne!(compact, canonical.to_string());
-    let plain = run(SynthOptions::default(), vec![good()]);
+    let plain = run(options(), vec![good()]);
     let options = SynthOptions {
         reply_format: ReplyFormat::Compact,
-        ..SynthOptions::default()
+        ..options()
     };
     let packed = self::run(options.clone(), vec![compact]);
     let (Outcome::Built(a), Outcome::Built(b)) = (&plain.outcome, &packed.outcome) else {
@@ -706,7 +707,7 @@ fn ac_synth_26_a_compact_reply_expands_to_canonical_ir() {
 #[test]
 fn ac_synth_27_retry_history_latest_and_all() {
     let replies = || vec![call_node(), wrong_example_two(), wrong_example_zero(), good()];
-    let latest = run(SynthOptions::default(), replies());
+    let latest = run(options(), replies());
     let third = &latest.provider.requests()[2];
     assert_eq!(third.attempts.len(), 2);
     assert_eq!(third.attempts[0].reply, "");
@@ -715,7 +716,7 @@ fn ac_synth_27_retry_history_latest_and_all() {
     let all = run(
         SynthOptions {
             retry_history: RetryHistory::All,
-            ..SynthOptions::default()
+            ..options()
         },
         replies(),
     );
@@ -727,17 +728,14 @@ fn ac_synth_27_retry_history_latest_and_all() {
 /// Two replies failing the same check stop the loop after 2 calls; without `stop_on_repeat`, 4 calls (AC-SYNTH-28).
 #[test]
 fn ac_synth_28_a_repeated_cause_stops_the_loop() {
-    let run1 = run(
-        SynthOptions::default(),
-        vec![wrong_at(1), wrong_at(-1), wrong_at(1), wrong_at(-1)],
-    );
+    let run1 = run(options(), vec![wrong_at(1), wrong_at(-1), wrong_at(1), wrong_at(-1)]);
     let d = failure(&run1);
     assert_eq!(run1.session.calls(), 2);
     assert!(d.message.contains("stopped after 2 attempts"), "{}", d.message);
     assert!(d.message.contains("result == n * 2"), "{}", d.message);
     let options = SynthOptions {
         stop_on_repeat: false,
-        ..SynthOptions::default()
+        ..options()
     };
     let run2 = run(options, vec![wrong_at(1), wrong_at(-1), wrong_at(1), wrong_at(-1)]);
     assert_eq!(run2.session.calls(), 4);
@@ -749,7 +747,7 @@ fn ac_synth_28_a_repeated_cause_stops_the_loop() {
 fn ac_synth_29_examples_left_out_of_the_prompt_still_run() {
     let options = SynthOptions {
         max_prompt_examples: 2,
-        ..SynthOptions::default()
+        ..options()
     };
     let failing_third = reply(&json!({"kind": "if",
         "cond": {"kind": "binary", "op": "eq", "left": input(), "right": literal(3)},
@@ -772,21 +770,21 @@ fn ac_synth_29_examples_left_out_of_the_prompt_still_run() {
 /// Options that change what is sent change `input_version`, so `synthesis_key` (R-SYNTH-40).
 #[test]
 fn r_synth_40_options_enter_the_input_version() {
-    let base = SynthOptions::default();
+    let base = options();
     let version = base.input_version("prompt-1:x");
     assert!(version.starts_with("prompt-1:x+b3:"));
     for other in [
         SynthOptions {
             max_prompt_examples: 2,
-            ..SynthOptions::default()
+            ..options()
         },
         SynthOptions {
             reply_format: ReplyFormat::Compact,
-            ..SynthOptions::default()
+            ..options()
         },
         SynthOptions {
             retry_history: RetryHistory::All,
-            ..SynthOptions::default()
+            ..options()
         },
     ] {
         assert_ne!(other.input_version("prompt-1:x"), version);
@@ -796,7 +794,7 @@ fn r_synth_40_options_enter_the_input_version() {
         SynthOptions {
             max_retries: 1,
             stop_on_repeat: false,
-            ..SynthOptions::default()
+            ..options()
         }
         .input_version("prompt-1:x"),
         version
@@ -808,7 +806,7 @@ fn r_synth_40_options_enter_the_input_version() {
 #[test]
 fn r_synth_14_a_watchdog_stop_is_not_a_verdict() {
     let run = run_with(
-        SynthOptions::default(),
+        options(),
         vec![Step::Reply(good()), Step::Reply(good())],
         &LeafRunner::timing_out_at(2),
     );
@@ -853,7 +851,7 @@ fn ac_synth_39_after_one_vl0404_the_provider_is_not_contacted_again() {
         tries: 0.into(),
         calls: 0.into(),
     };
-    let mut session = Session::new(SynthOptions::default());
+    let mut session = Session::new(options());
     let runner = LeafRunner::new();
     let first = block_on(synthesize(&mut session, &provider, &task(&program), &runner));
     let second = block_on(synthesize(&mut session, &provider, &task(&program), &runner));
@@ -895,7 +893,7 @@ fn r_synth_07_a_rejected_request_is_vl0405_with_the_api_message() {
             message: String::new(),
         }),
     ]);
-    let mut session = Session::new(SynthOptions::default());
+    let mut session = Session::new(options());
     let runner = LeafRunner::new();
     let mut diagnostics = Vec::new();
     for _ in 0..2 {
@@ -927,7 +925,7 @@ fn r_synth_07_a_rejected_request_is_vl0405_with_the_api_message() {
 fn r_synth_45_a_rejected_key_stops_further_contact_with_vl0405() {
     let program = program(SOURCE);
     let provider = Scripted::new([Step::Error(ProviderError::KeyRejected), Step::Reply("{}".to_owned())]);
-    let mut session = Session::new(SynthOptions::default());
+    let mut session = Session::new(options());
     let runner = LeafRunner::new();
     for _ in 0..2 {
         let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task(&program), &runner)) else {
@@ -953,7 +951,7 @@ fn r_synth_45_a_file_error_stops_further_contact_with_vl0901() {
         reason: "it is not a regular file".to_owned(),
     };
     let provider = Scripted::new([Step::Error(file()), Step::Reply("{}".to_owned())]);
-    let mut session = Session::new(SynthOptions::default());
+    let mut session = Session::new(options());
     let runner = LeafRunner::new();
     for _ in 0..2 {
         let Outcome::Failed(failure) = block_on(synthesize(&mut session, &provider, &task(&program), &runner)) else {
@@ -996,14 +994,14 @@ fn r_synth_41_pending_ends_the_goal_and_names_an_earlier_failure() {
         Step::Error(ProviderError::Pending("ticket\n42".to_owned())),
         Step::Reply(good()),
     ];
-    let run = run_with(SynthOptions::default(), steps, &LeafRunner::new());
+    let run = run_with(options(), steps, &LeafRunner::new());
     let d = failure(&run);
     assert_eq!(d.code, Code::SynthesisPending);
     assert!(d.notes.iter().any(|n| n.contains("\"ticket 42\"")), "{:?}", d.notes);
     assert!(d.notes.iter().any(|n| n.contains("Double(2)")), "{:?}", d.notes);
     assert_eq!(run.session.calls(), 2);
     let empty = run_with(
-        SynthOptions::default(),
+        options(),
         vec![Step::Error(ProviderError::Pending(String::new()))],
         &LeafRunner::new(),
     );
@@ -1018,12 +1016,12 @@ fn r_synth_07_refused_and_malformed_are_failed_attempts() {
         Step::Error(ProviderError::Malformed(None)),
         Step::Reply(good()),
     ];
-    let run = run_with(SynthOptions::default(), steps, &LeafRunner::new());
+    let run = run_with(options(), steps, &LeafRunner::new());
     assert!(matches!(run.outcome, Outcome::Built(_)));
     let bad = run_with(
         SynthOptions {
             max_retries: 0,
-            ..SynthOptions::default()
+            ..options()
         },
         vec![Step::Error(ProviderError::Refused("SENTINEL refusal".to_owned()))],
         &LeafRunner::new(),
@@ -1038,7 +1036,7 @@ fn r_synth_07_refused_and_malformed_are_failed_attempts() {
 fn r_synth_21_the_call_cap_ends_a_goal_with_vl0403() {
     let options = SynthOptions {
         max_calls_per_build: 1,
-        ..SynthOptions::default()
+        ..options()
     };
     let run = run(options, vec![wrong_example_two(), good()]);
     let d = failure(&run);
@@ -1052,7 +1050,7 @@ fn r_synth_21_the_call_cap_ends_a_goal_with_vl0403() {
 #[test]
 fn r_synth_31_a_validator_cause_is_its_rule_not_its_message() {
     let run = run(
-        SynthOptions::default(),
+        options(),
         vec![call_to("SENTINEL-ONE"), call_to("SENTINEL-TWO"), good()],
     );
     let d = failure(&run);
@@ -1088,7 +1086,7 @@ fn r_synth_31_a_validator_cause_is_its_rule_not_its_message() {
     let bad = self::run(
         SynthOptions {
             max_retries: 0,
-            ..SynthOptions::default()
+            ..options()
         },
         vec!["{\"SENTINEL\": 1}".to_owned()],
     );
@@ -1101,7 +1099,7 @@ fn r_synth_31_a_validator_cause_is_its_rule_not_its_message() {
 /// conversation still alternates (R-SYNTH-11).
 #[test]
 fn r_synth_11_feedback_of_a_reply_less_attempt_is_rendered() {
-    let base = run(SynthOptions::default(), vec![good()]).provider.requests()[0].clone();
+    let base = run(options(), vec![good()]).provider.requests()[0].clone();
     let diagnostic = |marker: &str| AttemptDiagnostic {
         code: "VL0401".to_owned(),
         message: marker.to_owned(),
@@ -1117,9 +1115,7 @@ fn r_synth_11_feedback_of_a_reply_less_attempt_is_rendered() {
     let check = |attempts: Vec<AttemptFeedback>, markers: &[&str]| {
         let mut request = base.clone();
         request.attempts = attempts;
-        let turns = render_with(&request, &SynthOptions::default().prompt())
-            .expect("a prompt")
-            .turns();
+        let turns = render_with(&request, &options().prompt()).expect("a prompt").turns();
         let all: String = turns.iter().map(|t| t.text.as_str()).collect::<Vec<_>>().join("\n");
         for marker in markers {
             assert!(all.contains(marker), "{marker} in {all}");
@@ -1138,7 +1134,7 @@ fn r_synth_11_feedback_of_a_reply_less_attempt_is_rendered() {
 fn compact_options() -> SynthOptions {
     SynthOptions {
         reply_format: ReplyFormat::Compact,
-        ..SynthOptions::default()
+        ..options()
     }
 }
 
@@ -1152,7 +1148,7 @@ fn ac_synth_47_a_compact_reply_is_read_under_its_alias_and_retries_carry_it_as_r
     let packed = compress(&canonical);
     assert!(packed.get(&alias).is_some() && packed.get("body").is_none());
     let (plain, compact) = (
-        run(SynthOptions::default(), vec![good()]),
+        run(options(), vec![good()]),
         run(compact_options(), vec![packed.to_string()]),
     );
     let (Outcome::Built(a), Outcome::Built(b)) = (&plain.outcome, &compact.outcome) else {
@@ -1218,7 +1214,7 @@ fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause(
     ] {
         let once = SynthOptions {
             max_retries: 0,
-            ..SynthOptions::default()
+            ..options()
         };
         let bad = run_with(
             once,
@@ -1237,13 +1233,13 @@ fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause(
             Step::Reply(good()),
         ]
     };
-    let stopped = run_with(SynthOptions::default(), steps(), &LeafRunner::new());
+    let stopped = run_with(options(), steps(), &LeafRunner::new());
     let d = failure(&stopped);
     assert_eq!(stopped.session.calls(), 2);
     assert!(d.message.contains("stopped after 2 attempts"), "{}", d.message);
     // A replayed `Malformed` has no reason and stops where the live build stopped.
     let replayed = run_with(
-        SynthOptions::default(),
+        options(),
         vec![
             Step::Error(ProviderError::Malformed(Some(MalformedReason::CutOff))),
             Step::Error(ProviderError::Malformed(None)),
@@ -1256,7 +1252,7 @@ fn ac_synth_48_a_malformed_reply_keeps_its_reason_and_all_of_them_are_one_cause(
     let all = run_with(
         SynthOptions {
             stop_on_repeat: false,
-            ..SynthOptions::default()
+            ..options()
         },
         steps(),
         &LeafRunner::new(),
@@ -1299,7 +1295,7 @@ goal Keep(n: Heavy) -> Number:
     let provider = Scripted::new(vec![Step::Reply(reply(&input()))]);
     let mut session = Session::new(SynthOptions {
         max_retries: 0,
-        ..SynthOptions::default()
+        ..options()
     });
     let outcome = block_on(synthesize(&mut session, &provider, &task, &LeafRunner::new()));
     let Outcome::Failed(failure) = outcome else {

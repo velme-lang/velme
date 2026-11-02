@@ -49,7 +49,8 @@ pub struct ReplayIdentity {
     /// fixtures are keyed on (R-SYNTH-43).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry_history: Option<RetryHistory>,
-    /// `reply_format` when it wasn't the default `ir-json`: it changes how the recorded replies are read.
+    /// `reply_format` of the recorded build (R-SYNTH-43). Always written since 0.2.0-alpha.1 (D-169); absent in
+    /// legacy fixtures recorded under the old default, where absent means `ir-json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_format: Option<ReplyFormat>,
 }
@@ -59,7 +60,7 @@ impl ReplayIdentity {
     /// replay must ask and read as the recording did, or its requests match no fixture (R-SYNTH-43).
     pub fn apply(&self, options: &mut SynthOptions) {
         options.retry_history = self.retry_history.unwrap_or_default();
-        options.reply_format = self.reply_format.unwrap_or_default();
+        options.reply_format = self.reply_format.unwrap_or(ReplyFormat::IrJson);
     }
 }
 
@@ -198,7 +199,7 @@ impl SynthBackend for Replay {
         // An external recording is keyed by its format's version: one recorded under another is stale (R-SYNTH-40, D-156).
         if identity.provider == "external"
             && identity.input_version
-                != crate::request::external_input_version(identity.reply_format.unwrap_or_default())
+                != crate::request::external_input_version(identity.reply_format.unwrap_or(ReplyFormat::IrJson))
         {
             return Err(ProviderError::Unavailable(format!(
                 "the recorded `input_version` in {IDENTITY_FILE} isn't the current one for its reply format; {RE_RECORD}"

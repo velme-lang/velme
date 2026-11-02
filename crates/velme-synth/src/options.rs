@@ -22,11 +22,11 @@ pub enum SchemaInPrompt {
 #[serde(rename_all = "kebab-case")]
 pub enum ReplyFormat {
     /// Canonical IR JSON.
-    #[default]
     IrJson,
     /// The same tree with every property name and node `kind` tag replaced by a short alias.
     Compact,
     /// Python-shaped text lowered to canonical IR (R-SYNTH-50).
+    #[default]
     Notation,
 }
 
@@ -92,7 +92,7 @@ impl Default for SynthOptions {
             retry_history: RetryHistory::Latest,
             max_prompt_examples: 8,
             schema_in_prompt: SchemaInPrompt::Summary,
-            reply_format: ReplyFormat::IrJson,
+            reply_format: ReplyFormat::Notation,
             timeout_secs: 60,
             max_output_tokens: None,
         }

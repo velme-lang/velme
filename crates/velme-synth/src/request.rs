@@ -227,7 +227,7 @@ pub struct SynthRequest {
     /// `reply_format`: the schema of that format's reply (R-SYNTH-36, D-156).
     pub output_schema: Value,
     /// The format the reply is written in, named only when it is not `ir-json` and only in a request to an `external` backend
-    /// (R-SYNTH-36, D-156): the default leaves the request's bytes as they were.
+    /// (R-SYNTH-36, D-156, D-169): an `ir-json` build leaves the request member out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(schema_with = "reply_format_schema")]
     pub reply_format: Option<ReplyFormat>,

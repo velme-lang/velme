@@ -65,6 +65,7 @@ fn at(url: &str, token: Option<&str>, timeout: Duration) -> (External, Recording
     let mut config = ExternalConfig::new(ExternalUrl::parse(url).expect("a URL"));
     config.token = token.map(|t| ExternalToken::parse(t).expect("a token").expect("one"));
     config.timeout = timeout;
+    config.reply_format = ReplyFormat::IrJson;
     let sleeper = RecordingSleeper::default();
     (External::new(config).with_sleeper(Arc::new(sleeper.clone())), sleeper)
 }
@@ -560,19 +561,26 @@ fn serving_in(config: Config, format: ReplyFormat) -> (Server, External) {
     let server = Server::start(config);
     let mut backend = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
     backend.reply_format = format;
+    backend.reply_format_explicit = true;
     (server, External::new(backend))
 }
 
 /// A reply format other than `ir-json` changes the identity's `input_version`, so it changes `synthesis_key` and never
-/// `contract_key`; the default leaves it the request version, and `compact` adds the format and a version of its alias
-/// table (AC-SYNTH-57, R-SYNTH-40, D-156).
+/// `contract_key`; the default is `notation`, `compact` adds the format and a version of its alias
+/// table, and `ir-json` leaves it the request version (AC-SYNTH-57, R-SYNTH-40, D-156, D-169).
 #[test]
 fn ac_synth_57_the_reply_format_enters_the_external_input_version() {
-    let (_server, plain) = serving(Config::default());
-    let identity = block_on(plain.identify()).expect("identity");
-    assert_eq!(identity.input_version, REQUEST_VERSION);
+    let listing = || Config::default().listing(json!(["ir-json", "compact", "notation"]));
+    let (_server, default_notation) = serving_in(listing(), ReplyFormat::Notation);
+    let identity = block_on(default_notation.identify()).expect("identity");
+    assert_eq!(
+        identity.input_version,
+        format!(
+            "{REQUEST_VERSION}+reply_format=notation@{}",
+            velme_synth::notation::GRAMMAR_VERSION
+        )
+    );
 
-    let listing = || Config::default().listing(json!(["ir-json", "compact"]));
     let (_server, compact) = serving_in(listing(), ReplyFormat::Compact);
     let compact = block_on(compact.identify()).expect("identity");
     // The pinned hash is the alias table's: a change to any alias changes it, and re-keys every compact build.
@@ -593,7 +601,7 @@ fn ac_synth_57_the_reply_format_enters_the_external_input_version() {
 const COMPACT_VERSION: &str = "98d9aa2ef545";
 
 /// A backend whose `describe` lacks `reply_formats` answers in `ir-json` only: a `compact` setting stops before any
-/// `synthesize` request, with `VL0406` naming the setting (AC-SYNTH-57, R-SYNTH-26, D-156). Unknown names are ignored, a
+/// `synthesize` request, with `VL0406` naming the setting (AC-SYNTH-57, R-SYNTH-26, D-156, D-169). Unknown names are ignored, a
 /// malformed list is a backend failure, and a list without the format is as good as none.
 #[test]
 fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
@@ -605,10 +613,12 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
         backend,
         offered,
         asked,
+        explicit,
     } = &error
     else {
         panic!("{error:?}");
     };
+    assert!(*explicit);
     assert_eq!(
         (backend.as_str(), offered.as_slice(), *asked),
         ("velme-test-support", &["ir-json"][..], "compact")
@@ -632,6 +642,57 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
         fs::read_to_string(&log).expect("log").trim(),
         "describe",
         "nothing else was sent"
+    );
+
+    // When unset (the default notation against a backend without reply_formats):
+    let (_server, default_backend) = {
+        let server = Server::start(Config::replying(&dir));
+        let backend = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
+        (server, External::new(backend))
+    };
+    let unset_error = block_on(default_backend.identify()).expect_err("unsupported");
+    let ProviderError::FormatUnsupported {
+        backend: u_backend,
+        offered: u_offered,
+        asked: u_asked,
+        explicit: u_explicit,
+    } = &unset_error
+    else {
+        panic!("{unset_error:?}");
+    };
+    assert!(!*u_explicit);
+    assert_eq!(*u_asked, "notation");
+    assert_eq!(u_offered.as_slice(), &["ir-json"]);
+    let unset_diag = velme_synth::provider_diagnostic(&unset_error, u_backend, "Double", Default::default());
+    assert_eq!(unset_diag.code, velme_diagnostics::Code::BackendFailed);
+    assert_eq!(
+        unset_diag.message,
+        "The backend `velme-test-support` couldn't build `Double`: it answers only in `ir-json`."
+    );
+    assert_eq!(
+        unset_diag.help.as_deref(),
+        Some("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
+    );
+
+    // When set explicitly to notation against the same backend:
+    let (_server, explicit_backend) = serving_in(Config::replying(&dir), ReplyFormat::Notation);
+    let exp_error = block_on(explicit_backend.identify()).expect_err("unsupported");
+    let ProviderError::FormatUnsupported {
+        explicit: exp_explicit, ..
+    } = &exp_error
+    else {
+        panic!("{exp_error:?}");
+    };
+    assert!(*exp_explicit);
+    let exp_diag = velme_synth::provider_diagnostic(&exp_error, u_backend, "Double", Default::default());
+    assert_eq!(exp_diag.code, velme_diagnostics::Code::BackendFailed);
+    assert_eq!(
+        exp_diag.message,
+        "The backend `velme-test-support` couldn't build `Double`: it answers only in `ir-json`, and velme.toml asks for `reply_format = \"notation\"`."
+    );
+    assert_eq!(
+        exp_diag.help.as_deref(),
+        Some("remove `reply_format` from `[synthesis]`, or use a backend that lists it")
     );
 
     // A list that holds only other names, or only `ir-json`, lacks it too; unknown names are ignored.

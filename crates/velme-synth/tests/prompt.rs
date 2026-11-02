@@ -3,10 +3,14 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
 use velme_synth::{
-    AttemptDiagnostic, AttemptFeedback, PromptOptions, ReplyFormat, Role, SchemaInPrompt, SynthRequest, alias_table,
-    build_request, expand, prompt_version, render, render_with,
+    AttemptDiagnostic, AttemptFeedback, Prompt, PromptOptions, ReplyFormat, Role, SchemaInPrompt, SynthRequest,
+    alias_table, build_request, expand, prompt_version, render_with,
 };
 use velme_test_support::{goal_id, program, read, repo};
+
+fn render(request: &SynthRequest) -> Result<Prompt, velme_diagnostics::Diagnostic> {
+    render_with(request, &options(ReplyFormat::IrJson))
+}
 
 const SOURCE: &str = "language: velme/0.2
 

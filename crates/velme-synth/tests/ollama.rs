@@ -41,9 +41,18 @@ fn limits() -> SynthLimits {
 
 /// A backend for `model` on `responses`, with the server and the sleeper to inspect afterwards.
 fn mock(model: &str, responses: impl IntoIterator<Item = MockResponse>) -> (Ollama, MockServer, RecordingSleeper) {
+    mock_in(model, ReplyFormat::default(), responses)
+}
+
+fn mock_in(
+    model: &str,
+    format: ReplyFormat,
+    responses: impl IntoIterator<Item = MockResponse>,
+) -> (Ollama, MockServer, RecordingSleeper) {
     let server = MockServer::start(responses);
     let sleeper = RecordingSleeper::default();
     let mut config = OllamaConfig::new(model);
+    config.options.reply_format = format;
     config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
     let backend = Ollama::new(config).with_sleeper(Arc::new(sleeper.clone()));
     (backend, server, sleeper)
@@ -62,20 +71,20 @@ fn identify(backend: &Ollama) -> Result<Identity, ProviderError> {
 /// R-SYNTH-24).
 #[test]
 fn ac_synth_11_the_chat_request_carries_the_schema_and_no_streaming() {
-    let (backend, server, sleeper) = mock(
+    let (backend, server, sleeper) = mock_in(
         "llama3",
+        ReplyFormat::IrJson,
         [
             MockResponse::ollama_tags(&[("other:latest", "sha256:other"), ("llama3:latest", DIGEST)]),
             MockResponse::ollama_chat(&goal_reply()),
         ],
     );
+    let mut config = OllamaConfig::new("llama3");
+    config.options.reply_format = ReplyFormat::IrJson;
     let identity = identify(&backend).expect("identity");
     assert_eq!(identity.provider, "ollama");
     assert_eq!(identity.model, format!("llama3:latest@{DIGEST}"));
-    assert_eq!(
-        identity.input_version,
-        OllamaConfig::new("llama3").options.input_version(&prompt_version())
-    );
+    assert_eq!(identity.input_version, config.options.input_version(&prompt_version()));
     assert_eq!(identity.backend, None);
     let provider = backend.open(&identity).expect("a provider");
     assert_eq!((provider.id(), provider.model()), ("ollama", identity.model.as_str()));
@@ -97,7 +106,7 @@ fn ac_synth_11_the_chat_request_carries_the_schema_and_no_streaming() {
     assert_eq!(body["options"]["num_predict"], 8192);
     let messages = body["messages"].as_array().expect("messages");
     assert_eq!(messages.len(), 1);
-    let prompt = render_with(&request, &OllamaConfig::new("llama3").options.prompt()).expect("a prompt");
+    let prompt = render_with(&request, &config.options.prompt()).expect("a prompt");
     assert_eq!(messages[0]["role"], "user");
     assert_eq!(messages[0]["content"], prompt.first_turn());
 }

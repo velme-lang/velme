@@ -132,7 +132,16 @@ fn build_with(dir: &Path, text: &str, backend: Option<&dyn SynthBackend>, option
     build_mode(dir, text, backend, options, Mode::Build)
 }
 
-fn build_mode(dir: &Path, text: &str, backend: Option<&dyn SynthBackend>, options: SynthOptions, mode: Mode) -> Built {
+fn build_mode(
+    dir: &Path,
+    text: &str,
+    backend: Option<&dyn SynthBackend>,
+    mut options: SynthOptions,
+    mode: Mode,
+) -> Built {
+    if options.reply_format == velme_synth::ReplyFormat::Notation {
+        options.reply_format = velme_synth::ReplyFormat::IrJson;
+    }
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
@@ -426,7 +435,10 @@ fn ac_synth_35_a_watchdog_stop_is_not_a_rejection() {
         project: &dir,
         file: FILE,
         backend: Some(&script),
-        options: SynthOptions::default(),
+        options: SynthOptions {
+            reply_format: velme_synth::ReplyFormat::IrJson,
+            ..SynthOptions::default()
+        },
         run: Options {
             clock: Arc::new(Jumping(AtomicU64::new(0))),
             ..Options::default()
@@ -804,7 +816,10 @@ fn ac_art_10_a_watchdog_stop_on_a_lock_hit_keeps_the_entry() {
         project: &dir,
         file: FILE,
         backend: None,
-        options: SynthOptions::default(),
+        options: SynthOptions {
+            reply_format: velme_synth::ReplyFormat::IrJson,
+            ..SynthOptions::default()
+        },
         run: Options {
             clock: Arc::new(Jumping(AtomicU64::new(0))),
             ..Options::default()
@@ -1077,7 +1092,10 @@ goal Hidden(xs: List<Number>) -> Boolean:
                 project: &dir,
                 file: FILE,
                 backend: Some(provider),
-                options: SynthOptions::default(),
+                options: SynthOptions {
+                    reply_format: velme_synth::ReplyFormat::IrJson,
+                    ..SynthOptions::default()
+                },
                 run: Options {
                     backend: backend.clone(),
                     ..Options::default()

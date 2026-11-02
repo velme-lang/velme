@@ -11,8 +11,8 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use velme_ir::{Fingerprint, from_json_str, to_canonical_string};
 use velme_synth::{
-    AnthropicConfig, Exchange, IDENTITY_FILE, ProviderError, Recorder, Replay, ReplayIdentity, Scripted, Step,
-    SynthBackend, SynthLimits, SynthRequest, build_request, fixture_path, read_replay_identity,
+    AnthropicConfig, Exchange, IDENTITY_FILE, ProviderError, Recorder, Replay, ReplayIdentity, ReplyFormat, Scripted,
+    Step, SynthBackend, SynthLimits, SynthOptions, SynthRequest, build_request, fixture_path, read_replay_identity,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
 use velme_test_support::{RecordingSleeper, goal_id, mock_anthropic, program};
@@ -299,4 +299,46 @@ fn r_synth_43_a_link_or_a_file_in_place_of_the_fixture_directory_is_refused_befo
         let error = block_on(recorder.identify()).expect_err("refused");
         assert!(matches!(error, ProviderError::File { .. }), "{error:?}");
     }
+}
+
+/// A legacy `replay.json` recorded before 0.2.0-alpha.1 without a `reply_format` member replays as `ir-json`
+/// (R-SYNTH-43, D-169, review finding 1).
+#[test]
+fn d7_review_legacy_replay_absent_format_is_ir_json() {
+    let legacy_dir = dir("legacy-no-format");
+    fs::create_dir_all(&legacy_dir).expect("directory");
+    let legacy_identity = json!({
+        "provider": "external",
+        "backend": "test-backend",
+        "model_version": "test-backend@1",
+        "input_version": "0.2"
+    });
+    fs::write(legacy_dir.join(IDENTITY_FILE), legacy_identity.to_string()).expect("identity");
+
+    // 1. read_replay_identity + apply resolves absent format to IrJson (not the default Notation).
+    let identity = read_replay_identity(&legacy_dir).expect("read").expect("identity");
+    assert_eq!(identity.reply_format, None);
+    let mut options = SynthOptions::default();
+    assert_eq!(options.reply_format, ReplyFormat::Notation);
+    identity.apply(&mut options);
+    assert_eq!(options.reply_format, ReplyFormat::IrJson);
+
+    // 2. An external replay with input_version "0.2" succeeds because absent means ir-json.
+    let replay = Replay::new(&legacy_dir);
+    let backend_id = block_on(replay.identify()).expect("identify legacy replay");
+    assert_eq!(backend_id.input_version, "0.2");
+
+    // 3. Newly recorded replay identities always include reply_format for every format.
+    let record_dir = dir("record-always-writes-format");
+    let scripted = Scripted::new([Step::Reply(r#"{"body":"1"}"#.to_owned())]);
+    let default_options = SynthOptions::default();
+    let recorder = Recorder::new(Box::new(scripted), &record_dir).with_options(&default_options);
+    block_on(recorder.identify()).expect("identify");
+    let recorded_identity: Value =
+        serde_json::from_str(&fs::read_to_string(record_dir.join(IDENTITY_FILE)).expect("read recorded"))
+            .expect("json");
+    assert_eq!(
+        recorded_identity["reply_format"], "notation",
+        "record.rs always writes reply_format, even for the default notation"
+    );
 }

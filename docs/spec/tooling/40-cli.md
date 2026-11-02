@@ -256,7 +256,7 @@ replay_dir = "tests/fixtures/synth"   # replay provider only; relative, inside t
 # token cost, LLM providers only, except reply_format, which external takes too (compiler/22 §4.1, D-44, D-156)
 prompt_cache = true             # anthropic: cache the fixed prompt prefix (R-SYNTH-34)
 schema_in_prompt = "summary"    # summary | full (R-SYNTH-35)
-reply_format = "ir-json"        # ir-json | compact | notation; compact and notation are experimental (R-SYNTH-36, §4.2)
+reply_format = "notation"       # notation | ir-json | compact; compact is experimental (R-SYNTH-36, §4.2)
 retry_history = "latest"        # latest | all (R-SYNTH-37)
 stop_on_repeat = true           # stop when two attempts in a row share a cause (R-SYNTH-37)
 max_prompt_examples = 8         # 0..=64 (R-SYNTH-38)

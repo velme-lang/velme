@@ -447,6 +447,7 @@ pub fn external(flags: &BuildFlags, options: &SynthOptions) -> Result<Chosen, Di
     config.token = token;
     config.ca_pem = ca_pem;
     config.reply_format = options.reply_format;
+    config.reply_format_explicit = flags.settings.project.reply_format.is_some();
     if let Some(secs) = user.external_timeout_secs {
         config.timeout = std::time::Duration::from_secs(secs);
     }

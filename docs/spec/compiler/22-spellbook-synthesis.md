@@ -93,8 +93,9 @@ signature; each provider is a module in `velme-synth` behind a Cargo feature (`p
 **R-SYNTH-06** Live-provider runs are never part of the default gate (D-13). In v0.1 they are a manual CLI run at the
 MVP gate (`delivery/51` §2, D-148); `VELME_LIVE_LLM=1` is reserved for live-provider tests after v0.1.
 **R-SYNTH-43** Replay fixtures (D-94). `<replay_dir>/replay.json` holds `provider`, `model_version` and
-`input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21), and, when they
-aren't the defaults, its `retry_history` and `reply_format` (R-SYNTH-36, R-SYNTH-37), which change the bytes of the requests the fixtures are
+`input_version` of the recorded build, and for `external` its `backend` name (`runtime/32` R-ART-21), its `reply_format`
+(which `record` always records, every format including `notation`; an absent one written before `0.2.0-alpha.1` means `ir-json`, D-169),
+and, when it isn't the default, its `retry_history` (R-SYNTH-36, R-SYNTH-37), which change the bytes of the requests the fixtures are
 keyed on and how the recorded replies are read; `replay` reports them from the identity step (R-SYNTH-25), and a build
 replaying uses the recorded `retry_history` and `reply_format` over its own, so the replayed
 build computes the same keys and writes byte-identical manifests. A replay reproduces the artifacts, lock, manifests
@@ -114,7 +115,7 @@ and neither is a request the provider rejects (`Rejected`, like `KeyRejected` an
 as the missing-entry `VL0404` — as canonical JSON, overwrites the goal's whole fixture file each time it synthesizes that
 goal, and writes `replay.json`.
 **R-SYNTH-44** `anthropic` sends `tool_choice: {"type": "auto"}` and a system prompt telling the model to answer only
-by calling exactly one of `write_goal` and `ask_question`, since current models reject a forced `tool_choice` and a
+by calling exactly one of `write_goal` and `ask_question`, once, and write no text before or after the call (D-150, D-169), since current models reject a forced `tool_choice` and a
 `temperature` (D-150); the tool's input is the reply (R-SYNTH-10; `write_goal` takes the body in the requested
 `reply_format`, R-SYNTH-36, §4.2), text blocks beside the one tool call are ignored, and
 a reply with no tool call, both tools or anything else is `Malformed`. In a retry, each carried reply that is a JSON
@@ -180,7 +181,7 @@ committed `velme-synth-request` JSON Schema, generated from the Rust types like 
 
 When `reply_format` (R-SYNTH-36) is not `ir-json`, the request holds one more member, `"reply_format": "<name>"`, and the backend
 answers in that format (the `body` key spelled as the format spells it); with `ir-json` the member is left out, so the
-request is the same bytes as without the option (D-156). `output_schema` is that format's reply schema, so a `compact`
+request is the same bytes as without the option (D-156, D-169). `output_schema` is that format's reply schema, so a `compact`
 request does not carry the IR schema: its body is the object under the alias of `body`, or a question. Within
 `request_version` `0.2` Velme adds only optional members, absent by default and sent only to a backend that advertises
 support for them (`reply_formats` is how a backend does it for `reply_format`), so a backend written against the first
@@ -192,8 +193,9 @@ replies (unknown keys are ignored, as in `describe`); a change that isn't compat
 cached build; its `reply_formats`, when present, is a list of reply-format names (R-SYNTH-36) the backend answers in, and
 when absent means `["ir-json"]`; a name Velme doesn't know is ignored, a `reply_formats` that is not a list of strings is `VL0406`,
 and the list is part of neither the identity nor any key. When `[synthesis] reply_format` is not `ir-json` and the list
-lacks it, `describe` ends the goal with `VL0406` before any `synthesize` request: "The backend `X` couldn't build `Goal`: it answers
-only in `ir-json`, and velme.toml asks for `reply_format = "compact"`.", help "remove `reply_format` from `[synthesis]`, or use a backend
+lacks it, `describe` ends the goal with `VL0406` before any `synthesize` request: when unset (the default is `notation`, D-169), "The backend `X` couldn't build `Goal`: it answers
+only in `ir-json`.", help "set `reply_format = "ir-json"` in `[synthesis]`, or use a backend that lists it"; when set explicitly, "The backend `X` couldn't build `Goal`: it answers
+only in `ir-json`, and velme.toml asks for `reply_format = "compact"`." (or the set format), help "remove `reply_format` from `[synthesis]`, or use a backend
 that lists it" (`VL0406`, not `VL0902`: the settings are valid, it is the backend that cannot do what they ask). Velme never
 falls back to another format (D-156). Its `model()` is `<backend>@<backend_version>` (as Ollama's is `<model>@<digest>`) and enters `synthesis_key`, so a new
 backend or version is a cache miss but never makes a lock stale (runtime/32 R-ART-03). `backend` and `backend_version` must each be 1..=128 Unicode scalar
@@ -331,7 +333,8 @@ object into the output contract and sends the reply schema only through the prov
 R-SYNTH-09); `"full"` also puts the whole schema in the prompt, for models that follow it better when they can read it.
 In `notation` the output contract carries the notation's lines (§4.2) in place of the node lines, and the reply schema
 is the small `{"body": string}` one.
-**R-SYNTH-36** `reply_format = "ir-json"` (default) asks for canonical IR JSON, `{"body": …}`. `"compact"`
+**R-SYNTH-36** `reply_format = "notation"` (default, D-169) asks for the body as notation text and lowers it to IR (§4.2). `"ir-json"`
+asks for canonical IR JSON, `{"body": …}`. `"compact"`
 (experimental, D-153) asks for the same tree with every property name and node `kind` tag, the reply's `body` key
 included, replaced by a short alias from a fixed table in `velme-synth`, generated together with the reply schema and
 versioned with it. An alias is always shorter than its name, and a name with no shorter free alias keeps its own
@@ -341,10 +344,9 @@ contract, the reply schema and the parser all spell the body key by its alias, a
 spelling: a compact reply keyed `body` is a reply with no body (`VL0401`). `velme-synth` expands a compact reply into
 canonical IR (a pure renaming; an unknown alias is `VL0401`) before validation, so the validator, fingerprints,
 artifacts and lock only ever see canonical IR (D-21). Retry turns carry each earlier reply exactly as it was received,
-never compressed again from the expanded IR, and spell diagnostic JSON paths with the aliases. `"notation"`
-(experimental, D-152) asks for the body as notation text and lowers it to IR (§4.2). Compact is removed in `0.2` if
-the notation becomes the default (D-153). An `external` backend is asked for the format the same way: the request names it
-(§3.2) and the reply is read by the same code (D-156).
+never compressed again from the expanded IR, and spell diagnostic JSON paths with the aliases.
+Compact is removed in `0.2` (D-153, D-169). An `external` backend is asked for the format the same way: the request names it
+unless it is `ir-json` (§3.2) and the reply is read by the same code (D-156, D-169).
 **R-SYNTH-37** `retry_history = "latest"` (default): a retry turn carries only the latest failed reply plus the primary
 diagnostic (R-SYNTH-31) of every earlier attempt, so later attempts cost about as much as the second. `"all"` carries
 every earlier reply, as R-SYNTH-11 describes. With `stop_on_repeat = true` (default), the loop stops when two attempts
@@ -362,7 +364,7 @@ changes `synthesis_key`; lock staleness uses `contract_key` (D-26), so it never 
 format version of `compact` is the first 12 hex digits of the BLAKE3 of its alias table (R-SYNTH-36), the table `prompt_version` hashes
 (D-97); that of `notation` is the notation's grammar version (R-SYNTH-55). A change to either re-keys every build that asks for the format.
 
-### 4.2 Reply notation (experimental, D-152)
+### 4.2 Reply notation (D-152, D-169)
 
 With `reply_format = "notation"` the model writes the goal's body as text in a small Python-shaped notation,
 `{"body": "<notation>"}`, and `velme-synth` lowers it to one IR expression (`compiler/21` §3) before the unchanged
@@ -1235,7 +1237,7 @@ leaves the machine (tooling/41).
 | AC-SYNTH-54 | Changing the notation's grammar version, or the bytes of `notation.txt`, changes the `synthesis_key` of a `notation` build, not of an `ir-json` one (whose `prompt_version` is unchanged) and no `contract_key`, and a build with an up-to-date lock makes zero calls; a recorded `notation` build replays byte-for-byte, with `reply_format` in `replay.json` (R-SYNTH-40, R-SYNTH-43, D-152). |
 | AC-SYNTH-55 | For the leaf golden goal of AC-SYNTH-07 in `notation` with default options, the `anthropic` request body is at most 7,168 bytes and its fixed prefix (system prompt, tool definitions and the prompt through the allowed builtins) at most 5,120 bytes, about 1.5k tokens. Chosen from the same goal's `ir-json` request today: a 6,698-byte prompt (5,874 of it the fixed prefix) plus a reply schema of about 10 KB (about 3k tokens) in the tool definition; 7 KiB is that request without the schema, with about 0.5 KB for system prompt, tools and JSON framing, and the prefix bound makes the notation reference and its examples smaller than the node lines and JSON examples they replace (R-SYNTH-56, D-152). |
 | AC-SYNTH-56 | In `notation`, the `anthropic` and `ollama` request bodies hold no IR schema: no `$defs` and no definition name of the IR schema, and `write_goal`'s input schema and `ollama`'s `format` are the `{"body": string}` reply schema, with either `schema_in_prompt` (R-SYNTH-56, D-152). |
-| AC-SYNTH-57 | With `reply_format = "compact"`, the `external` request names the format and a compact reply builds an artifact; a default build's request has no `reply_format` member; a compact build whose backend answers under `body` is a failed attempt (`VL0401`, then `VL0403` naming the alias), not `VL0406`; the request's `output_schema` is the compact reply schema (no IR `$defs`); the format enters the external `input_version` (`<request_version>+reply_format=compact@<version>`, the version a 12-digit hash of the alias table), re-keying the build; and a backend whose `describe` lacks `reply_formats` (or does not list `compact`) ends the goal with `VL0406` naming the setting before any `synthesize` request (R-SYNTH-26, R-SYNTH-27, R-SYNTH-36, R-SYNTH-40, D-153, D-156). |
+| AC-SYNTH-57 | With `reply_format = "compact"`, the `external` request names the format and a compact reply builds an artifact; an `ir-json` build's request has no `reply_format` member; a compact build whose backend answers under `body` is a failed attempt (`VL0401`, then `VL0403` naming the alias), not `VL0406`; the request's `output_schema` is the compact reply schema (no IR `$defs`); the format enters the external `input_version` (`<request_version>+reply_format=compact@<version>`, the version a 12-digit hash of the alias table), re-keying the build; and a backend whose `describe` lacks `reply_formats` (or does not list `compact`) ends the goal with `VL0406` naming the setting before any `synthesize` request (R-SYNTH-26, R-SYNTH-27, R-SYNTH-36, R-SYNTH-40, D-153, D-156, D-169). |
 | AC-SYNTH-58 | Golden accepted bodies cover R-SYNTH-50 and R-SYNTH-57: `\r\n` line ends, a comment-only line, a top level indented 4 spaces, a call continued over lines with a trailing comma, a single-line `return` branch, an `elif` chain with no `else` before the rest of its block, `a if c else b if d else e` grouping to the right and `a - b - c` to the left, `-0.5` and `- 0.5` lowering to one literal, `--2` to `neg` of `-2` and `-(2)` to `neg` of `2`, keyword names read as names (`bond.yield`, `T(from=x)` for a record field `from`, an input named `class`, `x.if`), `while` used as a name lowering to `local` (`names-8` from the validator), and `x in (1, 2)` lowering as `x in [1, 2]`. Golden rejected bodies split statements as R-SYNTH-57 says: `match x:`, `while c:`, `x.y = 1`, `x = y = 1`, `x += 1`, `a, b = c` and a bare expression before the block's last statement are `notation-4`, a bare expression last in its block and `if c: x = 1` `notation-5`, `else:` with no `if` `notation-13`, `x[0]`, `(a, b)`, `return a, b`, `[x for a, b in xs]` and `(f)(x)` `notation-8`, and `next((x for x in xs), None)` and `sorted(xs, key=…, key=…)` `notation-9`, while `sorted(xs, reverse=True, key=lambda x: x.a)` lowers (D-157). |
 | AC-SYNTH-59 | `infer_list_types`, in `velme-ir`'s tests over hand-built nodes, sets each list's `of` from each row of the R-SYNTH-58 table whatever `of` it was given, the second of two list branches from the first; an item of a typed list takes its `of` (`[[], [1]]` as a `List<List<Number>>` output), and of two list branches the non-empty one is typed first (`[] if c else [1]` with no expected type); it returns only the pointer of an untyped list for `[]` as a `let` binding's value, and nothing for a body whose only fault is an unknown name; a list whose first item is an unknown name gets `of` `Nothing`, and the build's primary diagnostic is that name's `names-8`, not `notation-11`; it visits each node of a 10 000-node body once (D-157). Domain list annotations write the recursive base while the expected-type pass retains the domain context (D3). |
 | AC-SYNTH-60 | `ReplyFormat::from_name("notation")` is the notation format; the committed `velme-synth-request` schema lists `notation` and the optional `at` (`line` and `column` integers of at least 1, no other members) and `quote` (at most 3 strings of at most 160 characters) members, which a diagnostic carried from an attempt before the latest never holds, and which an `ir-json` or `compact` retry request never holds, so its bytes are unchanged; an `external` `notation` build's `input_version` is `0.2+reply_format=notation@1` and a backend whose `describe` doesn't list `notation` ends the goal with `VL0406`; a `notation` reply whose `body` is an object is a failed attempt with `VL0401` and log cause `body-not-string`, and a notation reply's log line has `reply_format` `notation` and `keys` `["body"]` (R-SYNTH-23, R-SYNTH-55, R-SYNTH-59, D-156, D-157). |
@@ -1251,3 +1253,4 @@ leaves the machine (tooling/41).
 | AC-SYNTH-70 | Number intervals with more than 2⁶⁴ whole or 0.01-grid points (e.g. 0 through 10²⁵) draw only from the first 2⁶⁴ points counted from the lower admissible index; `below(2⁶⁴)` returns the stream output using the 128-bit product. Finite non-whole intervals with exactly one empty grid always draw from the other grid without consuming `below(2)`; with both grids empty (`0 < value < 0.001`), every draw is the R-TYP-04-rounded midpoint, with no grid-selection/index draw, and duplicate valid midpoints count toward the 64-draw probe (R-SYNTH-62, R-SYNTH-65). Golden seeded draws freeze these cases and their stream consumption. Tested by D5. |
 | AC-SYNTH-71 | Inputs are generated once per goal, before its first provider request, and once per lock-hit verification; a budget stop there ends the goal with its code, worded for the domain and placed at its declaration, with zero provider calls and no synth-log line. So does a budget stop in the entry walk of a generated or example input on the goal's own budget, on `build` and on a lock hit, which doesn't go on to synthesis (R-SYNTH-63, D-167). Tested by D5. |
 | AC-SYNTH-72 | Predicate evaluation past 64 × `max_fuel` in one domain's probe or 256 × `max_fuel` in one goal's generation stops with VL0601 naming the domain, while each evaluation keeps its own fresh system budget and a flat domain well under them is unaffected (R-SYNTH-67, D-167). Tested by D5. |
+| AC-SYNTH-73 | `SynthOptions::default()` defaults `reply_format` to `notation`, while runtime project config leaves `reply_format` unset (`None`) and the build resolves unset to `notation`; a default `external` build against a backend without `reply_formats` ends the goal with `VL0406` using the unset wording ("it answers only in `ir-json`", help: set `reply_format = "ir-json"` in `[synthesis]`, or use a backend that lists it) before any `synthesize` request, while setting `reply_format = "notation"` explicitly gives the explicit wording ("and velme.toml asks for `reply_format = \"notation\"`", help: remove `reply_format` from `[synthesis]`, or use a backend that lists it); and the `anthropic` system prompt asks to write no text before or after calling the one tool (R-SYNTH-26, R-SYNTH-36, R-SYNTH-44, D-169). |

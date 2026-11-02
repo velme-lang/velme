@@ -103,6 +103,8 @@ pub struct ExternalConfig {
     /// The format the backend's replies are written in (`reply_format`, R-SYNTH-36, D-156). A format other than `ir-json`
     /// is named in each request and enters `input_version`.
     pub reply_format: ReplyFormat,
+    /// Whether `reply_format` was set explicitly in configuration (D-169).
+    pub reply_format_explicit: bool,
 }
 
 impl ExternalConfig {
@@ -116,7 +118,8 @@ impl ExternalConfig {
             token: None,
             timeout: Self::DEFAULT_TIMEOUT,
             ca_pem: None,
-            reply_format: ReplyFormat::IrJson,
+            reply_format: ReplyFormat::default(),
+            reply_format_explicit: false,
         }
     }
 }
@@ -376,6 +379,7 @@ impl SynthBackend for External {
                 backend,
                 offered: offered.iter().map(|format| format.name()).collect(),
                 asked: asked.name(),
+                explicit: self.config.reply_format_explicit || asked != ReplyFormat::default(),
             });
         }
         Ok(Identity {
@@ -427,7 +431,7 @@ impl SynthProvider for ExternalProvider {
         let (doc, tail) = self.backend.exchange(&Call::Synthesize(&body)).await?;
         let reply = self
             .backend
-            .read_reply(doc, &tail, request.reply_format.unwrap_or_default())?;
+            .read_reply(doc, &tail, request.reply_format.unwrap_or(ReplyFormat::IrJson))?;
         Ok(SynthReply {
             reply_json: reply,
             usage: Usage::default(),

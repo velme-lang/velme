@@ -35,7 +35,7 @@ const WRITE_GOAL: &str = "write_goal";
 const ASK_QUESTION: &str = "ask_question";
 
 /// The system prompt: `tool_choice` can't force a tool on current models, so the request asks for one (R-SYNTH-44).
-const SYSTEM: &str = "Answer only by calling exactly one of the two tools, `write_goal` or `ask_question`, once.";
+const SYSTEM: &str = "Answer only by calling exactly one of the two tools, `write_goal` or `ask_question`, once. Write no text before or after the call: put everything in the tool input.";
 
 /// An API key. Its `Debug` and `Display` print `***` (R-SEC-06); the text leaves it only into the request header.
 #[derive(Clone, PartialEq, Eq)]
@@ -171,6 +171,11 @@ impl fmt::Debug for Anthropic {
 }
 
 impl Anthropic {
+    /// The system prompt sent with every Anthropic request (R-SYNTH-44, D-169).
+    pub fn system_prompt() -> &'static str {
+        SYSTEM
+    }
+
     /// The provider for `config`, talking to the real API with the key from the environment.
     pub fn new(config: AnthropicConfig) -> Self {
         let model = match &config.retry_model {

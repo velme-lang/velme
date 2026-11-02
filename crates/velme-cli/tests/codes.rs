@@ -179,6 +179,7 @@ fn script(dir: &Path, replies: &[String]) -> String {
 /// `build` on the scripted provider with `replies`, as both renderings.
 fn scripted(code: &str, test: &str, source: &str, replies: &[String]) {
     let dir = project(test, source);
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let script = script(&dir, replies);
     snapshot_pair(
         code,
@@ -192,6 +193,7 @@ fn scripted(code: &str, test: &str, source: &str, replies: &[String]) {
 /// `build` on the `external` provider, its backend answering `Double` with `reply` and misbehaving as `mode` says.
 fn external(code: &str, test: &str, reply: &str, mode: Option<Mode>) {
     let dir = project(test, LEAF);
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"ir-json\"\n").expect("velme.toml");
     let replies = dir.join("replies");
     fs::create_dir_all(&replies).expect("replies");
     fs::write(replies.join("Double.json"), reply).expect("reply");

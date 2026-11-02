@@ -11,7 +11,7 @@ use velme_ir::{Fingerprint, to_canonical_string};
 
 use crate::attempt::clean_line;
 use crate::fsio::{check_dir, write_file};
-use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
+use crate::options::{RetryHistory, SynthOptions};
 use crate::provider::{Called, Identity, ProviderError, SynthBackend, SynthLimits, SynthProvider, SynthReply};
 use crate::replay::{Exchange, FixtureUsage, IDENTITY_FILE, ReplayIdentity, file_error, fixture_name};
 use crate::request::SynthRequest;
@@ -61,7 +61,7 @@ impl SynthBackend for Recorder {
             input_version: identity.input_version.clone(),
             backend: identity.backend.clone(),
             retry_history: Some(self.options.retry_history).filter(|h| *h != RetryHistory::default()),
-            reply_format: Some(self.options.reply_format).filter(|f| *f != ReplyFormat::default()),
+            reply_format: Some(self.options.reply_format),
         };
         let text = to_canonical_string(&recorded)
             .map_err(|_| ProviderError::Internal("the replay identity could not be written".to_owned()))?;
