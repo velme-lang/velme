@@ -78,7 +78,7 @@ goal BureauCallType(risk_category: Text) -> Text:
         - BureauCallType("DECLINE") == "NONE"
 
 goal Strategy(eligibility: Text, bureau_call_type: Text) -> Text:
-    plan: "\"DECLINE\" if ineligible. For an eligible applicant, \"BUREAU\" when the bureau call type is \"FULL\" or \"MINI\", and \"THROUGH\" when it is \"NONE\"."
+    plan: "\"DECLINE\" if ineligible. Otherwise \"BUREAU\" when the bureau call type is \"FULL\" or \"MINI\", and \"THROUGH\" for any other call type."
     examples:
         - Strategy("INELIGIBLE", "FULL") == "DECLINE"
         - Strategy("ELIGIBLE", "MINI") == "BUREAU"

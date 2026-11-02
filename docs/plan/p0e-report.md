@@ -114,8 +114,8 @@ above; the shared 2,042-token prefix was already cached by that first request, s
   Trimming it now means the thinking budget, not the prompt; follow-up, not a D7 change.
 - **A question in a new place.** Run 1's Strategy asked what an eligible applicant gets for a bureau call type other
   than FULL, MINI or NONE (`VL0407`), so DecideLoan was not built (`VL0409`). It's a real gap, like the two run 1 found
-  above, and run 2 built Strategy without asking. The plan is left as it is: it's a fixture, and its wording is the
-  owner's call.
+  above, and run 2 built Strategy without asking. The plan now says any other call type gives THROUGH, as the
+  hand-written reply already did.
 - **One malformed question.** Run 2's first ApplicationRiskScore reply was a question the reply check rejected
   (`bad-question`: empty, too long, or with a key beside it); the log doesn't keep the reply, so which one is unknown.
   The retry built it.
