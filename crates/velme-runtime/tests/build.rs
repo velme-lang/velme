@@ -142,6 +142,11 @@ fn build_mode(
     if options.reply_format == velme_synth::ReplyFormat::Notation {
         options.reply_format = velme_synth::ReplyFormat::IrJson;
     }
+    build_exact(dir, text, backend, options, mode)
+}
+
+/// [`build_mode`] with `options` as given, the default `notation` included.
+fn build_exact(dir: &Path, text: &str, backend: Option<&dyn SynthBackend>, options: SynthOptions, mode: Mode) -> Built {
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
@@ -532,8 +537,8 @@ fn ac_synth_10_replay_reproduces_a_recorded_build() {
 }
 
 /// A replay asks and reads as the recording did: the settings that shape requests and replies are in `replay.json`, and
-/// applied over the local defaults, a recording made with `compact` replies replays to the same artifacts and lock. Under
-/// the defaults it would read the compact replies as canonical IR and fail (R-SYNTH-43).
+/// applied over the local defaults, a recording made with `ir-json` replies replays to the same artifacts and lock. Under
+/// the defaults it would read the replies as notation and fail (R-SYNTH-43).
 #[test]
 fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
     let text = source("Double it.");
@@ -543,16 +548,14 @@ fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
         project("options-replayed"),
         project("options-defaults"),
     );
-    let compact = SynthOptions {
-        reply_format: velme_synth::ReplyFormat::Compact,
+    let recorded_options = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::IrJson,
         retry_history: velme_synth::RetryHistory::All,
         ..SynthOptions::default()
     };
-    let short =
-        |ir: String| velme_synth::compress(&serde_json::from_str::<Value>(&body_reply(&ir)).expect("JSON")).to_string();
-    let scripted = Scripted::replies([short(double()), short(add_one()), short(sum())]);
-    let recorder = Recorder::new(Box::new(scripted), &fixtures).with_options(&compact);
-    let first = build_with(&recorded, &text, Some(&recorder), compact);
+    let scripted = Scripted::replies([body_reply(&double()), body_reply(&add_one()), body_reply(&sum())]);
+    let recorder = Recorder::new(Box::new(scripted), &fixtures).with_options(&recorded_options);
+    let first = build_with(&recorded, &text, Some(&recorder), recorded_options);
     assert_eq!(first.report.summary.calls, 3, "{:?}", first.report.goals);
 
     let identity = velme_synth::read_replay_identity(&fixtures)
@@ -560,14 +563,14 @@ fn r_synth_43_a_replay_follows_the_recorded_reply_format_and_history() {
         .expect("a replay.json");
     let mut options = SynthOptions::default();
     identity.apply(&mut options);
-    assert_eq!(options.reply_format, velme_synth::ReplyFormat::Compact);
+    assert_eq!(options.reply_format, velme_synth::ReplyFormat::IrJson);
     assert_eq!(options.retry_history, velme_synth::RetryHistory::All);
     let replay = Replay::new(&fixtures);
     let second = build_with(&replayed, &text, Some(&replay), options);
     assert_eq!(second.report.summary.calls, 3, "{:?}", second.report.goals);
     assert_eq!(snapshot(&replayed), snapshot(&recorded));
 
-    let third = build_with(&defaults, &text, Some(&replay), SynthOptions::default());
+    let third = build_exact(&defaults, &text, Some(&replay), SynthOptions::default(), Mode::Build);
     assert_ne!(status(&third, "Double"), Status::Built(Source::Synthesized));
 }
 

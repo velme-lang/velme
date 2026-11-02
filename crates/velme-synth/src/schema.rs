@@ -6,19 +6,38 @@ use std::sync::LazyLock;
 use serde_json::{Map, Value, json};
 
 use crate::options::ReplyFormat;
-use crate::prompt::body_key;
 
 /// The IR schema, generated once.
 static IR_SCHEMA: LazyLock<Value> = LazyLock::new(velme_ir::schema);
 
-/// The schema of a compact reply's body (R-SYNTH-36): the body key spelled by its alias, whose value is the expression
-/// object in the compact names. Nothing deeper is constrained, since the validator judges the expanded IR.
-pub(crate) fn compact_body_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {(body_key(ReplyFormat::Compact)): {"type": "object"}},
-        "required": [body_key(ReplyFormat::Compact)],
-    })
+/// Every property name of the IR schema (the goal envelope's too) and the reply's own, generated once.
+static PROPERTY_NAMES: LazyLock<std::collections::BTreeSet<String>> = LazyLock::new(|| {
+    fn collect(value: &Value, names: &mut std::collections::BTreeSet<String>) {
+        match value {
+            Value::Object(map) => {
+                if let Some(Value::Object(properties)) = map.get("properties") {
+                    names.extend(properties.keys().cloned());
+                }
+                map.values().for_each(|v| collect(v, names));
+            }
+            Value::Array(items) => items.iter().for_each(|v| collect(v, names)),
+            _ => {}
+        }
+    }
+    let mut names = std::collections::BTreeSet::new();
+    // The whole IR schema's names (the goal envelope too), except the compiler-owned `domains` table (`compiler/21` R-IR-24).
+    let mut schema = velme_ir::schema();
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        properties.remove("domains");
+    }
+    collect(&schema, &mut names);
+    names.extend(["body".to_owned(), "question".to_owned()]);
+    names
+});
+
+/// Whether `name` is an IR property name, or `body` or `question`.
+pub(crate) fn is_property_name(name: &str) -> bool {
+    PROPERTY_NAMES.contains(name)
 }
 
 /// The question object of the reply schema (R-SYNTH-10), self-contained.
@@ -77,9 +96,8 @@ pub fn reply_schema() -> Value {
     })
 }
 
-/// The schema a reply in `format` must satisfy (R-SYNTH-36): [`reply_schema`] for `ir-json`; for `compact` a body under
-/// the body key's alias or a question, since the compact names are not the IR schema's and the validator alone judges
-/// the expanded IR. The question stays allowed: a grammar without it would forbid asking (R-SYNTH-05). It is what an
+/// The schema a reply in `format` must satisfy (R-SYNTH-36): [`reply_schema`] for `ir-json`; for `notation` a body string or a question.
+/// The question stays allowed: a grammar without it would forbid asking (R-SYNTH-05). It is what an
 /// LLM provider constrains its reply to and what an `external` request carries as `output_schema` (D-156).
 pub(crate) fn reply_schema_for(format: ReplyFormat) -> Value {
     match format {
@@ -87,7 +105,6 @@ pub(crate) fn reply_schema_for(format: ReplyFormat) -> Value {
         ReplyFormat::Notation => {
             json!({"anyOf": [{"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, question_schema()]})
         }
-        ReplyFormat::Compact => json!({"anyOf": [compact_body_schema(), question_schema()]}),
     }
 }
 

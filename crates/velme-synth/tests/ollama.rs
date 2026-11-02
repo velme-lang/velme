@@ -290,12 +290,12 @@ fn a_chat_that_gets_no_answer_times_out_without_a_retry() {
     assert!(sleeper.waits().is_empty());
 }
 
-/// A compact reply's `format` allows the body under its alias and a question, so a compact question is not forbidden by
+/// A notation reply's `format` allows a body string and a question, so a question is not forbidden by
 /// the grammar, and both kinds of reply come back (R-SYNTH-05, R-SYNTH-36).
 #[test]
-fn a_compact_format_allows_a_body_and_a_question() {
+fn a_notation_format_allows_a_body_and_a_question() {
     let question = json!({"question": "Round up?"});
-    let body = json!({"b": {"k": "x"}});
+    let body = json!({"body": "x"});
     let server = MockServer::start([
         MockResponse::ollama_tags(&[("llama3:latest", DIGEST)]),
         MockResponse::ollama_chat(&question),
@@ -303,7 +303,7 @@ fn a_compact_format_allows_a_body_and_a_question() {
     ]);
     let mut config = OllamaConfig::new("llama3");
     config.url = Some(velme_synth::ExternalUrl::parse(server.url()).expect("a URL"));
-    config.options.reply_format = ReplyFormat::Compact;
+    config.options.reply_format = ReplyFormat::Notation;
     let backend = Ollama::new(config).with_sleeper(Arc::new(RecordingSleeper::default()));
     let identity = identify(&backend).expect("identity");
     let provider = backend.open(&identity).expect("a provider");

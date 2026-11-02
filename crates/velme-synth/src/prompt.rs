@@ -8,7 +8,6 @@ use serde_json::{Map, Value, json};
 use velme_diagnostics::Diagnostic;
 use velme_ir::{Fingerprint, Type, to_canonical_string};
 
-use crate::compact;
 use crate::options::{PromptOptions, ReplyFormat, SchemaInPrompt};
 use crate::request::{AttemptDiagnostic, RecordType, Signature, SynthRequest, TaskKind};
 use crate::schema::{operators, reply_schema_for, schema_summary};
@@ -21,8 +20,7 @@ const COMPOSITE_ID: &str = "composite-3";
 const LEAF: &str = include_str!("../prompts/leaf.txt");
 const COMPOSITE: &str = include_str!("../prompts/composite.txt");
 
-/// The JSON the templates teach with, as canonical IR: shown as written, or through the compact aliases when the reply is
-/// to be compact, so an example is never in a spelling the expander refuses (D-104).
+/// The JSON the templates teach with, as canonical IR.
 const EXAMPLES: [(&str, &str); 6] = [
     ("example_input", r#"{"kind":"input","name":"player"}"#),
     (
@@ -111,7 +109,6 @@ fn compute_version() -> String {
         "leaf": {"id": LEAF_ID, "template": LEAF},
         "composite": {"id": COMPOSITE_ID, "template": COMPOSITE},
         "schema_summary": schema_summary(),
-        "alias_table": compact::table(),
         "examples": EXAMPLES,
         "operators": operators(),
         "domain_rule": DOMAIN_RULE,
@@ -174,7 +171,6 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
     let retry_vars = |diagnostics: String| {
         let mut own = BTreeMap::new();
         own.insert("diagnostics", diagnostics);
-        own.insert("body_key", body_key(options.reply_format).to_owned());
         own
     };
     // An earlier attempt whose reply is not repeated (`retry_history = "latest"`, R-SYNTH-37) is a line in the next user
@@ -185,7 +181,7 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
             let primary = attempt
                 .diagnostics
                 .first()
-                .map(|d| diagnostics(std::slice::from_ref(d), options));
+                .map(|d| diagnostics(std::slice::from_ref(d)));
             earlier.push(format!(
                 "Attempt {}, whose reply is not repeated:\n{}",
                 n + 1,
@@ -199,7 +195,7 @@ pub fn render_with(request: &SynthRequest, options: &PromptOptions) -> Result<Pr
             text: attempt.reply.clone(),
         });
         let mut found = std::mem::take(&mut earlier);
-        found.push(diagnostics(&attempt.diagnostics, options));
+        found.push(diagnostics(&attempt.diagnostics));
         retries.push(Turn {
             role: Role::User,
             text: fill(retry, &retry_vars(found.join("\n")))?,
@@ -240,39 +236,20 @@ fn fill(template: &str, fields: &BTreeMap<&str, String>) -> Result<String, Diagn
     Ok(out)
 }
 
-/// The reply's `body` key as the requested format spells it (R-SYNTH-36): its alias in `compact`.
-pub(crate) fn body_key(format: ReplyFormat) -> &'static str {
-    match format {
-        ReplyFormat::IrJson | ReplyFormat::Notation => "body",
-        ReplyFormat::Compact => compact::table().keys.get("body").map_or("body", String::as_str),
-    }
-}
-
 fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'static str, String>, Diagnostic> {
     let mut fields = BTreeMap::new();
     let mut notes = String::new();
     if options.schema_in_prompt == SchemaInPrompt::Full {
-        // In `compact` the schema shown is the one the reply is held to: the aliased body key, never `body` (R-SYNTH-36).
         let schema = canonical(&reply_schema_for(options.reply_format))?;
         notes.push_str(&format!("\nThe reply schema, as JSON Schema:\n{schema}"));
     }
-    if options.reply_format == ReplyFormat::Compact {
-        notes.push('\n');
-        notes.push_str(&compact::describe());
-    }
     fields.insert("format_notes", notes);
-    fields.insert("body_key", body_key(options.reply_format).to_owned());
     let (binary, unary) = operators();
     fields.insert("binary_ops", binary.join(", "));
     fields.insert("unary_ops", unary.join(", "));
     for (name, text) in EXAMPLES {
         let value: Value = velme_ir::from_json_str(text).map_err(|_| Diagnostic::internal_error())?;
-        let shown = if options.reply_format == ReplyFormat::Compact {
-            compact::compress(&value)
-        } else {
-            value
-        };
-        fields.insert(name, canonical(&shown)?);
+        fields.insert(name, canonical(&value)?);
     }
     fields.insert("prompt_version", prompt_version());
     fields.insert("ir_version", request.ir_version.clone());
@@ -361,8 +338,8 @@ fn fields(request: &SynthRequest, options: &PromptOptions) -> Result<BTreeMap<&'
     Ok(fields)
 }
 
-/// The diagnostics of one failed attempt as the retry turn lists them, their JSON paths in the requested format.
-fn diagnostics(found: &[AttemptDiagnostic], options: &PromptOptions) -> String {
+/// The diagnostics of one failed attempt as the retry turn lists them.
+fn diagnostics(found: &[AttemptDiagnostic]) -> String {
     found
         .iter()
         .map(|d| {
@@ -370,11 +347,6 @@ fn diagnostics(found: &[AttemptDiagnostic], options: &PromptOptions) -> String {
             if let Some(at) = &d.at {
                 line.push_str(&format!(" at line {}, column {}", at.line, at.column));
             } else if let Some(path) = &d.path {
-                let path = if options.reply_format == ReplyFormat::Compact {
-                    compact::compress_path(path)
-                } else {
-                    path.clone()
-                };
                 line.push_str(&format!(" at {path}"));
             }
             line.push_str(&format!(": {}", d.message));

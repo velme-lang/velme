@@ -514,6 +514,12 @@ fn ac_synth_49_replies_that_are_not_bodies_log_their_cause() {
         (&lines[1]["cause"], &lines[1]["outcome"]),
         (&json!("question"), &json!("VL0407"))
     );
+    // D8 round 1: goal-envelope names are IR property names too, so the shape keeps them (R-SYNTH-23, D-154).
+    let dir = project("v2_envelope_keys");
+    let script = Scripted::replies([json!({"inputs": 1, "output": 2, "error": 3}).to_string()]);
+    run(&dir, &script, Mode::Build);
+    let envelope = self::lines(&dir);
+    assert_eq!(envelope[0]["reply_shape"]["keys"], json!(["error", "inputs", "output"]));
 }
 
 /// The cause of the one line a build writes for a single scripted step.
@@ -531,11 +537,10 @@ fn ac_synth_49_each_reply_problem_logs_its_own_cause() {
         reply_format: velme_synth::ReplyFormat::IrJson,
         ..SynthOptions::default()
     };
-    let compact = SynthOptions {
-        reply_format: velme_synth::ReplyFormat::Compact,
+    let notation = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::Notation,
         ..SynthOptions::default()
     };
-    let body_alias = velme_synth::alias_table().keys["body"].clone();
     let cases = [
         ("not_json", reply("not json"), "not-json", ir_json.clone()),
         ("dup_key", reply(r#"{"body":1,"body":2}"#), "schema-1", ir_json.clone()),
@@ -554,10 +559,10 @@ fn ac_synth_49_each_reply_problem_logs_its_own_cause() {
             ir_json.clone(),
         ),
         (
-            "alias",
-            reply(&json!({ body_alias.clone(): {"zz-not-an-alias": 1} }).to_string()),
-            "unknown-alias",
-            compact,
+            "body_not_string",
+            reply(r#"{"body":{"kind":"input","name":"n"}}"#),
+            "body-not-string",
+            notation,
         ),
         (
             "refused",
@@ -750,23 +755,23 @@ fn ac_synth_49_the_block_list_is_capped_at_64() {
 #[test]
 fn ac_synth_49_reply_bytes_and_reply_format() {
     let dir = project("v2_bytes");
-    let compact = SynthOptions {
-        reply_format: velme_synth::ReplyFormat::Compact,
+    let notation = SynthOptions {
+        reply_format: velme_synth::ReplyFormat::Notation,
         ..SynthOptions::default()
     };
     let script = Scripted::new([
         Step::Error(ProviderError::Refused(String::new())),
         Step::Reply("{\"x\":1}".to_owned()),
     ]);
-    run_with(&dir, &script, Mode::Build, &source(), compact);
+    run_with(&dir, &script, Mode::Build, &source(), notation);
     let lines = lines(&dir);
     assert_eq!(
         (&lines[0]["reply_bytes"], &lines[0]["reply_format"]),
-        (&Value::Null, &json!("compact"))
+        (&Value::Null, &json!("notation"))
     );
     assert_eq!(
         (&lines[1]["reply_bytes"], &lines[1]["reply_format"]),
-        (&json!(7), &json!("compact"))
+        (&json!(7), &json!("notation"))
     );
 }
 

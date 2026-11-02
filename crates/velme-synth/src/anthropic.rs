@@ -15,7 +15,7 @@ use velme_ir::{MAX_JSON_DEPTH, from_json_str_within, to_canonical_string};
 
 use crate::http::{agent, read_body, rejected, transport_error};
 use crate::options::{ReplyFormat, SynthOptions};
-use crate::prompt::{Role, body_key, prompt_version, render_with};
+use crate::prompt::{Role, prompt_version, render_with};
 use crate::provider::{
     Called, Identity, MalformedReason, ProviderError, ReplyMeta, SynthBackend, SynthLimits, SynthProvider, SynthReply,
     Unread, Usage, unread,
@@ -319,8 +319,7 @@ impl Anthropic {
 }
 
 /// The two tools of R-SYNTH-44. `write_goal` takes the body object (D-103), `ask_question` the question object; the reply
-/// schema's shared definitions move under the goal's, where its `$ref`s resolve. A compact reply (R-SYNTH-36) is not
-/// in the schema's names, so its tool takes only the body key's alias and the validator alone decides.
+/// schema's shared definitions move under the goal's, where its `$ref`s resolve.
 fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderError> {
     let bad = || ProviderError::Internal("the reply schema has no goal or question".to_owned());
     let (goal, question) = match format {
@@ -347,13 +346,12 @@ fn tools(request: &SynthRequest, format: ReplyFormat) -> Result<Value, ProviderE
             _ => return Err(bad()),
         },
     };
-    let key = body_key(format);
     let shape = if format == ReplyFormat::Notation {
         "\"<notation text>\""
     } else {
         "<expression>"
     };
-    let description = format!("Return the goal's body: {{\"{key}\": {shape}}}.");
+    let description = format!("Return the goal's body: {{\"body\": {shape}}}.");
     Ok(json!([
         {
             "name": WRITE_GOAL,

@@ -12,7 +12,6 @@ use velme_ir::{
 use velme_sema::hir::{GoalId, Program};
 
 use crate::attempt::{LogCause, Rejection, clean_line, clean_text, summary};
-use crate::compact;
 use crate::options::{ReplyFormat, RetryHistory, SynthOptions};
 use crate::provider::{ProviderError, ReplyMeta, SynthLimits, SynthProvider, SynthReply, Usage};
 use crate::request::{AttemptFeedback, SynthRequest, build_request};
@@ -82,7 +81,7 @@ pub struct ReplyShape {
     /// The kinds of the response's content blocks in order, at most 64 and then one `"…"`; `None` for a
     /// provider without blocks.
     pub blocks: Option<Vec<String>>,
-    /// The reply object's top-level keys that are an IR property name, a compact alias of one, `body`, `question`, `pending` or
+    /// The reply object's top-level keys that are an IR property name, `body`, `question`, `pending` or
     /// `error`, sorted and without repeats, then one `"…"` if any other key was there; empty if it isn't an object.
     pub keys: Vec<String>,
 }
@@ -96,7 +95,7 @@ const MAX_BLOCKS: usize = 64;
 /// The content block kinds the log names.
 const BLOCK_KINDS: [&str; 4] = ["text", "tool_use", "thinking", "redacted_thinking"];
 
-/// The reply members the log names besides the IR's property names and their aliases.
+/// The reply members the log names besides the IR's property names.
 const REPLY_KEYS: [&str; 4] = ["body", "question", "pending", "error"];
 
 fn stop_reason(raw: &str) -> StopReason {
@@ -123,10 +122,7 @@ fn shape(meta: &ReplyMeta, reply: Option<&str>) -> ReplyShape {
         }
         kinds
     });
-    let table = compact::table();
-    let known = |key: &str| {
-        REPLY_KEYS.contains(&key) || table.keys.contains_key(key) || table.keys.values().any(|alias| alias == key)
-    };
+    let known = |key: &str| REPLY_KEYS.contains(&key) || crate::schema::is_property_name(key);
     let mut keys: Vec<String> = Vec::new();
     let mut other = false;
     if let Some(Ok(serde_json::Value::Object(map))) =
@@ -783,15 +779,6 @@ fn question_diagnostic(name: &str, span: Span, question: &str) -> Diagnostic {
     .with_note(format!("The AI helper asked: \"{question}\""))
 }
 
-/// Why a reply has no body: in `compact` it names the spelling asked for, since the canonical `body` isn't read (D-153).
-fn no_body(body_key: &str) -> String {
-    if body_key == "body" {
-        "had no `body`".to_owned()
-    } else {
-        format!("had no `{body_key}`, the compact spelling of `body`")
-    }
-}
-
 /// What a reply document is.
 enum Reply {
     Question(String),
@@ -809,9 +796,7 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest, ir: &Request<'
         Ok(value) => value,
         Err(error) => return Reply::Bad(Rejection::unparsable(reply, &error)),
     };
-    // The reply's own member names: a compact reply spells `body` with its alias (R-SYNTH-36).
-    let body_key = crate::prompt::body_key(format);
-    let body = value.get(body_key);
+    let body = value.get("body");
     if let Some(map) = value.as_object()
         && map.contains_key("question")
     {
@@ -837,23 +822,13 @@ fn read(reply: &str, format: ReplyFormat, request: &SynthRequest, ir: &Request<'
     let Some(body) = body else {
         return Reply::Bad(Rejection::not_a_reply(
             reply,
-            &no_body(body_key),
+            "had no `body`",
             LogCause::Reply("no-body"),
         ));
     };
     let mut notation = None;
     let body = match format {
         ReplyFormat::IrJson => body.clone(),
-        ReplyFormat::Compact => match compact::expand(body) {
-            Ok(expanded) => expanded,
-            Err(_) => {
-                return Reply::Bad(Rejection::not_a_reply(
-                    reply,
-                    "used a short name that is not in the table",
-                    LogCause::Reply("unknown-alias"),
-                ));
-            }
-        },
         ReplyFormat::Notation => {
             let Some(text) = body.as_str() else {
                 return Reply::Bad(Rejection::not_a_reply(
@@ -926,7 +901,7 @@ mod tests {
         ];
         for history in [RetryHistory::Latest, RetryHistory::All] {
             for full in [false, true] {
-                for format in [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation] {
+                for format in [ReplyFormat::IrJson, ReplyFormat::Notation] {
                     let carried = carried(&attempts, full, history, format);
                     for (index, attempt) in carried.iter().enumerate() {
                         let placed = index == 2 && format == ReplyFormat::Notation;

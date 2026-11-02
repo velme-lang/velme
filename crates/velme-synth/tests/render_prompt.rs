@@ -102,7 +102,7 @@ fn p0c_render_prompt_equals_the_anthropic_request_body() {
 
     let mut config = AnthropicConfig::new("claude-x");
     config.prompt_cache = false;
-    config.options.reply_format = ReplyFormat::Compact;
+    config.options.reply_format = ReplyFormat::IrJson;
     config.options.schema_in_prompt = SchemaInPrompt::Full;
     config.options.max_prompt_examples = 0;
     let flags = [
@@ -110,7 +110,7 @@ fn p0c_render_prompt_equals_the_anthropic_request_body() {
         "claude-x",
         "--no-prompt-cache",
         "--reply-format",
-        "compact",
+        "ir-json",
         "--schema-in-prompt",
         "full",
         "--max-examples",
@@ -129,7 +129,7 @@ fn p0c_render_prompt_equals_the_ollama_request_body() {
     );
 
     let mut config = OllamaConfig::new("m");
-    config.options.reply_format = ReplyFormat::Compact;
+    config.options.reply_format = ReplyFormat::IrJson;
     config.options.max_output_tokens = Some(1234);
     let flags = [
         "--provider",
@@ -137,7 +137,7 @@ fn p0c_render_prompt_equals_the_ollama_request_body() {
         "--model",
         "m",
         "--reply-format",
-        "compact",
+        "ir-json",
         "--max-output-tokens",
         "1234",
     ];
@@ -197,18 +197,18 @@ fn p0c_render_prompt_external_is_the_canonical_request() {
     );
 }
 
-/// Under `compact` the `external` body names the format, as the provider's request does (D-156).
+/// Under `notation` the `external` body names the format, as the provider's request does (D-156).
 #[test]
-fn p0c_render_prompt_external_names_a_non_default_format() {
+fn p0c_render_prompt_external_names_a_format_other_than_ir_json() {
     let program = program(SOURCE);
     let request = build_request(&program, goal_id(&program, "FindBadge"), SOURCE)
         .expect("a request")
-        .for_external(ReplyFormat::Compact);
+        .for_external(ReplyFormat::Notation);
     let expected = velme_ir::to_canonical_string(&request).expect("canonical");
     assert_eq!(
         rendered(
-            "external-compact",
-            &["--provider", "external", "--reply-format", "compact"]
+            "external-notation",
+            &["--provider", "external", "--reply-format", "notation"]
         ),
         expected
     );

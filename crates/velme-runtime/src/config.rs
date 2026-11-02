@@ -164,11 +164,7 @@ impl ProjectConfig {
             &mut s,
             "synthesis",
             "reply_format",
-            &[
-                ("ir-json", ReplyFormat::IrJson),
-                ("compact", ReplyFormat::Compact),
-                ("notation", ReplyFormat::Notation),
-            ],
+            &[("ir-json", ReplyFormat::IrJson), ("notation", ReplyFormat::Notation)],
         )?;
         config.retry_history = r.choice(
             &mut s,
@@ -511,12 +507,12 @@ mod tests {
     #[test]
     fn the_documented_project_file_is_read() {
         let text = "[project]\nlanguage = \"velme/0.2\"\n[synthesis]\nprovider = \"ollama\"\nmodel = \"m\"\nmax_retries = 2\n\
-                    reply_format = \"compact\"\nmax_prompt_examples = 4\n[budget]\ncpu = \"50ms\"\nmemory = \"16mb\"\n\
+                    reply_format = \"ir-json\"\nmax_prompt_examples = 4\n[budget]\ncpu = \"50ms\"\nmemory = \"16mb\"\n\
                     calls = 128\n";
         let config = ProjectConfig::parse(text, "velme.toml").expect("valid");
         assert_eq!(config.provider.as_deref(), Some("ollama"));
         assert_eq!(config.max_retries, Some(2));
-        assert_eq!(config.reply_format, Some(ReplyFormat::Compact));
+        assert_eq!(config.reply_format, Some(ReplyFormat::IrJson));
         assert_eq!(config.budget.cpu_ms, Some(50));
         assert_eq!(config.budget.memory_bytes, Some(16 * 1024 * 1024));
     }
@@ -565,7 +561,12 @@ mod tests {
         );
         assert_eq!(
             wrong("[synthesis]\nreply_format = \"xml\"\n"),
-            "`synthesis.reply_format` in `velme.toml` should be one of ir-json, compact or notation, but got \"xml\"."
+            "`synthesis.reply_format` in `velme.toml` should be one of ir-json or notation, but got \"xml\"."
+        );
+        // D-170: `compact` was removed, so it is an unknown value like any other.
+        assert_eq!(
+            wrong("[synthesis]\nreply_format = \"compact\"\n"),
+            "`synthesis.reply_format` in `velme.toml` should be one of ir-json or notation, but got \"compact\"."
         );
         assert_eq!(
             wrong("[synthesis]\nnope = 1\n"),

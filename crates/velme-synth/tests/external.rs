@@ -217,19 +217,6 @@ fn a_reply_is_one_of_four_kinds() {
     assert_eq!(complete(&backend, &request()).as_deref(), Ok(r#"{"body":"text"}"#));
 }
 
-/// In `compact` a canonical `body` key is passed on whatever it holds, to be the failed attempt (`VL0401`) the compact reader
-/// makes of it, not a backend failure (`VL0406`) here (D-153).
-#[test]
-fn a_compact_backend_replying_a_canonical_body_string_passes_it_on() {
-    let dir = scratch("compact-body-string");
-    fs::write(dir.join("FindBadge.json"), r#"{"body": "x"}"#).expect("reply file");
-    let (_server, backend) = serving_in(
-        Config::replying(dir).listing(json!(["ir-json", "compact"])),
-        ReplyFormat::Compact,
-    );
-    assert_eq!(complete(&backend, &request()).as_deref(), Ok(r#"{"body":"x"}"#));
-}
-
 /// A reply that isn't JSON, one past 2 MiB and a server error that outlives the transport retries are backend failures
 /// whose notes hold the last words of the reply body, cleaned; nothing is asked twice but a server error (AC-SYNTH-16,
 /// R-SYNTH-28).
@@ -566,11 +553,11 @@ fn serving_in(config: Config, format: ReplyFormat) -> (Server, External) {
 }
 
 /// A reply format other than `ir-json` changes the identity's `input_version`, so it changes `synthesis_key` and never
-/// `contract_key`; the default is `notation`, `compact` adds the format and a version of its alias
-/// table, and `ir-json` leaves it the request version (AC-SYNTH-57, R-SYNTH-40, D-156, D-169).
+/// `contract_key`; the default is `notation`, which adds the format and the grammar's version,
+/// and `ir-json` leaves it the request version (AC-SYNTH-57, R-SYNTH-40, D-156, D-169).
 #[test]
 fn ac_synth_57_the_reply_format_enters_the_external_input_version() {
-    let listing = || Config::default().listing(json!(["ir-json", "compact", "notation"]));
+    let listing = || Config::default().listing(json!(["ir-json", "notation"]));
     let (_server, default_notation) = serving_in(listing(), ReplyFormat::Notation);
     let identity = block_on(default_notation.identify()).expect("identity");
     assert_eq!(
@@ -581,14 +568,6 @@ fn ac_synth_57_the_reply_format_enters_the_external_input_version() {
         )
     );
 
-    let (_server, compact) = serving_in(listing(), ReplyFormat::Compact);
-    let compact = block_on(compact.identify()).expect("identity");
-    // The pinned hash is the alias table's: a change to any alias changes it, and re-keys every compact build.
-    assert_eq!(
-        compact.input_version,
-        format!("{REQUEST_VERSION}+reply_format=compact@{COMPACT_VERSION}")
-    );
-
     // The list is part of no identity: asking for `ir-json` of a backend that lists more is the plain key.
     let (_server, listed) = serving_in(listing(), ReplyFormat::IrJson);
     assert_eq!(
@@ -597,17 +576,14 @@ fn ac_synth_57_the_reply_format_enters_the_external_input_version() {
     );
 }
 
-/// The first 12 hex digits of the BLAKE3 of the alias table (R-SYNTH-40).
-const COMPACT_VERSION: &str = "98d9aa2ef545";
-
-/// A backend whose `describe` lacks `reply_formats` answers in `ir-json` only: a `compact` setting stops before any
+/// A backend whose `describe` lacks `reply_formats` answers in `ir-json` only: a `notation` setting stops before any
 /// `synthesize` request, with `VL0406` naming the setting (AC-SYNTH-57, R-SYNTH-26, D-156, D-169). Unknown names are ignored, a
 /// malformed list is a backend failure, and a list without the format is as good as none.
 #[test]
 fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
     let dir = scratch("format-unlisted");
     let log = dir.join("log.txt");
-    let (_server, backend) = serving_in(Config::replying(&dir).logging(&log), ReplyFormat::Compact);
+    let (_server, backend) = serving_in(Config::replying(&dir).logging(&log), ReplyFormat::Notation);
     let error = block_on(backend.identify()).expect_err("unsupported");
     let ProviderError::FormatUnsupported {
         backend,
@@ -621,14 +597,14 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
     assert!(*explicit);
     assert_eq!(
         (backend.as_str(), offered.as_slice(), *asked),
-        ("velme-test-support", &["ir-json"][..], "compact")
+        ("velme-test-support", &["ir-json"][..], "notation")
     );
     let diagnostic = velme_synth::provider_diagnostic(&error, backend, "Double", Default::default());
     assert_eq!(diagnostic.code, velme_diagnostics::Code::BackendFailed);
     assert!(
         diagnostic.message.contains("`velme-test-support`")
             && diagnostic.message.contains("answers only in `ir-json`")
-            && diagnostic.message.contains("reply_format = \"compact\""),
+            && diagnostic.message.contains("reply_format = \"notation\""),
         "{}",
         diagnostic.message
     );
@@ -697,7 +673,7 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
 
     // A list that holds only other names, or only `ir-json`, lacks it too; unknown names are ignored.
     for formats in [json!(["ir-json"]), json!(["tree", "ir-json"]), json!([])] {
-        let (_server, backend) = serving_in(Config::default().listing(formats.clone()), ReplyFormat::Compact);
+        let (_server, backend) = serving_in(Config::default().listing(formats.clone()), ReplyFormat::Notation);
         assert!(
             matches!(
                 block_on(backend.identify()),
@@ -707,14 +683,14 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
         );
     }
     let (_server, backend) = serving_in(
-        Config::default().listing(json!(["tree", "compact"])),
-        ReplyFormat::Compact,
+        Config::default().listing(json!(["tree", "notation"])),
+        ReplyFormat::Notation,
     );
     assert!(block_on(backend.identify()).is_ok(), "unknown names are ignored");
 
     // `ir-json` needs no list; a list that isn't a list of names is a failed backend whatever is asked.
-    for malformed in [json!("compact"), json!({"compact": true}), json!(["compact", 1])] {
-        for format in [ReplyFormat::IrJson, ReplyFormat::Compact] {
+    for malformed in [json!("notation"), json!({"notation": true}), json!(["notation", 1])] {
+        for format in [ReplyFormat::IrJson, ReplyFormat::Notation] {
             let (_server, backend) = serving_in(Config::default().listing(malformed.clone()), format);
             assert!(
                 matches!(block_on(backend.identify()), Err(ProviderError::BackendFailed { .. })),

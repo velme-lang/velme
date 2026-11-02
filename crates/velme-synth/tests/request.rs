@@ -158,20 +158,22 @@ fn the_schema_summary_has_a_line_per_node_kind() {
     let _ = read(&repo("examples/beginner/add.velme"));
 }
 
-/// An `external` request for `ir-json` is the request as it was; for `compact` it names the format and carries that
-/// format's reply schema, a body under the alias or a question, not the IR schema (`compiler/22` §3.2, D-156).
+/// An `external` request for `ir-json` is the request as it was; for `notation` it names the format and carries that
+/// format's reply schema, a body string or a question, not the IR schema (`compiler/22` §3.2, D-156).
 #[test]
-fn ac_synth_57_an_external_compact_request_carries_the_compact_reply_schema() {
+fn ac_synth_57_an_external_notation_request_carries_the_notation_reply_schema() {
     let base = request("FindBadge");
     assert_eq!(base.clone().for_external(velme_synth::ReplyFormat::IrJson), base);
 
-    let compact = base.clone().for_external(velme_synth::ReplyFormat::Compact);
-    let text = velme_ir::to_canonical_string(&compact).expect("canonical");
-    assert!(text.contains(r#""reply_format":"compact""#), "{text}");
-    let schema = &compact.output_schema;
+    let notation = base.clone().for_external(velme_synth::ReplyFormat::Notation);
+    let text = velme_ir::to_canonical_string(&notation).expect("canonical");
+    assert!(text.contains(r#""reply_format":"notation""#), "{text}");
+    let schema = &notation.output_schema;
     assert!(schema.pointer("/$defs").is_none() && schema["anyOf"].as_array().map(Vec::len) == Some(2));
-    let key = velme_synth::alias_table().keys["body"].clone();
-    assert!(schema["anyOf"][0]["required"] == serde_json::json!([key]), "{schema}");
+    assert!(
+        schema["anyOf"][0]["required"] == serde_json::json!(["body"]),
+        "{schema}"
+    );
     // The committed request is a good deal smaller for it.
     let plain = velme_ir::to_canonical_string(&base).expect("canonical");
     assert!(text.len() + 10_000 < plain.len(), "{} vs {}", text.len(), plain.len());

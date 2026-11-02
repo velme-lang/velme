@@ -234,13 +234,12 @@ pub struct SynthRequest {
 }
 
 /// The `input_version` of an `external` backend asked for `format` (R-SYNTH-40, D-156): the request version, then for a
-/// format other than `ir-json` `+reply_format=<name>@<version>`, the version being the alias table's for `compact`. A
+/// format other than `ir-json` `+reply_format=<name>@<version>`. A
 /// format changes the requests and how replies are read, so it re-keys.
 pub(crate) fn external_input_version(format: ReplyFormat) -> String {
     let version = match format {
         ReplyFormat::IrJson => return REQUEST_VERSION.to_owned(),
         ReplyFormat::Notation => crate::notation::GRAMMAR_VERSION.to_owned(),
-        ReplyFormat::Compact => crate::compact::version(),
     };
     format!("{REQUEST_VERSION}+reply_format={}@{version}", format.name())
 }

@@ -44,6 +44,37 @@ fn ac_qa_03_audit_passes_strict_when_every_criterion_is_covered() {
     assert!(ac_audit::audit(&dir).expect("audit").passes(true));
 }
 
+const RETIRED_TABLE: &str = "| ID | Criterion |\n|---|---|\n| AC-XYZ-01 | first |\n| AC-XYZ-02 | **Retired** — removed by D-1 (was: second). |\n";
+
+/// A retired row is defined but needs no test, so strict passes without one.
+#[test]
+fn ac_qa_03_audit_needs_no_test_for_a_retired_criterion() {
+    let dir = common::fresh_dir("ac_audit_retired").expect("fresh dir");
+    common::write(&dir, "docs/spec/x.md", RETIRED_TABLE).expect("write fixture");
+    common::write(&dir, "crates/a/src/lib.rs", &test_fn("xyz_01_a")).expect("write fixture");
+    let report = ac_audit::audit(&dir).expect("audit");
+    assert_eq!(report.retired.iter().collect::<Vec<_>>(), ["AC-XYZ-02"]);
+    assert!(report.uncovered().is_empty());
+    assert!(report.passes(true));
+}
+
+/// A test that cites a retired criterion fails the audit, as one citing an unknown criterion does.
+#[test]
+fn ac_qa_03_audit_fails_on_a_test_citing_a_retired_criterion() {
+    let dir = common::fresh_dir("ac_audit_cites_retired").expect("fresh dir");
+    common::write(&dir, "docs/spec/x.md", RETIRED_TABLE).expect("write fixture");
+    common::write(
+        &dir,
+        "crates/a/src/lib.rs",
+        &(test_fn("xyz_01_a") + &test_fn("xyz_02_b")),
+    )
+    .expect("write fixture");
+    let report = ac_audit::audit(&dir).expect("audit");
+    assert_eq!(report.cites_retired.iter().collect::<Vec<_>>(), ["AC-XYZ-02"]);
+    assert!(report.unknown.is_empty());
+    assert!(!report.passes(false));
+}
+
 /// Only a `#[test]` function counts (D-139): an id in a doc comment, a block comment, a string or a raw string, or a
 /// helper `fn ac_…` with no `#[test]`, covers nothing, while further attributes and qualifiers (`pub(crate) async`) don't
 /// hide the function, and an escaped quote (`'\''`) ends its character literal.

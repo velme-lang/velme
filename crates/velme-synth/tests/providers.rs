@@ -329,7 +329,7 @@ fn ac_synth_43_a_stale_external_recording_asks_for_a_re_record() {
     let mut stale = identity();
     stale.provider = "external".to_owned();
     stale.input_version = "0.1".to_owned();
-    stale.reply_format = Some(velme_synth::ReplyFormat::Compact);
+    stale.reply_format = Some(velme_synth::ReplyFormat::Notation);
     write(&dir, "replay.json", &stale);
     let error = block_on(Replay::new(&dir).identify()).expect_err("a stale identity");
     match error {
