@@ -93,3 +93,29 @@ run. Tokens are the API's, cost at the rates above.
 - **Replies without a tool call.** 3 of 22 live requests ended with `end_turn` and no `write_goal` call
   (`malformed-not-one-tool`); each retry succeeded. `tool_choice` is `auto` (D-150).
 - Caching works as projected: one 2,014-token prefix write per build, then reads.
+
+## D7 live run
+
+`velme build --provider anthropic` on `claude-sonnet-5-5` at 5186a23, with notation as the default reply format and the
+system prompt forbidding text beside the tool call (D-169). Program unchanged from the live run above, one fresh project
+per run; a one-goal request went first to check the key and the reply shape. Tokens are the API's, cost at the rates
+above; the shared 2,042-token prefix was already cached by that first request, so neither run paid its write (~$0.008).
+
+| Run | Built | First attempt ok | Requests | Output tokens | Reply bytes | Cost |
+|---|---|---|---|---|---|---|
+| 1 | 9 of 10 | 8 of 9 sent | 9 | 3,539 | 2,844 | $0.076 |
+| 2 | 10 of 10 | 9 of 10 | 11 | 3,561 | 3,409 | $0.085 |
+
+- **No text beside the tool call.** None of the 20 replies held a `text` block, and none ended without a `write_goal`
+  call (`malformed-not-one-tool`: 0, against 3 of 22 in the live run above). D-169's prompt line does what it says.
+- **The extra output is now thinking.** 12 of 20 replies held a `thinking` block. The request doesn't ask for one, so
+  Sonnet 5.5 thinks on its own for the harder goals; the rule lookups (Eligibility, BureauCallType, Routing) came back
+  without one at ~100 tokens. Output is still ~3.5× the reply (run 2: ~1,000 tokens of reply in 3,561), down from ~5×.
+  Trimming it now means the thinking budget, not the prompt; follow-up, not a D7 change.
+- **A question in a new place.** Run 1's Strategy asked what an eligible applicant gets for a bureau call type other
+  than FULL, MINI or NONE (`VL0407`), so DecideLoan was not built (`VL0409`). It's a real gap, like the two run 1 found
+  above, and run 2 built Strategy without asking. The plan is left as it is: it's a fixture, and its wording is the
+  owner's call.
+- **One malformed question.** Run 2's first ApplicationRiskScore reply was a question the reply check rejected
+  (`bad-question`: empty, too long, or with a key beside it); the log doesn't keep the reply, so which one is unknown.
+  The retry built it.
