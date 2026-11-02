@@ -46,6 +46,8 @@ pub(crate) enum Rt {
     Concat,
     /// `(lo, hi, marshal: i32) -> (ptr, len)`: `to_text`.
     ToText,
+    /// `(lo, hi, lo, hi) -> (lo, hi)`: `pow`.
+    Pow,
     /// `(lo, hi) -> (ptr, len)`: `range`.
     Range,
     /// `(ptr, len) -> (lo, hi)`: `sum`.
@@ -59,7 +61,7 @@ pub(crate) enum Rt {
 }
 
 impl Rt {
-    pub(crate) const ALL: [Rt; 21] = [
+    pub(crate) const ALL: [Rt; 22] = [
         Rt::Fail,
         Rt::Tick,
         Rt::ChargeFuel,
@@ -76,6 +78,7 @@ impl Rt {
         Rt::TextChars,
         Rt::Concat,
         Rt::ToText,
+        Rt::Pow,
         Rt::Range,
         Rt::Sum,
         Rt::Extreme,
@@ -112,6 +115,7 @@ impl Rt {
             Rt::TextChars => text_chars(),
             Rt::Concat => concat(),
             Rt::ToText => to_text(),
+            Rt::Pow => pow(),
             Rt::Range => range(),
             Rt::Sum => sum(),
             Rt::Extreme => extreme(),
@@ -543,6 +547,31 @@ fn to_text() -> Func {
     ]);
     f.ops([I::LocalGet(at), I::LocalGet(2), I::LocalGet(len), COPY]);
     f.ops([I::LocalGet(at), I::LocalGet(len)]);
+    f
+}
+
+/// `Function::Pow`: the host computes `x^n`; variable fuel (bit length of |n|) is charged after, matching interpreter (D-168).
+fn pow() -> Func {
+    let mut f = Func::new(&[I64, I64, I64, I64], &[I64, I64]);
+    let (r_lo, r_hi) = (f.local(I64), f.local(I64));
+    f.ops([
+        I::LocalGet(0),
+        I::LocalGet(1),
+        I::LocalGet(2),
+        I::LocalGet(3),
+        I::Call(Import::Pow.index()),
+    ]);
+    f.ops([I::LocalSet(r_hi), I::LocalSet(r_lo)]);
+    // Extra fuel beyond the 1 unit already charged for the node: bit length of |lo_n|.
+    // For |n| <= 1000, |n| is in lo_n; 64 - clz(lo_n) is 0 for 0, 1 for 1, 10 for 1000.
+    f.ops([
+        I::I64Const(64),
+        I::LocalGet(2),
+        I::I64Clz,
+        I::I64Sub,
+        I::Call(Rt::ChargeFuel.index()),
+    ]);
+    f.ops([I::LocalGet(r_lo), I::LocalGet(r_hi)]);
     f
 }
 

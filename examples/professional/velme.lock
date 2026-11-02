@@ -3,29 +3,36 @@ version  = 1
 language = "0.2"
 
 [[goal]]
+file          = "loan_payment.velme"
+name          = "LoanPayment"
+signature     = "b3:e80eb53054bf1369e65428c4ac3de29d4ac1b3f363c9a263f60e96a19be96c83"
+contract_key  = "b3:791d558c7ab13be30cef0a22a230f772cb75cb3a9b7b72221828f0ad7815fb47"
+artifact      = "b3:296c56fc28ed472bfaa5fd1eb0d079f4051ecb55582728f0d66048839f71ea04"
+
+[[goal]]
 file          = "order_total.velme"
 name          = "Discount"
 signature     = "b3:f7abf7965783745727214c7d3a328badce0414ed0d91ef5a16bcd8b201a492a3"
-contract_key  = "b3:a22225e981b14462131ababfb07b0a9840fb6f308096acd7d4f3186774999b79"
-artifact      = "b3:510fac4a6e6fd9c6e1443ddaeb87fafe3c44c6be189b8787c89eb247ffc1cdd1"
+contract_key  = "b3:09a35f946b115ffec27fe89009bd099ac156eda391a17cb9e55b72bd24707f22"
+artifact      = "b3:cc9dc9b8a8ebbd60c71a717d44750321ec24e2d9e08b7908ae72d6755d3332dd"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "OrderTotal"
 signature     = "b3:2bdeddddbeb0792616c91de5bc153f97f9b3bcced8f369b57daa5f7107203338"
-contract_key  = "b3:59d2d75b9d6c03414722df1f2fa238101f70a76ff80872c07deec60fe9365a4b"
-artifact      = "b3:353855d5f059fc11fe8e0410524323bad69c87ed52dcc196b9335e1f4136d39d"
+contract_key  = "b3:f4501dfacc53ef4a8cdffd8d9428dc81fc7d05bc41009b340266cc63d1f97973"
+artifact      = "b3:513322031ab4a08c41e5dc6767871b72e38eb7b0857c32082c7d9ec4fbf65817"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "Shipping"
 signature     = "b3:ae9a52f8e12167731cc0d87b8681d96041cb97901f9219e2410d390a3ef37a83"
-contract_key  = "b3:abd2c075e87e400aebe49a98843265232782c59e149d15e70e7559cf70e24ffa"
-artifact      = "b3:fd9306c8b52be86358771fcc980d21848b51ea34087746aa5960cf8158681b11"
+contract_key  = "b3:4cb7fa86ac3eedaec3138c79db4274f2b7248e8b4e1da4aec4d0025740b49538"
+artifact      = "b3:422ddf71abeed35c2daf816eaf19d57aac7e3c038f022f878ccb05acc374709b"
 
 [[goal]]
 file          = "order_total.velme"
 name          = "Subtotal"
 signature     = "b3:1dae5e57fdd5c157b42c8edade705d4e1c769755511f9111a41a6814e08ba356"
-contract_key  = "b3:13a1f9e1c1ad9f6521ef185d81abeaa643c4271295d920faa581f760c1a50059"
-artifact      = "b3:cc6a3cbd17a112fc5eb518cc60f80b49a821945374f939f42518ff16683ba004"
+contract_key  = "b3:abcd03c634613b81aedbbb02af7cf4e72cffc2c841671fec13687a4927acdf29"
+artifact      = "b3:b29a5b66064bd9b353f027a980fcf7c7178a8369330291de2652d8eaac631a75"

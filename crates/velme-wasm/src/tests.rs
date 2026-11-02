@@ -405,7 +405,10 @@ pub(super) fn everything() -> String {
                                 "ceil",
                                 &[&builtin(
                                     "round",
-                                    &[&builtin("clamp", &[&local("f"), &zero, &number("9")])],
+                                    &[&builtin(
+                                        "clamp",
+                                        &[&builtin("pow", &[&local("f"), &number("1")]), &zero, &number("9")],
+                                    )],
                                 )],
                             )],
                         )],
@@ -801,4 +804,68 @@ fn reasons_and_imports_keep_their_numbers() {
     }
     let names: BTreeSet<&str> = Import::ALL.iter().map(|i| i.name()).collect();
     assert_eq!(names.len(), Import::ALL.len());
+}
+
+#[test]
+fn ac_blt_16_to_19_pow_backend_parity() {
+    use crate::sandbox_tests::{goal_ir, run};
+    use velme_builtins::execution::Limits;
+    use velme_diagnostics::Code;
+    use velme_test_support::interpret;
+
+    let ir = goal_ir(
+        "x: Number, n: Number -> Number",
+        &builtin("pow", &[&input("x"), &input("n")]),
+    );
+    let module = emit(&ir).expect("emits");
+
+    let val = |s: &str| Value::Number(Number::parse(s).expect("a number"));
+
+    let check_parity = |x: &str, n: &str| {
+        let wasm_run = run(&module, &[val(x), val(n)], Limits::SYSTEM);
+        let interpreted = interpret(&ir, vec![val(x), val(n)], Limits::SYSTEM);
+        assert_eq!(
+            wasm_run.result.as_ref().map(|v| (v.clone(), wasm_run.spent)),
+            interpreted.as_ref().cloned(),
+            "pow({x}, {n}) parity mismatch between wasm and interpreter"
+        );
+    };
+
+    let check_error = |x: &str, n: &str| {
+        let wasm_run = run(&module, &[val(x), val(n)], Limits::SYSTEM);
+        let interpreted = interpret(&ir, vec![val(x), val(n)], Limits::SYSTEM);
+        assert_eq!(
+            wasm_run.result.as_ref().map(|v| (v.clone(), wasm_run.spent)),
+            interpreted.as_ref().cloned(),
+            "pow({x}, {n}) error parity mismatch between wasm and interpreter"
+        );
+        assert_eq!(
+            wasm_run.result.expect_err("should fail").code(),
+            Code::ArithmeticError,
+            "pow({x}, {n}) should fail with ArithmeticError (VL0602)"
+        );
+    };
+
+    // AC-BLT-16 & AC-BLT-19: value and fuel at n = 0, 1, 1000, -1000
+    check_parity("2", "0");
+    check_parity("2", "1");
+    check_parity("2", "10");
+    check_parity("2", "-2");
+    check_parity("0", "0");
+    check_parity("1", "1000");
+    check_parity("1", "-1000");
+
+    // AC-BLT-17: one-rounding cases and half-to-even ties
+    check_parity("1.000000000000005", "3");
+    check_parity("1.000000000000004", "-2");
+    check_parity("0.5", "29");
+    check_parity("2", "-29");
+
+    // AC-BLT-18: errors for pow(2, 1.5), pow(2, 1001), pow(0, -1), pow(10, 29), pow(2, -9223372036854775808)
+    check_error("2", "1.5");
+    check_error("2", "1001");
+    check_error("0", "-1");
+    check_error("10", "29");
+    check_error("2", "-9223372036854775808");
+    check_error("2", "1000");
 }

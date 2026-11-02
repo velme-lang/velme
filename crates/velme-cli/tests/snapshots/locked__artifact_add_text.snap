@@ -2,17 +2,17 @@
 source: crates/velme-cli/tests/locked.rs
 expression: head
 ---
-b3:aa392a729a7f285fd38034957d99dd2705c1c62c833fe3f33b464fbaf7f45eba
+b3:7b756ed60601cf9dcce52d56990bd5a94c9f2b926cf64629d44fa1d53617231a
 format: velme-artifact/1
 goal: Add
 kind: leaf
 signature: b3:678ccec2a045f67022d91f8236b3d8f802baa08611aa6ea6caed4c95f35e97e7
-contract_key: b3:e971fb1e21c5cdf040b795803f60132f0b4282b8cb8e56d3cfcc54529574510c
-synthesis_key: b3:97e1d44d18e23ae7e7e84784073f0ab4e4a61e9de6336a52784542c732b07f82
+contract_key: b3:c7fec6870aac84288c2a623ea77b3889fd0870624664e9fcd8ac147166041086
+synthesis_key: b3:09fb54b7cd0ae18fbb42605c6fd9a8ce4ed0d17ad469c9a48d40ac1aa9ec46f5
 language_version: 0.2
 compiler_version: 0.2.0-alpha.1
 ir_version: 0.2
-builtins_version: 0.1
+builtins_version: 0.2
 prompt_version: hand-written
 provider: external
 backend: velme-test-support

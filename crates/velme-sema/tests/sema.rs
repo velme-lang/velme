@@ -367,6 +367,7 @@ fn ac_blt_08_ir_primitive_in_a_check() {
 #[test]
 fn ac_blt_14_builtin_call_ignores_an_input_of_the_same_name() {
     program(&check_item("sum: Number, xs: List<Number>", "Number", "sum(xs) > sum"));
+    program(&check_item("pow: Number, x: Number", "Number", "pow(x, 2) > pow"));
 }
 
 #[test]
@@ -411,6 +412,12 @@ fn ac_blt_14_goal_named_like_a_builtin_keeps_the_builtin_in_checks() {
     let (program, diags) = analyze_str(text);
     assert!(program.is_some(), "{diags:#?}");
     assert_eq!(codes(text), [Code::LintWarning]);
+
+    let text_pow = "goal pow(x: Number) -> Number:\n    plan: \"x\"\n\ngoal G(x: Number) -> Number:\n    \
+                    plan: \"x\"\n    check:\n        - pow(x, 2) >= 0\n";
+    let (program_pow, diags_pow) = analyze_str(text_pow);
+    assert!(program_pow.is_some(), "{diags_pow:#?}");
+    assert_eq!(codes(text_pow), [Code::LintWarning]);
 }
 
 /// `[]` takes its element type from an expected optional list too (R-TYP-13, R-TYP-20).

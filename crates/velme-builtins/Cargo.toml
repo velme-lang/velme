@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 velme-diagnostics.workspace = true
+num-bigint.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

@@ -126,7 +126,9 @@ its own, 4 × its fixed instruction term plus a unit a byte of m for growth, not
 `VL0607`, and what it used comes out of the backstop (D-115). `wasmparser` validates every module with exactly this feature set before it is cached or
 instantiated.
 **R-SBX-08** Host imports, under module `velme`, do scalar work only: each does a constant amount of host work per
-call, so Velme fuel stays a true bound on the run (D-112). They are the imports of §5, implemented by `velme-builtins` —
+call, so Velme fuel stays a true bound on the run (D-112), except `velme.pow`, which does bounded, not constant, host
+work (|n| ≤ 1000, base under 2^96, worst case about 0.7 ms in release, D-168), so a loop of worst-case calls can reach
+the `max_wall_clock` watchdog (`VL0603`) before `VL0601`. They are the imports of §5, implemented by `velme-builtins` —
 the same Rust code the interpreter calls — so their semantics cannot diverge. Everything that walks a `List` or a
 `Text` is emitted WASM: the list and text builtins, the character count of `length` included, equality on composite
 values, and the collection nodes (`map`,
@@ -146,6 +148,7 @@ v0.1 import is pure and deterministic, and is charged as the IR node or builtin 
 | `velme.num_cmp` | `(n, n) -> i32` | yes | the order of the two numbers: exactly -1, 0 or 1 (D-119); outside emitted code's common case (D-126) |
 | `velme.abs`, `floor`, `ceil`, `round` | `(n) -> n` | yes | language/14 |
 | `velme.clamp` | `(n, n, n) -> n` | yes | `x`, `low`, `high`; `low > high` is `VL0602` |
+| `velme.pow` | `(n, n) -> n` | yes | `x`, `n`; integer-valued \|n\| <= 1000, 0^-k and overflow `VL0602` (D-168) |
 | `velme.random` | `(n, n) -> n` | yes | `seed`, `index` (D-22) |
 | `velme.to_text` | `(n, ptr: i32) -> i32` | yes | writes the text, at most 48 bytes, into the scratch frame at `ptr`, returns its byte length |
 | `velme.range_len` | `(n) -> i32` | yes | checks the argument of `range` (`VL0602`, `VL0606`) and returns the length; the list is built by emitted code |

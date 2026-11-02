@@ -4,6 +4,8 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::ops::Neg;
 
+use num_bigint::BigUint;
+
 use crate::Error;
 
 /// Every coefficient is below 2^96 (R-TYP-04 range).
@@ -246,6 +248,49 @@ impl Number {
         self.scale == 0
     }
 
+    /// `self^n`, rounded half-to-even once (R-TYP-04, D-168); `VL0602` if `n` is non-integer or
+    /// `|n| > 1000`, 0 with negative `n`, or the integer part doesn't fit.
+    pub fn pow(self, n: Number) -> Result<Number, Error> {
+        let err = || Error::arithmetic(format!("raise {self} to the power {n}"));
+        if !n.is_integer() {
+            return Err(err());
+        }
+        let Some(n_val) = n.to_i64() else {
+            return Err(err());
+        };
+        if n_val.unsigned_abs() > 1000 {
+            return Err(err());
+        }
+        if n_val == 0 {
+            return Ok(Number::ONE);
+        }
+        if self == Number::ZERO {
+            if n_val < 0 {
+                return Err(err());
+            }
+            return Ok(Number::ZERO);
+        }
+        let m = n_val.unsigned_abs() as u32;
+        let negative = self.is_negative() && m % 2 == 1;
+        let base_mag = BigUint::from(self.magnitude());
+        let (num, den) = if n_val > 0 {
+            (base_mag.pow(m), BigUint::from(10u32).pow(self.scale * m))
+        } else {
+            (BigUint::from(10u32).pow(self.scale * m), base_mag.pow(m))
+        };
+        fit_rational(negative, num, den).ok_or_else(err)
+    }
+
+    /// Fuel cost of `pow(x, n)`: 1 + bit length of |n| (D-168).
+    pub fn pow_fuel(n: Number) -> u64 {
+        let abs_n = n.to_i64().map(i64::unsigned_abs).unwrap_or(0);
+        if abs_n == 0 {
+            1
+        } else {
+            1 + u64::from(64 - abs_n.leading_zeros())
+        }
+    }
+
     /// `self` as a 64-bit integer: integer-valued and `-2^63 ≤ self < 2^63` (R-TYP-07).
     pub fn to_i64(self) -> Option<i64> {
         if self.is_integer() {
@@ -355,6 +400,53 @@ impl fmt::Display for Number {
             write!(f, "{sign}{int}.{frac:0width$}", width = self.scale as usize)
         }
     }
+}
+
+fn to_u128_opt(n: &BigUint) -> Option<u128> {
+    let digits = n.to_u64_digits();
+    match digits.as_slice() {
+        [] => Some(0),
+        [lo] => Some(u128::from(*lo)),
+        [lo, hi] => Some(u128::from(*hi) << 64 | u128::from(*lo)),
+        _ => None,
+    }
+}
+
+/// The exact positive fraction `num / den`, rounded half-to-even to the largest scale `≤ 28` whose coefficient
+/// is below 2^96 (R-TYP-04, D-168); `None` if even the integer part doesn't fit.
+fn fit_rational(negative: bool, num: BigUint, den: BigUint) -> Option<Number> {
+    let limit = BigUint::from(COEFFICIENT_LIMIT);
+    let q = &num / &den;
+    if q >= limit {
+        return None;
+    }
+    let mut q_val = to_u128_opt(&q)?;
+    let mut r = &num % &den;
+    let mut best = None;
+    for s in 0..=MAX_SCALE {
+        let half = (&r << 1usize).cmp(&den);
+        let up = half == Ordering::Greater || (half == Ordering::Equal && q_val % 2 == 1);
+        let rounded = q_val.checked_add(u128::from(up));
+        if let Some(c) = rounded.filter(|&c| c < COEFFICIENT_LIMIT) {
+            best = Some((c, s));
+        } else {
+            break;
+        }
+        if s < MAX_SCALE {
+            let next_r = &r * 10u32;
+            let d = &next_r / &den;
+            let Some(d_val) = to_u128_opt(&d) else {
+                break;
+            };
+            let Some(next_q) = q_val.checked_mul(10).and_then(|q| q.checked_add(d_val)) else {
+                break;
+            };
+            q_val = next_q;
+            r = &next_r % &den;
+        }
+    }
+    let (coefficient, scale) = best?;
+    Number::new(negative, coefficient, scale)
 }
 
 /// The number `±magnitude × 10^-scale`, rounded half-to-even to the largest scale `≤ 28` whose coefficient is below

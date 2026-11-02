@@ -87,6 +87,8 @@ pub enum Function {
     Round,
     /// `clamp`
     Clamp,
+    /// `pow`
+    Pow,
     /// `concat`
     Concat,
     /// `to_text`
@@ -164,6 +166,11 @@ impl Function {
                     return Err(Error::arithmetic(format!("clamp {x} between {low} and {high}")));
                 }
                 ((*x).clamp(*low, *high).into(), 1)
+            }
+            (Function::Pow, [Value::Number(x), Value::Number(n)]) => {
+                let result = x.pow(*n)?;
+                let cost = Number::pow_fuel(*n);
+                (result.into(), cost)
             }
             (Function::Concat, [Text(a), Text(b)]) => {
                 let length = a.len().saturating_add(b.len());

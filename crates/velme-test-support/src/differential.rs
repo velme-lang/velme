@@ -18,7 +18,7 @@ use crate::{example_cases, goal_id, program, read, repo, valid_ir};
 
 /// The examples, each with where the hand-written IR of its goals is: a directory of `<Goal>.json`, or one file. The
 /// one list, which every suite that runs the examples' IR reads.
-pub const EXAMPLES: [(&str, &str); 7] = [
+pub const EXAMPLES: [(&str, &str); 8] = [
     ("examples/beginner/add.velme", "tests/fixtures/run/add.json"),
     ("examples/beginner/hello.velme", "tests/fixtures/run/hello.ir"),
     ("examples/beginner/find_badge.velme", "tests/fixtures/run/find_badge.ir"),
@@ -37,6 +37,10 @@ pub const EXAMPLES: [(&str, &str); 7] = [
     (
         "examples/professional/order_total.velme",
         "tests/fixtures/run/order_total.ir",
+    ),
+    (
+        "examples/professional/loan_payment.velme",
+        "tests/fixtures/run/loan_payment.ir",
     ),
 ];
 

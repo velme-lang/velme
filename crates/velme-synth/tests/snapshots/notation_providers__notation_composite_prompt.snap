@@ -4,7 +4,7 @@ expression: "prompt.first_turn().replace(&velme_synth::prompt_version(),\n\"<pro
 ---
 Velme prompt <prompt_version>
 IR version: 0.2
-Builtins version: 0.1
+Builtins version: 0.2
 
 You write the implementation of one goal for Velme, a tool that turns plain-language plans into programs.
 Give only the reply: no prose around it.
@@ -55,6 +55,7 @@ Allowed builtins:
 - ceil: (Number) -> Number
 - round: (Number) -> Number
 - clamp: (Number, Number, Number) -> Number
+- pow: (Number, Number) -> Number
 - concat: (Text, Text) -> Text
 - to_text: (Number) -> Text
 - range: (Number) -> List<Number>

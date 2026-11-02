@@ -244,7 +244,7 @@ fn ir_at_the_expression_depth_limit_parses() {
         body = format!(r#"{{"kind": "let", "bind": [["x", {body}]], "body": {{"kind": "local", "name": "x"}}}}"#);
     }
     let ir = format!(
-        r#"{{"ir_version": "0.2", "builtins_version": "0.1", "goal": "Deep", "types": {{}}, "domains": {{}}, "inputs": [],
+        r#"{{"ir_version": "0.2", "builtins_version": "0.2", "goal": "Deep", "types": {{}}, "domains": {{}}, "inputs": [],
             "output": {{"t": "List", "of": {{"t": "Optional", "of": {{"t": "Number"}}}}}}, "body": {body}}}"#
     );
     let goal: Goal = from_json_str(&ir).expect("IR at the depth limit parses");

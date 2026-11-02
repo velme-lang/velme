@@ -100,6 +100,8 @@ pub enum Import {
     Round,
     /// `clamp: (n, n, n) -> n`
     Clamp,
+    /// `pow: (n, n) -> n`
+    Pow,
     /// `random: (n, n) -> n`
     Random,
     /// `to_text: (n, ptr: i32) -> i32`: writes the text at `ptr`, at most [`MARSHAL_BYTES`], and returns its length.
@@ -114,7 +116,7 @@ const NNN: [V; 6] = [V::I64; 6];
 
 impl Import {
     /// Every import, in function-index order: a module imports them all, so an index is the same in every module.
-    pub const ALL: [Import; 14] = [
+    pub const ALL: [Import; 15] = [
         Import::NumAdd,
         Import::NumSub,
         Import::NumMul,
@@ -126,6 +128,7 @@ impl Import {
         Import::Ceil,
         Import::Round,
         Import::Clamp,
+        Import::Pow,
         Import::Random,
         Import::ToText,
         Import::RangeLen,
@@ -145,6 +148,7 @@ impl Import {
             Import::Ceil => "ceil",
             Import::Round => "round",
             Import::Clamp => "clamp",
+            Import::Pow => "pow",
             Import::Random => "random",
             Import::ToText => "to_text",
             Import::RangeLen => "range_len",
@@ -154,7 +158,9 @@ impl Import {
     /// Its parameter and result types.
     pub(crate) fn signature(self) -> (&'static [V], &'static [V]) {
         match self {
-            Import::NumAdd | Import::NumSub | Import::NumMul | Import::NumDiv | Import::Random => (&NN, &N),
+            Import::NumAdd | Import::NumSub | Import::NumMul | Import::NumDiv | Import::Pow | Import::Random => {
+                (&NN, &N)
+            }
             Import::NumNeg | Import::Abs | Import::Floor | Import::Ceil | Import::Round => (&N, &N),
             Import::NumCmp => (&NN, &[V::I32]),
             Import::Clamp => (&NNN, &N),

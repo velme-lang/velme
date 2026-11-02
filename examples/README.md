@@ -10,6 +10,7 @@ Small programs you can read without the spec, grouped by who they're for:
 | `intermediate/` | `player_summary.velme` | goals that run at the same time, then a summary |
 | `games/` | `level_summary.velme` | six goals building a level summary |
 | `professional/` | `order_total.velme` | a pricing rule as subtotal, discount and shipping |
+| `professional/` | `loan_payment.velme` | monthly installment with input domains and pow |
 
 Each folder commits its `velme.lock` and its built goals in `.velme/artifacts`, so every example runs and tests with no
 API key and no network. From the repository root:

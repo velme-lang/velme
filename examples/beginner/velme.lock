@@ -6,40 +6,40 @@ language = "0.2"
 file          = "add.velme"
 name          = "Add"
 signature     = "b3:678ccec2a045f67022d91f8236b3d8f802baa08611aa6ea6caed4c95f35e97e7"
-contract_key  = "b3:e971fb1e21c5cdf040b795803f60132f0b4282b8cb8e56d3cfcc54529574510c"
-artifact      = "b3:715ecb53bfe6b3fe9db55c496980803dd9a2d61be3fb7461b31f374875299c1a"
+contract_key  = "b3:c7fec6870aac84288c2a623ea77b3889fd0870624664e9fcd8ac147166041086"
+artifact      = "b3:09a4d633aae142537e87d08c5b682cf37ec2576459d5edbf5326708f73b396ad"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "AddOne"
 signature     = "b3:888c4a6a609473d2d3f073a1fd90f7bc40115c694ea79f0a36dad08a8a919893"
-contract_key  = "b3:5221009309f61b92a54ead2a970712f627bb5c37519a26a19e85bc2b81cc7f97"
-artifact      = "b3:7f6ef927973d63f4640151c8af56b68d499408575b5657db808b22197640cad7"
+contract_key  = "b3:e6aa88ece845e5f6d84c93cc49f4e368ad9cce9a5eb0a92669ef30612907d918"
+artifact      = "b3:7c3160af5855139f67a6599585437de450056cb8a28f794f6f5bb1a244617229"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Double"
 signature     = "b3:a332dbb7cb1dc93349879b4110c117ab31464865a035805932fcf7226847d9f3"
-contract_key  = "b3:ce1abf75e6d107ef56e7757da5712d46fc37eaf11b9d4a17fc32fa7e240695c2"
-artifact      = "b3:e9dbb927ce62c45f44ab094af65fe20e41c3b2c178394c6c3610eda653bc55e8"
+contract_key  = "b3:eca7af003e8a97f0067d869fb6d284ac75b3b89bb14ee3d7f51006447de15cc9"
+artifact      = "b3:c3e29e7f0ea21d2286470a4dc495958efcfae7385c6b5bead7b9e378b2ac16aa"
 
 [[goal]]
 file          = "double_then_add_one.velme"
 name          = "Main"
 signature     = "b3:8e5521ed45c05724e315850b21fe5060192047626329f20661bf62fe8aaf2d7a"
-contract_key  = "b3:7b1abcc3f37b6ec75a6630220198a3bcad4b5c92d5ed998e6abdf5dedb86994a"
-artifact      = "b3:4499557d2befb1db874fdf1fb05f58ab12619fc511e65674dcb12c85ccb3e35b"
+contract_key  = "b3:55fe77b81258a7661f06570f3aee77c3f0d72f11349e9cdfde8f40c515dba072"
+artifact      = "b3:7fc4f9d5975247e187b7a92f925be63278028d4cd3a26df4f62e2cb3ddfcab39"
 
 [[goal]]
 file          = "find_badge.velme"
 name          = "FindBadge"
 signature     = "b3:095ab220df1f4cf220e8f8a11fa39ab94dce8b9af2db8ae422cdb43d87ebce8f"
-contract_key  = "b3:0030d41c9b13429a399e4b990f0169c91e0baf0f633044f67613d75f676296f6"
-artifact      = "b3:670bb4f9f69f10d53d4e0deb5cf087141ab6c28a160f955d261e5410a06b920e"
+contract_key  = "b3:dc56aef082243f466ed34d76be5bcd304ba01108d8da2e25edea4c0c2ffb6e0b"
+artifact      = "b3:b05771d9b88f6ab8e34c81fdc75a1bdb332d97d7ed241a50f0f6b362429fa6f5"
 
 [[goal]]
 file          = "hello.velme"
 name          = "SayHello"
 signature     = "b3:efb1d46025f7ee82bccf202c4590556a40bf872fe73d10430c791b9b376fc60e"
-contract_key  = "b3:7efe89a3028fd31448d1da39ecb019b754421159b7416de3eda916e4e25ca232"
-artifact      = "b3:e4ff5f8c1a188fb31d8b2602329c895eb0098f27f506c57ce3ec00a51da4d0be"
+contract_key  = "b3:3d41e0370a3ffac1663ec5a7911a7dbee6d97f28ce33f97a4073508a151f1043"
+artifact      = "b3:c3e7ab2ea98c105bb8fabd494b27e899063a693444ecf0f897baa5b24958cf51"

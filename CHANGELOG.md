@@ -8,9 +8,16 @@ Versions follow semver (`delivery/52` §5). Version bumps that change a fingerpr
 
 ## [0.2.0-alpha.1] - 2026-10-26
 
-Coordinated language break to `velme/0.2` and IR `0.2` (R-REL-14, D-160). Invalidates locks: yes. Builtins 0.2 and request 0.2 land later in this release.
+Coordinated language break to `velme/0.2`, IR `0.2`, request `0.2` and builtins `0.2` (R-REL-14, D-160, D-168). Invalidates locks: yes.
 
-This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)).
+This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)) and the `pow` built-in.
+
+### Added
+
+- Input domains: `type Name = Base where <condition>` and record domains `type Name where <cond>:` with deep predicate checking, test value generator, scarcity probing, and diagnostics `VL0209`, `VL0210`, and `VL0504`.
+- IR `0.2` schema and prompt request `0.2` capturing input domain constraints and declarations.
+- Builtins `0.2`: value built-in `pow(x, n)` computing $x^n$ exactly with single half-to-even rounding (R-TYP-04), variable fuel based on bit length of $|n|$, integer-valued $|n| \le 1000$, and overflow or zero-base negative-exponent `VL0602` error (D-168).
+- Example `examples/professional/loan_payment.velme` demonstrating loan installment calculation with input domains, check, and `pow`.
 
 ### Changed
 
@@ -21,7 +28,7 @@ This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)).
 
 ### Removed
 
-- Support for `velme/0.1` headers and IR `0.1` schemas.
+- Support for `velme/0.1` headers, IR `0.1` schemas, and builtins `0.1`.
 
 ## [0.1.0-alpha.1] - 2026-10-02
 

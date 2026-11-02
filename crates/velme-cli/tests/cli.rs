@@ -255,7 +255,7 @@ fn ac_goal_17_checks_run_on_examples_and_fail_as_on_generated_inputs() {
     let b = serde_json::json!({"kind": "input", "name": "b"});
     let number = serde_json::json!({"t": "Number"});
     let ir = serde_json::json!({
-        "ir_version": "0.2", "builtins_version": "0.1", "goal": "Add", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.2", "goal": "Add", "types": {},
         "domains": {}, "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "binary", "op": "mul", "left": a, "right": b}
     });
@@ -320,7 +320,7 @@ fn test_runs_examples_before_generated_inputs(name: &str) -> Value {
     let input = serde_json::json!({"kind": "input", "name": "x"});
     let literal = |n: i64| serde_json::json!({"kind": "literal", "type": number, "value": n});
     let ir = serde_json::json!({
-        "ir_version": "0.2", "builtins_version": "0.1", "goal": "AddOne", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.2", "goal": "AddOne", "types": {},
         "domains": {}, "inputs": [["x", number]], "output": number,
         "body": {"kind": "binary", "op": "add", "left": input, "right": literal(2)}
     });
@@ -949,7 +949,10 @@ fn ac_blt_10_an_artifact_built_on_an_older_compatibility_unit_is_stale() {
     let old_key = velme_ir::Fingerprint::of_bytes(b"contract of builtins 0.0");
     let old = fs::read_to_string(&path)
         .expect("artifact")
-        .replace("\"builtins_version\":\"0.1\"", "\"builtins_version\":\"0.0\"")
+        .replace(
+            &format!("\"builtins_version\":\"{}\"", velme_builtins::BUILTINS_VERSION),
+            "\"builtins_version\":\"0.0\"",
+        )
         .replace(
             &format!("\"contract_key\":\"{}\"", entry.contract_key),
             &format!("\"contract_key\":\"{old_key}\""),
@@ -980,7 +983,7 @@ fn ac_blt_10_an_artifact_built_on_an_older_compatibility_unit_is_stale() {
     assert_eq!(codes(&envelope), ["VL0702"]);
     let message = envelope["results"][0]["diagnostics"][0].to_string();
     assert!(
-        message.contains("0.0") && message.contains("0.1"),
+        message.contains("0.0") && message.contains(velme_builtins::BUILTINS_VERSION),
         "the versions are named: {message}"
     );
     assert!(envelope["results"][0].get("result").is_none());

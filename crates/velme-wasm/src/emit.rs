@@ -1161,6 +1161,7 @@ impl<'ir> Emitter<'ir> {
                 self.f.op(int(frame(self.level) + FRAME_MARSHAL));
                 self.call(Rt::ToText);
             }
+            Function::Pow => self.call(Rt::Pow),
             Function::Range => self.call(Rt::Range),
             Function::Contains => return Err(internal()),
         }

@@ -1,0 +1,15 @@
+language: velme/0.2
+
+type Principal = Number where value >= 1000 and value <= 1000000
+type AnnualRate = Number where value >= 0.01 and value <= 0.20
+type Term = Number where value >= 6 and value <= 360 and value is whole
+
+goal LoanPayment(principal: Principal, annual_rate: AnnualRate, term: Term) -> Number:
+    plan: "Compute monthly installment P * r * pow(1 + r, n) / (pow(1 + r, n) - 1) rounded to cents."
+    check:
+        - result > 0
+        - result >= principal / term
+    examples:
+        - LoanPayment(10000, 0.05, 12) == 856.07
+        - LoanPayment(200000, 0.06, 360) == 1199.1
+        - LoanPayment(15000, 0.12, 36) == 498.21

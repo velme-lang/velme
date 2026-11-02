@@ -453,7 +453,7 @@ goal Twice(n: Number) -> Number:
         detail(&named, 2).split("; ").last(),
         Some(
             "a `builtin` node names only a built-in of the list: length, is_empty, maximum, minimum, sum, contains, \
-             abs, floor, ceil, round, clamp, concat, to_text, range, random"
+             abs, floor, ceil, round, clamp, pow, concat, to_text, range, random"
         )
     );
     assert!(
