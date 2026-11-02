@@ -662,9 +662,9 @@ fn ac_cli_14_a_value_with_terminal_escapes_is_shown_visibly() {
     assert_eq!(envelope["results"][0]["result"], format!("Hello, {hostile}!"));
 }
 
-/// An `external` build follows `reply_format`: a compact reply is accepted and the request names the format, an `ir-json`
-/// request has no such member, and a compact build whose backend answers under the canonical key is a failed attempt
-/// (`VL0401`, then `VL0403`), not a backend failure (AC-SYNTH-57, R-SYNTH-36, R-SYNTH-40, D-153, D-156).
+/// An `external` build follows `reply_format`: a notation reply is accepted and the request names the format, an `ir-json`
+/// request has no such member, and a notation build whose backend answers an IR object is a failed attempt
+/// (`VL0401`, then `VL0403`), not a backend failure (AC-SYNTH-57, R-SYNTH-36, R-SYNTH-40, D-156).
 #[test]
 fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     let (dir, replies) = project("reply-format");
@@ -672,10 +672,11 @@ fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     let server = Server::start(
         Config::replying(&replies)
             .capturing(&capture)
-            .listing(json!(["ir-json", "compact"])),
+            .listing(json!(["ir-json", "notation"])),
     );
     let canonical = json!({"body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
                         "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}});
+    let notation = json!({"body": "return n * 2"});
     let sent =
         || serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&capture).expect("capture")).expect("JSON");
 
@@ -684,28 +685,24 @@ fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     assert_eq!(plain.code, 0, "{}", shown(&plain));
     assert!(sent().get("reply_format").is_none());
 
-    // Compact: the request names it and the reply under the alias builds.
-    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"compact\"\n").expect("velme.toml");
-    fs::write(
-        replies.join("Double.json"),
-        velme_synth::compress(&canonical).to_string(),
-    )
-    .expect("reply");
+    // Notation: the request names it and a notation body builds.
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"notation\"\n").expect("velme.toml");
+    fs::write(replies.join("Double.json"), notation.to_string()).expect("reply");
     let _ = fs::remove_file(dir.join("velme.lock"));
-    let compact = build(&dir, server.url(), &[]);
-    assert_eq!(compact.code, 0, "{}", shown(&compact));
-    assert_eq!(sent()["reply_format"], "compact");
+    let notation = build(&dir, server.url(), &[]);
+    assert_eq!(notation.code, 0, "{}", shown(&notation));
+    assert_eq!(sent()["reply_format"], "notation");
 
-    // A compact build whose backend answers under `body` is a failed attempt, as for an LLM.
+    // A notation build whose backend answers an IR object is a failed attempt, as for an LLM.
     fs::write(replies.join("Double.json"), canonical.to_string()).expect("reply");
     let _ = fs::remove_file(dir.join("velme.lock"));
     let _ = fs::remove_dir_all(dir.join(".velme"));
     let wrong = build(&dir, server.url(), &[]);
     let text = shown(&wrong);
     assert_ne!(wrong.code, 0, "{text}");
-    // The failed attempt (VL0401) ends the goal with VL0403 when no retry is left, naming the alias it wanted.
+    // The failed attempt (VL0401) ends the goal with VL0403 when no retry is left, naming what it wanted.
     assert!(
-        text.contains("VL0403") && text.contains("no `bo`") && !text.contains("VL0406"),
+        text.contains("VL0403") && text.contains("isn't a string") && !text.contains("VL0406"),
         "{text}"
     );
     // The attempt itself is `VL0401`, and the log says what was asked and what came back (R-SYNTH-23).
@@ -714,7 +711,7 @@ fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     assert_eq!(last["outcome"], "VL0401", "{last}");
     assert_eq!(
         (&last["cause"], &last["reply_format"]),
-        (&json!("no-body"), &json!("compact"))
+        (&json!("body-not-string"), &json!("notation"))
     );
     assert_eq!(last["reply_shape"]["keys"], json!(["body"]));
 
@@ -727,21 +724,19 @@ fn ac_synth_57_an_external_backend_answers_in_the_reply_format() {
     assert!(
         text.contains("VL0406")
             && text.contains("answers only in `ir-json`")
-            && text.contains("reply_format = \"compact\""),
+            && text.contains("reply_format = \"notation\""),
         "{text}"
     );
 }
 
-/// A recorded `external` build in `compact` replays byte for byte, from `replay.json` alone: the replay follows the
+/// A recorded `external` build in `notation` replays byte for byte, from `replay.json` alone: the replay follows the
 /// recording's format and key, with no `velme.toml` setting and no backend (AC-SYNTH-57, R-SYNTH-40, R-SYNTH-43, D-156).
 #[test]
-fn ac_synth_57_a_recorded_external_compact_build_replays_to_the_same_lock_and_artifacts() {
+fn ac_synth_57_a_recorded_external_notation_build_replays_to_the_same_lock_and_artifacts() {
     let (dir, replies) = project("reply-format-record");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"compact\"\n").expect("velme.toml");
-    let body = json!({"body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
-                      "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}});
-    fs::write(replies.join("Double.json"), velme_synth::compress(&body).to_string()).expect("reply");
-    let server = Server::start(Config::replying(&replies).listing(json!(["ir-json", "compact"])));
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"notation\"\n").expect("velme.toml");
+    fs::write(replies.join("Double.json"), r#"{"body": "return n * 2"}"#).expect("reply");
+    let server = Server::start(Config::replying(&replies).listing(json!(["ir-json", "notation"])));
     let recorded = velme(
         &dir,
         &[
@@ -758,7 +753,7 @@ fn ac_synth_57_a_recorded_external_compact_build_replays_to_the_same_lock_and_ar
     let fixtures = dir.join("tests/fixtures/synth");
     let identity = fs::read_to_string(fixtures.join("replay.json")).expect("replay.json");
     assert!(
-        identity.contains(r#""reply_format":"compact""#) && identity.contains("+reply_format=compact@"),
+        identity.contains(r#""reply_format":"notation""#) && identity.contains("+reply_format=notation@"),
         "{identity}"
     );
 

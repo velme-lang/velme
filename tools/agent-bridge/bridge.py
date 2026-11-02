@@ -6,7 +6,7 @@ as canonical JSON, so the same request always gets the same id:
 
 * `<answers>/<id>.json` exists: its content is the reply. For a default (`ir-json`) request a file holding an expression node
   (it has a `kind`) is wrapped as `{"body": ...}`; any other JSON object, and every answer to a request that names another
-  `reply_format`, is sent as written (`{"body"}`, `{"bo"}`, `{"question"}`, `{"error"}`). A file that is not JSON yet is
+  `reply_format`, is sent as written (`{"body"}`, `{"question"}`, `{"error"}`). A file that is not JSON yet is
   `pending`.
 * otherwise the request is written to `<pending>/<id>.json` (atomically) and the reply is `{"pending": "..."}` (R-SYNTH-41),
   which Velme shows as VL0408 with the id.
@@ -27,7 +27,7 @@ import tempfile
 BACKEND = "agent-bridge"
 VERSION = "0.1"
 # Every format answers as written, so every format Velme names is offered (22 section 3.2, D-156).
-REPLY_FORMATS = ["ir-json", "compact", "notation"]
+REPLY_FORMATS = ["ir-json", "notation"]
 ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
 

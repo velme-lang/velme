@@ -6,7 +6,6 @@
 use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Invalid, ParseError, Subject};
 
-use crate::compact;
 use crate::options::ReplyFormat;
 use crate::prompt::type_name;
 use crate::provider::MalformedReason;
@@ -38,7 +37,7 @@ pub enum LogCause {
     /// A failed run of the candidate before its example or checks were judged.
     Runtime(Code),
     /// A reply that held no body or question: `not-json`, `no-body`, `body-and-question`, `bad-question`,
-    /// `unknown-alias` or `bad-number`.
+    /// `body-not-string` or `bad-number`.
     Reply(&'static str),
     /// The reply was a question.
     Question,
@@ -177,7 +176,7 @@ impl Rejection {
             .map(|f| {
                 let mut sent = feedback(&f.diagnostic);
                 if let Some(hint) = (format != ReplyFormat::Notation)
-                    .then(|| hint(f, request, format))
+                    .then(|| hint(f, request))
                     .flatten()
                     .filter(|h| !said.contains(h))
                 {
@@ -371,11 +370,8 @@ fn rule_words(rule: &str) -> &'static str {
 /// What the next request adds to a name or field the goal doesn't have (D-104, R-SYNTH-49): what is there, from the request
 /// alone, and which node reads it, named as the reply is asked to spell it. The finding's `subject` only chooses the
 /// words; nothing of the candidate's own text is repeated.
-fn hint(found: &Invalid, request: &SynthRequest, format: ReplyFormat) -> Option<String> {
-    let node = |kind: &str| match (format, compact::table().kinds.get(kind)) {
-        (ReplyFormat::Compact, Some(alias)) => format!("`{kind}` (`{alias}`) node"),
-        _ => format!("`{kind}` node"),
-    };
+fn hint(found: &Invalid, request: &SynthRequest) -> Option<String> {
+    let node = |kind: &str| format!("`{kind}` node");
     let list = |items: Vec<String>| {
         if items.is_empty() {
             "none".to_owned()
@@ -530,7 +526,7 @@ fn notation_hint(found: &Invalid, request: &SynthRequest, spans: &crate::notatio
                 .to_owned(),
             );
         }
-        ("names-9" | "names-10", _, _) => return hint(found, request, ReplyFormat::Notation),
+        ("names-9" | "names-10", _, _) => return hint(found, request),
         _ => return None,
     };
     Some(text.to_owned())
@@ -580,10 +576,12 @@ fn feedback(diagnostic: &Diagnostic) -> AttemptDiagnostic {
 /// `path`, a JSON Pointer into a reply, with every segment that isn't an IR property name or an index replaced by `…`:
 /// a segment can be a name the reply chose (R-SYNTH-22).
 fn safe_path(path: &str) -> String {
-    let table = crate::compact::table();
     path.split('/')
         .map(|segment| {
-            if segment.is_empty() || segment.chars().all(|c| c.is_ascii_digit()) || table.keys.contains_key(segment) {
+            if segment.is_empty()
+                || segment.chars().all(|c| c.is_ascii_digit())
+                || crate::schema::is_property_name(segment)
+            {
                 segment
             } else {
                 "…"

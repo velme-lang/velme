@@ -221,9 +221,6 @@ impl Ollama {
             };
             messages.push(json!({"role": role, "content": turn.text}));
         }
-        // A compact reply (R-SYNTH-36) is not in the schema's names, so it is constrained to the body key's alias or
-        // the question object, and the validator alone decides. The question stays allowed: a grammar without it would
-        // forbid asking (R-SYNTH-05).
         let format = match self.config.options.reply_format {
             ReplyFormat::IrJson => request.output_schema.clone(),
             format => reply_schema_for(format),

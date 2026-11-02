@@ -23,8 +23,6 @@ pub enum SchemaInPrompt {
 pub enum ReplyFormat {
     /// Canonical IR JSON.
     IrJson,
-    /// The same tree with every property name and node `kind` tag replaced by a short alias.
-    Compact,
     /// Python-shaped text lowered to canonical IR (R-SYNTH-50).
     #[default]
     Notation,
@@ -35,14 +33,13 @@ impl ReplyFormat {
     pub fn name(self) -> &'static str {
         match self {
             ReplyFormat::IrJson => "ir-json",
-            ReplyFormat::Compact => "compact",
             ReplyFormat::Notation => "notation",
         }
     }
 
     /// The format called `name`, or `None` for a name Velme doesn't know.
     pub fn from_name(name: &str) -> Option<Self> {
-        [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation]
+        [ReplyFormat::IrJson, ReplyFormat::Notation]
             .into_iter()
             .find(|format| format.name() == name)
     }
@@ -188,7 +185,7 @@ mod tests {
             .expect("key")
         };
         let prompt_version = crate::prompt_version();
-        for format in [ReplyFormat::IrJson, ReplyFormat::Compact, ReplyFormat::Notation] {
+        for format in [ReplyFormat::IrJson, ReplyFormat::Notation] {
             let options = SynthOptions {
                 reply_format: format,
                 ..SynthOptions::default()

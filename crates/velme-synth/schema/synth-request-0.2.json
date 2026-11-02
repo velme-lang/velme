@@ -402,11 +402,6 @@
           "type": "string"
         },
         {
-          "const": "compact",
-          "description": "The same tree with every property name and node `kind` tag replaced by a short alias.",
-          "type": "string"
-        },
-        {
           "const": "notation",
           "description": "Python-shaped text lowered to canonical IR (R-SYNTH-50).",
           "type": "string"

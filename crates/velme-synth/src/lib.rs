@@ -6,7 +6,6 @@
 #[cfg(feature = "provider-anthropic")]
 mod anthropic;
 mod attempt;
-mod compact;
 mod domain;
 #[cfg(feature = "provider-external")]
 mod external;
@@ -39,7 +38,6 @@ mod verify;
 #[cfg(feature = "provider-anthropic")]
 pub use anthropic::{Anthropic, AnthropicConfig, ApiKey, KeyError};
 pub use attempt::{Cause, LogCause, Rejection};
-pub use compact::{AliasTable, UnknownAlias, compress, expand, table as alias_table};
 #[cfg(feature = "provider-external")]
 pub use external::{External, ExternalConfig, ExternalToken, TOKEN_VARIABLE, TokenMalformed, has_certificate};
 pub use generate::{TestInput, TestInputs, test_inputs, test_inputs_within, value_sets};

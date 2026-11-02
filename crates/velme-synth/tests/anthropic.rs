@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use velme_ir::{Synthesis, contract_key, synthesis_key};
 use velme_synth::{
     Anthropic, AnthropicConfig, ApiKey, MalformedReason, Outcome, ProviderError, ReplyFormat, Session, SynthBackend,
-    SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, alias_table, build_request,
-    prompt_version, render_with, synthesize,
+    SynthLimits, SynthOptions, SynthProvider, SynthReply, SynthRequest, Task, build_request, prompt_version,
+    render_with, synthesize,
 };
 use velme_test_support::mock::{MockResponse, MockServer};
 use velme_test_support::{LeafRunner, RecordingSleeper, goal_id, mock_anthropic, program};
@@ -267,38 +267,6 @@ fn ac_synth_48_a_text_only_reply_is_a_vl0401_attempt_in_velmes_words() {
         failure.diagnostic.message
     );
     assert!(!format!("{failure:?}").contains("PROVIDER-SENTINEL-7"));
-}
-
-/// In `compact` the `write_goal` tool takes the body under its alias and nothing deeper, and says so (AC-SYNTH-47, R-SYNTH-36, D-153).
-#[test]
-fn ac_synth_47_the_compact_tool_names_the_body_key_by_its_alias() {
-    let alias = alias_table().keys["body"].clone();
-    let config = AnthropicConfig {
-        options: SynthOptions {
-            reply_format: ReplyFormat::Compact,
-            ..SynthOptions::default()
-        },
-        ..AnthropicConfig::new("m")
-    };
-    let (provider, server, _) = mock(
-        config,
-        [MockResponse::tool_call("write_goal", &json!({ alias.clone(): {} }))],
-    );
-    complete(&provider, &requests().0).expect("a reply");
-    let body = server.requests()[0].json();
-    let goal = &body["tools"][0];
-    assert_eq!(goal["input_schema"]["required"], json!([alias]));
-    assert!(goal["input_schema"]["properties"].get(&alias).is_some());
-    let description = goal["description"].as_str().expect("a description");
-    assert!(
-        description.contains(&format!("{{\"{alias}\":")) && !description.contains("\"body\""),
-        "{description}"
-    );
-    let first = body["messages"][0]["content"].to_string();
-    assert!(
-        first.contains(&format!("Return {{\\\"{alias}\\\": <expression>}}")),
-        "{first}"
-    );
 }
 
 /// Anthropic's error envelope around `message`, as a `status` response.
@@ -584,11 +552,11 @@ fn ac_synth_30_retries_use_the_retry_model_and_the_options_change_only_the_synth
     let base = key(&config);
     let mut other_retry = config.clone();
     other_retry.retry_model = Some("claude-other".to_owned());
-    let mut compact = config.clone();
-    compact.options.reply_format = ReplyFormat::Compact;
+    let mut ir_json = config.clone();
+    ir_json.options.reply_format = ReplyFormat::IrJson;
     let mut fewer = config.clone();
     fewer.options.max_prompt_examples = 2;
-    for changed in [&other_retry, &compact, &fewer] {
+    for changed in [&other_retry, &ir_json, &fewer] {
         assert_ne!(key(changed), base);
     }
     assert_eq!(

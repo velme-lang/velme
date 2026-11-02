@@ -1,6 +1,8 @@
 //! Coverage audit (`delivery/51` §5): every spec `AC-*` has a `#[test]` function named for it.
 //!
-//! Uncovered criteria are listed, and fail only under `--strict` (AC-QA-03, D-139); tests citing an unknown criterion,
+//! Uncovered criteria are listed, and fail only under `--strict` (AC-QA-03, D-139); a retired row (its text starts with
+//! `**Retired**`, ids never reused) needs no test, and a test citing one fails like one citing an unknown criterion; tests
+//! citing an unknown criterion,
 //! and ignored tests outside the perf files `cargo xtask gate` runs, always fail.
 
 use std::collections::BTreeSet;
@@ -15,12 +17,16 @@ const SPEC_ROOT: &str = "docs/spec";
 
 /// Result of one audit run; ids are upper-case (`AC-REL-02`).
 pub struct Report {
-    /// Every criterion defined in a spec acceptance table.
+    /// Every live criterion defined in a spec acceptance table (retired rows excluded).
     pub defined: BTreeSet<String>,
+    /// Criteria whose row is marked `**Retired**`: defined, but they need no test.
+    pub retired: BTreeSet<String>,
     /// Defined criteria with at least one test.
     pub covered: BTreeSet<String>,
     /// Criteria cited by a test but defined nowhere in the spec.
     pub unknown: BTreeSet<String>,
+    /// Retired criteria a test still cites.
+    pub cites_retired: BTreeSet<String>,
     /// Ignored `ac_*` tests outside a [`crate::gate::PERF_CRATES`] `tests/perf.rs`, which no gate runs: (file relative
     /// to the root, test name).
     pub ignored: BTreeSet<(PathBuf, String)>,
@@ -34,16 +40,27 @@ impl Report {
 
     /// Whether the audit passes; `strict` also requires every criterion to be covered.
     pub fn passes(&self, strict: bool) -> bool {
-        self.unknown.is_empty() && self.ignored.is_empty() && (!strict || self.covered.len() == self.defined.len())
+        self.unknown.is_empty()
+            && self.cites_retired.is_empty()
+            && self.ignored.is_empty()
+            && (!strict || self.covered.len() == self.defined.len())
     }
 }
 
 /// Audits the repository at `root`.
 pub fn audit(root: &Path) -> Result<Report> {
-    let mut defined = BTreeSet::new();
+    let (mut defined, mut retired) = (BTreeSet::new(), BTreeSet::new());
     for file in files_with_extension(&root.join(SPEC_ROOT), "md")? {
         let text = fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
-        defined.extend(text.lines().filter_map(criterion_in_table_row));
+        for line in text.lines() {
+            if let Some(id) = criterion_in_table_row(line) {
+                if is_retired_row(line) {
+                    retired.insert(id);
+                } else {
+                    defined.insert(id);
+                }
+            }
+        }
     }
     let (mut cited, mut ignored) = (BTreeSet::new(), BTreeSet::new());
     for dir in TEST_ROOTS {
@@ -56,11 +73,18 @@ pub fn audit(root: &Path) -> Result<Report> {
         }
     }
     let covered = defined.intersection(&cited).cloned().collect();
-    let unknown = cited.difference(&defined).cloned().collect();
+    let cites_retired = cited.intersection(&retired).cloned().collect();
+    let unknown = cited
+        .difference(&defined)
+        .filter(|id| !retired.contains(*id))
+        .cloned()
+        .collect();
     Ok(Report {
         defined,
+        retired,
         covered,
         unknown,
+        cites_retired,
         ignored,
     })
 }
@@ -70,6 +94,13 @@ pub fn audit(root: &Path) -> Result<Report> {
 fn is_perf_file(file: &Path) -> bool {
     let parts: Vec<_> = file.iter().filter_map(|p| p.to_str()).collect();
     matches!(parts.as_slice(), ["crates", c, "tests", "perf.rs"] if crate::gate::PERF_CRATES.contains(c))
+}
+
+/// Whether a criterion row's text starts with `**Retired**` (D-170 style: the id stays, never reused).
+fn is_retired_row(line: &str) -> bool {
+    line.strip_prefix("| ")
+        .and_then(|rest| rest.split('|').nth(1))
+        .is_some_and(|text| text.trim_start().starts_with("**Retired**"))
 }
 
 /// `| AC-REL-02 | … |` → `AC-REL-02`.

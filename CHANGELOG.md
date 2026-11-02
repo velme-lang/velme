@@ -30,6 +30,7 @@ This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)) and th
 ### Removed
 
 - Support for `velme/0.1` headers, IR `0.1` schemas, and builtins `0.1`.
+- `reply_format = "compact"` (D-170): use `notation`, the default; `compact` is now an unknown value (`VL0902`). `prompt_version` changes once, so synthesis keys change.
 
 ## [0.1.0-alpha.1] - 2026-10-02
 

@@ -189,29 +189,27 @@ fn p0c_the_bridge_honours_the_bearer_token() {
     assert_eq!(fs::read_dir(dir.join("pending")).expect("pending").count(), 1);
 }
 
-/// A compact request gets the answer as written (not wrapped), a half-written answer is still pending, and a bad
+/// A notation request gets the answer as written (not wrapped), a half-written answer is still pending, and a bad
 /// `Content-Length` is a 400 (P0c).
 #[test]
 fn p0c_the_bridge_follows_the_request_format_and_survives_a_half_written_answer() {
     use std::io::{Read, Write};
-    let dir = project("compact");
-    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"compact\"\n").expect("velme.toml");
+    let dir = project("notation");
+    fs::write(dir.join("velme.toml"), "[synthesis]\nreply_format = \"notation\"\n").expect("velme.toml");
     let bridge = start(&dir, None);
     let (_, _) = build(&dir, &bridge.url, None);
     let pending = only_file(&dir.join("pending"));
     let id = pending.file_stem().and_then(|s| s.to_str()).expect("an id").to_owned();
     let request: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&pending).expect("request")).expect("JSON");
-    assert_eq!(request["reply_format"], "compact");
+    assert_eq!(request["reply_format"], "notation");
 
     let answer = dir.join("answers").join(format!("{id}.json"));
-    fs::write(&answer, r#"{"bo": {"#).expect("half an answer");
+    fs::write(&answer, r#"{"body": "ret"#).expect("half an answer");
     let (_, text) = build(&dir, &bridge.url, None);
     assert!(text.contains("VL0408") && text.contains("not valid JSON yet"), "{text}");
 
-    let body = json!({"body": {"kind": "binary", "op": "mul", "left": {"kind": "input", "name": "n"},
-                      "right": {"kind": "literal", "type": {"t": "Number"}, "value": 2}}});
-    fs::write(&answer, velme_synth::compress(&body).to_string()).expect("answer");
+    fs::write(&answer, r#"{"body": "return n * 2"}"#).expect("answer");
     let (code, text) = build(&dir, &bridge.url, None);
     assert_eq!(code, 0, "{text}");
 

@@ -170,15 +170,15 @@ fn external(project: &Path, replies: &Path, tune: impl FnOnce(Config) -> Config,
     }
 }
 
-/// [`external`] told to ask for `compact` replies.
-fn compact_external(project: &Path, replies: &Path) -> Held {
+/// [`external`] told to ask for `notation` replies.
+fn notation_external(project: &Path, replies: &Path) -> Held {
     let server = Server::start(
         Config::replying(replies)
             .logging(project.join("backend.log"))
-            .listing(json!(["ir-json", "compact"])),
+            .listing(json!(["ir-json", "notation"])),
     );
     let mut config = ExternalConfig::new(ExternalUrl::parse(server.url()).expect("a URL"));
-    config.reply_format = velme_synth::ReplyFormat::Compact;
+    config.reply_format = velme_synth::ReplyFormat::Notation;
     let sleeper = RecordingSleeper::default();
     let backend = External::new(config).with_sleeper(Arc::new(sleeper.clone()));
     Held {
@@ -208,6 +208,11 @@ fn build_with(dir: &Path, text: &str, backend: &dyn SynthBackend, mut options: S
     if options.reply_format == velme_synth::ReplyFormat::Notation {
         options.reply_format = velme_synth::ReplyFormat::IrJson;
     }
+    build_exact(dir, text, backend, options)
+}
+
+/// [`build_with`] with `options` as given, the default `notation` included.
+fn build_exact(dir: &Path, text: &str, backend: &dyn SynthBackend, options: SynthOptions) -> Built {
     let program = program(text);
     let mut contacts = 0;
     let input = BuildInput {
@@ -260,19 +265,19 @@ fn assert_nothing_stored(dir: &Path) {
     assert!(!dir.join(".velme/artifacts").exists(), "an artifact was written");
 }
 
-/// `reply_format = "compact"` applies to an external backend too (D-156): a reply under the alias builds, and canonical IR
-/// under `body` is a failed attempt, as for an LLM (R-SYNTH-36, D-153).
+/// `reply_format = "notation"` applies to an external backend too (D-156): a notation `body` builds, and an IR object
+/// under `body` is a failed attempt, as for an LLM (R-SYNTH-36).
 #[test]
-fn r_synth_36_the_compact_format_applies_to_an_external_backend() {
+fn r_synth_36_the_notation_format_applies_to_an_external_backend() {
     let options = || SynthOptions {
-        reply_format: velme_synth::ReplyFormat::Compact,
+        reply_format: velme_synth::ReplyFormat::Notation,
         ..no_retries()
     };
-    let compact = velme_synth::compress(&json!({ "body": double()["body"] }));
-    let project = scratch("compact-external");
-    let files = replies("compact-external", &[("Double.json", &compact)]);
-    let backend = compact_external(&project, &files);
-    let built = build_with(&project, ONE, &backend, options());
+    let notation = json!({ "body": "return n * 2" });
+    let project = scratch("notation-external");
+    let files = replies("notation-external", &[("Double.json", &notation)]);
+    let backend = notation_external(&project, &files);
+    let built = build_exact(&project, ONE, &backend, options());
     assert_eq!(
         status(&built, "Double"),
         Status::Built(Source::Synthesized),
@@ -280,15 +285,15 @@ fn r_synth_36_the_compact_format_applies_to_an_external_backend() {
         built.report.goals
     );
 
-    let project = scratch("compact-external-canonical");
-    let files = replies("compact-external-canonical", &[("Double.json", &double())]);
-    let backend = compact_external(&project, &files);
-    let built = build_with(&project, ONE, &backend, options());
+    let project = scratch("notation-external-ir");
+    let files = replies("notation-external-ir", &[("Double.json", &double())]);
+    let backend = notation_external(&project, &files);
+    let built = build_exact(&project, ONE, &backend, options());
     assert_eq!(status(&built, "Double"), Status::Failed);
     let d = diagnostic(&built, "Double");
-    // A failed attempt, not a backend failure; the rule is the missing alias (D-153).
+    // A failed attempt, not a backend failure.
     assert_eq!(d.code, Code::SynthesisFailed, "{}", d.message);
-    assert!(d.message.contains("bo"), "{}", d.message);
+    assert!(d.message.contains("isn't a string"), "{}", d.message);
 }
 
 /// A backend replying with hostile IR, a `call` node or a builtin that isn't there, is rejected with `VL0402` both times,

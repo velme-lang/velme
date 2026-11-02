@@ -12,7 +12,7 @@ use serde_json::{Value as Json, json};
 use velme_builtins::Value;
 use velme_ir::{Origin, Request, to_canonical_string, validate};
 use velme_runtime::{Backend, BuildInput, Lock, Mode, Options, Status, Store, Wasm, build, eval_leaf};
-use velme_synth::{ReplyFormat, Scripted, SynthOptions, compress};
+use velme_synth::{ReplyFormat, Scripted, SynthOptions};
 use velme_test_support::{PanicProvider, goal_id, install, program};
 
 const FILE: &str = "loans.velme";
@@ -71,11 +71,6 @@ fn replies(format: ReplyFormat) -> Scripted {
     let wrong = json!({"Age": {"base": {"t": "Text"}}});
     let bodies = match format {
         ReplyFormat::IrJson => vec![json!({"body": band(), "domains": wrong}), json!({"body": adults()})],
-        ReplyFormat::Compact => {
-            let mut band = compress(&json!({"body": band()}));
-            band["domains"] = wrong;
-            vec![band, compress(&json!({"body": adults()}))]
-        }
         ReplyFormat::Notation => vec![
             json!({"body": "return \"HIGH\" if applicant.age < 30 else \"LOW\"", "domains": wrong}),
             json!({"body": "return [x for x in xs if x >= 18 and x <= 120 and floor(x) == x]"}),
@@ -132,15 +127,14 @@ fn built(format: ReplyFormat) -> (PathBuf, Vec<(String, Json)>) {
 #[test]
 fn a_domain_program_builds_the_same_ir_in_every_reply_format() {
     let (_, json) = built(ReplyFormat::IrJson);
-    for format in [ReplyFormat::Compact, ReplyFormat::Notation] {
-        let (_, other) = built(format);
-        let canonical = |irs: &[(String, Json)]| {
-            irs.iter()
-                .map(|(name, ir)| (name.clone(), to_canonical_string(ir).expect("canonical")))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(canonical(&other), canonical(&json), "{format:?}");
-    }
+    let format = ReplyFormat::Notation;
+    let (_, other) = built(format);
+    let canonical = |irs: &[(String, Json)]| {
+        irs.iter()
+            .map(|(name, ir)| (name.clone(), to_canonical_string(ir).expect("canonical")))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(canonical(&other), canonical(&json), "{format:?}");
     let band = &json.iter().find(|(name, _)| name == "Band").expect("Band").1;
     assert_eq!(
         band["domains"],

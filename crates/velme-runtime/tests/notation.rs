@@ -29,7 +29,6 @@ impl LoanBackend {
                 velme_synth::REQUEST_VERSION,
                 velme_synth::notation::GRAMMAR_VERSION
             ),
-            ReplyFormat::Compact => panic!("not a loan fixture format"),
         };
         Self { format, version }
     }
