@@ -549,7 +549,7 @@ goal Top(n: Number) -> Number:\n    call:\n        a = Later(n)\n    plan: \"Ret
     ];
     for (goal, body) in bodies {
         let calls = velme_ir::calls(&program, goal_id(&program, goal)).expect("calls");
-        let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.1", "goal": goal, "types": {},
+        let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.2", "goal": goal, "types": {},
             "domains": {}, "inputs": [["n", number]], "output": number, "calls": calls, "body": body});
         install(&dir, "both.velme", &program, &ir.to_string());
     }
@@ -773,7 +773,7 @@ fn ac_run_08_division_by_zero_prints_no_value() {
     let zero = serde_json::json!({"kind": "literal", "type": number, "value": 0});
     let body =
         serde_json::json!({"kind": "binary", "op": "div", "left": {"kind": "input", "name": "x"}, "right": zero});
-    let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.1", "goal": "Boom", "types": {},
+    let ir = serde_json::json!({"ir_version": "0.2", "builtins_version": "0.2", "goal": "Boom", "types": {},
         "domains": {}, "inputs": [["x", number]], "output": number, "calls": [], "body": body});
     install(&dir, "boom.velme", &program, &ir.to_string());
     let file = dir.join("boom.velme");
@@ -799,7 +799,7 @@ fn ac_run_08_division_by_zero_prints_no_value() {
 
 /// Every example of `examples/` with the goal and input the determinism tests run it on (AC-QA-05): its fixture project
 /// (a copy of the example with hand-written IR, D-16), the goal and the `--arg`s.
-const RUNS: [(&str, &str, &str, &[&str]); 7] = [
+const RUNS: [(&str, &str, &str, &[&str]); 8] = [
     ("add", "add.velme", "Add", &["a=2", "b=3"]),
     ("hello", "hello.velme", "SayHello", &[r#"name="Lina""#]),
     (
@@ -826,6 +826,12 @@ const RUNS: [(&str, &str, &str, &[&str]); 7] = [
         "order_total.velme",
         "OrderTotal",
         &[r#"items=[{"price":10,"quantity":3},{"price":5,"quantity":1}]"#],
+    ),
+    (
+        "loan_payment",
+        "loan_payment.velme",
+        "LoanPayment",
+        &["principal=10000", "annual_rate=0.05", "term=12"],
     ),
 ];
 

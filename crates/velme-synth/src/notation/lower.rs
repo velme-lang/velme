@@ -789,7 +789,8 @@ pub(super) fn python_builtin(name: &str, span: Span) -> Option<Rejected> {
         "max" | "min" => rejection.hint("`max(a, b)` is `a if a >= b else b`, and `maximum(xs)` is `None` for `[]`"),
         "int" => rejection.hint("floor(x)"),
         "str" => rejection.hint("to_text(x)"),
-        "pow" | "divmod" => rejection.hint(Rule::Operator.reject(span).hint.as_deref().unwrap_or_default()),
+        "pow" => rejection.hint("pow(a, b)"),
+        "divmod" => rejection.hint(Rule::Operator.reject(span).hint.as_deref().unwrap_or_default()),
         "map" | "filter" | "enumerate" | "zip" => rejection.hint("write a comprehension"),
         _ => rejection,
     })

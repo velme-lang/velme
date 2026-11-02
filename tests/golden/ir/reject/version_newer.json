@@ -1,6 +1,6 @@
 {
   "ir_version": "0.3",
-  "builtins_version": "0.1",
+  "builtins_version": "0.2",
   "goal": "FindBadge",
   "types": {
     "Player": {

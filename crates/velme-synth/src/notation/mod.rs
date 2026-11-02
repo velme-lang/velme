@@ -115,9 +115,7 @@ impl Rule {
             }
             Self::Return => "end each block with `return <expression>`",
             Self::Binding => "use a new name",
-            Self::Operator => {
-                "`a % b` is `a - b * floor(a / b)`; `a // b` is `floor(a / b)`; `**` is a product or a `reduce` over `range`"
-            }
+            Self::Operator => "`a % b` is `a - b * floor(a / b)`; `a // b` is `floor(a / b)`; `**` is `pow(a, b)`",
             Self::Expression => "items are found with `next(…)` and picked with comprehensions",
             Self::Shape | Self::PythonBuiltin | Self::Syntax => "",
             Self::ListType => "return the list, put it in a record field, or compare it with a typed value",

@@ -145,7 +145,7 @@ fn canonical_json_is_jcs_like_not_jcs() {
 fn contract_key_golden_value() {
     assert_eq!(
         key(&program(SUMMARY), "CalculateScore").to_string(),
-        "b3:ed2d2fe2bbec1587632561ede3cfd3199cbe13c160718769e890bdb8b5e10cd0"
+        "b3:c95786dd96f81b75888696e2d9180ae62b5fe6b059b49c79bcb28f2b8bbfc56e"
     );
 }
 

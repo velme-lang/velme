@@ -498,7 +498,9 @@ impl Generator<'_, '_> {
                 use BinaryOperator::{Add, Div, Mul, Sub};
                 moves.extend([Add, Sub, Mul, Div].map(Move::Binary));
                 moves.push(Move::Unary(UnaryOperator::Neg));
-                let builtins = ["length", "sum", "abs", "floor", "ceil", "round", "clamp", "random"];
+                let builtins = [
+                    "length", "sum", "abs", "floor", "ceil", "round", "clamp", "pow", "random",
+                ];
                 moves.extend(builtins.map(Move::Builtin));
                 moves.push(Move::Deep);
             }
@@ -769,8 +771,10 @@ impl Generator<'_, '_> {
                 let high = low + self.small(0, 10);
                 vec![self.expr(&Ty::Number), Self::whole(low), Self::whole(high)]
             }
+            "pow" if !self.rarely(4) => vec![self.expr(&Ty::Number), Self::whole(self.small(-10, 10))],
             "random" if !self.rarely(4) => vec![Self::whole(self.small(-50, 50)), Self::whole(self.small(0, 50))],
             "clamp" => (0..3).map(|_| self.expr(&Ty::Number)).collect(),
+            "pow" => (0..2).map(|_| self.expr(&Ty::Number)).collect(),
             "random" => (0..2).map(|_| self.expr(&Ty::Number)).collect(),
             // Mostly a small count, sometimes any, or one at or past the most a list may hold (R-TYP-24).
             "range" if self.rarely(12) => {

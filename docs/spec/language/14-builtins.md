@@ -35,13 +35,14 @@ length of a `Text` argument (or the larger of input/output where noted). `⌈x�
 | `floor`, `ceil` | `(Number) -> Number` | ✓ | ✓ | 1 | |
 | `round` | `(Number) -> Number` | ✓ | ✓ | 1 | ties away from zero (`2.5 → 3`, `-2.5 → -3`) |
 | `clamp` | `(x: Number, low: Number, high: Number) -> Number` | ✓ | ✓ | 1 | `low > high` → `VL0602` |
+| `pow` | `(x: Number, n: Number) -> Number` | ✓ | ✓ | 1 + bit length of \|n\| (D-168) | `n` integer-valued, \|n\| ≤ 1000; rounded once half-to-even (R-BLT-03); 0^-k and overflow `VL0602`; `pow(0, 0) == 1` |
 | `concat` | `(Text, Text) -> Text` | ✓ | ✓ | 1 + ⌈(bytes of both inputs together)/64⌉, i.e. of the output | |
 | `to_text` | `(Number) -> Text` | ✓ | ✓ | 1 + ⌈output bytes/64⌉ | plain decimal rendering (R-TYP-08) |
 | `range` | `(n: Number) -> List<Number>` | ✓ | ✓ | 1 + n | `[0, 1, …, n-1]`; `n` integer-valued and `≥ 0` else `VL0602`; `n` above the list limit → `VL0606` |
 | `random` | `(seed: Number, index: Number) -> Number` | ✓ | ✓ | 1 | §3 |
 
-**R-BLT-03** Remainder/modulo, transcendental functions (`sqrt`, `sin`, `pow`, `log`) and Text
-ordering/searching are not in v0.1 (D-36). Adding one is a `builtins_version` bump (§5) and, for any whose decimal
+**R-BLT-03** Remainder/modulo, transcendental functions (`sqrt`, `sin`, `log`) and Text
+ordering/searching are not in 0.2 (D-36). `pow(x, n)` computes x^n exactly and rounds half-to-even once (R-TYP-04, D-168); negative n is 1 / x^|n| rounded once, not the rounded x^|n| inverted. Adding another function is a `builtins_version` bump (§5) and, for any whose decimal
 result must be rounded, a language decision on the rounding rule.
 
 ## 3. `random` (D-22)
@@ -147,3 +148,7 @@ manifest and in the synthesis cache key (D-11, INV-8).
 | AC-BLT-13 | `sort_by([Item(k:2),Item(k:1),Item(k:1)], i -> i.k, descending: false)` keeps the two `k:1` items in their original relative order; the same with `descending: true` also keeps them in original order. |
 | AC-BLT-14 | Inside a goal with parameter `sum: Number`, the check `- sum(scores) > 0` still calls the built-in `sum`, not the parameter; a `goal sum(x: Number) -> Number:` declaration compiles with a lint warning, not an error. |
 | AC-BLT-15 | `map(xs, p -> 1 / p)` over `[2, 0, 3]` fails with `VL0602` attributing the second element (index 1); the third element is never evaluated. |
+| AC-BLT-16 | `pow(2, 10) == 1024`, `pow(2, -2) == 0.25`, `pow(0, 0) == 1` on every backend. |
+| AC-BLT-17 | `pow` computes exact-then-round half-to-even once: a case where it differs from repeated rounded multiplication, a negative-n case where it differs from `1 / pow(x, \|n\|)`, and a half-to-even tie. |
+| AC-BLT-18 | `pow(2, 1.5)`, `pow(2, 1001)`, `pow(0, -1)`, `pow(10, 29)` and overflow `pow(2, 1000)` fail with `VL0602`. |
+| AC-BLT-19 | `pow(x, 0)` costs 1 fuel; `pow(x, 1)` costs 2; `pow(x, 1000)` and `pow(x, -1000)` cost 11 fuel, deterministically on every backend. |

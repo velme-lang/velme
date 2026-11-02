@@ -14,7 +14,7 @@ pub use number::Number;
 pub use value::{List, Record, Value};
 
 /// The catalog's version, recorded in every artifact manifest and synthesis cache key (R-BLT-09).
-pub const BUILTINS_VERSION: &str = "0.1";
+pub const BUILTINS_VERSION: &str = "0.2";
 
 /// A type in a built-in's signature. `T` and `U` stand for any type, the same one wherever they repeat in one
 /// signature.
@@ -137,6 +137,7 @@ pub const CATALOG: &[Builtin] = &[
     value("ceil", Function::Ceil, &[sig(&[NUMBER], NUMBER)]),
     value("round", Function::Round, &[sig(&[NUMBER], NUMBER)]),
     value("clamp", Function::Clamp, &[sig(&[NUMBER, NUMBER, NUMBER], NUMBER)]),
+    value("pow", Function::Pow, &[sig(&[NUMBER, NUMBER], NUMBER)]),
     value("concat", Function::Concat, &[sig(&[TEXT, TEXT], TEXT)]),
     value("to_text", Function::ToText, &[sig(&[NUMBER], TEXT)]),
     value("range", Function::Range, &[sig(&[NUMBER], LIST_NUMBER)]),

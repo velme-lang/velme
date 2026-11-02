@@ -1,0 +1,199 @@
+{
+  "ir_version": "0.2",
+  "builtins_version": "0.2",
+  "goal": "LoanPayment",
+  "types": {},
+  "domains": {
+    "AnnualRate": {
+      "base": {
+        "t": "Number"
+      },
+      "lower": {
+        "inclusive": true,
+        "value": 0.01
+      },
+      "upper": {
+        "inclusive": true,
+        "value": 0.2
+      }
+    },
+    "Principal": {
+      "base": {
+        "t": "Number"
+      },
+      "lower": {
+        "inclusive": true,
+        "value": 1000
+      },
+      "upper": {
+        "inclusive": true,
+        "value": 1000000
+      }
+    },
+    "Term": {
+      "base": {
+        "t": "Number"
+      },
+      "lower": {
+        "inclusive": true,
+        "value": 6
+      },
+      "upper": {
+        "inclusive": true,
+        "value": 360
+      },
+      "whole": true
+    }
+  },
+  "inputs": [
+    [
+      "principal",
+      {
+        "name": "Principal",
+        "t": "Domain"
+      }
+    ],
+    [
+      "annual_rate",
+      {
+        "name": "AnnualRate",
+        "t": "Domain"
+      }
+    ],
+    [
+      "term",
+      {
+        "name": "Term",
+        "t": "Domain"
+      }
+    ]
+  ],
+  "output": {
+    "t": "Number"
+  },
+  "body": {
+    "bind": [
+      [
+        "r",
+        {
+          "kind": "binary",
+          "left": {
+            "kind": "input",
+            "name": "annual_rate"
+          },
+          "op": "div",
+          "right": {
+            "kind": "literal",
+            "type": {
+              "t": "Number"
+            },
+            "value": 12
+          }
+        }
+      ],
+      [
+        "p",
+        {
+          "args": [
+            {
+              "kind": "binary",
+              "left": {
+                "kind": "literal",
+                "type": {
+                  "t": "Number"
+                },
+                "value": 1
+              },
+              "op": "add",
+              "right": {
+                "kind": "local",
+                "name": "r"
+              }
+            },
+            {
+              "kind": "input",
+              "name": "term"
+            }
+          ],
+          "kind": "builtin",
+          "name": "pow"
+        }
+      ],
+      [
+        "raw",
+        {
+          "kind": "binary",
+          "left": {
+            "kind": "binary",
+            "left": {
+              "kind": "binary",
+              "left": {
+                "kind": "input",
+                "name": "principal"
+              },
+              "op": "mul",
+              "right": {
+                "kind": "local",
+                "name": "r"
+              }
+            },
+            "op": "mul",
+            "right": {
+              "kind": "local",
+              "name": "p"
+            }
+          },
+          "op": "div",
+          "right": {
+            "kind": "binary",
+            "left": {
+              "kind": "local",
+              "name": "p"
+            },
+            "op": "sub",
+            "right": {
+              "kind": "literal",
+              "type": {
+                "t": "Number"
+              },
+              "value": 1
+            }
+          }
+        }
+      ]
+    ],
+    "body": {
+      "kind": "binary",
+      "left": {
+        "args": [
+          {
+            "kind": "binary",
+            "left": {
+              "kind": "local",
+              "name": "raw"
+            },
+            "op": "mul",
+            "right": {
+              "kind": "literal",
+              "type": {
+                "t": "Number"
+              },
+              "value": 100
+            }
+          }
+        ],
+        "kind": "builtin",
+        "name": "round"
+      },
+      "op": "div",
+      "right": {
+        "kind": "literal",
+        "type": {
+          "t": "Number"
+        },
+        "value": 100
+      }
+    },
+    "kind": "let"
+  }
+}

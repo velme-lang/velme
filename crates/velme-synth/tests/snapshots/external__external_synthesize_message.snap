@@ -83,6 +83,12 @@ expression: "serde_json::to_string_pretty(&shown).expect(\"prints\")"
       ]
     },
     {
+      "name": "pow",
+      "signatures": [
+        "(Number, Number) -> Number"
+      ]
+    },
+    {
       "name": "concat",
       "signatures": [
         "(Text, Text) -> Text"
@@ -149,7 +155,7 @@ expression: "serde_json::to_string_pretty(&shown).expect(\"prints\")"
       ]
     }
   ],
-  "builtins_version": "0.1",
+  "builtins_version": "0.2",
   "checks": [
     {
       "ir": {

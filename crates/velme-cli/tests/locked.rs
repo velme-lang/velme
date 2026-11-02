@@ -110,7 +110,7 @@ fn broken_with(test: &str, at: i64, then: Value) -> PathBuf {
     let input = |name: &str| json!({"kind": "input", "name": name});
     let sum = json!({"kind": "binary", "op": "add", "left": input("a"), "right": input("b")});
     let ir = json!({
-        "ir_version": "0.2", "builtins_version": "0.1", "goal": "Add", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.2", "goal": "Add", "types": {},
         "domains": {}, "inputs": [["a", number], ["b", number]], "output": number,
         "body": {"kind": "if",
                  "cond": {"kind": "binary", "op": "eq", "left": input("a"),
@@ -566,7 +566,7 @@ fn artifact_text_keeps_the_ir_parseable_with_unsafe_characters() {
     fs::write(dir.join("greet.velme"), source).expect("source");
     let text = "a\u{7f}b\u{202e}c\u{2028}d";
     let ir = json!({
-        "ir_version": "0.2", "builtins_version": "0.1", "goal": "Greet", "types": {},
+        "ir_version": "0.2", "builtins_version": "0.2", "goal": "Greet", "types": {},
         "domains": {}, "inputs": [["n", {"t": "Number"}]], "output": {"t": "Text"},
         "body": {"kind": "literal", "type": {"t": "Text"}, "value": text}
     });

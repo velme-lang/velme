@@ -22,7 +22,7 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
       "kind": "record",
       "type": "Summary"
     },
-    "builtins_version": "0.1",
+    "builtins_version": "0.2",
     "calls": [
       {
         "args": [
@@ -125,7 +125,7 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
     }
   },
   "manifest": {
-    "builtins_version": "0.1",
+    "builtins_version": "0.2",
     "children": [
       {
         "binding": "score",
@@ -144,7 +144,7 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
       }
     ],
     "compiler_version": "0.1.4",
-    "contract_key": "b3:9c76f2990af153ce6c3964d59777cee0b059a10fc24ab1a694779b7e27da24b7",
+    "contract_key": "b3:c53dbf41d85dd565842fa270fe8d47fbad284bbcf3a6407325bae66c07e848be",
     "format": "velme-artifact/1",
     "goal": "BuildPlayerSummary",
     "ir_version": "0.2",
@@ -154,7 +154,7 @@ expression: "serde_json::to_string_pretty(&document).expect(\"serializes\")"
     "prompt_version": "leaf-v1",
     "provider": "anthropic",
     "signature": "b3:ab92627fe12e92ede0753f955cd76067be0814b0ddb4853c220e9baeb72a8100",
-    "synthesis_key": "b3:21abdff903f2e358e47457e2acc752f09c66ed01bf31e33f8aa4415439cc3ff2",
+    "synthesis_key": "b3:5b00dbfd9df3fb037ec1db2073664cb5955b832480fe8bd2bd305175bd3bd2c1",
     "verification": {
       "examples": 3,
       "generated_inputs": 61,

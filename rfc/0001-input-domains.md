@@ -101,7 +101,7 @@ provider calls, records the break and `invalidates locks: yes` in CHANGELOG, and
 `language/spec/0.2/` mirror. D0 changes the specification only. D1 handles release/version migration, D2 syntax,
 typing and keys, D3 IR/prompt/request integration, D4 membership/fuel/parity, and D5 generation/probes/goldens.
 Until D5, domain programs use base-type generation; D2–D4 do not claim end-to-end domain builds.
-`pow` ships in the same release, specified in D6.
+`pow` ships in the same release, specified in `language/14` (D-168).
 
 ## Alternatives and drawbacks
 

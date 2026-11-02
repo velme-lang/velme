@@ -174,6 +174,59 @@ fn player(name: &str, score: &str) -> Value {
 }
 
 #[test]
+fn ac_blt_16_pow_basic() {
+    assert_eq!(value("pow", &[n("2"), n("10")]), n("1024"));
+    assert_eq!(value("pow", &[n("2"), n("-2")]), n("0.25"));
+    assert_eq!(value("pow", &[n("0"), n("0")]), n("1"));
+    assert_eq!(value("pow", &[n("-2"), n("3")]), n("-8"));
+    assert_eq!(value("pow", &[n("-2"), n("2")]), n("4"));
+    assert_eq!(value("pow", &[n("-2"), n("-3")]), n("-0.125"));
+    assert_eq!(value("pow", &[n("-2"), n("-2")]), n("0.25"));
+}
+
+#[test]
+fn ac_blt_17_pow_one_rounding_and_tie() {
+    let x = num("1.000000000000005");
+    let repeated = x.checked_mul(x).unwrap().checked_mul(x).unwrap();
+    let exact = value("pow", &[n("1.000000000000005"), n("3")]);
+    assert_eq!(Value::Number(repeated), n("1.000000000000015"));
+    assert_eq!(exact, n("1.0000000000000150000000000001"));
+    assert_ne!(Value::Number(repeated), exact);
+
+    let x2 = num("1.000000000000004");
+    let pow_pos = x2.pow(num("2")).unwrap();
+    let inverted = num("1").checked_div(pow_pos).unwrap();
+    let pow_neg = value("pow", &[n("1.000000000000004"), n("-2")]);
+    assert_eq!(Value::Number(inverted), n("0.9999999999999920000000000001"));
+    assert_eq!(pow_neg, n("0.999999999999992"));
+    assert_ne!(Value::Number(inverted), pow_neg);
+
+    assert_eq!(value("pow", &[n("0.5"), n("29")]), n("0.0000000018626451492309570312"));
+    assert_eq!(value("pow", &[n("2"), n("-29")]), n("0.0000000018626451492309570312"));
+}
+
+#[test]
+fn ac_blt_18_pow_arithmetic_errors() {
+    assert_eq!(code("pow", &[n("2"), n("1.5")]), Code::ArithmeticError);
+    assert_eq!(code("pow", &[n("2"), n("1001")]), Code::ArithmeticError);
+    assert_eq!(code("pow", &[n("2"), n("-1001")]), Code::ArithmeticError);
+    assert_eq!(code("pow", &[n("0"), n("-1")]), Code::ArithmeticError);
+    assert_eq!(code("pow", &[n("10"), n("29")]), Code::ArithmeticError);
+    assert_eq!(code("pow", &[n("2"), n("1000")]), Code::ArithmeticError);
+    // Finding 1 regression: n_val.abs() panic on i64::MIN (-2^63).
+    assert_eq!(code("pow", &[n("2"), n("-9223372036854775808")]), Code::ArithmeticError);
+}
+
+#[test]
+fn ac_blt_19_pow_fuel() {
+    assert_eq!(call("pow", &[n("2"), n("0")]).expect("ok").fuel, 1);
+    assert_eq!(call("pow", &[n("2"), n("1")]).expect("ok").fuel, 2);
+    assert_eq!(call("pow", &[n("2"), n("2")]).expect("ok").fuel, 3);
+    assert_eq!(call("pow", &[n("1"), n("1000")]).expect("ok").fuel, 11);
+    assert_eq!(call("pow", &[n("1"), n("-1000")]).expect("ok").fuel, 11);
+}
+
+#[test]
 fn ac_blt_11_clamp_bounds_and_contains_records() {
     assert_eq!(code("clamp", &[n("5"), n("10"), n("1")]), Code::ArithmeticError);
     assert_eq!(value("clamp", &[n("5"), n("1"), n("10")]), n("5"));
@@ -411,6 +464,7 @@ fn arithmetic_errors_name_the_operation() {
     // Each completes "`Goal` tried to {op}, which has no answer." (reference/90).
     assert_eq!(op("range", &[n("-1")]), "make a list of -1 numbers with range");
     assert_eq!(op("clamp", &[n("5"), n("10"), n("1")]), "clamp 5 between 10 and 1");
+    assert_eq!(op("pow", &[n("2"), n("1.5")]), "raise 2 to the power 1.5");
     assert_eq!(
         op("random", &[n("1.5"), n("0")]),
         "use 1.5 as a random seed (a whole number from -2^63 to 2^63 - 1)"

@@ -8,6 +8,21 @@ use velme_synth::{
 };
 use velme_test_support::{goal_id, program, read, repo};
 
+#[test]
+fn notation_pow_lowers_to_builtin_call_under_request_0_2() {
+    let node = body("return pow(x, y)", "N");
+    assert_eq!(
+        node,
+        Node::Builtin {
+            name: "pow".to_owned(),
+            args: vec![
+                Node::Input { name: "x".to_owned() },
+                Node::Input { name: "y".to_owned() },
+            ],
+        }
+    );
+}
+
 const SOURCE: &str = include_str!("notation/goals.velme");
 
 fn lowered(text: &str, goal: &str) -> Result<notation::Lowered, notation::Rejected> {

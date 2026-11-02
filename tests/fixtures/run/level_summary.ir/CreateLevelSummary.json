@@ -1,6 +1,6 @@
 {
   "ir_version": "0.2",
-  "builtins_version": "0.1",
+  "builtins_version": "0.2",
   "goal": "CreateLevelSummary",
   "types": {"Level": {"fields": [["enemy_count", {"t": "Number"}], ["treasure_count", {"t": "Number"}], ["base_score", {"t": "Number"}]]}, "LevelSummary": {"fields": [["score", {"t": "Number"}], ["difficulty", {"t": "Text"}], ["reward", {"t": "Number"}]]}},
   "domains": {},

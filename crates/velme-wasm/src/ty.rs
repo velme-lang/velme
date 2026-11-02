@@ -432,6 +432,7 @@ impl<'a> Typer<'a> {
                     | Function::Ceil
                     | Function::Round
                     | Function::Clamp
+                    | Function::Pow
                     | Function::Random => Ty::Number,
                     Function::IsEmpty | Function::Contains => Ty::Boolean,
                     Function::Maximum | Function::Minimum => Ty::Number.optional(),

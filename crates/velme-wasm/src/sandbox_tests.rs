@@ -34,11 +34,11 @@ use crate::{
 };
 
 /// A watchdog that never stops the run.
-fn unwatched() -> Interrupt {
+pub(super) fn unwatched() -> Interrupt {
     Interrupt::new(|| false)
 }
 
-fn sandbox() -> Sandbox {
+pub(super) fn sandbox() -> Sandbox {
     Sandbox::new(None).expect("a sandbox")
 }
 
@@ -96,7 +96,7 @@ fn num(n: i64) -> Value {
     Value::Number(n.into())
 }
 
-fn run(module: &Module, inputs: &[Value], limits: Limits) -> Run {
+pub(super) fn run(module: &Module, inputs: &[Value], limits: Limits) -> Run {
     sandbox().load(module).expect("loads").run(inputs, limits, &unwatched())
 }
 
@@ -576,7 +576,7 @@ fn ac_sec_01_only_the_whitelist_is_linked() {
         sandbox.load_bytes(b"\0asm", &like),
         Err(LoadError::Internal(_))
     ));
-    assert_eq!(Import::ALL.len(), 14);
+    assert_eq!(Import::ALL.len(), 15);
 }
 
 #[test]
@@ -838,7 +838,7 @@ fn r_blt_07_a_failure_names_the_items_being_visited() {
 }
 
 /// The IR and source of a goal `G` as [`goal`] makes them, for the interpreter.
-fn goal_ir(signature: &str, body: &str) -> velme_ir::ValidIr {
+pub(super) fn goal_ir(signature: &str, body: &str) -> velme_ir::ValidIr {
     let (params, output) = signature.split_once("->").expect("a signature");
     let source = format!(
         "language: velme/0.2\n\ngoal G({}) -> {}:\n    plan: \"x\"\n",
@@ -1426,6 +1426,7 @@ fn the_fuel_backstop_covers_every_runtime_function() {
             | Rt::NumCmp
             | Rt::Concat
             | Rt::ToText
+            | Rt::Pow
             | Rt::Alloc => {}
         }
     }

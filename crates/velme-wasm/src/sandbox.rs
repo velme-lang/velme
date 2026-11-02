@@ -331,8 +331,9 @@ fn to_text(mut caller: Caller<'_, Host>, lo: i64, hi: i64, ptr: i32) -> wasmtime
     }
 }
 
-/// The linker of the whitelist (`runtime/31` §5, R-SBX-09): these fourteen functions and nothing else, no WASI
-/// (R-SBX-10). Each does a constant amount of work (D-112), with the `velme-builtins` code the interpreter calls.
+/// The linker of the whitelist (`runtime/31` §5, R-SBX-09): these fifteen functions and nothing else, no WASI
+/// (R-SBX-10). Each does a constant amount of work (D-112), except `pow`, bounded (D-168), with the `velme-builtins` code
+/// the interpreter calls.
 fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
     let mut linker = Linker::new(engine);
     for import in Import::ALL {
@@ -369,6 +370,14 @@ fn linker(engine: &Engine) -> wasmtime::Result<Linker<Host>> {
                 move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64, e: i64, f: i64| {
                     called(&mut caller, import);
                     numeric(Function::Clamp, &[number(a, b)?, number(c, d)?, number(e, f)?])
+                },
+            ),
+            Import::Pow => linker.func_wrap(
+                module,
+                name,
+                move |mut caller: Caller<'_, Host>, a: i64, b: i64, c: i64, d: i64| {
+                    called(&mut caller, import);
+                    numeric(Function::Pow, &[number(a, b)?, number(c, d)?])
                 },
             ),
             Import::Random => linker.func_wrap(
