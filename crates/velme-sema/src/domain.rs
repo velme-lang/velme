@@ -81,8 +81,22 @@ pub(crate) fn members(
     out
 }
 
+/// The `VL0204` of the literal shown as `shown` outside the domain `domain` for `reason` (R-TYP-31).
+pub fn not_a_member(span: Span, shown: &str, domain: &str, reason: &str) -> Diagnostic {
+    let (message, help) = not_a_member_text(shown, domain, reason);
+    Diagnostic::new(Code::TypeMismatch, span, format!("{message}.")).with_help(help)
+}
+
+/// The message, without its closing period, and the help of [`not_a_member`], for a caller that words its own finding.
+pub fn not_a_member_text(shown: &str, domain: &str, reason: &str) -> (String, String) {
+    (
+        format!("`{shown}` isn't a valid `{domain}`: {reason}"),
+        format!("use a value `{domain}` allows"),
+    )
+}
+
 /// The exact value of a Number literal's text (leading zeros allowed), if it is one.
-pub(crate) fn number(text: &str) -> Option<Number> {
+pub fn number(text: &str) -> Option<Number> {
     let (sign, digits) = text.strip_prefix('-').map_or(("", text), |rest| ("-", rest));
     let trimmed = digits.trim_start_matches('0');
     let digits = if trimmed.is_empty() || trimmed.starts_with('.') {

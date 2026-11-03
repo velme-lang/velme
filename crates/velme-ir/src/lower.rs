@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 
-use velme_builtins::Number;
 use velme_diagnostics::Diagnostic;
 use velme_sema::hir::{self, Expr, ExprKind, GoalId, Program, Type as HirType};
 
@@ -151,15 +150,7 @@ pub(crate) fn domain_entry(program: &Program, domain: &hir::DomainType) -> Optio
 
 /// A `NUMBER` literal's value in its R-TYP-08 rendering, so `0820.0` and `820` are the same source.
 pub(crate) fn number(text: &str) -> Option<String> {
-    let (sign, digits) = text.strip_prefix('-').map_or(("", text), |rest| ("-", rest));
-    // JSON, which `Number::parse` reads, has no leading zeros.
-    let digits = digits.trim_start_matches('0');
-    let zero = if digits.is_empty() || digits.starts_with('.') {
-        "0"
-    } else {
-        ""
-    };
-    Number::parse(&format!("{sign}{zero}{digits}")).map(|n| n.to_string())
+    velme_sema::number(text).map(|n| n.to_string())
 }
 
 /// The arguments of one goal's calls being lowered. `None` anywhere below means HIR that [`velme_sema::analyze`]

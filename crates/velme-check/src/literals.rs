@@ -8,8 +8,8 @@
 use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Evaluator, Limits};
 use velme_ir::CheckScope;
-use velme_sema::hir::{Budget, DomainId, DomainRule, Expr, ExprKind, Goal, GoalKind, Program, Type, UnaryOp};
-use velme_sema::reissued;
+use velme_sema::hir::{DomainId, DomainRule, Expr, ExprKind, Goal, Program, Type, UnaryOp};
+use velme_sema::{not_a_member, reissued};
 
 use crate::lower::lower_literal;
 use crate::membership::{Membership, Refused};
@@ -62,18 +62,7 @@ pub fn check_literals(program: &Program, source: &str) -> Vec<Diagnostic> {
             continue;
         };
         // A condition belongs to no goal: its constants are walked as a goal of no inputs, as the lowering does.
-        let holder = Goal {
-            name: declared.name.clone(),
-            params: Vec::new(),
-            output: Type::Boolean,
-            kind: GoalKind::Leaf,
-            budget: Budget::SYSTEM,
-            bindings: Vec::new(),
-            plan: None,
-            checks: Vec::new(),
-            examples: Vec::new(),
-            span: declared.span,
-        };
+        let holder = Goal::condition_holder(&declared.name, Type::Boolean, declared.span);
         let scope = match CheckScope::new(program, &holder) {
             Ok(scope) => scope,
             Err(diagnostic) => return vec![diagnostic],
@@ -185,21 +174,10 @@ impl Pass<'_, '_> {
         };
         match self.membership.member(id, &value) {
             Ok(()) => None,
-            Err(Refused::Outside(outside)) => Some(
-                outside.noted(
-                    Diagnostic::new(
-                        Code::TypeMismatch,
-                        e.span,
-                        format!(
-                            "`{}` isn't a valid `{}`: {}.",
-                            self.source.get(e.span.start..e.span.end).unwrap_or("?"),
-                            outside.domain,
-                            outside.reason
-                        ),
-                    )
-                    .with_help(format!("use a value `{}` allows", outside.domain)),
-                ),
-            ),
+            Err(Refused::Outside(outside)) => {
+                let shown = self.source.get(e.span.start..e.span.end).unwrap_or("?");
+                Some(outside.noted(not_a_member(e.span, shown, &outside.domain, &outside.reason)))
+            }
             Err(Refused::Stopped(failure)) => Some(failure.diagnostic(&self.goal.name, e.span)),
         }
     }

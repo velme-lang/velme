@@ -223,6 +223,25 @@ impl Type {
     }
 }
 
+impl Goal {
+    /// The goal a domain condition is walked as: no inputs, calls, checks or examples, `name` and `span` of the
+    /// declaration, so a finding lands there (R-CHK-13).
+    pub fn condition_holder(name: &str, output: Type, span: Span) -> Goal {
+        Goal {
+            name: name.to_owned(),
+            params: Vec::new(),
+            output,
+            kind: GoalKind::Leaf,
+            budget: Budget::SYSTEM,
+            bindings: Vec::new(),
+            plan: None,
+            checks: Vec::new(),
+            examples: Vec::new(),
+            span,
+        }
+    }
+}
+
 /// `goal Name(…) -> T:` (`language/12` §2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Goal {
