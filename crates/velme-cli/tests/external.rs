@@ -819,7 +819,8 @@ fn ac_synth_73_notation_is_the_default_reply_format() {
         explicit_text.contains("VL0406")
             && explicit_text.contains("it answers only in `ir-json`")
             && explicit_text.contains("and velme.toml asks for `reply_format = \"notation\"`")
-            && explicit_text.contains("remove `reply_format` from `[synthesis]`, or use a backend that lists it"),
+            && explicit_text
+                .contains("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it"),
         "{explicit_text}"
     );
 

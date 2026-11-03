@@ -1,19 +1,23 @@
 //! Full membership of source literals in domain positions (`language/11` R-TYP-31): after the static pass of
 //! `velme-sema`, which knows only closed sets and simple constraints, each constant a call argument or an example puts
 //! where a domain is expected — at the top or nested in its records, lists and present optionals — is tested against
-//! the domain's complete condition, each on a fresh system budget. A literal of a check builds an underlying record,
-//! never a domain value, so checks are not held to it (R-TYP-28).
+//! the domain's complete condition, each on a fresh system budget. The constant record and list literals inside a
+//! `check` item or a domain condition are positions for their domain-typed fields and items too (D-171); a record
+//! domain's constructor there still builds its underlying record and asserts no membership of its own (R-TYP-28).
 
 use velme_diagnostics::{Code, Diagnostic};
 use velme_interp::{Evaluator, Limits};
 use velme_ir::CheckScope;
-use velme_sema::hir::{DomainId, Expr, ExprKind, Goal, Program, Type, UnaryOp};
+use velme_sema::hir::{Budget, DomainId, DomainRule, Expr, ExprKind, Goal, GoalKind, Program, Type, UnaryOp};
+use velme_sema::reissued;
 
 use crate::lower::lower_literal;
 use crate::membership::{Membership, Refused};
+use crate::run::children;
 
 /// The `VL0204` of every source literal of `program`, whose source is `source`, outside the domain its position expects,
-/// in source order; a budget or internal failure keeps its code. `program` has no errors.
+/// in source order (`VL0209` inside a domain condition); a budget or internal failure keeps its code. `program` has no
+/// errors.
 pub fn check_literals(program: &Program, source: &str) -> Vec<Diagnostic> {
     if program.domains.is_empty() {
         return Vec::new();
@@ -49,6 +53,41 @@ pub fn check_literals(program: &Program, source: &str) -> Vec<Diagnostic> {
             }
             pass.position(&example.expected, &goal.output, &mut found);
         }
+        for check in &goal.checks {
+            pass.literals_in(check, &mut found);
+        }
+    }
+    for declared in &program.domains {
+        let DomainRule::Where { condition } = &declared.rule else {
+            continue;
+        };
+        // A condition belongs to no goal: its constants are walked as a goal of no inputs, as the lowering does.
+        let holder = Goal {
+            name: declared.name.clone(),
+            params: Vec::new(),
+            output: Type::Boolean,
+            kind: GoalKind::Leaf,
+            budget: Budget::SYSTEM,
+            bindings: Vec::new(),
+            plan: None,
+            checks: Vec::new(),
+            examples: Vec::new(),
+            span: declared.span,
+        };
+        let scope = match CheckScope::new(program, &holder) {
+            Ok(scope) => scope,
+            Err(diagnostic) => return vec![diagnostic],
+        };
+        let pass = Pass {
+            program,
+            source,
+            goal: &holder,
+            scope: &scope,
+            membership: &membership,
+        };
+        let mut inside = Vec::new();
+        pass.literals_in(condition, &mut inside);
+        found.extend(inside.into_iter().map(|d| reissued(&declared.name, d)));
     }
     velme_diagnostics::sort(&mut found);
     found
@@ -63,6 +102,40 @@ struct Pass<'a, 'p> {
 }
 
 impl Pass<'_, '_> {
+    /// The record and list literals inside `e`, a check item or a domain condition: each field and item that is a
+    /// constant is a position at its declared or list element type (D-171), and anything else is searched in turn.
+    fn literals_in(&self, e: &Expr, found: &mut Vec<Diagnostic>) {
+        match (&e.kind, &e.ty) {
+            (ExprKind::Record { record, fields }, _) => {
+                let Some(record) = self.program.record(*record) else {
+                    return;
+                };
+                for (def, field) in record.fields.iter().zip(fields) {
+                    self.part(field, &def.ty, found);
+                }
+            }
+            (ExprKind::List { items }, Type::List(element)) => {
+                for item in items {
+                    self.part(item, element, found);
+                }
+            }
+            _ => {
+                for child in children(e) {
+                    self.literals_in(child, found);
+                }
+            }
+        }
+    }
+
+    /// A part of a literal in a check or condition, expected as `ty`: tested if it is a constant, else searched.
+    fn part(&self, e: &Expr, ty: &Type, found: &mut Vec<Diagnostic>) {
+        if constant(e) {
+            self.position(e, ty, found);
+        } else {
+            self.literals_in(e, found);
+        }
+    }
+
     /// `e` where a `ty` is expected: tested at a domain, then through its base; inside a record, list or present
     /// optional literal, each part at its own type. Anything but a constant is left alone: a path's value is a member
     /// by its producer's output check (R-RUN-26).

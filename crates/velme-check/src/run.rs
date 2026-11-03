@@ -658,7 +658,7 @@ impl<'r> Report<'r> {
 }
 
 /// The direct subexpressions of `e`, in source order.
-fn children(e: &Expr) -> Vec<&Expr> {
+pub(crate) fn children(e: &Expr) -> Vec<&Expr> {
     match &e.kind {
         ExprKind::Number { .. }
         | ExprKind::Text { .. }

@@ -612,7 +612,7 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
         diagnostic
             .help
             .as_deref()
-            .is_some_and(|h| h.contains("remove `reply_format`"))
+            .is_some_and(|h| h.contains("set `reply_format = \"ir-json\"`"))
     );
     assert_eq!(
         fs::read_to_string(&log).expect("log").trim(),
@@ -668,7 +668,7 @@ fn ac_synth_57_a_backend_that_does_not_list_the_format_is_never_asked_for_it() {
     );
     assert_eq!(
         exp_diag.help.as_deref(),
-        Some("remove `reply_format` from `[synthesis]`, or use a backend that lists it")
+        Some("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
     );
 
     // A list that holds only other names, or only `ir-json`, lacks it too; unknown names are ignored.
@@ -711,4 +711,22 @@ fn ac_synth_63_an_old_only_backend_is_not_used() {
     let sent = mock.requests();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].path, "/v2/describe");
+}
+
+/// Gate F2: the explicit-format help names what works. "Remove `reply_format`" selects the default `notation` again
+/// (D-169), which is the same `VL0406`.
+#[test]
+fn gate_f2_the_explicit_format_help_does_not_say_to_remove_the_setting() {
+    let error = ProviderError::FormatUnsupported {
+        backend: "b".to_owned(),
+        offered: vec!["ir-json"],
+        asked: "notation",
+        explicit: true,
+    };
+    let help = velme_synth::provider_diagnostic(&error, "b", "Double", Default::default()).help;
+    let help = help.expect("help");
+    assert!(
+        help.contains("set `reply_format = \"ir-json\"`") && !help.contains("remove"),
+        "{help}"
+    );
 }

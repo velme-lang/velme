@@ -13,7 +13,7 @@ use tokio::runtime::Builder;
 use tokio::task::JoinSet;
 use velme_builtins::Value;
 use velme_builtins::limits::MAX_WALL_CLOCK_MS;
-use velme_check::{Membership, Part, Refused};
+use velme_check::{Membership, Outside, Part, Refused};
 use velme_diagnostics::{Code, Diagnostic, Span};
 use velme_interp::{Budget, Error, Failure, Interrupt, Spent};
 use velme_ir::Fingerprint;
@@ -320,6 +320,8 @@ struct Shared {
 /// Runs the goal `goal` of `program`, whose source is `source`, on `inputs`, with every locked artifact it needs in
 /// `registry` (`runtime/30` §4): its calls wave by wave, then its body, then its checks. Bodies are evaluated on at most
 /// `options.jobs` threads at once.
+/// `program` must have passed `velme_synth::domain_passes` after analysis: an example input outside its domain is
+/// `VL0607`, a Velme bug, only because that pass refused it first (R-RUN-28).
 pub fn run_goal(
     program: &Program,
     goal: GoalId,
@@ -425,12 +427,18 @@ fn stop_timed_out(shared: &Shared, run: GoalRun, span: Span, started: Duration) 
 /// budget failure keeps its code either way (R-RUN-28).
 fn entry_refusal(shared: &Shared, target: &Goal, param: usize, refused: &Refused) -> Diagnostic {
     match refused {
-        Refused::Outside(outside) if shared.unchecked.is_some() => Diagnostic::internal_error().with_note(format!(
-            "an input verification ran, `{}`, is outside `{}`: {}",
-            outside.path, outside.domain, outside.reason
-        )),
+        Refused::Outside(outside) if shared.unchecked.is_some() => generated_outside(outside),
         _ => refused.input_diagnostic(target, param),
     }
+}
+
+/// `VL0607` for an input that verification generated or took from an example, which is a member by construction, yet
+/// the walk found `outside` its domain: the generator and the walk disagree (R-RUN-28).
+pub(crate) fn generated_outside(outside: &Outside) -> Diagnostic {
+    Diagnostic::internal_error().with_note(format!(
+        "an input verification ran, `{}`, is outside `{}`: {}",
+        outside.path, outside.domain, outside.reason
+    ))
 }
 
 /// One invocation, boxed because a goal's calls are invocations too; `entry` for the requested goal's, whose inputs

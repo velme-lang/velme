@@ -9,7 +9,7 @@ use velme_diagnostics::{Code, Diagnostic};
 use velme_ir::{Fingerprint, ValidIr, decode_str, wired_goal};
 use velme_sema::hir::{DomainId, Program, Type};
 use velme_synth::{
-    ChildRunner, PROBE_DRAWS, Probe, TestInput, TestInputs, Verdict, goal_inputs, probe, probe_domain,
+    ChildRunner, PROBE_DRAWS, Probe, TestInput, TestInputs, Verdict, domain_passes, goal_inputs, probe, probe_domain,
     probe_domain_within, test_inputs, test_inputs_within, value_sets, verify,
 };
 use velme_test_support::{goal_id, program, valid_ir};
@@ -1228,4 +1228,44 @@ fn ac_synth_64_f5_an_oversized_value_keeps_its_position_and_its_input_is_skipped
     assert_eq!(b.len(), 2, "{:?}", b.iter().map(|v| v.get(..8)).collect::<Vec<_>>());
     assert!(!b.contains(&"oversized".to_owned()));
     assert_eq!(s.len(), 1);
+}
+
+/// Gate F6, F3: `domain_passes` is the one sequence every front end runs: literals first, the probe only if they found
+/// no error. A record-domain constructor in a check passes both.
+#[test]
+fn gate_f6_domain_passes_run_literals_then_the_probe() {
+    let with = |decls: &str, example: &str| {
+        format!(
+            "language: velme/0.2\n\n{decls}\n\ngoal G(n: Rare) -> Number:\n    plan: \"Use it.\"\n    examples:\n        - G({example}) == 1\n"
+        )
+    };
+    let rare_decl = |k: u32| {
+        format!(
+            "type Rare = Number where value >= 1 and value <= 64 and value is whole and (value <= {k} or value > 1000)"
+        )
+    };
+    let codes = |src: &str| {
+        domain_passes(&program(src), src)
+            .iter()
+            .map(|d| d.code)
+            .collect::<Vec<_>>()
+    };
+    // A residual violation in an example is reported, and the scarce domain isn't probed after it.
+    assert_eq!(codes(&with(&rare_decl(4), "10")), [Code::TypeMismatch]);
+    // Without it, the probe runs.
+    assert_eq!(codes(&with(&rare_decl(4), "3")), [Code::TooFewValidValues]);
+    assert_eq!(codes(&with(&rare_decl(6), "3")), Vec::<Code>::new());
+
+    let constructor = "language: velme/0.2
+
+type Pair where value.low <= value.high:
+    low: Number
+    high: Number
+
+goal Swap(p: Pair) -> Pair:
+    plan: \"Keep it.\"
+    check:
+        - result != Pair(low: 3, high: 2)
+";
+    assert_eq!(codes(constructor), Vec::<Code>::new());
 }

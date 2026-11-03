@@ -21,37 +21,6 @@ use crate::locked::LockedGoal;
 use crate::registry::Registry;
 use crate::sched::{CheckRun, Options};
 
-/// Runs the leaf goal `goal` of `program`, whose source is `source`, on `inputs` with its locked IR, then evaluates its
-/// checks on the invocation. Its value if every check holds; otherwise the failure, or every failed check in source
-/// order (R-CHK-09).
-pub fn run_leaf(
-    program: &Program,
-    goal: GoalId,
-    source: &str,
-    locked: &LockedGoal,
-    inputs: Vec<Value>,
-) -> Result<Value, Vec<Diagnostic>> {
-    let target = program
-        .goals
-        .get(goal.0)
-        .ok_or_else(|| vec![Diagnostic::internal_error()])?;
-    if target.kind != GoalKind::Leaf {
-        return Err(vec![Diagnostic::internal_error()]);
-    }
-    let membership = Arc::new(Membership::new(program, source).map_err(|d| vec![d])?);
-    // The requested goal's inputs are walked first, on its own budget (R-RUN-28).
-    let (walked, spent) = membership.inputs(target, &inputs, Budget::new(limits(target)));
-    if let Err((param, refused)) = walked {
-        return Err(vec![refused.input_diagnostic(target, param)]);
-    }
-    let progress = Progress {
-        spent,
-        membership: Some(membership),
-        ..Progress::default()
-    };
-    run_body(program, goal, source, locked, inputs, Vec::new(), progress, true).result
-}
-
 /// The limits of one invocation of `goal`: its effective `max_fuel` and `max_memory` (R-RUN-16).
 pub(crate) fn limits(goal: &Goal) -> Limits {
     Limits {
@@ -202,6 +171,8 @@ pub struct Tested {
 /// (R-GOAL-22, `compiler/22` §6, `tooling/40` R-CLI-04, D-107): every goal it calls runs from `registry` too. Every failing
 /// example is reported, each with its inputs, expected and received values, in source order; the generated inputs run only
 /// when the examples all pass, and stop at the first failure.
+/// `program` must have passed `velme_synth::domain_passes` after analysis: an example input outside its domain is
+/// `VL0607`, a Velme bug, only because that pass refused it first (R-RUN-28).
 pub fn test_goal(
     program: &Program,
     goal: GoalId,

@@ -164,6 +164,11 @@ literals) with the HIR evaluator; false or a value error is `VL0204` with the do
 literals are fully constant by `language/10` §4's literal grammar, so this is a source contract check, not IR residual
 validation or a run-time cast. Use fresh system budgets per literal; budget/internal failures keep their codes.
 This makes source literal arguments members before inter-goal execution, without a call-boundary check.
+The constant record and list literals inside a `check` item or a domain condition are domain positions for their
+domain-typed fields and items too (D-171): both passes apply, reported as `VL0204`, or `VL0209` inside a condition. A
+record-domain constructor there still yields its underlying record and asserts no membership of its own (R-TYP-28).
+A list item that is a direct value of a different domain than the list's element is `VL0204` ("Expected Age, but got
+Score."), never widened to the base by a join (R-TYP-30, D-163).
 The source expected-type traversal supplies each constant to the predicate evaluator; it does not invoke the
 runtime membership walk (R-RUN-27).
 

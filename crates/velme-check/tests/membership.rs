@@ -392,3 +392,148 @@ goal Span(n: Number) -> Pair:
     );
     assert_eq!(reason("Span", pair(1, 1)), None);
 }
+
+const GATE: &str = "language: velme/0.2
+
+type Even = Number where floor(value / 2) * 2 == value
+type Age = Number where value >= 0 and value <= 120
+type Person:
+    age: Age
+    n: Even
+    ns: List<Even>
+type Pair where Person(age: 1, n: {pair_n}, ns: [2]).age == 1:
+    a: Number
+
+goal Make(x: Number) -> Person:
+    plan: \"A person.\"
+    check:
+{check}
+";
+
+fn gate(pair_n: i64, check: &str) -> Vec<velme_diagnostics::Diagnostic> {
+    let text = GATE.replace("{pair_n}", &pair_n.to_string()).replace("{check}", check);
+    let program = program(&text);
+    check_literals(&program, &text)
+}
+
+/// Gate F3 (D-171): the constant fields and items of a record or list literal in a check meet the domain's full
+/// condition, not only its simple constraints; a non-constant sibling doesn't hide them.
+#[test]
+fn gate_f3_check_literals_meet_the_full_condition() {
+    assert_eq!(
+        gate(2, "        - result != Person(age: 5, n: 4, ns: [2, 6])"),
+        Vec::new()
+    );
+    for (check, bad) in [
+        ("        - result != Person(age: 5, n: 3, ns: [])", "3"),
+        ("        - result != Person(age: 5, n: x, ns: [2, 5])", "5"),
+        ("        - result != Person(age: 5, n: 3, ns: [x])", "3"),
+    ] {
+        let diags = gate(2, check);
+        assert_eq!(diags.len(), 1, "{check}: {diags:#?}");
+        assert_eq!(diags[0].code, Code::TypeMismatch);
+        assert!(
+            diags[0].message.starts_with(&format!("`{bad}` isn\'t a valid `Even`")),
+            "{}",
+            diags[0].message
+        );
+    }
+    // Several offenders are all reported, in source order.
+    let diags = gate(2, "        - result != Person(age: 5, n: 3, ns: [1])");
+    assert_eq!(diags.len(), 2, "{diags:#?}");
+}
+
+/// Gate F3 (D-171): the same in a domain condition is `VL0209`, naming the domain.
+#[test]
+fn gate_f3_condition_literals_meet_the_full_condition() {
+    let diags = gate(3, "        - result.age == result.age");
+    assert_eq!(diags.len(), 1, "{diags:#?}");
+    assert_eq!(diags[0].code, Code::InvalidDomain);
+    assert!(
+        diags[0]
+            .message
+            .starts_with("Domain `Pair` is invalid: its condition has a problem: `3` isn\'t a valid `Even`"),
+        "{}",
+        diags[0].message
+    );
+}
+
+/// Gate F3 (R-TYP-28): a record-domain constructor in a check yields its underlying record and asserts no membership of
+/// its own, though its fields are still held to theirs.
+#[test]
+fn gate_f3_a_record_domain_constructor_in_a_check_asserts_no_membership() {
+    let text = "language: velme/0.2
+
+type Even = Number where floor(value / 2) * 2 == value
+type Pair where value.low <= value.high and value.low == value.high - 2:
+    low: Number
+    high: Number
+type Holder where value.n == value.n:
+    n: Even
+
+goal Swap(p: Pair) -> Pair:
+    plan: \"Keep it.\"
+    check:
+        - result != Pair(low: 3, high: 2)
+        - Holder(n: 4).n == 4
+";
+    let program = program(text);
+    assert_eq!(check_literals(&program, text), Vec::new());
+    let odd = text.replace("Holder(n: 4)", "Holder(n: 3)");
+    let program = velme_test_support::program(&odd);
+    let diags = check_literals(&program, &odd);
+    assert_eq!(diags.len(), 1, "{diags:#?}");
+    assert!(
+        diags[0].message.starts_with("`3` isn\'t a valid `Even`"),
+        "{}",
+        diags[0].message
+    );
+}
+
+/// Gate F1: whatever sema accepts lowers. For every accepted golden and example, every goal's checks and every
+/// domain's condition lower and validate, so `velme check`\'s "valid" can\'t precede a VL0607 in `velme build`.
+#[allow(clippy::disallowed_methods)] // test-only fixture reads, as in tests/lower.rs
+#[test]
+fn gate_f1_sema_accepted_programs_lower() {
+    fn collect(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(&path, out);
+            } else if path.extension().is_some_and(|e| e == "velme") {
+                out.push(path);
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    collect(&root.join("tests/golden/sema/accept"), &mut files);
+    collect(&root.join("examples"), &mut files);
+    files.sort();
+    let mut lowered = 0;
+    for path in files {
+        let bytes = std::fs::read(&path).expect("readable");
+        let file = velme_sema::SourceFile::from_bytes(path.display().to_string(), bytes).expect("UTF-8");
+        let (program, diags) = velme_sema::analyze(&file);
+        let Some(program) = program.filter(|_| !diags.iter().any(velme_diagnostics::Diagnostic::is_error)) else {
+            continue;
+        };
+        let shown = path.display();
+        Membership::new(&program, &file.text).unwrap_or_else(|d| panic!("{shown}: {d:?}"));
+        for i in 0..program.goals.len() {
+            GoalChecks::new(&program, velme_sema::hir::GoalId(i), &file.text)
+                .unwrap_or_else(|d| panic!("{shown}: {d:?}"));
+        }
+        assert_eq!(
+            check_literals(&program, &file.text)
+                .iter()
+                .filter(|d| d.is_error())
+                .count(),
+            0,
+            "{shown}"
+        );
+        lowered += 1;
+    }
+    assert!(lowered >= 3, "the goldens and examples were found");
+}

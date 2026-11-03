@@ -12,7 +12,7 @@ use crate::budget::budget;
 use crate::domain;
 use crate::hir::{
     Binding, Constraints, DomainRule, DomainType, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type,
-    TypeId, Vars, assignable, compat, join, signature_output,
+    TypeId, Vars, assignable, compat, domain_mismatch, join, signature_output,
 };
 use crate::resolve::{Declared, DomainSource, Rule, Scope};
 
@@ -126,7 +126,7 @@ fn condition_of<'a>(
 }
 
 /// An error in domain `name`'s condition as `VL0209`, keeping its place, help and code (R-TYP-29, R-ERR-04).
-fn reissued(name: &str, d: Diagnostic) -> Diagnostic {
+pub fn reissued(name: &str, d: Diagnostic) -> Diagnostic {
     let reason = d.message.trim_end_matches('.');
     let mut chars = reason.chars();
     // A sentence's capital, not a standalone "I" ("I don't know …").
@@ -1136,6 +1136,17 @@ impl<'f, 'a> Body<'f, 'a> {
             _ => None,
         };
         let items: Vec<Expr> = items.iter().map(|item| item.check(self, element)).collect();
+        // D-163: an item of a different domain than the list's is `VL0204`, never widened away by the join below,
+        // as the IR validator would reject it (`hir::domain_mismatch`).
+        if let Some(element) = element
+            && items.iter().any(|item| domain_mismatch(&item.ty, element))
+        {
+            for item in items.iter().filter(|item| domain_mismatch(&item.ty, element)) {
+                let diag = self.mismatch(item, &[self.type_name(element)]);
+                self.diags.push(diag);
+            }
+            return (ExprKind::List { items }, Type::Error);
+        }
         if let Some(element) = element
             && items.iter().all(|item| compat(&item.ty, element))
         {

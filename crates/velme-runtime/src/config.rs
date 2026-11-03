@@ -160,6 +160,12 @@ impl ProjectConfig {
             "schema_in_prompt",
             &[("summary", SchemaInPrompt::Summary), ("full", SchemaInPrompt::Full)],
         )?;
+        if matches!(s.get("reply_format"), Some(toml::Value::String(text)) if text == "compact") {
+            let found = describe(&toml::Value::String("compact".to_owned()));
+            return Err(r
+                .bad("synthesis.reply_format", "one of ir-json or notation", &found)
+                .with_help("`compact` was removed in 0.2; remove the setting to use `notation`, or set `ir-json`."));
+        }
         config.reply_format = r.choice(
             &mut s,
             "synthesis",
@@ -496,6 +502,20 @@ mod tests {
 
     fn message(result: Result<impl std::fmt::Debug, Diagnostic>) -> String {
         result.expect_err("an error").message
+    }
+
+    /// Gate F8: `compact` gets the generic VL0902 wording plus migration help, like `velme/0.1` does (D-170).
+    #[test]
+    fn gate_f8_compact_reply_format_has_migration_help() {
+        let error =
+            ProjectConfig::parse("[synthesis]\nreply_format = \"compact\"\n", "velme.toml").expect_err("removed");
+        assert_eq!(error.code, velme_diagnostics::Code::InvalidInput);
+        assert!(error.message.contains("one of ir-json or notation"), "{error:?}");
+        let help = error.help.as_deref().unwrap_or_default();
+        assert!(help.contains("`compact` was removed") && help.contains("`notation`") && help.contains("`ir-json`"));
+        // Another unknown word keeps the plain message.
+        let other = ProjectConfig::parse("[synthesis]\nreply_format = \"xml\"\n", "velme.toml").expect_err("unknown");
+        assert_eq!(other.help, None);
     }
 
     #[test]
