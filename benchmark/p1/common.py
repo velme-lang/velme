@@ -55,6 +55,11 @@ def load_module(program, name):
     """Load `<program>/<name>.py`; its own folder is on sys.path while it runs, so it can import its neighbours."""
     path = program_dir(program) / f"{name}.py"
     folder = str(program_dir(program))
+    # Neighbours another program's module imported (its `reference`) would otherwise shadow this program's.
+    for key, mod in list(sys.modules.items()):
+        file = getattr(mod, "__file__", None)
+        if file and (Path(file).parent / "program.json").is_file():
+            del sys.modules[key]
     sys.path.insert(0, folder)
     try:
         spec = importlib.util.spec_from_file_location(f"p1_{program}_{name}", path)

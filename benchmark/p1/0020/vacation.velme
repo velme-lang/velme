@@ -1,0 +1,49 @@
+language: velme/0.2
+
+# P1 benchmark, DMN TCK 0020 (vacation days). Plan text restates requirements.md section by section;
+# the examples are the same ones the Python baseline gets (examples.json).
+
+type Age = Number where value >= 16 and value <= 80 and value is whole
+type ServiceYears = Number where value >= 0 and value <= 60 and value is whole
+
+type Vacation:
+    base_vacation_days: Number
+    extra_days_case_1: Number
+    extra_days_case_2: Number
+    extra_days_case_3: Number
+    total_vacation_days: Number
+
+goal ExtraDaysCase1(age: Age, years_of_service: ServiceYears) -> Number:
+    plan: "5 if the age is under 18, or the age is 60 or over, or the years of service are 30 or more; otherwise 0."
+    examples:
+        - ExtraDaysCase1(16, 1) == 5
+        - ExtraDaysCase1(25, 5) == 0
+        - ExtraDaysCase1(44, 30) == 5
+
+goal ExtraDaysCase2(age: Age, years_of_service: ServiceYears) -> Number:
+    plan: "3 if the years of service are 30 or more, or the age is 60 or over; otherwise 0."
+    examples:
+        - ExtraDaysCase2(25, 20) == 0
+        - ExtraDaysCase2(60, 20) == 3
+
+goal ExtraDaysCase3(age: Age, years_of_service: ServiceYears) -> Number:
+    plan: "2 if the years of service are 15 or more but under 30, or the age is 45 or over; otherwise 0."
+    examples:
+        - ExtraDaysCase3(25, 20) == 2
+        - ExtraDaysCase3(50, 30) == 2
+        - ExtraDaysCase3(25, 5) == 0
+
+goal VacationDays(age: Age, years_of_service: ServiceYears) -> Vacation:
+    call:
+        case_1 = ExtraDaysCase1(age, years_of_service)
+        case_2 = ExtraDaysCase2(age, years_of_service)
+        case_3 = ExtraDaysCase3(age, years_of_service)
+    plan: "Return a Vacation with base vacation days 22, each extra days value above in its field, and total vacation days = 22 + the larger of extra days case 1 and extra days case 3 + extra days case 2."
+    examples:
+        - VacationDays(16, 1) == Vacation(base_vacation_days: 22, extra_days_case_1: 5, extra_days_case_2: 0, extra_days_case_3: 0, total_vacation_days: 27)
+        - VacationDays(25, 5) == Vacation(base_vacation_days: 22, extra_days_case_1: 0, extra_days_case_2: 0, extra_days_case_3: 0, total_vacation_days: 22)
+        - VacationDays(25, 20) == Vacation(base_vacation_days: 22, extra_days_case_1: 0, extra_days_case_2: 0, extra_days_case_3: 2, total_vacation_days: 24)
+        - VacationDays(44, 30) == Vacation(base_vacation_days: 22, extra_days_case_1: 5, extra_days_case_2: 3, extra_days_case_3: 0, total_vacation_days: 30)
+        - VacationDays(50, 20) == Vacation(base_vacation_days: 22, extra_days_case_1: 0, extra_days_case_2: 0, extra_days_case_3: 2, total_vacation_days: 24)
+        - VacationDays(50, 30) == Vacation(base_vacation_days: 22, extra_days_case_1: 5, extra_days_case_2: 3, extra_days_case_3: 2, total_vacation_days: 30)
+        - VacationDays(60, 20) == Vacation(base_vacation_days: 22, extra_days_case_1: 5, extra_days_case_2: 3, extra_days_case_3: 2, total_vacation_days: 30)

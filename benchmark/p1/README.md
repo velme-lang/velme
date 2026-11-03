@@ -23,6 +23,12 @@ Run order (from `benchmark/p1`, Python 3.13, `.venv`, docker only for a DMN orac
     python run_b2.py    --program 0087 --model ID --trials 5 --out runs
     python score.py runs                                # tables + runs/report.md; oracle.py --program 0087 --stop when done
 
+Programs: `0087` (loan origination), `0020` (vacation days), `0014` (loan comparison: lists, ranking, `pow`); the
+three are DMN, so each runs the steps above with its own `--program` (one `--start`/`--stop` serves them all).
+`0020` and `0014` get their `heldout/` (inputs, kinds, expected) only once the owner has read their requirements.md.
+`0014`'s outputs are lists of records, scored in order field by field (`compare: list`), payment and equity to 8
+places; its TCK case lists double-precision values, so its adapter's `tck_equal` compares the selftest to 8 places.
+
 Run layout: every runner takes the run root (`--out runs`) and writes
 `runs/<program>/<arm>/<model>/trial-N/{results.jsonl,meta.json}`. `meta.json` records program, arm, model, calls,
 `tokens_in`, `tokens_out`, `cache_read`, `cache_write`, wall time and `build_ok` (Velme build; B2's final pytest; B1:

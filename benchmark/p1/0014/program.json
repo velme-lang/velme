@@ -1,0 +1,22 @@
+{
+ "id": "0014",
+ "title": "DMN TCK 0014 loan comparison (ranking lender products)",
+ "goal": "RankProducts",
+ "source": "loan_comparison.velme",
+ "entry": "rank_products",
+ "inputs": ["requested_amt"],
+ "oracle": "drools",
+ "dmn": {
+  "model": ".cache/tck/TestCases/compliance-level-3/0014-loan-comparison/0014-loan-comparison.dmn",
+  "tests": ".cache/tck/TestCases/compliance-level-3/0014-loan-comparison/0014-loan-comparison-test-01.xml",
+  "outputs": {
+   "RankedProducts": "ranked_products"
+  }
+ },
+ "fields": [
+  {"name": "metrics_table", "compare": "list", "item": [{"name": "lender_name", "compare": "exact"}, {"name": "rate", "compare": "exact"}, {"name": "points", "compare": "exact"}, {"name": "fee", "compare": "exact"}, {"name": "loan_amt", "compare": "exact"}, {"name": "down_pmt_amt", "compare": "exact"}, {"name": "payment_amt", "compare": "decimals", "decimals": 8}, {"name": "equity_36_mo_pct", "compare": "decimals", "decimals": 8}]},
+  {"name": "rank_by_down_pmt", "compare": "list", "item": [{"name": "lender_name", "compare": "exact"}, {"name": "rate", "compare": "exact"}, {"name": "points", "compare": "exact"}, {"name": "fee", "compare": "exact"}, {"name": "loan_amt", "compare": "exact"}, {"name": "down_pmt_amt", "compare": "exact"}, {"name": "payment_amt", "compare": "decimals", "decimals": 8}, {"name": "equity_36_mo_pct", "compare": "decimals", "decimals": 8}]},
+  {"name": "rank_by_monthly_pmt", "compare": "list", "item": [{"name": "lender_name", "compare": "exact"}, {"name": "rate", "compare": "exact"}, {"name": "points", "compare": "exact"}, {"name": "fee", "compare": "exact"}, {"name": "loan_amt", "compare": "exact"}, {"name": "down_pmt_amt", "compare": "exact"}, {"name": "payment_amt", "compare": "decimals", "decimals": 8}, {"name": "equity_36_mo_pct", "compare": "decimals", "decimals": 8}]},
+  {"name": "rank_by_equity_pct", "compare": "list", "item": [{"name": "lender_name", "compare": "exact"}, {"name": "rate", "compare": "exact"}, {"name": "points", "compare": "exact"}, {"name": "fee", "compare": "exact"}, {"name": "loan_amt", "compare": "exact"}, {"name": "down_pmt_amt", "compare": "exact"}, {"name": "payment_amt", "compare": "decimals", "decimals": 8}, {"name": "equity_36_mo_pct", "compare": "decimals", "decimals": 8}]}
+ ]
+}

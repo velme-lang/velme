@@ -4,7 +4,8 @@
 
 A run root holds `<program>/<arm>/<model>/trial-N/` (the layout every runner writes). Cases pass when every descriptor
 field matches: Text and Boolean exactly, numbers as exact Decimal, except fields marked `decimals` (0087's installment
-to 8 places, the DMN engine's 34 significant digits against Velme's 28). A float anywhere in an output fails the case
+to 8 places, the DMN engine's 34 significant digits against Velme's 28), and fields marked `list`, a list of records
+compared in order, each record field by field as the descriptor's `item` says (0014's rankings). A float anywhere in an output fails the case
 and gets its own column. A failed Velme build counts as 0 held-out cases for that trial, not as a missing trial.
 
 Prints pooled metrics per model across all programs and trials, then per program, then the P1 go/no-go line per model;
@@ -23,6 +24,10 @@ def is_num(v):
 
 
 def field_ok(field, got, want):
+    if field.get("compare") == "list":  # a list of records, each compared field by field per `item`
+        return (isinstance(got, list) and len(got) == len(want)
+                and all(isinstance(g, dict) and all(f["name"] in g and field_ok(f, g[f["name"]], w[f["name"]]) for f in field["item"])
+                        for g, w in zip(got, want)))
     if isinstance(want, bool):
         return isinstance(got, bool) and got == want
     if isinstance(want, str):
