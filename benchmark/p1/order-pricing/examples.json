@@ -1,0 +1,9 @@
+[
+{"function": "price_order", "args": ["standard", 12.99, 3, "NONE"], "expected": {"volume_discount": 0.00, "tier_discount": 0.00, "coupon_discount": 0, "shipping": 6.95, "total": 45.92}},
+{"function": "price_order", "args": ["silver", 19.95, 12, "SAVE15"], "expected": {"volume_discount": 9.58, "tier_discount": 6.89, "coupon_discount": 33.44, "shipping": 0, "total": 189.49}},
+{"function": "price_order", "args": ["gold", 4.25, 60, "FLAT25"], "expected": {"volume_discount": 20.40, "tier_discount": 11.73, "coupon_discount": 25, "shipping": 0, "total": 197.87}},
+{"function": "price_order", "args": ["standard", 35.00, 2, "SAVE15"], "expected": {"volume_discount": 0.00, "tier_discount": 0.00, "coupon_discount": 0, "shipping": 6.95, "total": 76.95}},
+{"function": "price_order", "args": ["silver", 2.50, 250, "SAVE15"], "expected": {"volume_discount": 75.00, "tier_discount": 16.50, "coupon_discount": 40, "shipping": 0, "total": 493.50}},
+{"function": "price_order", "args": ["standard", 149.99, 15, "FLAT25"], "expected": {"volume_discount": 89.99, "tier_discount": 0.00, "coupon_discount": 25, "shipping": 0, "total": 2134.86}},
+{"function": "price_order", "args": ["gold", 9.99, 4, "NONE"], "expected": {"volume_discount": 0.00, "tier_discount": 2.00, "coupon_discount": 0, "shipping": 0, "total": 37.96}}
+]

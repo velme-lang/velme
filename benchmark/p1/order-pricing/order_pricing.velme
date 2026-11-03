@@ -1,0 +1,27 @@
+language: velme/0.2
+
+# P1 benchmark, our own program (order pricing). Plan text restates requirements.md; the examples are the same ones
+# the Python baseline gets (examples.json).
+
+type Tier = Text one of "standard", "silver", "gold"
+type UnitPrice = Number where value >= 0.5 and value <= 500 and (value * 100) is whole
+type Quantity = Number where value >= 1 and value <= 1000 and value is whole
+type Coupon = Text one of "NONE", "SAVE15", "FLAT25"
+
+type OrderPrice:
+    volume_discount: Number
+    tier_discount: Number
+    coupon_discount: Number
+    shipping: Number
+    total: Number
+
+goal PriceOrder(customer_tier: Tier, unit_price: UnitPrice, quantity: Quantity, coupon: Coupon) -> OrderPrice:
+    plan: "Price a single-line order. All amounts are exact decimals; rounded to the cent means to two decimal places, half up (2.345 becomes 2.35). In this order: (1) list subtotal = unit price * quantity. (2) volume discount = list subtotal * volume rate, rounded to the cent; the volume rate is 0% for quantity 1 to 9, 4% for 10 to 49, 8% for 50 to 199, 12% for 200 to 1000 (each range includes both ends). (3) tier discount = (list subtotal - volume discount) * tier rate, rounded to the cent; tier rate standard 0%, silver 3%, gold 5%. (4) discounted subtotal = list subtotal - volume discount - tier discount. (5) coupon discount, from the discounted subtotal: NONE gives 0; SAVE15 gives 15% of the discounted subtotal rounded to the cent, but at most 40.00, when the discounted subtotal is 100.00 or more, else 0; FLAT25 gives 25.00 when the discounted subtotal is 200.00 or more, else 0. (6) merchandise total = discounted subtotal - coupon discount. (7) shipping is 0 for a gold customer whatever the amount; for any other tier 0 when the merchandise total is 75.00 or more, else 6.95. (8) total = merchandise total + shipping. Return an OrderPrice with the volume discount, tier discount, coupon discount, shipping and total; a discount that does not apply is 0."
+    examples:
+        - PriceOrder("standard", 12.99, 3, "NONE") == OrderPrice(volume_discount: 0.00, tier_discount: 0.00, coupon_discount: 0, shipping: 6.95, total: 45.92)
+        - PriceOrder("silver", 19.95, 12, "SAVE15") == OrderPrice(volume_discount: 9.58, tier_discount: 6.89, coupon_discount: 33.44, shipping: 0, total: 189.49)
+        - PriceOrder("gold", 4.25, 60, "FLAT25") == OrderPrice(volume_discount: 20.40, tier_discount: 11.73, coupon_discount: 25, shipping: 0, total: 197.87)
+        - PriceOrder("standard", 35.00, 2, "SAVE15") == OrderPrice(volume_discount: 0.00, tier_discount: 0.00, coupon_discount: 0, shipping: 6.95, total: 76.95)
+        - PriceOrder("silver", 2.50, 250, "SAVE15") == OrderPrice(volume_discount: 75.00, tier_discount: 16.50, coupon_discount: 40, shipping: 0, total: 493.50)
+        - PriceOrder("standard", 149.99, 15, "FLAT25") == OrderPrice(volume_discount: 89.99, tier_discount: 0.00, coupon_discount: 25, shipping: 0, total: 2134.86)
+        - PriceOrder("gold", 9.99, 4, "NONE") == OrderPrice(volume_discount: 0.00, tier_discount: 2.00, coupon_discount: 0, shipping: 0, total: 37.96)

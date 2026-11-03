@@ -1,0 +1,26 @@
+language: velme/0.2
+
+# P1 benchmark, our own program (insurance quote). Plan text restates requirements.md; the examples are the same ones
+# the Python baseline gets (examples.json).
+
+type DriverAge = Number where value >= 17 and value <= 90 and value is whole
+type VehicleGroup = Text one of "A", "B", "C", "D"
+type Claims = Number where value >= 0 and value <= 5 and value is whole
+type Mileage = Number where value >= 0 and value <= 60000 and value is whole
+
+type QuoteResult:
+    base_rate: Number
+    loaded_premium: Number
+    discount_amount: Number
+    annual_premium: Number
+    monthly_instalment: Number
+
+goal Quote(driver_age: DriverAge, vehicle_group: VehicleGroup, claims_last_5_years: Claims, annual_mileage: Mileage, has_telematics: Boolean) -> QuoteResult:
+    plan: "Quote a yearly car insurance premium. Rounded to the cent means to two decimal places, half up (2.345 becomes 2.35). In this order: (1) base rate by vehicle group and age band, the bands being ages 17 to 24, 25 to 64 and 65 to 90, each including both ends: A 620, 380, 420; B 780, 450, 510; C 1050, 590, 680; D 1600, 820, 990. (2) loaded premium = (base rate * claims factor + mileage loading) * young-driver factor, then rounded to the cent; claims factor 1.00 for 0 claims, 1.25 for 1, 1.60 for 2, 2.20 for 3, 4 or 5; mileage loading (added) 0 for 0 to 20000 km, 60.00 for 20001 to 35000 km, 150.00 for 35001 to 60000 km; young-driver factor 1.15 for ages 17 to 20 inclusive, else 1.00. (3) discount amount = loaded premium * (1 - discount multiplier), rounded to the cent, where the discount multiplier is 0.90 if the driver has telematics (else 1) times 0.85 if the driver has 0 claims (else 1), so both together take 23.5% off. (4) annual premium = loaded premium - discount amount, but an amount under 300.00 becomes 300.00 and an amount over 3500.00 becomes 3500.00; anything from 300.00 to 3500.00 inclusive is kept. (5) monthly instalment = annual premium * 1.05 / 12, rounded to the cent. Return a QuoteResult with the base rate, loaded premium, discount amount, annual premium and monthly instalment."
+    examples:
+        - Quote(30, "A", 0, 12000, true) == QuoteResult(base_rate: 380, loaded_premium: 380.00, discount_amount: 89.30, annual_premium: 300, monthly_instalment: 26.25)
+        - Quote(19, "C", 1, 25000, false) == QuoteResult(base_rate: 1050, loaded_premium: 1578.38, discount_amount: 0.00, annual_premium: 1578.38, monthly_instalment: 138.11)
+        - Quote(45, "B", 2, 40000, true) == QuoteResult(base_rate: 450, loaded_premium: 870.00, discount_amount: 87.00, annual_premium: 783.00, monthly_instalment: 68.51)
+        - Quote(70, "D", 0, 8000, false) == QuoteResult(base_rate: 990, loaded_premium: 990.00, discount_amount: 148.50, annual_premium: 841.50, monthly_instalment: 73.63)
+        - Quote(22, "D", 4, 50000, false) == QuoteResult(base_rate: 1600, loaded_premium: 3670.00, discount_amount: 0.00, annual_premium: 3500, monthly_instalment: 306.25)
+        - Quote(55, "C", 3, 30000, true) == QuoteResult(base_rate: 590, loaded_premium: 1358.00, discount_amount: 135.80, annual_premium: 1222.20, monthly_instalment: 106.94)

@@ -1,0 +1,26 @@
+language: velme/0.2
+
+# P1 benchmark, our own program (VAT and shipping). Plan text restates requirements.md; the examples are the same ones
+# the Python baseline gets (examples.json).
+
+type Region = Text one of "home", "eu", "uk", "world"
+type Category = Text one of "standard", "books", "food"
+type NetAmount = Number where value >= 0.01 and value <= 5000 and (value * 100) is whole
+type Weight = Number where value >= 0.001 and value <= 30 and (value * 1000) is whole
+
+type Totals:
+    shipping: Number
+    goods_vat: Number
+    shipping_vat: Number
+    total_gross: Number
+
+goal OrderTotals(region: Region, category: Category, net_amount: NetAmount, weight_kg: Weight) -> Totals:
+    plan: "A shop in the home country ships one parcel of goods of one VAT category to a region. VAT rate by region and category (standard, books, food): home 19%, 7%, 7%; eu 21%, 6%, 9%; uk 20%, 0%, 5%; world 0%, 0%, 0%. Shipping (net) by region and weight band, the band being the first the weight fits: up to and including 0.500 kg, up to and including 2.000 kg, up to and including 10.000 kg, up to and including 30.000 kg (so 0.500 kg is in the first band and 0.501 kg in the second): home 4.50, 6.90, 11.50, 24.00; eu 9.50, 15.00, 26.00, 48.00; uk 12.00, 19.50, 34.00, 65.00; world 18.00, 29.00, 55.00, 110.00. Shipping is 0 for home when the net amount is 50.00 or more, and for eu when the net amount is 150.00 or more; it is never free for uk or world. Rounded to the cent means to two decimal places, half to even (a third decimal of exactly 5 with nothing after it rounds to the even cent: 0.285 becomes 0.28, 0.295 becomes 0.30); each VAT amount is rounded on its own. Goods VAT = net amount * the rate for the region and category, rounded to the cent. Shipping VAT = shipping * the shipping VAT rate, rounded to the cent; the shipping VAT rate is the goods' rate for home and eu, always 20% for uk whatever the category, and 0% for world. Total gross = net amount + shipping + goods VAT + shipping VAT. Return Totals with the shipping, goods VAT, shipping VAT and total gross."
+    examples:
+        - OrderTotals("home", "standard", 29.99, 0.350) == Totals(shipping: 4.50, goods_vat: 5.70, shipping_vat: 0.86, total_gross: 41.05)
+        - OrderTotals("home", "books", 64.00, 1.200) == Totals(shipping: 0, goods_vat: 4.48, shipping_vat: 0.00, total_gross: 68.48)
+        - OrderTotals("eu", "food", 120.50, 2.000) == Totals(shipping: 15.00, goods_vat: 10.84, shipping_vat: 1.35, total_gross: 147.69)
+        - OrderTotals("eu", "standard", 310.00, 12.500) == Totals(shipping: 0, goods_vat: 65.10, shipping_vat: 0.00, total_gross: 375.10)
+        - OrderTotals("uk", "books", 45.10, 0.800) == Totals(shipping: 19.50, goods_vat: 0.00, shipping_vat: 3.90, total_gross: 68.50)
+        - OrderTotals("uk", "standard", 1250.00, 25.000) == Totals(shipping: 65.00, goods_vat: 250.00, shipping_vat: 13.00, total_gross: 1578.00)
+        - OrderTotals("world", "food", 88.88, 3.300) == Totals(shipping: 55.00, goods_vat: 0.00, shipping_vat: 0.00, total_gross: 143.88)

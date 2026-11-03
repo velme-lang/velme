@@ -1,0 +1,15 @@
+{
+ "id": "vat-shipping",
+ "title": "VAT and shipping by region, category and weight band",
+ "goal": "OrderTotals",
+ "source": "vat_shipping.velme",
+ "entry": "order_totals",
+ "inputs": ["region", "category", "net_amount", "weight_kg"],
+ "oracle": "python",
+ "fields": [
+  {"name": "shipping", "compare": "exact"},
+  {"name": "goods_vat", "compare": "exact"},
+  {"name": "shipping_vat", "compare": "exact"},
+  {"name": "total_gross", "compare": "exact"}
+ ]
+}

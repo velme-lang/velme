@@ -1,0 +1,16 @@
+{
+ "id": "order-pricing",
+ "title": "Order pricing (tiers, stacked discounts, coupon cap, free shipping)",
+ "goal": "PriceOrder",
+ "source": "order_pricing.velme",
+ "entry": "price_order",
+ "inputs": ["customer_tier", "unit_price", "quantity", "coupon"],
+ "oracle": "python",
+ "fields": [
+  {"name": "volume_discount", "compare": "exact"},
+  {"name": "tier_discount", "compare": "exact"},
+  {"name": "coupon_discount", "compare": "exact"},
+  {"name": "shipping", "compare": "exact"},
+  {"name": "total", "compare": "exact"}
+ ]
+}

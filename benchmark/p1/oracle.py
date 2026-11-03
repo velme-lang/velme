@@ -6,7 +6,8 @@
   python oracle.py --program ID               evaluate heldout/inputs.jsonl, write heldout/expected.jsonl
 
 A DMN program uses Drools over HTTP; its descriptor names the model, the TCK tests and the decision names. Any other
-program loads `<program>/oracle.py` and calls its `decide(case)`, which returns a dict of the descriptor's fields.
+program loads `<program>/oracle.py` and calls its `decide(case)`, which returns a dict of the descriptor's fields; when
+the folder has a `reference.py`, each row is diffed against its entry function called with the descriptor's inputs.
 A DMN program's `<program>/oracle.py` adapter gives `to_context(case)` and optionally `context_defaults`,
 `check(case, row)` (cross-check against reference.py), `from_dmn(values)` (reshape a nested result into the fields)
 and `tck_equal(name, got, want)` (how close a TCK expected value must be; default exact).
@@ -21,7 +22,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from decimal import Decimal
 
-from common import dumps, field_names, heldout_path, load_inputs, load_module, load_program, loads, program_path
+from common import (dumps, field_names, heldout_path, load_inputs, load_module, load_program, loads, program_dir,
+                    program_path)
+from score import field_ok
 
 URL = "http://localhost:8080/jitdmn"
 IMAGE = "quay.io/kiegroup/kogito-jit-runner:latest"
@@ -96,9 +99,22 @@ def dmn_row(program, case, model, adapter):
     return {"id": case["id"], **values}
 
 
+def reference_diff(program, case, row, reference):
+    """A string when the Python oracle's row and `<program>/reference.py` disagree on a field, else None."""
+    want = getattr(reference, program["entry"])(*[case[k] for k in program["inputs"]])
+    # The scorer's rule per field (`decimals` places, `list` items), so a difference the scoring ignores isn't counted.
+    if all(f["name"] in want and field_ok(f, row[f["name"]], want[f["name"]]) for f in program["fields"]):
+        return None
+    got = {f: row[f] for f in field_names(program)}
+    want = {f: want.get(f) for f in field_names(program)}
+    return f"reference and oracle differ:\n  oracle {dumps(got)}\n  ref    {dumps(want)}"
+
+
 def run_all(program):
     cases = load_inputs(program["id"])
     adapter = load_module(program["id"], "oracle")
+    has_ref = program["oracle"] != "drools" and (program_dir(program["id"]) / "reference.py").is_file()
+    reference = load_module(program["id"], "reference") if has_ref else None
     out, diffs = [], 0
     model = program_path(program["id"], program["dmn"]["model"]).read_text() if program["oracle"] == "drools" else None
     for case in cases:
@@ -110,6 +126,9 @@ def run_all(program):
         else:
             got = adapter.decide(case)
             row = {"id": case["id"], **{f: got[f] for f in field_names(program)}}
+            if reference and (diff := reference_diff(program, case, row, reference)):
+                diffs += 1
+                print(f"case {case['id']} {case.get('tags')}: {diff}")
         out.append(row)
     path = heldout_path(program["id"], "expected.jsonl")
     path.write_text("".join(dumps(r) + "\n" for r in out))
