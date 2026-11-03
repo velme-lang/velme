@@ -1,0 +1,28 @@
+language: velme/0.2
+
+# P1 benchmark, our own program (refund policy). Plan text restates requirements.md; the examples are the same ones
+# the Python baseline gets (examples.json).
+
+type Category = Text one of "electronics", "apparel", "furniture"
+type Membership = Text one of "none", "plus", "premier"
+type Days = Number where value >= 0 and value <= 365 and value is whole
+type Condition = Text one of "unopened", "opened", "used"
+type Price = Number where value >= 1 and value <= 5000 and (value * 100) is whole
+
+type RefundResult:
+    refund_type: Text
+    amount: Number
+    restocking_fee: Number
+    window_days: Number
+
+goal Refund(category: Category, membership: Membership, days_since_purchase: Days, condition: Condition, defective: Boolean, price: Price) -> RefundResult:
+    plan: "Decide the refund for one returned item. All amounts are exact decimals; rounded to the cent means to two decimal places, half up (2.345 becomes 2.35). Return window = category days (electronics 30, apparel 60, furniture 14) + membership extra days (none 0, plus 15, premier 30). Within the window means days since purchase at most the window (last day included); in the grace period means more than the window but at most the window + 30. Apply the first case that matches: (1) a defective item returned at most 180 days after purchase gets a full refund of the price, whatever its condition or window; after 180 days a defective item is handled as if not defective. (2) within the window: unopened gets a full refund of the price; opened gets the price minus a restocking fee, fee = price * fee rate rounded to the cent, then capped at 75.00, fee rate electronics 15%, furniture 20%, apparel 0%, a plus member pays half the rate (7.5% and 10%), a premier member pays none, refund type full when the fee is 0, else partial; used gets store_credit of 50% of the price rounded to the cent, except apparel, which gets none. (3) in the grace period: unopened or opened gets store_credit of 80% of the price rounded to the cent (no restocking fee); used gets none. (4) otherwise none. Return a RefundResult with the refund type (full, partial, store_credit or none), the amount (the cash refund for full and partial, the store credit for store_credit, 0 for none), the restocking fee (the fee charged for an opened item within the window, else 0) and the window days (the return window, whatever case applied)."
+    examples:
+        - Refund("electronics", "none", 10, "unopened", false, 899.00) == RefundResult(refund_type: "full", amount: 899.00, restocking_fee: 0, window_days: 30)
+        - Refund("electronics", "plus", 40, "opened", false, 349.99) == RefundResult(refund_type: "partial", amount: 323.74, restocking_fee: 26.25, window_days: 45)
+        - Refund("furniture", "none", 20, "opened", false, 1200.00) == RefundResult(refund_type: "store_credit", amount: 960.00, restocking_fee: 0, window_days: 14)
+        - Refund("apparel", "premier", 75, "used", false, 59.90) == RefundResult(refund_type: "none", amount: 0, restocking_fee: 0, window_days: 90)
+        - Refund("electronics", "none", 200, "used", true, 129.99) == RefundResult(refund_type: "none", amount: 0, restocking_fee: 0, window_days: 30)
+        - Refund("furniture", "plus", 5, "used", false, 249.99) == RefundResult(refund_type: "store_credit", amount: 125.00, restocking_fee: 0, window_days: 29)
+        - Refund("apparel", "none", 100, "opened", true, 45.00) == RefundResult(refund_type: "full", amount: 45.00, restocking_fee: 0, window_days: 60)
+        - Refund("electronics", "none", 3, "opened", false, 1999.00) == RefundResult(refund_type: "partial", amount: 1924.00, restocking_fee: 75.00, window_days: 30)

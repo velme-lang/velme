@@ -1,0 +1,10 @@
+[
+{"function": "refund", "args": ["electronics", "none", 10, "unopened", false, 899.00], "expected": {"refund_type": "full", "amount": 899.00, "restocking_fee": 0, "window_days": 30}},
+{"function": "refund", "args": ["electronics", "plus", 40, "opened", false, 349.99], "expected": {"refund_type": "partial", "amount": 323.74, "restocking_fee": 26.25, "window_days": 45}},
+{"function": "refund", "args": ["furniture", "none", 20, "opened", false, 1200.00], "expected": {"refund_type": "store_credit", "amount": 960.00, "restocking_fee": 0, "window_days": 14}},
+{"function": "refund", "args": ["apparel", "premier", 75, "used", false, 59.90], "expected": {"refund_type": "none", "amount": 0, "restocking_fee": 0, "window_days": 90}},
+{"function": "refund", "args": ["electronics", "none", 200, "used", true, 129.99], "expected": {"refund_type": "none", "amount": 0, "restocking_fee": 0, "window_days": 30}},
+{"function": "refund", "args": ["furniture", "plus", 5, "used", false, 249.99], "expected": {"refund_type": "store_credit", "amount": 125.00, "restocking_fee": 0, "window_days": 29}},
+{"function": "refund", "args": ["apparel", "none", 100, "opened", true, 45.00], "expected": {"refund_type": "full", "amount": 45.00, "restocking_fee": 0, "window_days": 60}},
+{"function": "refund", "args": ["electronics", "none", 3, "opened", false, 1999.00], "expected": {"refund_type": "partial", "amount": 1924.00, "restocking_fee": 75.00, "window_days": 30}}
+]

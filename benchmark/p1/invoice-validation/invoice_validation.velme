@@ -1,0 +1,30 @@
+language: velme/0.2
+
+# P1 benchmark, our own program (invoice validation). Plan text restates requirements.md; the examples are the same
+# ones the Python baseline gets (examples.json).
+
+type Region = Text one of "DE", "NL", "UK", "CH"
+type NetAmount = Number where value >= 0.01 and value <= 250000 and (value * 100) is whole
+type DeclaredTax = Number where value >= 0 and value <= 60000 and (value * 100) is whole
+type LineCount = Number where value >= 0 and value <= 500 and value is whole
+type Day = Number where value >= 1 and value <= 730 and value is whole
+type Terms = Number where value >= 0 and value <= 120 and value is whole
+type Role = Text one of "clerk", "manager", "director"
+
+type InvoiceDecision:
+    accepted: Boolean
+    reasons: List<Text>
+    computed_tax: Number
+    gross_total: Number
+    manual_approval: Boolean
+
+goal ValidateInvoice(region: Region, net_amount: NetAmount, declared_tax: DeclaredTax, line_count: LineCount, invoice_day: Day, received_day: Day, payment_terms_days: Terms, approver_role: Role) -> InvoiceDecision:
+    plan: "Validate a supplier invoice. All amounts are exact decimals. (1) computed tax = net amount * the region's rate, rounded to the cent half-even (a remainder of exactly half a cent rounds to the even cent: 2.345 becomes 2.34, 2.355 becomes 2.36); rates DE 19%, NL 21%, UK 20%, CH 8.1%. (2) gross total = net amount + computed tax. (3) due day = invoice day + payment terms. Rejection rules, each checked independently, each failing one adding its code to the reasons, the reasons always in this order: LINE_COUNT when the line count is 0 or more than 200; FUTURE_DATED when the invoice day is later than the received day (the same day is fine); STALE when received day - invoice day is more than 180 (exactly 180 is fine); TERMS when the payment terms are more than 60 days (exactly 60 is fine); OVERDUE when the due day is earlier than the received day (due on the received day is fine); TAX_MISMATCH when declared tax and computed tax differ by more than 0.02 either way (exactly 0.02 is fine); OVER_LIMIT when the gross total is more than 200000.00 (exactly 200000.00 is fine). The invoice is accepted when no rule fails, and then the reasons are an empty list. Manual approval is true only for an accepted invoice whose gross total is more than the approver's limit: clerk 5000.00, manager 50000.00 (equal to the limit needs none); a director never needs one; a rejected invoice never needs it. Return an InvoiceDecision with accepted, the reasons, the computed tax, the gross total and manual approval."
+    examples:
+        - ValidateInvoice("DE", 1200.00, 228.00, 5, 100, 110, 30, "clerk") == InvoiceDecision(accepted: true, reasons: [], computed_tax: 228.00, gross_total: 1428.00, manual_approval: false)
+        - ValidateInvoice("UK", 8450.50, 1690.10, 12, 200, 215, 45, "clerk") == InvoiceDecision(accepted: true, reasons: [], computed_tax: 1690.10, gross_total: 10140.60, manual_approval: true)
+        - ValidateInvoice("NL", 310.40, 65.00, 3, 50, 260, 30, "manager") == InvoiceDecision(accepted: false, reasons: ["STALE", "OVERDUE", "TAX_MISMATCH"], computed_tax: 65.18, gross_total: 375.58, manual_approval: false)
+        - ValidateInvoice("CH", 999.99, 81.00, 0, 400, 395, 90, "director") == InvoiceDecision(accepted: false, reasons: ["LINE_COUNT", "FUTURE_DATED", "TERMS"], computed_tax: 81.00, gross_total: 1080.99, manual_approval: false)
+        - ValidateInvoice("DE", 190000.00, 36100.00, 150, 10, 12, 14, "director") == InvoiceDecision(accepted: false, reasons: ["OVER_LIMIT"], computed_tax: 36100.00, gross_total: 226100.00, manual_approval: false)
+        - ValidateInvoice("CH", 45000.00, 3645.00, 40, 300, 330, 30, "manager") == InvoiceDecision(accepted: true, reasons: [], computed_tax: 3645.00, gross_total: 48645.00, manual_approval: false)
+        - ValidateInvoice("UK", 72.15, 14.45, 201, 5, 5, 0, "clerk") == InvoiceDecision(accepted: false, reasons: ["LINE_COUNT"], computed_tax: 14.43, gross_total: 86.58, manual_approval: false)
