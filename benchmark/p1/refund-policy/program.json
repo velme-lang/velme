@@ -1,0 +1,15 @@
+{
+ "id": "refund-policy",
+ "title": "Refund policy (windows by category and tier, warranty, restocking fee with a cap, store credit)",
+ "goal": "Refund",
+ "source": "refund_policy.velme",
+ "entry": "refund",
+ "inputs": ["category", "membership", "days_since_purchase", "condition", "defective", "price"],
+ "oracle": "python",
+ "fields": [
+  {"name": "refund_type", "compare": "exact"},
+  {"name": "amount", "compare": "exact"},
+  {"name": "restocking_fee", "compare": "exact"},
+  {"name": "window_days", "compare": "exact"}
+ ]
+}

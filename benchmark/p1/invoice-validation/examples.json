@@ -1,0 +1,9 @@
+[
+{"function": "validate_invoice", "args": ["DE", 1200.00, 228.00, 5, 100, 110, 30, "clerk"], "expected": {"accepted": true, "reasons": [], "computed_tax": 228.00, "gross_total": 1428.00, "manual_approval": false}},
+{"function": "validate_invoice", "args": ["UK", 8450.50, 1690.10, 12, 200, 215, 45, "clerk"], "expected": {"accepted": true, "reasons": [], "computed_tax": 1690.10, "gross_total": 10140.60, "manual_approval": true}},
+{"function": "validate_invoice", "args": ["NL", 310.40, 65.00, 3, 50, 260, 30, "manager"], "expected": {"accepted": false, "reasons": ["STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 65.18, "gross_total": 375.58, "manual_approval": false}},
+{"function": "validate_invoice", "args": ["CH", 999.99, 81.00, 0, 400, 395, 90, "director"], "expected": {"accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS"], "computed_tax": 81.00, "gross_total": 1080.99, "manual_approval": false}},
+{"function": "validate_invoice", "args": ["DE", 190000.00, 36100.00, 150, 10, 12, 14, "director"], "expected": {"accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 36100.00, "gross_total": 226100.00, "manual_approval": false}},
+{"function": "validate_invoice", "args": ["CH", 45000.00, 3645.00, 40, 300, 330, 30, "manager"], "expected": {"accepted": true, "reasons": [], "computed_tax": 3645.00, "gross_total": 48645.00, "manual_approval": false}},
+{"function": "validate_invoice", "args": ["UK", 72.15, 14.45, 201, 5, 5, 0, "clerk"], "expected": {"accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 14.43, "gross_total": 86.58, "manual_approval": false}}
+]

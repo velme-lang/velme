@@ -1,0 +1,16 @@
+{
+ "id": "invoice-validation",
+ "title": "Invoice validation (tax tolerance, dates and terms, ordered rejection reasons, approval limits)",
+ "goal": "ValidateInvoice",
+ "source": "invoice_validation.velme",
+ "entry": "validate_invoice",
+ "inputs": ["region", "net_amount", "declared_tax", "line_count", "invoice_day", "received_day", "payment_terms_days", "approver_role"],
+ "oracle": "python",
+ "fields": [
+  {"name": "accepted", "compare": "exact"},
+  {"name": "reasons", "compare": "list", "item": {"compare": "exact"}},
+  {"name": "computed_tax", "compare": "exact"},
+  {"name": "gross_total", "compare": "exact"},
+  {"name": "manual_approval", "compare": "exact"}
+ ]
+}

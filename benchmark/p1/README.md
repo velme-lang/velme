@@ -27,11 +27,13 @@ Run order (from `benchmark/p1`, Python 3.13, `.venv`, docker only for a DMN orac
 Programs: `0087` (loan origination), `0020` (vacation days), `0014` (loan comparison: lists, ranking, `pow`); the
 three are DMN, so each runs the steps above with its own `--program` (one `--start`/`--stop` serves them all).
 `0020` and `0014` get their `heldout/` (inputs, kinds, expected) only once the owner has read their requirements.md.
-Our own programs, `order-pricing`, `vat-shipping` and `insurance-quote`, use a Python oracle written from
-requirements.md alone by a different model family than the arms (not yet written); their `heldout/` also waits for the
-owner's read of requirements.md. Their `reference.py` is ours, a cross-check only.
+Our own programs, `order-pricing`, `vat-shipping`, `insurance-quote`, `invoice-validation` and `refund-policy`, use a
+Python oracle written from requirements.md alone by a different model family than the arms (not yet written for the
+last two); their `heldout/` also waits for the owner's read of requirements.md. Their `reference.py` is ours, a
+cross-check only.
 `0014`'s outputs are lists of records, scored in order field by field (`compare: list`), payment and equity to 8
 places; its TCK case lists double-precision values, so its adapter's `tck_equal` compares the selftest to 8 places.
+`invoice-validation`'s `reasons` is a list of codes, scored in order as values (`compare: list` with one `item` spec).
 
 Run layout: every runner takes the run root (`--out runs`) and writes
 `runs/<program>/<arm>/<model>/trial-N/{results.jsonl,meta.json}`. `meta.json` records program, arm, model, calls,
