@@ -84,4 +84,20 @@ Models: Haiku and Sonnet decide; one local model is reported only.
 time, goals that never built.
 **Go:** on Haiku and Sonnet, Velme's held-out pass rate is at least B2's and its cost at most 1.5× B2's; or, with
 pass rates equal, it fails fewer boundary cases. **No-go:** stop and rethink before any launch work.
+**Slices:**
+- **P1a** harness for a corpus: one folder per program under `benchmark/p1/`, every script takes `--program`; the B1
+  arm (B2's first prompt without the tests instruction, one call, no feedback); scoring pooled per model and per
+  program, boundary and random cases apart, floats apart; prompt caching on for every arm, with the uncached cost
+  reported beside it; offline tests.
+- **P1b** DMN `0020` and `0014`: requirements, signatures, examples, `.velme` source, Drools oracle checked on the
+  TCK's cases, 200 held-out inputs each.
+- **P1c** order pricing, VAT and shipping, insurance quote; **P1d** invoice validation, refund policy: requirements and
+  examples, then a Python oracle written from the requirements alone by a different model family than the ones under
+  test. Each requirements file is read by the owner before its held-out inputs are fixed.
+- **P1e** live runs: 5 trials per program, arm and model (≤ $30), then `benchmark/p1/REPORT.md`.
+
+Held-out inputs stay inside each program's stated input ranges. The go bar pools each model over all programs and
+trials; a Velme build that fails counts as 0/200 for that trial. A program Velme can't fully express stays in, and the
+gap goes in the report's list of missing features.
+**Order:** P1a → P1b → P1c → P1d → P1e.
 **User verifies:** the P1 report.
