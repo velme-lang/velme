@@ -241,18 +241,7 @@ pub fn validate_condition(
     let declared = program.domain(domain).ok_or_else(internal)?;
     let types = check_types(program).ok_or_else(internal)?;
     // The goal a condition is walked as: no inputs, no calls, and the declaration's place for any finding.
-    let target = hir::Goal {
-        name: declared.name.clone(),
-        params: Vec::new(),
-        output: HirType::Boolean,
-        kind: hir::GoalKind::Leaf,
-        budget: hir::Budget::SYSTEM,
-        bindings: Vec::new(),
-        plan: None,
-        checks: Vec::new(),
-        examples: Vec::new(),
-        span: declared.span,
-    };
+    let target = hir::Goal::condition_holder(&declared.name, HirType::Boolean, declared.span);
     let holder = Goal {
         ir_version: IR_VERSION.to_owned(),
         builtins_version: BUILTINS_VERSION.to_owned(),
@@ -1163,13 +1152,8 @@ impl<'a> Validator<'a> {
                 };
                 let Some(domain) = self.program.domain(*id) else { return };
                 if let Some((shown, reason)) = domain.literal_violation(&literal) {
-                    let rule = format!("`{shown}` isn't a valid `{}`: {reason}", domain.name);
-                    self.help(
-                        Stage::Types,
-                        "types-29",
-                        rule,
-                        Some(format!("use a value `{}` allows", domain.name)),
-                    );
+                    let (rule, help) = velme_sema::not_a_member_text(&shown, &domain.name, &reason);
+                    self.help(Stage::Types, "types-29", rule, Some(help));
                 }
             }
             (HirType::List(element), V::List(items)) => {

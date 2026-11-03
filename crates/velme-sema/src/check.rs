@@ -9,7 +9,7 @@ use velme_syntax::Keyword;
 use velme_syntax::ast::{self, BinaryOp, CallArg, ExprKind as Ast, LiteralKind, UnaryOp};
 
 use crate::budget::budget;
-use crate::domain;
+use crate::domain::{self, not_a_member};
 use crate::hir::{
     Binding, Constraints, DomainRule, DomainType, Example, Expr, ExprKind, Goal, GoalId, GoalKind, RecordType, Type,
     TypeId, Vars, assignable, compat, domain_mismatch, join, signature_output,
@@ -119,18 +119,7 @@ fn typed_condition<'a>(
     source: &DomainSource<'a>,
     condition: &'a ast::Expr,
 ) -> (Expr, Vec<Diagnostic>) {
-    let goal = Goal {
-        name: source.name.name.clone(),
-        params: Vec::new(),
-        output: Type::Error,
-        kind: GoalKind::Leaf,
-        budget: crate::hir::Budget::SYSTEM,
-        bindings: Vec::new(),
-        plan: None,
-        checks: Vec::new(),
-        examples: Vec::new(),
-        span: source.span,
-    };
+    let goal = Goal::condition_holder(&source.name.name, Type::Error, source.span);
     let mut found = Vec::new();
     let e = {
         let mut body = Body::new(file, &goal, &mut found);
@@ -691,14 +680,7 @@ impl<'f, 'a> Body<'f, 'a> {
             && let Some(d) = self.file.domains.get(id.0)
             && let Some((value, reason)) = domain::literal_violation(d, e)
         {
-            self.diags.push(
-                Diagnostic::new(
-                    Code::TypeMismatch,
-                    e.span,
-                    format!("`{value}` isn't a valid `{}`: {reason}.", d.name),
-                )
-                .with_help(format!("use a value `{}` allows", d.name)),
-            );
+            self.diags.push(not_a_member(e.span, &value, &d.name, &reason));
         }
         true
     }

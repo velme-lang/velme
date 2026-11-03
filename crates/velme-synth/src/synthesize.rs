@@ -719,23 +719,17 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
             } else {
                 offered.iter().map(|f| format!("`{f}`")).collect::<Vec<_>>().join(", ")
             };
-            if *explicit {
-                Diagnostic::new(
-                    Code::BackendFailed,
-                    span,
-                    format!(
-                        "The backend `{backend}` couldn't build `{name}`: it answers only in {only}, and velme.toml asks for `reply_format = \"{asked}\"`."
-                    ),
-                )
-                .with_help("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
+            let asks = if *explicit {
+                format!(", and velme.toml asks for `reply_format = \"{asked}\"`")
             } else {
-                Diagnostic::new(
-                    Code::BackendFailed,
-                    span,
-                    format!("The backend `{backend}` couldn't build `{name}`: it answers only in {only}."),
-                )
-                .with_help("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
-            }
+                String::new()
+            };
+            Diagnostic::new(
+                Code::BackendFailed,
+                span,
+                format!("The backend `{backend}` couldn't build `{name}`: it answers only in {only}{asks}."),
+            )
+            .with_help("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
         }
         ProviderError::Pending(text) => pending(name, span, backend, text, &[]),
         ProviderError::File { path, reason } => {

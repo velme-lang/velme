@@ -9,6 +9,7 @@ pub mod hir;
 mod resolve;
 
 pub use check::reissued;
+pub use domain::{not_a_member, not_a_member_text, number};
 use velme_diagnostics::Diagnostic;
 pub use velme_syntax::LANGUAGE_VERSION;
 /// The input of [`analyze`], so its callers need not depend on `velme-syntax`.
