@@ -1,0 +1,9 @@
+[
+{"function": "order_totals", "args": ["home", "standard", 29.99, 0.350], "expected": {"shipping": 4.50, "goods_vat": 5.70, "shipping_vat": 0.86, "total_gross": 41.05}},
+{"function": "order_totals", "args": ["home", "books", 64.00, 1.200], "expected": {"shipping": 0, "goods_vat": 4.48, "shipping_vat": 0.00, "total_gross": 68.48}},
+{"function": "order_totals", "args": ["eu", "food", 120.50, 2.000], "expected": {"shipping": 15.00, "goods_vat": 10.84, "shipping_vat": 1.35, "total_gross": 147.69}},
+{"function": "order_totals", "args": ["eu", "standard", 310.00, 12.500], "expected": {"shipping": 0, "goods_vat": 65.10, "shipping_vat": 0.00, "total_gross": 375.10}},
+{"function": "order_totals", "args": ["uk", "books", 45.10, 0.800], "expected": {"shipping": 19.50, "goods_vat": 0.00, "shipping_vat": 3.90, "total_gross": 68.50}},
+{"function": "order_totals", "args": ["uk", "standard", 1250.00, 25.000], "expected": {"shipping": 65.00, "goods_vat": 250.00, "shipping_vat": 13.00, "total_gross": 1578.00}},
+{"function": "order_totals", "args": ["world", "food", 88.88, 3.300], "expected": {"shipping": 55.00, "goods_vat": 0.00, "shipping_vat": 0.00, "total_gross": 143.88}}
+]

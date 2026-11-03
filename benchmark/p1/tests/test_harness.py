@@ -256,6 +256,31 @@ def test_python_oracle_writes_expected(monkeypatch, tmp_path):
     assert common.read_jsonl(out) == common.read_jsonl(FIXTURES / "toy" / "heldout" / "expected.jsonl")
 
 
+def test_python_oracle_cross_checks_reference_py(monkeypatch, tmp_path, capsys):
+    """A Python-oracle program with a reference.py gets the same "reference differs on N" line as the Drools path; the
+    toy reference differs from the toy oracle on case 4 (value 25) only. A program without one reports 0."""
+    toy(monkeypatch)
+    monkeypatch.setattr(oracle, "heldout_path", lambda p, name: tmp_path / f"{p}-{name}")
+    oracle.run_all(common.load_program("toy"))
+    out = capsys.readouterr().out
+    assert "reference differs on 1" in out
+    assert "case 4 " in out and "reference and oracle differ" in out and not any(f"case {i} " in out for i in (1, 2, 3))
+    assert common.read_jsonl(tmp_path / "toy-expected.jsonl")[3]["doubled"] == 50  # the oracle's value is written
+    oracle.run_all(common.load_program("toy2"))
+    assert "reference differs on 0" in capsys.readouterr().out
+
+
+def test_reference_diff_uses_each_fields_compare_mode(monkeypatch):
+    """Fix round 1, finding 1: `half` compares to 2 places, so a reference differing only past them isn't counted."""
+    toy(monkeypatch)
+    program = common.load_program("toy")
+    case, row = {"id": 1, "value": D(9)}, {"id": 1, "doubled": D(18), "half": D("4.5")}
+    ref = lambda half: Namespace(decide=lambda value: {"doubled": D(18), "half": half})
+    assert oracle.reference_diff(program, case, row, ref(D("4.501"))) is None
+    assert oracle.reference_diff(program, case, row, ref(D("4.51")))
+    assert oracle.reference_diff(program, case, row, Namespace(decide=lambda value: {"doubled": D(18)}))  # field missing
+
+
 def test_oracle_selftest_applies_adapter_context_defaults(monkeypatch, tmp_path):
     """Finding: selftest stopped merging 0087's `Supporting documents` default into TCK inputs."""
     class Value:

@@ -1,0 +1,8 @@
+[
+{"function": "quote", "args": [30, "A", 0, 12000, true], "expected": {"base_rate": 380, "loaded_premium": 380.00, "discount_amount": 89.30, "annual_premium": 300, "monthly_instalment": 26.25}},
+{"function": "quote", "args": [19, "C", 1, 25000, false], "expected": {"base_rate": 1050, "loaded_premium": 1578.38, "discount_amount": 0.00, "annual_premium": 1578.38, "monthly_instalment": 138.11}},
+{"function": "quote", "args": [45, "B", 2, 40000, true], "expected": {"base_rate": 450, "loaded_premium": 870.00, "discount_amount": 87.00, "annual_premium": 783.00, "monthly_instalment": 68.51}},
+{"function": "quote", "args": [70, "D", 0, 8000, false], "expected": {"base_rate": 990, "loaded_premium": 990.00, "discount_amount": 148.50, "annual_premium": 841.50, "monthly_instalment": 73.63}},
+{"function": "quote", "args": [22, "D", 4, 50000, false], "expected": {"base_rate": 1600, "loaded_premium": 3670.00, "discount_amount": 0.00, "annual_premium": 3500, "monthly_instalment": 306.25}},
+{"function": "quote", "args": [55, "C", 3, 30000, true], "expected": {"base_rate": 590, "loaded_premium": 1358.00, "discount_amount": 135.80, "annual_premium": 1222.20, "monthly_instalment": 106.94}}
+]

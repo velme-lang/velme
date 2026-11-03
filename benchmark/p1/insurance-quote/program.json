@@ -1,0 +1,16 @@
+{
+ "id": "insurance-quote",
+ "title": "Car insurance quote (base rate, loadings, discounts, minimum and cap)",
+ "goal": "Quote",
+ "source": "insurance_quote.velme",
+ "entry": "quote",
+ "inputs": ["driver_age", "vehicle_group", "claims_last_5_years", "annual_mileage", "has_telematics"],
+ "oracle": "python",
+ "fields": [
+  {"name": "base_rate", "compare": "exact"},
+  {"name": "loaded_premium", "compare": "exact"},
+  {"name": "discount_amount", "compare": "exact"},
+  {"name": "annual_premium", "compare": "exact"},
+  {"name": "monthly_instalment", "compare": "exact"}
+ ]
+}
