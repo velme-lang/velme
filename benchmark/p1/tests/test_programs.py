@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import common  # noqa: E402
+import gen_inputs  # noqa: E402
 import oracle  # noqa: E402
 import score  # noqa: E402
 
@@ -253,3 +254,29 @@ def test_0014_every_crossing_is_bracketed_by_generated_amounts():
                     above = [a for a in amounts if x < a <= x + gen.CENT]
                     assert x in amounts or (below and above), (name, i, j, x)
     assert count > len({a for a, _ in gen.boundary_amounts()}) // 3
+
+
+HELDOUT_PROGRAMS = ["0020", "0014", "order-pricing", "vat-shipping", "insurance-quote", "invoice-validation", "refund-policy"]
+PYTHON_ORACLE_PROGRAMS = HELDOUT_PROGRAMS[2:]
+
+
+@pytest.mark.parametrize("pid", HELDOUT_PROGRAMS)
+def test_committed_heldout_inputs_and_kinds_match_the_generator(pid, tmp_path):
+    """Finding: only 0087's held-out inputs were tied to gen.py; the others could drift unnoticed."""
+    gen_inputs.write(pid, 1, 200, tmp_path / "inputs.jsonl")
+    for name in ("inputs.jsonl", "kinds.jsonl"):
+        assert (tmp_path / name).read_bytes() == common.heldout_path(pid, name).read_bytes(), f"{pid}/{name}"
+
+
+@pytest.mark.parametrize("pid", PYTHON_ORACLE_PROGRAMS)
+def test_committed_expected_matches_the_python_oracle(pid):
+    """Finding: expected.jsonl of the own programs was not tied to their oracle.py (DMN ones come from Drools)."""
+    program = common.load_program(pid)
+    adapter = common.load_module(pid, "oracle")
+    fields = common.field_names(program)
+    rows = []
+    for c in common.load_inputs(pid):
+        got = adapter.decide(c)
+        rows.append({"id": c["id"], **{f: got[f] for f in fields}})
+    want = "".join(common.dumps(r) + "\n" for r in rows)
+    assert common.heldout_path(pid, "expected.jsonl").read_text() == want

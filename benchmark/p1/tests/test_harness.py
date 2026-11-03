@@ -15,7 +15,6 @@ import oracle  # noqa: E402
 import run_b1  # noqa: E402
 import run_velme  # noqa: E402
 import run_b2  # noqa: E402
-import run_velme  # noqa: E402
 import score  # noqa: E402
 
 PROGRAM = common.load_program("0087")
@@ -464,3 +463,42 @@ def test_synth_log_meta_is_json(tmp_path):
     meta = run_velme.read_synth_log(tmp_path)
     json.dumps(meta)
     assert (meta["tokens_in"], meta["cache_read"], meta["calls"]) == (10, 100, 1)
+
+
+def test_decimals_compare_fails_on_a_huge_value_instead_of_crashing():
+    """Finding: quantize raised InvalidOperation on 1e25 at 8 places and killed the whole scoring run."""
+    field = {"name": "x", "compare": "decimals", "decimals": 8}
+    assert not score.field_ok(field, D("1e25"), D("1e25"))
+    assert score.field_ok(field, D("1.5"), D("1.5"))
+
+
+def test_discover_skips_a_trial_without_meta_and_coverage_marks_it_incomplete(monkeypatch, tmp_path):
+    """Finding: an interrupted run leaves trial-N/build/ with no meta.json, and discover died on it."""
+    toy(monkeypatch)
+    root = tmp_path / "runs"
+    want = common.load_expected("toy")
+    for arm in ("velme", "b2"):
+        write_trial(root, "toy", arm, 1, want)
+    (common.trial_dir(root, "toy", "velme", MODEL, 2) / "build").mkdir(parents=True)
+    records = score.discover(root)
+    assert sorted((r["arm"], r["trial"]) for r in records) == [("b2", "trial-1"), ("velme", "trial-1")]
+    pooled = score.group(records, lambda r: (r["model"], r["arm"]))
+    coverage = {}
+    for r in records:
+        coverage.setdefault((r["model"], r["arm"]), set()).add((r["program"], r["trial"]))
+    coverage[(MODEL, "velme")].discard(("toy", "trial-2"))
+    coverage[(MODEL, "b2")].add(("toy", "trial-2"))  # the other arm did run trial 2
+    assert any("INCOMPLETE" in line for line in score.go_lines(pooled, coverage))
+
+
+def test_report_exits_on_a_trial_present_in_two_roots(monkeypatch, tmp_path):
+    """Finding: report concatenated records from several roots, counting a repeated trial twice."""
+    toy(monkeypatch)
+    want = common.load_expected("toy")
+    a, b = tmp_path / "a", tmp_path / "b"
+    write_trial(a, "toy", "velme", 1, want)
+    write_trial(b, "toy", "velme", 2, want)
+    assert "# P1 score" in score.report([a, b])  # disjoint trials pool fine
+    write_trial(b, "toy", "velme", 1, want)
+    with pytest.raises(SystemExit, match="duplicate trial toy/velme/.*/trial-1"):
+        score.report([a, b])
