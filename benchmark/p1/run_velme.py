@@ -108,7 +108,7 @@ def main():
     ap.add_argument("--velme", type=Path, default=DEFAULT_VELME)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--no-prompt-cache", action="store_true", help="velme.toml prompt_cache = false, so the log's tokens_in is the full input")
-    ap.add_argument("--reply-format", choices=["ir-json", "compact"], help="velme.toml reply_format (default: Velme's own)")
+    ap.add_argument("--reply-format", choices=["ir-json", "notation"], help="velme.toml reply_format (default: Velme's own)")
     args = ap.parse_args()
     for k in range(1, args.trials + 1):
         rows, meta = trial(args, k)

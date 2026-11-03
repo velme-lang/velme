@@ -1,38 +1,51 @@
-language: velme/0.1
+language: velme/0.2
 
 # P1 benchmark, DMN TCK 0087 (loan origination). Plan text restates requirements.md section by section;
 # the examples are the same ones the Python baseline gets (examples.json).
 
+type Age = Number where value >= 18 and value <= 120 and value is whole
+type MaritalStatus = Text one of "S", "M"
+type EmploymentStatus = Text one of "UNEMPLOYED", "STUDENT", "EMPLOYED", "SELF-EMPLOYED"
+type ProductType = Text one of "STANDARD LOAN", "SPECIAL LOAN"
+type Rate = Number where value > 0 and value <= 1
+type Term = Number where value >= 1 and value <= 600 and value is whole
+type CreditScore = Number where value >= 0 and value <= 999 and value is whole
+type RiskCategory = Text one of "DECLINE", "HIGH", "MEDIUM", "LOW", "VERY LOW"
+type EligibilityStatus = Text one of "ELIGIBLE", "INELIGIBLE"
+type CallType = Text one of "FULL", "MINI", "NONE"
+type StrategyChoice = Text one of "DECLINE", "BUREAU", "THROUGH"
+type RoutingDecision = Text one of "DECLINE", "REFER", "ACCEPT"
+
 type Applicant:
-    age: Number
-    marital_status: Text
-    employment_status: Text
+    age: Age
+    marital_status: MaritalStatus
+    employment_status: EmploymentStatus
     existing_customer: Boolean
     monthly_income: Number
     monthly_repayments: Number
     monthly_expenses: Number
 
 type Product:
-    product_type: Text
-    rate: Number
-    term: Number
+    product_type: ProductType
+    rate: Rate
+    term: Term
     amount: Number
 
 type Bureau:
     bankrupt: Boolean
-    credit_score: Number
+    credit_score: CreditScore
 
 type Decision:
     application_risk_score: Number
-    pre_bureau_risk_category: Text
+    pre_bureau_risk_category: RiskCategory
     required_monthly_installment: Number
     pre_bureau_affordability: Boolean
-    eligibility: Text
-    bureau_call_type: Text
-    strategy: Text
-    post_bureau_risk_category: Text
+    eligibility: EligibilityStatus
+    bureau_call_type: CallType
+    strategy: StrategyChoice
+    post_bureau_risk_category: RiskCategory
     post_bureau_affordability: Boolean
-    routing: Text
+    routing: RoutingDecision
 
 goal ApplicationRiskScore(applicant: Applicant) -> Number:
     plan: "Sum three point values. Age: 18 up to but not including 22 gives 32; 22 up to but not including 26 gives 35; 26 up to but not including 36 gives 40; 36 up to but not including 50 gives 43; 50 or over gives 48. Marital status: \"S\" gives 25, \"M\" gives 45. Employment status: \"UNEMPLOYED\" gives 15, \"STUDENT\" gives 18, \"EMPLOYED\" gives 45, \"SELF-EMPLOYED\" gives 36."
@@ -41,7 +54,7 @@ goal ApplicationRiskScore(applicant: Applicant) -> Number:
         - ApplicationRiskScore(Applicant(age: 18, marital_status: "S", employment_status: "STUDENT", existing_customer: false, monthly_income: 500, monthly_repayments: 0, monthly_expenses: 100)) == 75
         - ApplicationRiskScore(Applicant(age: 30, marital_status: "S", employment_status: "SELF-EMPLOYED", existing_customer: true, monthly_income: 4000, monthly_repayments: 300, monthly_expenses: 1200)) == 101
 
-goal PreBureauRiskCategory(existing_customer: Boolean, score: Number) -> Text:
+goal PreBureauRiskCategory(existing_customer: Boolean, score: Number) -> RiskCategory:
     plan: "For a new customer: score below 100 is \"HIGH\"; 100 up to but not including 120 is \"MEDIUM\"; 120 to 130 inclusive is \"LOW\"; above 130 is \"VERY LOW\". For an existing customer: below 80 is \"DECLINE\"; 80 up to but not including 90 is \"HIGH\"; 90 to 110 inclusive is \"MEDIUM\"; above 110 is \"LOW\"."
     examples:
         - PreBureauRiskCategory(false, 138) == "VERY LOW"
@@ -50,19 +63,19 @@ goal PreBureauRiskCategory(existing_customer: Boolean, score: Number) -> Text:
         - PreBureauRiskCategory(true, 100) == "MEDIUM"
 
 goal RequiredMonthlyInstallment(product: Product) -> Number:
-    plan: "The monthly repayment plus a monthly fee. The fee is 20.00 for \"STANDARD LOAN\" and 25.00 for \"SPECIAL LOAN\". With r = annual rate / 12 and n = term in months, the monthly repayment is (amount * r) / (1 - (1 + r)^(-n)). A product whose rate is not above 0 or above 1, or whose term is not a whole number from 1 to 600, has no repayment: its installment is the monthly fee alone. Nothing is rounded."
+    plan: "The monthly repayment plus a monthly fee. The fee is 20.00 for \"STANDARD LOAN\" and 25.00 for \"SPECIAL LOAN\". With r = annual rate / 12 and n = term in months, the monthly repayment is (amount * r) / (1 - (1 + r)^(-n)). Nothing is rounded."
     examples:
         - RequiredMonthlyInstallment(Product(product_type: "STANDARD LOAN", rate: 0.08, term: 36, amount: 0)) == 20
         - RequiredMonthlyInstallment(Product(product_type: "SPECIAL LOAN", rate: 0.05, term: 12, amount: 0)) == 25
 
-goal Affordability(applicant: Applicant, risk_category: Text, installment: Number) -> Boolean:
+goal Affordability(applicant: Applicant, risk_category: RiskCategory, installment: Number) -> Boolean:
     plan: "Disposable income is monthly income minus (monthly repayments plus monthly expenses). The credit contingency factor is 0.6 for \"HIGH\" or \"DECLINE\", 0.7 for \"MEDIUM\", 0.8 for \"LOW\" or \"VERY LOW\". Affordable when disposable income times the factor is strictly greater than the installment."
     examples:
         - Affordability(Applicant(age: 40, marital_status: "M", employment_status: "EMPLOYED", existing_customer: false, monthly_income: 5000, monthly_repayments: 500, monthly_expenses: 1500), "LOW", 2000) == true
         - Affordability(Applicant(age: 40, marital_status: "M", employment_status: "EMPLOYED", existing_customer: false, monthly_income: 5000, monthly_repayments: 500, monthly_expenses: 1500), "HIGH", 2000) == false
         - Affordability(Applicant(age: 40, marital_status: "M", employment_status: "EMPLOYED", existing_customer: false, monthly_income: 5000, monthly_repayments: 500, monthly_expenses: 1500), "MEDIUM", 2100) == false
 
-goal Eligibility(risk_category: Text, affordable: Boolean, age: Number) -> Text:
+goal Eligibility(risk_category: RiskCategory, affordable: Boolean, age: Number) -> EligibilityStatus:
     plan: "\"INELIGIBLE\" if the pre-bureau risk category is \"DECLINE\", or pre-bureau affordability is false, or the applicant is under 18; otherwise \"ELIGIBLE\"."
     examples:
         - Eligibility("LOW", true, 30) == "ELIGIBLE"
@@ -70,21 +83,21 @@ goal Eligibility(risk_category: Text, affordable: Boolean, age: Number) -> Text:
         - Eligibility("LOW", true, 17) == "INELIGIBLE"
         - Eligibility("LOW", false, 40) == "INELIGIBLE"
 
-goal BureauCallType(risk_category: Text) -> Text:
+goal BureauCallType(risk_category: RiskCategory) -> CallType:
     plan: "From the pre-bureau risk category: \"HIGH\" or \"MEDIUM\" gives \"FULL\"; \"LOW\" gives \"MINI\"; \"VERY LOW\" or \"DECLINE\" gives \"NONE\"."
     examples:
         - BureauCallType("MEDIUM") == "FULL"
         - BureauCallType("LOW") == "MINI"
         - BureauCallType("DECLINE") == "NONE"
 
-goal Strategy(eligibility: Text, bureau_call_type: Text) -> Text:
+goal Strategy(eligibility: EligibilityStatus, bureau_call_type: CallType) -> StrategyChoice:
     plan: "\"DECLINE\" if ineligible. For an eligible applicant, \"BUREAU\" when the bureau call type is \"FULL\" or \"MINI\", and \"THROUGH\" when it is \"NONE\"."
     examples:
         - Strategy("INELIGIBLE", "FULL") == "DECLINE"
         - Strategy("ELIGIBLE", "MINI") == "BUREAU"
         - Strategy("ELIGIBLE", "NONE") == "THROUGH"
 
-goal PostBureauRiskCategory(existing_customer: Boolean, score: Number, credit_score: Number) -> Text:
+goal PostBureauRiskCategory(existing_customer: Boolean, score: Number, credit_score: CreditScore) -> RiskCategory:
     plan: "New customer with score below 120: credit score below 590 is \"HIGH\", 590 to 610 inclusive is \"MEDIUM\", above 610 is \"LOW\". New customer with score 120 to 130 inclusive: credit score below 600 is \"HIGH\", 600 to 625 inclusive is \"MEDIUM\", above 625 is \"LOW\". New customer with score above 130: \"VERY LOW\". Existing customer with score 100 or below: credit score below 580 is \"HIGH\", 580 to 600 inclusive is \"MEDIUM\", above 600 is \"LOW\". Existing customer with score above 100: credit score below 590 is \"HIGH\", 590 to 615 inclusive is \"MEDIUM\", above 615 is \"LOW\"."
     examples:
         - PostBureauRiskCategory(false, 110, 600) == "MEDIUM"
@@ -93,7 +106,7 @@ goal PostBureauRiskCategory(existing_customer: Boolean, score: Number, credit_sc
         - PostBureauRiskCategory(true, 90, 570) == "HIGH"
         - PostBureauRiskCategory(true, 105, 620) == "LOW"
 
-goal Routing(risk_category: Text, affordable: Boolean, bankrupt: Boolean, credit_score: Number) -> Text:
+goal Routing(risk_category: RiskCategory, affordable: Boolean, bankrupt: Boolean, credit_score: CreditScore) -> RoutingDecision:
     plan: "\"DECLINE\" if post-bureau affordability is false or the applicant is bankrupt; otherwise \"REFER\" if the post-bureau risk category is \"HIGH\" or the credit score is below 580; otherwise \"ACCEPT\"."
     examples:
         - Routing("LOW", true, false, 650) == "ACCEPT"
