@@ -43,6 +43,33 @@ pub(crate) fn check_domains(
             span: d.span,
         })
         .collect();
+    // First the simple constraints of every condition (R-CHK-14), so the second pass, which reports, sees all of them
+    // when it checks a literal inside a condition (R-TYP-31), whichever domain is declared first.
+    let mut extracted = Vec::new();
+    {
+        let file = File {
+            types,
+            domains: &domains,
+            goals: &[],
+            scope,
+            text,
+        };
+        for (index, source) in scope.domains.iter().enumerate() {
+            let Rule::Where(condition) = source.rule else { continue };
+            if source.base == Type::Error {
+                continue;
+            }
+            let (e, found) = typed_condition(&file, source, condition);
+            if !found.iter().any(Diagnostic::is_error) {
+                extracted.push((index, domain::extract(&source.name.name, &source.base, &e, diags)));
+            }
+        }
+    }
+    for (index, constraints) in extracted {
+        if let Some(d) = domains.get_mut(index) {
+            d.constraints = constraints;
+        }
+    }
     let mut checked = Vec::new();
     {
         let file = File {
@@ -57,7 +84,9 @@ pub(crate) fn check_domains(
             if source.base == Type::Error {
                 continue;
             }
-            checked.push((index, condition_of(&file, source, condition, diags)));
+            let (e, found) = typed_condition(&file, source, condition);
+            diags.extend(found);
+            checked.push((index, e));
         }
         // Domains whose name is taken are checked too, then dropped (CC-ERR-04).
         for source in &scope.unnamed_domains {
@@ -71,27 +100,25 @@ pub(crate) fn check_domains(
                         diags,
                     ));
                 }
-                Rule::Where(condition) => drop(condition_of(&file, source, condition, diags)),
+                Rule::Where(condition) => diags.extend(typed_condition(&file, source, condition).1),
             }
         }
     }
-    for (index, (condition, constraints)) in checked {
+    for (index, condition) in checked {
         if let Some(d) = domains.get_mut(index) {
             d.rule = DomainRule::Where { condition };
-            d.constraints = constraints;
         }
     }
     domains
 }
 
-/// Domain `source`'s `condition` checked in R-CHK-13's scope, with its simple constraints split off (R-CHK-14); every
-/// error is `VL0209` (R-TYP-29). An invalid base leaves `value` untyped and nothing split off.
-fn condition_of<'a>(
+/// Domain `source`'s `condition` checked in R-CHK-13's scope, with every error reissued as `VL0209` (R-TYP-29). An
+/// invalid base leaves `value` untyped.
+fn typed_condition<'a>(
     file: &File<'_>,
     source: &DomainSource<'a>,
     condition: &'a ast::Expr,
-    diags: &mut Vec<Diagnostic>,
-) -> (Expr, Constraints) {
+) -> (Expr, Vec<Diagnostic>) {
     let goal = Goal {
         name: source.name.name.clone(),
         params: Vec::new(),
@@ -111,18 +138,11 @@ fn condition_of<'a>(
         body.check_item(condition)
     };
     let name = &source.name.name;
-    let failed = found.iter().any(Diagnostic::is_error);
-    diags.extend(
-        found
-            .into_iter()
-            .map(|d| if d.is_error() { reissued(name, d) } else { d }),
-    );
-    let constraints = if failed || source.base == Type::Error {
-        Constraints::default()
-    } else {
-        domain::extract(name, &source.base, &e, diags)
-    };
-    (e, constraints)
+    let found = found
+        .into_iter()
+        .map(|d| if d.is_error() { reissued(name, d) } else { d })
+        .collect();
+    (e, found)
 }
 
 /// An error in domain `name`'s condition as `VL0209`, keeping its place, help and code (R-TYP-29, R-ERR-04).

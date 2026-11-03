@@ -317,3 +317,23 @@ fn ac_cli_29_a_probe_budget_stop_keeps_its_runtime_exit_code() {
     );
     assert!(!out.stderr.contains("VL0210"), "{}", out.stderr);
 }
+
+/// Gate R1: a budget or size stop on a literal inside a domain condition keeps its runtime exit code (3), not VL0209's.
+#[test]
+fn gate_r1_a_condition_literal_stop_keeps_its_exit_code() {
+    let dir = project("gate_r1");
+    let decls = "type Slow = Number where range(10000000).length > value
+type Holder:
+    a: Slow
+type Tagged = Number where Holder(a: 1).a == value
+";
+    fs::write(
+        dir.join(FILE),
+        SOURCE.replace("type Card:\n", &format!("{decls}type Card:\n")),
+    )
+    .expect("source");
+    let out = velme(&dir, &["check", FILE]);
+    assert_eq!(out.code, 3, "{}{}", out.stdout, out.stderr);
+    assert!(out.stderr.contains("[VL0606]"), "{}", out.stderr);
+    assert!(!out.stderr.contains("VL0209"), "{}", out.stderr);
+}

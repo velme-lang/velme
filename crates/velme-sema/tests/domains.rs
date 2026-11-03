@@ -453,3 +453,42 @@ fn gate_f1_domain_mismatch_is_shared() {
         "a different base is the position's own error"
     );
 }
+
+/// Gate R2 (R-TYP-31): a literal in a domain condition meets the simple constraints of the domains it names, whichever
+/// is declared first, and in a domain whose name is taken too.
+#[test]
+fn gate_r2_condition_literals_meet_simple_constraints() {
+    let pos = "type Pos = Number where value > 0\ntype Pt:\n    x: Pos\n";
+    let q = "type Q = Number where Pt(x: -1).x < value\n";
+    for text in [format!("{pos}{q}"), format!("{q}{pos}")] {
+        let (_, diags) = analyze_str(&format!("language: velme/0.2\n\n{text}"));
+        let errors: Vec<_> = diags.into_iter().filter(Diagnostic::is_error).collect();
+        assert_eq!(
+            errors.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [Code::InvalidDomain],
+            "{text}: {errors:#?}"
+        );
+        assert!(
+            errors[0]
+                .message
+                .contains("`-1` isn\'t a valid `Pos`: it must be more than 0"),
+            "{}",
+            errors[0].message
+        );
+    }
+    // A member is accepted.
+    let (program, diags) = analyze_str(&format!(
+        "language: velme/0.2\n\n{pos}type Q = Number where Pt(x: 1).x < value\n"
+    ));
+    assert!(diags.iter().all(|d| !d.is_error()), "{diags:#?}");
+    assert!(program.is_some());
+    // A duplicate-named domain is checked and dropped, and still reports it (CC-ERR-04).
+    let (_, diags) = analyze_str(&format!(
+        "language: velme/0.2\n\n{pos}{q}type Q = Number where Pt(x: -1).x < value\n"
+    ));
+    let codes: Vec<_> = diags.iter().filter(|d| d.is_error()).map(|d| d.code).collect();
+    assert!(
+        codes.iter().filter(|c| **c == Code::InvalidDomain).count() >= 2,
+        "{diags:#?}"
+    );
+}
