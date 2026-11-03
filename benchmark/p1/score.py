@@ -14,10 +14,11 @@ writes the same text to <first root>/report.md.
 """
 import argparse
 import json
-from decimal import ROUND_HALF_EVEN, Decimal
+import sys
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
 
-from common import cost, cost_uncached, field_names, load_expected, load_kinds, load_program, loads, program_dir, read_jsonl
+from common import cost, cost_uncached, field_names, load_expected, load_kinds, load_program, program_dir, read_jsonl
 
 
 def is_num(v):
@@ -43,7 +44,10 @@ def field_ok(field, got, want):
     got, want = Decimal(got), Decimal(want)
     if field.get("compare") == "decimals":
         q = Decimal(1).scaleb(-field.get("decimals", 0))
-        return got.quantize(q, ROUND_HALF_EVEN) == want.quantize(q, ROUND_HALF_EVEN)
+        try:
+            return got.quantize(q, ROUND_HALF_EVEN) == want.quantize(q, ROUND_HALF_EVEN)
+        except InvalidOperation:  # too many digits for the context precision: this case fails, the run goes on
+            return False
     return got == want
 
 
@@ -96,6 +100,8 @@ def discover(root):
         for arm_dir in sorted(p for p in prog_dir.iterdir() if p.is_dir()):
             for model_dir in sorted(p for p in arm_dir.iterdir() if p.is_dir()):
                 for trial in sorted(model_dir.glob("trial-*")):
+                    if not (trial / "meta.json").exists():  # interrupted before write_trial: coverage reports it missing
+                        continue
                     meta = json.loads((trial / "meta.json").read_text())
                     failed = arm_dir.name == "velme" and not meta.get("build_ok", True)
                     records.append({"program": prog_dir.name, "arm": arm_dir.name, "model": model_dir.name,
@@ -180,7 +186,14 @@ def go_lines(pooled, coverage):
 
 
 def report(roots):
-    records = [r for root in roots for r in discover(root)]
+    records, seen = [], {}
+    for root in roots:
+        for r in discover(root):
+            key = (r["program"], r["arm"], r["model"], r["trial"])
+            if key in seen:
+                sys.exit(f"duplicate trial {'/'.join(key)} in {seen[key]} and {root}")
+            seen[key] = root
+            records.append(r)
     pooled = group(records, lambda r: (r["model"], r["arm"]))
     per_program = group(records, lambda r: (r["program"], r["model"], r["arm"]))
     coverage = {}
