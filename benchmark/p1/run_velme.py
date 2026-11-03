@@ -10,6 +10,7 @@ or VELME_API_KEY) and never written anywhere. Output: <out>/<program>/velme/<mod
 provider's `input_tokens`, which excludes cached tokens, so every arm counts uncached input there and cache apart.
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -39,7 +40,7 @@ def parse_run(stdout, exit_code):
 
 def read_synth_log(project):
     log = project / ".velme/synth-log.jsonl"
-    lines = [loads(line) for line in log.read_text().splitlines() if line.strip()] if log.exists() else []
+    lines = [json.loads(line) for line in log.read_text().splitlines() if line.strip()] if log.exists() else []
     return {
         "tokens_in": sum(line.get("tokens_in") or 0 for line in lines),
         "tokens_out": sum(line.get("tokens_out") or 0 for line in lines),

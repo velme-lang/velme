@@ -7,10 +7,11 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 
-# $ per million tokens (input, output). P1e confirms these against the provider's price list.
+# $ per million tokens (input, output), Anthropic list prices confirmed for P1e (2026-11-03). Haiku 5.5's rate is for
+# prompts of 100K tokens or fewer (every prompt here); cache reads are 0.1x input on both, 5-minute writes 1.25x.
 PRICES = {
-    "claude-haiku-5-5": (1.0, 5.0),
-    "claude-sonnet-5-5": (3.0, 15.0),
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-sonnet-5-5": (2.0, 10.0),
 }
 CACHE_WRITE_MULT = 1.25
 CACHE_READ_MULT = 0.1
