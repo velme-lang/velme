@@ -9,6 +9,7 @@ cents, weight 0.001..30.000 kg in whole grams.
 import random
 from decimal import Decimal as D
 
+import genlib
 import reference
 
 REGIONS = ["home", "eu", "uk", "world"]
@@ -69,15 +70,7 @@ def groups(rng):
 
 def boundary_cases(rng, n):
     """Round-robin over the threshold kinds, so every kind is in the first n."""
-    g = list(groups(rng).values())
-    out, seen, k = [], set(), 0
-    while len(out) < n and any(g):
-        lst = g[k % len(g)]
-        k += 1
-        if lst and (case := lst.pop())[:4] not in seen:
-            seen.add(case[:4])
-            out.append(case)
-    return out
+    return genlib.round_robin(groups(rng), n, lambda c: c[:4])
 
 
 def generate(seed, n):

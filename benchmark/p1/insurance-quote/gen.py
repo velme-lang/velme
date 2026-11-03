@@ -10,6 +10,7 @@ import itertools
 import random
 from decimal import Decimal as D
 
+import genlib
 import reference
 
 GROUPS = ["A", "B", "C", "D"]
@@ -23,12 +24,6 @@ def grid():
     return list(itertools.product(AGE_PTS, GROUPS, CLAIMS_PTS, MILES_PTS, (False, True)))
 
 
-def disagrees(x):
-    """x ends in exactly half a cent after an even cent digit, where half-up and half-even round differently."""
-    x *= 100
-    return x % 1 == D("0.5") and int(x) % 2 == 0
-
-
 def ties(case):
     """Which roundings to the cent of this case are ties half-up and half-even round differently: `loaded` (step 2),
     `discount` (step 3), `instalment` (step 5, on the annual premium after the minimum and cap)."""
@@ -40,7 +35,7 @@ def ties(case):
     keep = (D("0.90") if tel else D(1)) * (D("0.85") if claims == 0 else D(1))
     annual = reference.quote(*case)["annual_premium"]
     steps = {"loaded": raw, "discount": loaded * (1 - keep), "instalment": annual * D("1.05") / 12}
-    return [name for name, x in steps.items() if disagrees(x)]
+    return [name for name, x in steps.items() if genlib.disagrees(x)]
 
 
 def limit_cases(cases, limit, k):
@@ -75,15 +70,7 @@ def groups(rng):
 
 def boundary_cases(rng, n):
     """Round-robin over the threshold kinds, so every kind is in the first n."""
-    g = list(groups(rng).values())
-    out, seen, k = [], set(), 0
-    while len(out) < n and any(g):
-        lst = g[k % len(g)]
-        k += 1
-        if lst and (case := lst.pop())[:5] not in seen:
-            seen.add(case[:5])
-            out.append(case)
-    return out
+    return genlib.round_robin(groups(rng), n, lambda c: c[:5])
 
 
 def generate(seed, n):

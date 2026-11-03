@@ -9,7 +9,9 @@ hit by searching the unit price, cent by cent, with reference.py. Every case is 
 import random
 from decimal import Decimal as D
 
+import genlib
 import reference
+from genlib import disagrees
 
 TIERS = ["standard", "silver", "gold"]
 COUPONS = ["NONE", "SAVE15", "FLAT25"]
@@ -32,24 +34,6 @@ def merchandise(tier, c, q, coupon):
     return d - reference.coupon_discount(coupon, d)
 
 
-def bracket(f, target):
-    """The cent prices either side of where f (non-decreasing in the price) reaches target: the last below, the first
-    at or above. Empty when target is out of reach in the price range."""
-    if f(PRICE_MAX) < target or f(PRICE_MIN) >= target:
-        return []
-    lo, hi = PRICE_MIN, PRICE_MAX  # f(lo) < target <= f(hi)
-    while hi - lo > 1:
-        mid = (lo + hi) // 2
-        lo, hi = (mid, hi) if f(mid) < target else (lo, mid)
-    return [lo, hi]
-
-
-def disagrees(x):
-    """x ends in exactly half a cent after an even cent digit, where half-up and half-even round differently."""
-    x *= 100
-    return x % 1 == D("0.5") and int(x) % 2 == 0
-
-
 def tie(rng, tier, q, coupon):
     """A cent price whose tier or coupon discount, before rounding, is a tie half-up and half-even round differently;
     None if none near."""
@@ -63,6 +47,10 @@ def tie(rng, tier, q, coupon):
         if any(disagrees(x) for x in raw):
             return c
     return None
+
+
+def bracket(f, target):
+    return genlib.bracket(f, target, PRICE_MIN, PRICE_MAX)
 
 
 def groups(rng):
@@ -99,15 +87,7 @@ def groups(rng):
 
 def boundary_cases(rng, n):
     """Round-robin over the threshold kinds, so every kind is in the first n."""
-    g = list(groups(rng).values())
-    out, seen, k = [], set(), 0
-    while len(out) < n and any(g):
-        lst = g[k % len(g)]
-        k += 1
-        if lst and (case := lst.pop())[:4] not in seen:
-            seen.add(case[:4])
-            out.append(case)
-    return out
+    return genlib.round_robin(groups(rng), n, lambda c: c[:4])
 
 
 def generate(seed, n):

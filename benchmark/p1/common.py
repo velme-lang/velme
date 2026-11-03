@@ -87,18 +87,32 @@ def load_expected(program):
     return {row["id"]: row for row in read_jsonl(heldout_path(program, "expected.jsonl"))}
 
 
+KINDS = ("boundary", "random")
+
+
+def tag_kind(tags):
+    """0087's kind from its old tags (its inputs carry no `kind`)."""
+    return "random" if tags == ["random"] else "boundary"
+
+
+def check_kind(program, id_, kind):
+    if kind not in KINDS:
+        raise ValueError(f"{program} case {id_}: kind must be boundary or random, got {kind!r}")
+    return kind
+
+
 def load_kinds(program):
     """id -> `boundary` or `random`, validated. Only 0087 may derive a kind from its old tags; others need kinds.jsonl."""
     sidecar = heldout_path(program, "kinds.jsonl")
     if sidecar.exists():
         kinds = {row["id"]: row["kind"] for row in read_jsonl(sidecar)}
-        bad = {id_: kind for id_, kind in kinds.items() if kind not in ("boundary", "random")}
+        bad = {id_: kind for id_, kind in kinds.items() if kind not in KINDS}
         if bad:
             raise ValueError(f"{sidecar}: kinds must be boundary or random, got {bad}")
         return kinds
     if program != "0087":
         raise ValueError(f"{program}/heldout/kinds.jsonl is missing; every program but 0087 must carry one")
-    return {case["id"]: ("random" if case.get("tags") == ["random"] else "boundary") for case in load_inputs(program)}
+    return {case["id"]: tag_kind(case.get("tags")) for case in load_inputs(program)}
 
 
 def trial_dir(root, program, arm, model, trial):

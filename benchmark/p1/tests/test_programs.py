@@ -18,7 +18,7 @@ import oracle  # noqa: E402
 import score  # noqa: E402
 
 PROGRAMS = ["0020", "0014"]
-Q = D("1e-8")
+rounded = common.load_module("0014", "oracle").rounded
 
 
 def tck_cases(program):
@@ -31,14 +31,6 @@ def tck_cases(program):
         inputs = {n.get("name"): oracle.xml_value(n) for n in tc.findall("{*}inputNode")}
         out.append((inputs, {r.get("name"): oracle.xml_value(r.find("{*}expected")) for r in tc.findall("{*}resultNode")}))
     return out
-
-
-def rounded(v):
-    if isinstance(v, list):
-        return [rounded(x) for x in v]
-    if isinstance(v, dict):
-        return {k: rounded(x) for k, x in v.items()}
-    return v.quantize(Q) if isinstance(v, D) else v
 
 
 @pytest.mark.parametrize("pid", PROGRAMS)
