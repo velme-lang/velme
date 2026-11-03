@@ -47,3 +47,41 @@ contract); P0d's grammar and lowering get one before commit. Every review of the
 Planned after an architect review of two owner decisions (domains in IR 0.2, conditions beyond simple bounds):
 `velme/0.2` only, domain types in syntax, semantics, IR 0.2 and the validator, `VL0504` output checks, the input
 generator, prompt and request field; `pow`; the notation as default if P0e passes; then the pilot reruns.
+
+### P1 — Real-goals benchmark (go/no-go)
+
+Answers: does Velme write real business logic more correctly than the obvious alternative, at a similar LLM cost?
+A live, manual run, never part of `cargo xtask verify` (D-13); the harness lives in `benchmark/p1/`, outside the CLI,
+and the results are committed as a report.
+
+**Pilot (done).** DMN 0087 on Sonnet against B2 below. On v0.1 it was a no-go: no Velme build succeeded
+([PILOT.md](../../benchmark/p1/PILOT.md)), which led to both parts of P0. Rerun unchanged on `velme/0.2` with input
+domains, it was a go: 200/200 held-out cases in 3 of 3 trials at $0.13 per trial, against B2's $0.11 and $0.25
+([RERUN.md](../../benchmark/p1/RERUN.md)).
+
+**Corpus:** 8 programs. External sources make it hard to say the corpus was cherry-picked.
+- *DMN TCK* (compliance-level-3), the OMG decision-model conformance suite: `0087-chapter-11-example` (loan
+  origination, the pilot), `0020-vacation-days` (overlapping age and service thresholds), `0014-loan-comparison`
+  (ranking lender products by monthly payment: lists, `sort_by`, `pow`).
+- *Our own, in the domains business-logic authors ask about:* order pricing (tiers, stacked discounts, coupon caps),
+  VAT and shipping by region and weight band, insurance quote (base rate, risk loadings, caps), invoice validation
+  (line totals, tax, rounding to the cent, reasons for rejection), refund policy (days since purchase, item state).
+
+**Oracle and held-out tests:** expected outputs come from a reference neither arm sees: for DMN, the model run in
+Drools, checked against the TCK's own cases; for our programs, a hand-written Python oracle, written before either arm
+runs. 200 generated inputs per program, weighted to land on and next to every boundary in the rules. Values compare as
+exact decimals; a float in the baseline counts as a failure and is reported in its own column.
+
+**Arms,** all from the same plain-English rules and visible examples, same model, same retry budget (3):
+- **Velme:** `velme build`, then `velme run` over the held-out inputs.
+- **B1, one-shot Python:** one request returns one function. The floor.
+- **B2, Python plus tests in a loop:** the model writes the function and pytest tests from the examples, runs them,
+  and fixes up to 3 times. The bar: beating only B1 proves nothing.
+
+Models: Haiku and Sonnet decide; one local model is reported only.
+
+**Metrics:** held-out pass rate (boundary and random cases apart), $ and tokens per program, provider calls, wall
+time, goals that never built.
+**Go:** on Haiku and Sonnet, Velme's held-out pass rate is at least B2's and its cost at most 1.5× B2's; or, with
+pass rates equal, it fails fewer boundary cases. **No-go:** stop and rethink before any launch work.
+**User verifies:** the P1 report.
