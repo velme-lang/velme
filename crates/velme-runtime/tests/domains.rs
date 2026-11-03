@@ -7,11 +7,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde_json::{Value as Json, json};
 use velme_builtins::Value;
 use velme_ir::{Origin, Request, to_canonical_string, validate};
-use velme_runtime::{Backend, BuildInput, Lock, Mode, Options, Status, Store, Wasm, build, eval_leaf};
+use velme_runtime::{Backend, BuildInput, Clock, Lock, Mode, Options, Status, Store, Wasm, build, eval_leaf};
 use velme_synth::{ReplyFormat, Scripted, SynthOptions};
 use velme_test_support::{PanicProvider, goal_id, install, program};
 
@@ -237,5 +239,51 @@ goal Keep(n: Busy) -> Number:
     assert_eq!(d.code, velme_diagnostics::Code::BudgetExceeded, "{d:?}");
     assert_eq!(d.message, "Checking whether a value is a `Busy` took too many steps.");
     assert!(d.notes.iter().any(|n| n.contains("`Keep`")), "{d:?}");
+    assert!(!dir.join(".velme/synth-log.jsonl").exists(), "no request, no log line");
+}
+
+/// Gate F5: `admit`'s walk is watched like the scheduler's. On a clock that is always past `max_wall_clock`, a domain
+/// predicate that polls ends the goal with `VL0603` before any request, not with a budget code.
+#[test]
+fn gate_f5_a_walk_timeout_in_admit_is_vl0603() {
+    #[derive(Debug)]
+    struct Jumping(AtomicU64);
+    impl Clock for Jumping {
+        fn now(&self) -> Duration {
+            Duration::from_secs(self.0.fetch_add(1000, Ordering::SeqCst))
+        }
+    }
+    let source = "language: velme/0.2
+
+type Busy = Number where every i in range(10000) has every j in range(2) has i + j >= 0
+
+goal Keep(n: Busy) -> Number:
+    plan: \"Return n.\"
+";
+    let dir = project("gate_f5");
+    let program = program(source);
+    let script = Scripted::replies(["{}".to_owned()]);
+    let input = BuildInput {
+        mode: Mode::Build,
+        program: &program,
+        source,
+        project: &dir,
+        file: FILE,
+        backend: Some(&script),
+        options: SynthOptions::default(),
+        run: Options {
+            clock: Arc::new(Jumping(AtomicU64::new(0))),
+            ..Options::default()
+        },
+    };
+    let report = build(&input, &mut || {});
+    let keep = &report.goals[0];
+    assert_eq!(keep.status, Status::Failed, "{report:#?}");
+    assert_eq!(
+        keep.diagnostics[0].code,
+        velme_diagnostics::Code::Timeout,
+        "{:?}",
+        keep.diagnostics
+    );
     assert!(!dir.join(".velme/synth-log.jsonl").exists(), "no request, no log line");
 }

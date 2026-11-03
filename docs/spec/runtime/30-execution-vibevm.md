@@ -117,8 +117,8 @@ base-valued value, then visit its base structure for nested domains. A record do
 Use R-CHK-15's full source condition, evaluated from validated HIR by `velme-check`'s reference evaluator, also when
 the body backend is WASM. Closed sets compare exact Text values without normalization. False or a value error is
 `VL0504`, naming the goal, domain and first failing path (`result`, `.field`, `[index]`), with the condition/value-error
-cause. No own checks run after this failure; child failures propagate under R-RUN-09–10. Fuel, memory and timeout
-failures retain their budget code rather than becoming non-membership.
+cause. No own checks run after this failure; child failures propagate under R-RUN-09–10. Budget failures (R-CHK-08:
+`VL0601`, `VL0603`, `VL0604`, `VL0606`) retain their code rather than becoming non-membership.
 
 **R-RUN-27** The membership walk lives in `velme-check` and is called only by `velme-runtime` around each
 backend invocation, including the reference runner used for verification. It is not a WASM host import;
@@ -142,11 +142,11 @@ failure paths, fuel and allocation accounting; WASM's base representation does n
 
 **R-RUN-28** After base JSON decoding and before executing a requested goal, apply the same deep membership walk
 to its inputs. A non-member is `VL0902 InvalidInput`, with parameter/field/index path, domain and cause; the CLI
-exits 64 and executes no goal body. A condition's value error is a non-member; budget failure retains its code.
+exits 64 and executes no goal body. A condition's value error is a non-member; a budget failure (R-CHK-08: `VL0601`, `VL0603`, `VL0604`, `VL0606`) retains its code.
 Input validation and output validation share that invocation's fuel budget with the body (R-RUN-27). Verification
 and examples enter through the same runtime input walk, debit the same fuel, and include those debits in
 `max_fuel_observed`, so that value predicts `run`. A generated/example input failing membership indicates a Velme
-bug (`VL0607`), not user JSON `VL0902` or an ordinary non-member counterexample; predicate budget errors still keep
+bug (`VL0607`), not user JSON `VL0902` or an ordinary non-member counterexample, because analysis has already refused an example literal outside its domain (`velme_synth::domain_passes`: source-literal membership, then the scarcity probe); a front end that runs a program must have run it (`build`, `test_goal` and `run_goal` state this); predicate budget errors still keep
 their codes. The runtime calls this walk only at the requested JSON or verification/example entry, not again for
 statically typed inter-goal arguments; every producer's output is checked as above.
 

@@ -1141,7 +1141,7 @@ impl<'a> Validator<'a> {
     /// reported here; any other one is the containing position's.
     fn domain_mismatch(&mut self, segments: &[&str], found: &HirType, expected: Option<&HirType>) {
         let Some(expected) = expected else { return };
-        if !self.checking() || compat(found, expected) || !compat(&found.erased(), &expected.erased()) {
+        if !self.checking() || !hir::domain_mismatch(found, expected) {
             return;
         }
         let rule = format!("this is {}, where {} is needed", self.name(found), self.name(expected));

@@ -50,6 +50,19 @@ impl Probe {
     }
 }
 
+/// The domain passes that follow analysis (`compiler/20` §3), in their one order: the full membership of source literals
+/// (`language/11` R-TYP-31), then, if that found no error, the scarcity probe (R-SYNTH-65). Every front end runs it on a
+/// program [`velme_sema::analyze`] returned, before anything runs or is synthesized: runtime treats an example input
+/// outside its domain as a Velme bug (`VL0607`, R-RUN-28) because this pass has already refused it. `program` has no
+/// errors.
+pub fn domain_passes(program: &Program, source: &str) -> Vec<Diagnostic> {
+    let mut found = velme_check::check_literals(program, source);
+    if !found.iter().any(Diagnostic::is_error) {
+        found.extend(probe(program, source));
+    }
+    found
+}
+
 /// Probes every domain of the checked `program`, whose source is `source`, used or not, in type-name order: a
 /// `VL0210` for each scarce one, and a predicate's budget failure with its own code (R-SYNTH-65).
 pub fn probe(program: &Program, source: &str) -> Vec<Diagnostic> {

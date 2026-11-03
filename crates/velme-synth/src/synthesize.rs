@@ -727,7 +727,7 @@ pub fn provider_diagnostic(error: &ProviderError, backend: &str, name: &str, spa
                         "The backend `{backend}` couldn't build `{name}`: it answers only in {only}, and velme.toml asks for `reply_format = \"{asked}\"`."
                     ),
                 )
-                .with_help("remove `reply_format` from `[synthesis]`, or use a backend that lists it")
+                .with_help("set `reply_format = \"ir-json\"` in `[synthesis]`, or use a backend that lists it")
             } else {
                 Diagnostic::new(
                     Code::BackendFailed,

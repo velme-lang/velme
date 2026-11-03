@@ -25,7 +25,7 @@ pub use clock::{Clock, SystemClock};
 pub use config::{BudgetConfig, PROJECT_FILE, ProjectConfig, UserConfig, inside_project};
 pub use explain::explain;
 pub use input::{MAX_INPUT_BYTES, decode_inputs, find_goal, read_input};
-pub use leaf::{Tested, run_leaf, test_goal};
+pub use leaf::{Tested, test_goal};
 pub use lock::{Entry, LOCK_FILE, LOCK_VERSION, Lock, LockError, MAX_LOCK_BYTES};
 pub use locked::{Cause, EntryError, LockedGoal, RecordChange, Versioned, load};
 pub use registry::Registry;

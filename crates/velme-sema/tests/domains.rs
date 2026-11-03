@@ -367,3 +367,89 @@ fn ac_typ_27_equality_checks_only_closed_set_literals_and_record_fields() {
     );
     assert_eq!(check("r: Risk", "r == \"NOPE\""), [Code::TypeMismatch]);
 }
+
+const TEAM: &str = "type Age = Number where value >= 0 and value <= 120
+type Score = Number where value >= 0 and value <= 1000
+type Team:
+    ages: List<Age>
+type Player:
+    age: Age
+    score: Score
+";
+
+/// Gate F1 (D-163, R-TYP-30): a list literal with an item of a different domain than the expected element is `VL0204`
+/// in a check, an example and a call argument, and `VL0209` in a domain condition, whatever the other items are; the
+/// join must not widen it to `List<Number>`.
+#[test]
+fn gate_f1_mixed_domain_list() {
+    let goal = |item: &str| {
+        let text = format!(
+            "language: velme/0.2\n\n{TEAM}\ngoal MakeTeam(p: Player) -> Team:\n    plan: \"A team.\"\n    check:\n        - {item}\n"
+        );
+        let (_, diags) = analyze_str(&text);
+        diags.into_iter().filter(Diagnostic::is_error).collect::<Vec<_>>()
+    };
+    for bad in [
+        "result == Team(ages: [p.age, p.score])",
+        "result == Team(ages: [1, p.score])",
+        "result == Team(ages: [p.score, p.age])",
+    ] {
+        let d = goal(bad);
+        assert_eq!(
+            d.iter().map(|d| d.code).collect::<Vec<_>>(),
+            [Code::TypeMismatch],
+            "{bad}: {d:#?}"
+        );
+        assert_eq!(d[0].message, "Expected Age, but got Score.", "{bad}");
+    }
+    // Every offending item is reported; an item of the right domain or of its base is fine.
+    assert_eq!(goal("result == Team(ages: [p.score, p.age, p.score])").len(), 2);
+    assert!(goal("result == Team(ages: [p.age, p.age, 3])").is_empty());
+    // Nested lists meet the same rule through the inner list's expected type.
+    let nested = format!(
+        "language: velme/0.2\n\n{TEAM}type Teams:\n    teams: List<List<Age>>\n\ngoal G(p: Player) -> Teams:\n    plan: \"x\"\n    check:\n        - result == Teams(teams: [[p.age], [p.score]])\n"
+    );
+    let d: Vec<_> = analyze_str(&nested)
+        .1
+        .into_iter()
+        .filter(Diagnostic::is_error)
+        .collect();
+    assert_eq!(
+        d.iter().map(|d| d.code).collect::<Vec<_>>(),
+        [Code::TypeMismatch],
+        "{d:#?}"
+    );
+    // A domain condition reports it as `VL0209`.
+    let condition =         "language: velme/0.2\n\ntype Age = Number where value >= 0 and value <= 120\ntype Score = Number where value >= 0 and value <= 1000\ntype Team:\n    ages: List<Age>\ntype Player where Team(ages: [value.age, value.score]).ages.length == 2:\n    age: Age\n    score: Score\n".to_string();
+    let d: Vec<_> = analyze_str(&condition)
+        .1
+        .into_iter()
+        .filter(Diagnostic::is_error)
+        .collect();
+    assert_eq!(
+        d.iter().map(|d| d.code).collect::<Vec<_>>(),
+        [Code::InvalidDomain],
+        "{d:#?}"
+    );
+    assert!(d[0].message.contains("expected Age, but got Score"), "{}", d[0].message);
+}
+
+/// Gate F1: sema and the IR validator share one predicate, so they can't drift.
+#[test]
+fn gate_f1_domain_mismatch_is_shared() {
+    use velme_sema::hir::{DomainId, Type, domain_mismatch};
+    let age = Type::Domain(DomainId(0), Box::new(Type::Number));
+    let score = Type::Domain(DomainId(1), Box::new(Type::Number));
+    assert!(domain_mismatch(&score, &age));
+    assert!(domain_mismatch(
+        &Type::List(Box::new(score.clone())),
+        &Type::List(Box::new(age.clone()))
+    ));
+    assert!(!domain_mismatch(&age, &age));
+    assert!(!domain_mismatch(&Type::Number, &age), "a base fills a domain position");
+    assert!(!domain_mismatch(&age, &Type::Number), "a domain widens to its base");
+    assert!(
+        !domain_mismatch(&Type::Text, &age),
+        "a different base is the position's own error"
+    );
+}

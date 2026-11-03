@@ -135,7 +135,9 @@ fn ac_cmp_09_membership_stays_in_velme_check_and_no_backend_reaches_it() {
     let source = |path: &str| std::fs::read_to_string(root.join(path)).expect("a source file");
     let probe = source("crates/velme-synth/src/probe.rs");
     assert!(
-        probe.contains("pub fn probe(") && probe.contains("generator.admitted("),
+        probe.contains("pub fn probe(")
+            && probe.contains("pub fn domain_passes(")
+            && probe.contains("generator.admitted("),
         "the probe lives in velme-synth and evaluates predicates through velme-check"
     );
     assert!(
@@ -150,8 +152,8 @@ fn ac_cmp_09_membership_stays_in_velme_check_and_no_backend_reaches_it() {
         .and_then(|rest| rest.split("\nfn ").next())
         .expect("velme-cli has `analyze`");
     assert!(
-        analyze.contains("velme_synth::probe("),
-        "`velme check` probes during analysis"
+        analyze.contains("velme_synth::domain_passes("),
+        "`velme check` runs the domain passes (literals, then the probe) during analysis"
     );
     assert!(!analyze.contains("provider"), "analysis constructs no provider");
 

@@ -507,6 +507,13 @@ fn compat_at(from: &Type, to: &Type, top: bool) -> bool {
     }
 }
 
+/// R-TYP-30, D-163: `found` is a direct expression of a different domain where `expected` is needed — it doesn't fit
+/// `expected` ([`compat`]) though it would with every domain erased. Sema reports it as `VL0204`, the IR validator as
+/// `VL0402` (R-IR-25); both call this so they can't drift.
+pub fn domain_mismatch(found: &Type, expected: &Type) -> bool {
+    !compat(found, expected) && compat(&found.erased(), &expected.erased())
+}
+
 /// R-TYP-26, R-TYP-30: the least type both `a` and `b` are assignable to, if there is one. Distinct domains, or a
 /// domain and its base, join at the base.
 pub fn join(a: &Type, b: &Type) -> Option<Type> {

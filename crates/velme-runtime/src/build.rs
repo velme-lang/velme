@@ -25,11 +25,12 @@ use velme_synth::{
 
 use crate::artifact::{ArtifactFormat, Child, Manifest, Verification};
 use crate::backend::Backend;
+use crate::clock::Watchdog;
 use crate::leaf::limits;
 use crate::lock::{Entry, Lock};
 use crate::locked::{LockedGoal, load};
 use crate::registry::Registry;
-use crate::sched::{Options, run_goal_unchecked};
+use crate::sched::{Options, generated_outside, run_goal_unchecked};
 use crate::store::{Store, StoreError};
 use crate::synth_log;
 
@@ -177,6 +178,8 @@ pub struct BuildReport {
 /// Builds every goal of `input.program` that has no fresh lock entry and writes the store and the lock. `first_contact`
 /// is called once, before anything reaches a provider, the identity step included, so the caller can print what is sent
 /// (`tooling/41` R-SEC-12); a build that contacts none never calls it.
+/// `program` must have passed `velme_synth::domain_passes` after analysis: an example input outside its domain is
+/// `VL0607`, a Velme bug, only because that pass refused it first (R-RUN-28).
 pub fn build(input: &BuildInput<'_>, first_contact: &mut dyn FnMut()) -> BuildReport {
     let failed = |diagnostic| BuildReport {
         goals: Vec::new(),
@@ -916,13 +919,17 @@ impl ChildRunner for Runner<'_, '_> {
             .get(self.goal.0)
             .ok_or_else(Diagnostic::internal_error)?;
         let membership = Membership::new(input.program, input.source)?;
+        // Watched like the scheduler's entry walk, so a pow-heavy predicate ends in `VL0603` (D-168).
+        let watchdog = Arc::new(Watchdog::start(&self.build.input.run));
         for test in inputs {
-            let (walked, _) = membership.inputs(target, &test.args, Budget::new(limits(target)));
-            if let Err((param, refused @ Refused::Stopped(_))) = walked {
-                return Err(refused
-                    .input_diagnostic(target, param)
-                    .with_note(format!("input: {}", test.json)));
-            }
+            let budget = Budget::new(limits(target)).watched(Some(watchdog.interrupt()));
+            let (walked, _) = membership.inputs(target, &test.args, budget);
+            let refusal = match walked {
+                Err((_, Refused::Outside(outside))) => generated_outside(&outside),
+                Err((param, refused)) => refused.input_diagnostic(target, param),
+                Ok(_) => continue,
+            };
+            return Err(refusal.with_note(format!("input: {}", test.json)));
         }
         Ok(())
     }
@@ -963,4 +970,48 @@ pub(crate) fn invoke_registry(
         fuel: run.fuel,
         memory: run.memory,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use velme_builtins::Number;
+    use velme_test_support::{goal_id, program};
+
+    use super::*;
+
+    /// Gate F4: the generator and the walk can only disagree through a bug of ours, and no source can make them (the
+    /// analyzer refuses a literal outside its domain), so `admit` is called with the input they would disagree on. It
+    /// ends the goal with `VL0607`, naming the input, before the first request.
+    #[test]
+    fn gate_f4_admit_refuses_a_non_member_as_vl0607() {
+        let source = "language: velme/0.2\n\ntype Age = Number where value >= 18\n\ngoal Keep(n: Age) -> Number:\n    plan: \"Return n.\"\n";
+        let program = program(source);
+        let goal = goal_id(&program, "Keep");
+        let dir = Path::new("unused");
+        let input = BuildInput {
+            program: &program,
+            source,
+            project: dir,
+            file: "keep.velme",
+            mode: Mode::Build,
+            backend: None,
+            options: SynthOptions::default(),
+            run: Options::default(),
+        };
+        let build = Build::new(&input, Lock::new("velme/0.2"));
+        let runner = Runner { build: &build, goal };
+        let member = TestInput {
+            json: "{\"n\":20}".to_owned(),
+            args: vec![Value::Number(Number::from(20_i64))],
+        };
+        let outside = TestInput {
+            json: "{\"n\":5}".to_owned(),
+            args: vec![Value::Number(Number::from(5_i64))],
+        };
+        assert!(runner.admit(std::slice::from_ref(&member)).is_ok());
+        let d = runner.admit(&[member, outside]).expect_err("a non-member is refused");
+        assert_eq!(d.code, Code::InternalError, "{d:?}");
+        assert!(d.notes.iter().any(|n| n.contains("is outside `Age`")), "{d:?}");
+        assert!(d.notes.contains(&"input: {\"n\":5}".to_owned()), "{d:?}");
+    }
 }

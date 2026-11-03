@@ -47,7 +47,9 @@ pub use ollama::{
     normalize_model,
 };
 pub use options::{PromptOptions, ReplyFormat, RetryHistory, SchemaInPrompt, SynthOptions};
-pub use probe::{PROBE_DRAWS, PROBE_MIN_VALID, Probe, ProbeDraw, probe, probe_domain, probe_domain_within};
+pub use probe::{
+    PROBE_DRAWS, PROBE_MIN_VALID, Probe, ProbeDraw, domain_passes, probe, probe_domain, probe_domain_within,
+};
 pub use prompt::{Prompt, Role, Turn, prompt_version, render, render_with};
 pub use provider::{
     Called, DEFAULT_MAX_OUTPUT_TOKENS, Identity, MalformedReason, ProviderError, ReplyMeta, Seen, SynthBackend,

@@ -8,6 +8,7 @@ mod graph;
 pub mod hir;
 mod resolve;
 
+pub use check::reissued;
 use velme_diagnostics::Diagnostic;
 pub use velme_syntax::LANGUAGE_VERSION;
 /// The input of [`analyze`], so its callers need not depend on `velme-syntax`.

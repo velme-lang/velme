@@ -26,11 +26,12 @@ This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)) and th
 - A `language: velme/0.1` header or `project.language = "velme/0.1"` config setting is rejected with migration help (`VL0106` / `VL0902`).
   - Migration: in source files, change the first line to `language: velme/0.2` (or omit the header); in `velme.toml`, change `project.language = "velme/0.2"` (or omit the setting); rebuild the lockfile with `velme build <file>` or `velme run --build <file>`.
 - Existing `0.1` locks are stale and invalidated under 0.2.
+- The `external` backend protocol moved from `/v1/describe` and `/v1/synthesize` to `/v2/describe` and `/v2/synthesize`, with request `0.2` carrying `domains` and `declarations` (R-SYNTH-61). A third-party backend that serves only `/v1` stops working; until it serves `/v2` the failure shows as a transport or 4xx `VL0406`.
 
 ### Removed
 
 - Support for `velme/0.1` headers, IR `0.1` schemas, and builtins `0.1`.
-- `reply_format = "compact"` (D-170): use `notation`, the default; `compact` is now an unknown value (`VL0902`). `prompt_version` changes once, so synthesis keys change.
+- `reply_format = "compact"` (D-170): use `notation`, the default; `compact` is now an unknown value (`VL0902`), with help naming `notation` and `ir-json`. `prompt_version` changes once, so synthesis keys change.
 
 ## [0.1.0-alpha.1] - 2026-10-02
 
