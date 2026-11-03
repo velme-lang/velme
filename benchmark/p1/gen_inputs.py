@@ -10,17 +10,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from common import dumps, load_module, load_program, program_dir
+from common import check_kind, dumps, load_module, load_program, program_dir, tag_kind
 
 
 def kind_of(case, program):
     """Validate the case kind; only 0087 may still derive it from its old tags."""
     kind = case.get("kind")
     if kind is None and program == "0087":
-        kind = "random" if case.get("tags") == ["random"] else "boundary"
-    if kind not in ("boundary", "random"):
-        raise ValueError(f"{program} case {case.get('id')}: kind must be boundary or random, got {kind!r}")
-    return kind
+        kind = tag_kind(case.get("tags"))
+    return check_kind(program, case.get("id"), kind)
 
 
 def generate(program, seed, n):

@@ -19,7 +19,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from common import HERE, dumps, load_inputs, load_program, loads, prices, trial_dir, write_trial
+from common import HERE, dumps, load_inputs, load_program, loads, prices, program_path, trial_dir, write_trial
 
 DEFAULT_VELME = HERE.parent.parent / "target/release/velme"
 
@@ -60,7 +60,7 @@ def trial(args, program, k):
         project, home = tmp / "project", tmp / "home"
         project.mkdir()
         home.mkdir()
-        (project / source).write_text((HERE / program["id"] / program["source"]).read_text())
+        (project / source).write_text(program_path(program["id"], program["source"]).read_text())
         toml = f'[synthesis]\nprovider = "anthropic"\nmodel = "{args.model}"\n'
         if args.no_prompt_cache:
             toml += "prompt_cache = false\n"

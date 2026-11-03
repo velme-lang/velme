@@ -14,6 +14,7 @@ case is inside the stated ranges.
 import random
 from decimal import Decimal as D
 
+import genlib
 import reference
 
 REGIONS = ["DE", "NL", "UK", "CH"]
@@ -39,8 +40,11 @@ def gross(region, net):
 
 def disagrees(region, net):
     """net × rate is exactly half a cent after an even cent, where half-up and half-even round differently."""
-    x = money(net) * reference.TAX_RATE[region] * 100
-    return x % 1 == D("0.5") and int(x) % 2 == 0
+    return genlib.disagrees(money(net) * reference.TAX_RATE[region])
+
+
+def bracket(f, target):
+    return genlib.bracket(f, target, NET_MIN, NET_MAX)
 
 
 def accepted(rng, region=None, net=None, role=None):
@@ -51,18 +55,6 @@ def accepted(rng, region=None, net=None, role=None):
     inv = rng.randint(DAY_MIN, DAY_MAX - 60)
     return {"region": region, "net": net, "tax": tax_cents(region, net), "lines": rng.randint(1, 200), "inv": inv,
             "rec": inv + rng.randint(0, terms), "terms": terms, "role": role or rng.choice(ROLES)}
-
-
-def bracket(f, target):
-    """The net cents either side of where f (non-decreasing in the net) reaches target: the last below, the first at
-    or above."""
-    lo, hi = NET_MIN, NET_MAX
-    if f(hi) < target or f(lo) >= target:
-        return []
-    while hi - lo > 1:
-        mid = (lo + hi) // 2
-        lo, hi = (mid, hi) if f(mid) < target else (lo, mid)
-    return [lo, hi]
 
 
 def groups(rng):
@@ -131,15 +123,7 @@ def key(c):
 
 def boundary_cases(rng, n):
     """Round-robin over the threshold kinds, so every kind is in the first n."""
-    g = list(groups(rng).values())
-    out, seen, k = [], set(), 0
-    while len(out) < n and any(g):
-        lst = g[k % len(g)]
-        k += 1
-        if lst and key((case := lst.pop())[0]) not in seen:
-            seen.add(key(case[0]))
-            out.append(case)
-    return out
+    return genlib.round_robin(groups(rng), n, lambda c: key(c[0]))
 
 
 def random_case(rng):

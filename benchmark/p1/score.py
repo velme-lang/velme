@@ -18,7 +18,7 @@ import sys
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
 
-from common import cost, cost_uncached, field_names, load_expected, load_kinds, load_program, program_dir, read_jsonl
+from common import check_kind, cost, cost_uncached, field_names, load_expected, load_kinds, load_program, program_dir, read_jsonl
 
 
 def is_num(v):
@@ -73,10 +73,7 @@ def score_trial(program, trial_dir, expected, kinds, failed=False):
         else:
             bad, has_float = score_case(row, want, fields)
         ok = not bad and not has_float
-        kind = kinds.get(id_)
-        if kind not in ("boundary", "random"):
-            raise ValueError(f"{program['id']} case {id_}: kind must be boundary or random, got {kind!r}")
-        kind = "b" if kind == "boundary" else "r"
+        kind = "b" if check_kind(program["id"], id_, kinds.get(id_)) == "boundary" else "r"
         res["passed"] += ok
         res[kind + "_pass"] += ok
         res[kind + "_total"] += 1

@@ -11,7 +11,9 @@ ranges: days 0..365, price 1.00..5000.00 in whole cents.
 import random
 from decimal import Decimal as D
 
+import genlib
 import reference
+from genlib import disagrees
 
 CATEGORIES = ["electronics", "apparel", "furniture"]
 MEMBERSHIPS = ["none", "plus", "premier"]
@@ -24,22 +26,8 @@ def price(c):
     return D(c).scaleb(-2)
 
 
-def disagrees(x):
-    """x ends in exactly half a cent after an even cent digit, where half-up and half-even round differently."""
-    x *= 100
-    return x % 1 == D("0.5") and int(x) % 2 == 0
-
-
 def bracket(f, target):
-    """The cent prices either side of where f (non-decreasing in the price) reaches target: the last below, the first
-    at or above."""
-    lo, hi = PRICE_MIN, PRICE_MAX
-    if f(hi) < target or f(lo) >= target:
-        return []
-    while hi - lo > 1:
-        mid = (lo + hi) // 2
-        lo, hi = (mid, hi) if f(mid) < target else (lo, mid)
-    return [lo, hi]
+    return genlib.bracket(f, target, PRICE_MIN, PRICE_MAX)
 
 
 def tie(rng, rate, top=PRICE_MAX):
@@ -96,15 +84,7 @@ def groups(rng):
 
 def boundary_cases(rng, n):
     """Round-robin over the threshold kinds, so every kind is in the first n."""
-    g = list(groups(rng).values())
-    out, seen, k = [], set(), 0
-    while len(out) < n and any(g):
-        lst = g[k % len(g)]
-        k += 1
-        if lst and (case := lst.pop())[:6] not in seen:
-            seen.add(case[:6])
-            out.append(case)
-    return out
+    return genlib.round_robin(groups(rng), n, lambda c: c[:6])
 
 
 def generate(seed, n):
