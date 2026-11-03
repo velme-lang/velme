@@ -6,7 +6,7 @@ Versions follow semver (`delivery/52` §5). Version bumps that change a fingerpr
 
 ## [Unreleased]
 
-## [0.2.0-alpha.1] - 2026-10-26
+## [0.2.0-alpha.1] - 2026-11-03
 
 Coordinated language break to `velme/0.2`, IR `0.2`, request `0.2` and builtins `0.2` (R-REL-14, D-160, D-168). Invalidates locks: yes.
 
@@ -32,6 +32,10 @@ This release brings input domains ([RFC 0001](rfc/0001-input-domains.md)) and th
 
 - Support for `velme/0.1` headers, IR `0.1` schemas, and builtins `0.1`.
 - `reply_format = "compact"` (D-170): use `notation`, the default; `compact` is now an unknown value (`VL0902`), with help naming `notation` and `ir-json`. `prompt_version` changes once, so synthesis keys change.
+
+### Security
+
+- Dependency updates for RUSTSEC-2026-0378, -0379, -0381..0383, -0386 and -0422..0424: wasmtime 49.0.5, tokio 1.54.1, rustls-webpki 0.103.16, webpki-roots and webpki-root-certs 1.0.11.
 
 ## [0.1.0-alpha.1] - 2026-10-02
 
