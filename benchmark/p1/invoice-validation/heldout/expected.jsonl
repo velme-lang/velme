@@ -1,0 +1,200 @@
+{"id": 1, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 8205.65, "gross_total": 109509.97, "manual_approval": false}
+{"id": 2, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 7010.05, "gross_total": 93553.85, "manual_approval": false}
+{"id": 3, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 8970.23, "gross_total": 119713.82, "manual_approval": false}
+{"id": 4, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 22223.45, "gross_total": 128049.41, "manual_approval": false}
+{"id": 5, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 12699.91, "gross_total": 73175.67, "manual_approval": false}
+{"id": 6, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 40701.04, "gross_total": 234515.52, "manual_approval": false}
+{"id": 7, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 18254.73, "gross_total": 243621.79, "manual_approval": false}
+{"id": 8, "accepted": false, "reasons": ["FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 3800.78, "gross_total": 21899.73, "manual_approval": false}
+{"id": 9, "accepted": true, "reasons": [], "computed_tax": 32525.32, "gross_total": 187407.82, "manual_approval": false}
+{"id": 10, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 19266.52, "gross_total": 257124.76, "manual_approval": false}
+{"id": 11, "accepted": false, "reasons": ["TERMS"], "computed_tax": 9442.57, "gross_total": 54407.18, "manual_approval": false}
+{"id": 12, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 15833.41, "gross_total": 99167.15, "manual_approval": false}
+{"id": 13, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 33966.55, "gross_total": 212737.84, "manual_approval": false}
+{"id": 14, "accepted": false, "reasons": ["STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 28337.70, "gross_total": 170026.18, "manual_approval": false}
+{"id": 15, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 36638.54, "gross_total": 219831.26, "manual_approval": false}
+{"id": 16, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 47677.45, "gross_total": 274712.93, "manual_approval": false}
+{"id": 17, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 35465.79, "gross_total": 212794.76, "manual_approval": false}
+{"id": 18, "accepted": false, "reasons": ["FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 39466.28, "gross_total": 247183.54, "manual_approval": false}
+{"id": 19, "accepted": false, "reasons": ["FUTURE_DATED"], "computed_tax": 14960.38, "gross_total": 93699.24, "manual_approval": false}
+{"id": 20, "accepted": false, "reasons": ["TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 15803.50, "gross_total": 210908.50, "manual_approval": false}
+{"id": 21, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 6276.78, "gross_total": 36166.21, "manual_approval": false}
+{"id": 22, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 17226.06, "gross_total": 229893.46, "manual_approval": false}
+{"id": 23, "accepted": false, "reasons": ["TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 50000.00, "gross_total": 300000.00, "manual_approval": false}
+{"id": 24, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 43814.16, "gross_total": 252453.01, "manual_approval": false}
+{"id": 25, "accepted": true, "reasons": [], "computed_tax": 3946.72, "gross_total": 52671.72, "manual_approval": true}
+{"id": 26, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 10970.31, "gross_total": 68708.76, "manual_approval": false}
+{"id": 27, "accepted": true, "reasons": [], "computed_tax": 867.77, "gross_total": 5000.00, "manual_approval": false}
+{"id": 28, "accepted": false, "reasons": ["STALE", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 44739.98, "gross_total": 257787.52, "manual_approval": false}
+{"id": 29, "accepted": false, "reasons": ["TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 29006.14, "gross_total": 167130.63, "manual_approval": false}
+{"id": 30, "accepted": false, "reasons": ["TERMS"], "computed_tax": 11418.08, "gross_total": 68508.47, "manual_approval": false}
+{"id": 31, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 6417.60, "gross_total": 85647.21, "manual_approval": false}
+{"id": 32, "accepted": true, "reasons": [], "computed_tax": 15335.94, "gross_total": 96051.44, "manual_approval": true}
+{"id": 33, "accepted": true, "reasons": [], "computed_tax": 6537.10, "gross_total": 87242.10, "manual_approval": true}
+{"id": 34, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 33049.54, "gross_total": 198297.25, "manual_approval": false}
+{"id": 35, "accepted": false, "reasons": ["STALE", "OVERDUE"], "computed_tax": 11259.73, "gross_total": 70521.48, "manual_approval": false}
+{"id": 36, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 19785.30, "gross_total": 264048.22, "manual_approval": false}
+{"id": 37, "accepted": true, "reasons": [], "computed_tax": 8333.33, "gross_total": 49999.99, "manual_approval": false}
+{"id": 38, "accepted": false, "reasons": ["FUTURE_DATED"], "computed_tax": 5939.94, "gross_total": 34225.37, "manual_approval": false}
+{"id": 39, "accepted": false, "reasons": ["STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 3236.85, "gross_total": 43197.98, "manual_approval": false}
+{"id": 40, "accepted": false, "reasons": ["STALE", "OVERDUE", "OVER_LIMIT"], "computed_tax": 15340.97, "gross_total": 204735.60, "manual_approval": false}
+{"id": 41, "accepted": false, "reasons": ["FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 13632.68, "gross_total": 181937.39, "manual_approval": false}
+{"id": 42, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 6613.87, "gross_total": 38108.49, "manual_approval": false}
+{"id": 43, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 45325.39, "gross_total": 261160.57, "manual_approval": false}
+{"id": 44, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 16716.52, "gross_total": 96319.02, "manual_approval": false}
+{"id": 45, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 855.66, "gross_total": 11419.40, "manual_approval": false}
+{"id": 46, "accepted": true, "reasons": [], "computed_tax": 798.32, "gross_total": 5000.01, "manual_approval": true}
+{"id": 47, "accepted": true, "reasons": [], "computed_tax": 14986.12, "gross_total": 200000.00, "manual_approval": true}
+{"id": 48, "accepted": false, "reasons": ["STALE", "TERMS", "OVERDUE"], "computed_tax": 22140.02, "gross_total": 132840.10, "manual_approval": false}
+{"id": 49, "accepted": true, "reasons": [], "computed_tax": 798.32, "gross_total": 5000.00, "manual_approval": false}
+{"id": 50, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 12290.21, "gross_total": 164021.23, "manual_approval": false}
+{"id": 51, "accepted": true, "reasons": [], "computed_tax": 711.56, "gross_total": 4456.59, "manual_approval": false}
+{"id": 52, "accepted": true, "reasons": [], "computed_tax": 7983.19, "gross_total": 49999.99, "manual_approval": false}
+{"id": 53, "accepted": true, "reasons": [], "computed_tax": 867.77, "gross_total": 5000.01, "manual_approval": true}
+{"id": 54, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 0.00, "gross_total": 0.01, "manual_approval": false}
+{"id": 55, "accepted": true, "reasons": [], "computed_tax": 5603.32, "gross_total": 32285.82, "manual_approval": true}
+{"id": 56, "accepted": true, "reasons": [], "computed_tax": 24039.67, "gross_total": 150564.26, "manual_approval": true}
+{"id": 57, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 16678.07, "gross_total": 222580.14, "manual_approval": false}
+{"id": 58, "accepted": true, "reasons": [], "computed_tax": 28944.98, "gross_total": 166778.23, "manual_approval": false}
+{"id": 59, "accepted": true, "reasons": [], "computed_tax": 27217.31, "gross_total": 163303.87, "manual_approval": true}
+{"id": 60, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 9759.42, "gross_total": 61124.79, "manual_approval": false}
+{"id": 61, "accepted": true, "reasons": [], "computed_tax": 12048.40, "gross_total": 75461.05, "manual_approval": false}
+{"id": 62, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 26069.03, "gross_total": 156414.19, "manual_approval": false}
+{"id": 63, "accepted": true, "reasons": [], "computed_tax": 15372.86, "gross_total": 92237.14, "manual_approval": false}
+{"id": 64, "accepted": true, "reasons": [], "computed_tax": 798.32, "gross_total": 5000.00, "manual_approval": false}
+{"id": 65, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "TAX_MISMATCH"], "computed_tax": 1222.50, "gross_total": 16315.13, "manual_approval": false}
+{"id": 66, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 8150.04, "gross_total": 108767.77, "manual_approval": false}
+{"id": 67, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 18440.34, "gross_total": 106251.48, "manual_approval": false}
+{"id": 68, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 33464.60, "gross_total": 209594.10, "manual_approval": false}
+{"id": 69, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 13806.44, "gross_total": 86471.94, "manual_approval": false}
+{"id": 70, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 45765.52, "gross_total": 274593.12, "manual_approval": false}
+{"id": 71, "accepted": true, "reasons": [], "computed_tax": 25451.61, "gross_total": 159407.44, "manual_approval": true}
+{"id": 72, "accepted": true, "reasons": [], "computed_tax": 8333.33, "gross_total": 50000.00, "manual_approval": false}
+{"id": 73, "accepted": false, "reasons": ["TERMS", "OVERDUE"], "computed_tax": 1990.35, "gross_total": 26562.56, "manual_approval": false}
+{"id": 74, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 31932.78, "gross_total": 200000.02, "manual_approval": false}
+{"id": 75, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 41644.79, "gross_total": 239953.30, "manual_approval": false}
+{"id": 76, "accepted": false, "reasons": ["FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 28346.42, "gross_total": 170078.53, "manual_approval": false}
+{"id": 77, "accepted": false, "reasons": ["STALE", "OVERDUE"], "computed_tax": 9766.60, "gross_total": 61169.75, "manual_approval": false}
+{"id": 78, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 20054.28, "gross_total": 115550.85, "manual_approval": false}
+{"id": 79, "accepted": false, "reasons": ["STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 29804.30, "gross_total": 171729.56, "manual_approval": false}
+{"id": 80, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 32914.24, "gross_total": 189648.74, "manual_approval": false}
+{"id": 81, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 31411.46, "gross_total": 196734.96, "manual_approval": false}
+{"id": 82, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 16853.26, "gross_total": 224918.26, "manual_approval": false}
+{"id": 83, "accepted": true, "reasons": [], "computed_tax": 867.77, "gross_total": 5000.00, "manual_approval": false}
+{"id": 84, "accepted": true, "reasons": [], "computed_tax": 867.77, "gross_total": 4999.99, "manual_approval": false}
+{"id": 85, "accepted": true, "reasons": [], "computed_tax": 14986.12, "gross_total": 199999.99, "manual_approval": false}
+{"id": 86, "accepted": true, "reasons": [], "computed_tax": 7513.11, "gross_total": 100267.56, "manual_approval": true}
+{"id": 87, "accepted": true, "reasons": [], "computed_tax": 18233.98, "gross_total": 105062.48, "manual_approval": false}
+{"id": 88, "accepted": true, "reasons": [], "computed_tax": 24855.66, "gross_total": 155674.91, "manual_approval": false}
+{"id": 89, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 8994.03, "gross_total": 120031.43, "manual_approval": false}
+{"id": 90, "accepted": true, "reasons": [], "computed_tax": 34710.74, "gross_total": 200000.00, "manual_approval": true}
+{"id": 91, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 50000.00, "gross_total": 300000.00, "manual_approval": false}
+{"id": 92, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 30766.31, "gross_total": 184597.84, "manual_approval": false}
+{"id": 93, "accepted": true, "reasons": [], "computed_tax": 31932.77, "gross_total": 200000.00, "manual_approval": true}
+{"id": 94, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 14986.13, "gross_total": 200000.02, "manual_approval": false}
+{"id": 95, "accepted": true, "reasons": [], "computed_tax": 21174.96, "gross_total": 127049.77, "manual_approval": true}
+{"id": 96, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 545.85, "gross_total": 3418.75, "manual_approval": false}
+{"id": 97, "accepted": true, "reasons": [], "computed_tax": 5926.08, "gross_total": 37115.98, "manual_approval": false}
+{"id": 98, "accepted": true, "reasons": [], "computed_tax": 14373.48, "gross_total": 90023.40, "manual_approval": true}
+{"id": 99, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 30617.96, "gross_total": 191765.13, "manual_approval": false}
+{"id": 100, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 12374.05, "gross_total": 71298.11, "manual_approval": false}
+{"id": 101, "accepted": true, "reasons": [], "computed_tax": 869.04, "gross_total": 5442.94, "manual_approval": false}
+{"id": 102, "accepted": true, "reasons": [], "computed_tax": 31932.77, "gross_total": 200000.00, "manual_approval": false}
+{"id": 103, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 7503.14, "gross_total": 100134.44, "manual_approval": false}
+{"id": 104, "accepted": true, "reasons": [], "computed_tax": 3746.53, "gross_total": 49999.99, "manual_approval": false}
+{"id": 105, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 40989.33, "gross_total": 256722.63, "manual_approval": false}
+{"id": 106, "accepted": true, "reasons": [], "computed_tax": 31932.77, "gross_total": 199999.99, "manual_approval": false}
+{"id": 107, "accepted": false, "reasons": ["STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 2961.77, "gross_total": 39526.88, "manual_approval": false}
+{"id": 108, "accepted": false, "reasons": ["TERMS", "OVERDUE"], "computed_tax": 9740.33, "gross_total": 58441.96, "manual_approval": false}
+{"id": 109, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 36978.94, "gross_total": 221873.66, "manual_approval": false}
+{"id": 110, "accepted": true, "reasons": [], "computed_tax": 20539.62, "gross_total": 123237.72, "manual_approval": true}
+{"id": 111, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 25787.41, "gross_total": 154724.48, "manual_approval": false}
+{"id": 112, "accepted": false, "reasons": ["LINE_COUNT", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 14525.49, "gross_total": 83694.47, "manual_approval": false}
+{"id": 113, "accepted": true, "reasons": [], "computed_tax": 3746.53, "gross_total": 50000.01, "manual_approval": true}
+{"id": 114, "accepted": false, "reasons": ["STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 307.19, "gross_total": 1923.97, "manual_approval": false}
+{"id": 115, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 11499.44, "gross_total": 153467.81, "manual_approval": false}
+{"id": 116, "accepted": true, "reasons": [], "computed_tax": 8677.69, "gross_total": 50000.00, "manual_approval": false}
+{"id": 117, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 19742.17, "gross_total": 113752.49, "manual_approval": false}
+{"id": 118, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "TAX_MISMATCH"], "computed_tax": 11277.56, "gross_total": 150506.74, "manual_approval": false}
+{"id": 119, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 13657.25, "gross_total": 85537.50, "manual_approval": false}
+{"id": 120, "accepted": true, "reasons": [], "computed_tax": 16611.10, "gross_total": 95711.60, "manual_approval": false}
+{"id": 121, "accepted": false, "reasons": ["STALE", "OVERDUE"], "computed_tax": 4375.20, "gross_total": 26251.21, "manual_approval": false}
+{"id": 122, "accepted": true, "reasons": [], "computed_tax": 12230.76, "gross_total": 76603.20, "manual_approval": false}
+{"id": 123, "accepted": true, "reasons": [], "computed_tax": 26703.15, "gross_total": 167246.07, "manual_approval": false}
+{"id": 124, "accepted": true, "reasons": [], "computed_tax": 14986.12, "gross_total": 200000.00, "manual_approval": false}
+{"id": 125, "accepted": false, "reasons": ["OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 50801.82, "gross_total": 292715.24, "manual_approval": false}
+{"id": 126, "accepted": true, "reasons": [], "computed_tax": 34710.74, "gross_total": 199999.99, "manual_approval": false}
+{"id": 127, "accepted": true, "reasons": [], "computed_tax": 16551.10, "gross_total": 99306.58, "manual_approval": true}
+{"id": 128, "accepted": true, "reasons": [], "computed_tax": 23243.52, "gross_total": 145577.83, "manual_approval": true}
+{"id": 129, "accepted": false, "reasons": ["LINE_COUNT", "TAX_MISMATCH"], "computed_tax": 25740.00, "gross_total": 161213.70, "manual_approval": false}
+{"id": 130, "accepted": true, "reasons": [], "computed_tax": 18741.12, "gross_total": 117378.57, "manual_approval": true}
+{"id": 131, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 33333.34, "gross_total": 200000.02, "manual_approval": false}
+{"id": 132, "accepted": true, "reasons": [], "computed_tax": 3746.53, "gross_total": 50000.00, "manual_approval": false}
+{"id": 133, "accepted": true, "reasons": [], "computed_tax": 6899.65, "gross_total": 92080.47, "manual_approval": false}
+{"id": 134, "accepted": true, "reasons": [], "computed_tax": 14872.08, "gross_total": 85691.49, "manual_approval": true}
+{"id": 135, "accepted": false, "reasons": ["STALE", "TERMS", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 35038.62, "gross_total": 219452.43, "manual_approval": false}
+{"id": 136, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 19295.20, "gross_total": 120848.91, "manual_approval": false}
+{"id": 137, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 21750.08, "gross_total": 130500.47, "manual_approval": false}
+{"id": 138, "accepted": true, "reasons": [], "computed_tax": 0.00, "gross_total": 0.01, "manual_approval": false}
+{"id": 139, "accepted": true, "reasons": [], "computed_tax": 10745.92, "gross_total": 67303.42, "manual_approval": true}
+{"id": 140, "accepted": false, "reasons": ["FUTURE_DATED"], "computed_tax": 9001.52, "gross_total": 120131.40, "manual_approval": false}
+{"id": 141, "accepted": false, "reasons": ["OVERDUE", "TAX_MISMATCH"], "computed_tax": 2689.44, "gross_total": 35892.35, "manual_approval": false}
+{"id": 142, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 19304.72, "gross_total": 257634.61, "manual_approval": false}
+{"id": 143, "accepted": true, "reasons": [], "computed_tax": 17348.12, "gross_total": 108654.00, "manual_approval": true}
+{"id": 144, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 4964.90, "gross_total": 28607.27, "manual_approval": false}
+{"id": 145, "accepted": true, "reasons": [], "computed_tax": 28476.01, "gross_total": 178349.74, "manual_approval": true}
+{"id": 146, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 18414.63, "gross_total": 110487.79, "manual_approval": false}
+{"id": 147, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 10964.57, "gross_total": 63176.81, "manual_approval": false}
+{"id": 148, "accepted": true, "reasons": [], "computed_tax": 13182.12, "gross_total": 82561.69, "manual_approval": false}
+{"id": 149, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 10929.77, "gross_total": 145865.19, "manual_approval": false}
+{"id": 150, "accepted": true, "reasons": [], "computed_tax": 833.33, "gross_total": 5000.00, "manual_approval": false}
+{"id": 151, "accepted": true, "reasons": [], "computed_tax": 3766.79, "gross_total": 50270.35, "manual_approval": false}
+{"id": 152, "accepted": false, "reasons": ["FUTURE_DATED"], "computed_tax": 6981.92, "gross_total": 93178.51, "manual_approval": false}
+{"id": 153, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 34907.60, "gross_total": 201134.26, "manual_approval": false}
+{"id": 154, "accepted": false, "reasons": ["FUTURE_DATED", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 35897.81, "gross_total": 224833.63, "manual_approval": false}
+{"id": 155, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 35274.25, "gross_total": 211645.48, "manual_approval": false}
+{"id": 156, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 38264.51, "gross_total": 220476.46, "manual_approval": false}
+{"id": 157, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 753.39, "gross_total": 4718.62, "manual_approval": false}
+{"id": 158, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 17921.91, "gross_total": 107531.46, "manual_approval": false}
+{"id": 159, "accepted": true, "reasons": [], "computed_tax": 8333.34, "gross_total": 50000.02, "manual_approval": true}
+{"id": 160, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 18961.42, "gross_total": 109253.92, "manual_approval": false}
+{"id": 161, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "TAX_MISMATCH"], "computed_tax": 1016.89, "gross_total": 13571.03, "manual_approval": false}
+{"id": 162, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 42712.67, "gross_total": 246106.34, "manual_approval": false}
+{"id": 163, "accepted": false, "reasons": ["TERMS"], "computed_tax": 12010.55, "gross_total": 69203.66, "manual_approval": false}
+{"id": 164, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 24814.19, "gross_total": 155415.19, "manual_approval": false}
+{"id": 165, "accepted": true, "reasons": [], "computed_tax": 3619.31, "gross_total": 48302.17, "manual_approval": false}
+{"id": 166, "accepted": false, "reasons": ["TERMS"], "computed_tax": 10223.69, "gross_total": 64032.58, "manual_approval": false}
+{"id": 167, "accepted": true, "reasons": [], "computed_tax": 19940.22, "gross_total": 114893.65, "manual_approval": false}
+{"id": 168, "accepted": false, "reasons": ["FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 5192.56, "gross_total": 31155.35, "manual_approval": false}
+{"id": 169, "accepted": true, "reasons": [], "computed_tax": 4237.92, "gross_total": 25427.52, "manual_approval": false}
+{"id": 170, "accepted": true, "reasons": [], "computed_tax": 34710.74, "gross_total": 200000.00, "manual_approval": true}
+{"id": 171, "accepted": false, "reasons": ["LINE_COUNT"], "computed_tax": 3298.73, "gross_total": 44023.74, "manual_approval": false}
+{"id": 172, "accepted": false, "reasons": ["STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 21028.07, "gross_total": 131702.14, "manual_approval": false}
+{"id": 173, "accepted": true, "reasons": [], "computed_tax": 33333.33, "gross_total": 200000.00, "manual_approval": false}
+{"id": 174, "accepted": false, "reasons": ["LINE_COUNT", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 42682.50, "gross_total": 245932.49, "manual_approval": false}
+{"id": 175, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TERMS", "TAX_MISMATCH"], "computed_tax": 23063.24, "gross_total": 144448.70, "manual_approval": false}
+{"id": 176, "accepted": false, "reasons": ["LINE_COUNT", "OVERDUE", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 36430.53, "gross_total": 228170.17, "manual_approval": false}
+{"id": 177, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 26599.67, "gross_total": 159598.00, "manual_approval": false}
+{"id": 178, "accepted": true, "reasons": [], "computed_tax": 31828.54, "gross_total": 183393.04, "manual_approval": false}
+{"id": 179, "accepted": true, "reasons": [], "computed_tax": 2301.46, "gross_total": 13260.81, "manual_approval": true}
+{"id": 180, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 49346.57, "gross_total": 284330.23, "manual_approval": false}
+{"id": 181, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH", "OVER_LIMIT"], "computed_tax": 42725.83, "gross_total": 256354.96, "manual_approval": false}
+{"id": 182, "accepted": false, "reasons": ["OVERDUE"], "computed_tax": 24499.84, "gross_total": 146999.06, "manual_approval": false}
+{"id": 183, "accepted": true, "reasons": [], "computed_tax": 18461.95, "gross_total": 110771.72, "manual_approval": true}
+{"id": 184, "accepted": false, "reasons": ["LINE_COUNT", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 32601.09, "gross_total": 195606.55, "manual_approval": false}
+{"id": 185, "accepted": false, "reasons": ["LINE_COUNT", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 27334.14, "gross_total": 164004.83, "manual_approval": false}
+{"id": 186, "accepted": true, "reasons": [], "computed_tax": 3938.00, "gross_total": 52555.29, "manual_approval": false}
+{"id": 187, "accepted": false, "reasons": ["OVER_LIMIT"], "computed_tax": 34710.75, "gross_total": 200000.02, "manual_approval": false}
+{"id": 188, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 10044.03, "gross_total": 134044.39, "manual_approval": false}
+{"id": 189, "accepted": true, "reasons": [], "computed_tax": 33333.33, "gross_total": 199999.99, "manual_approval": true}
+{"id": 190, "accepted": true, "reasons": [], "computed_tax": 833.33, "gross_total": 5000.00, "manual_approval": false}
+{"id": 191, "accepted": true, "reasons": [], "computed_tax": 16233.85, "gross_total": 101675.19, "manual_approval": true}
+{"id": 192, "accepted": false, "reasons": ["LINE_COUNT", "STALE", "TERMS", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 7557.76, "gross_total": 100863.44, "manual_approval": false}
+{"id": 193, "accepted": true, "reasons": [], "computed_tax": 717.82, "gross_total": 4136.02, "manual_approval": false}
+{"id": 194, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 7631.16, "gross_total": 45786.96, "manual_approval": false}
+{"id": 195, "accepted": false, "reasons": ["LINE_COUNT", "OVERDUE", "TAX_MISMATCH"], "computed_tax": 10436.17, "gross_total": 62617.01, "manual_approval": false}
+{"id": 196, "accepted": false, "reasons": ["LINE_COUNT", "FUTURE_DATED", "TAX_MISMATCH"], "computed_tax": 19008.16, "gross_total": 109523.20, "manual_approval": false}
+{"id": 197, "accepted": true, "reasons": [], "computed_tax": 11053.08, "gross_total": 147510.82, "manual_approval": false}
+{"id": 198, "accepted": true, "reasons": [], "computed_tax": 17346.58, "gross_total": 99949.33, "manual_approval": true}
+{"id": 199, "accepted": false, "reasons": ["TAX_MISMATCH"], "computed_tax": 8899.16, "gross_total": 51276.13, "manual_approval": false}
+{"id": 200, "accepted": true, "reasons": [], "computed_tax": 33333.33, "gross_total": 200000.00, "manual_approval": true}
