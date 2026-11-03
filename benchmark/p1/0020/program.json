@@ -1,0 +1,27 @@
+{
+ "id": "0020",
+ "title": "DMN TCK 0020 vacation days",
+ "goal": "VacationDays",
+ "source": "vacation.velme",
+ "entry": "vacation_days",
+ "inputs": ["age", "years_of_service"],
+ "oracle": "drools",
+ "dmn": {
+  "model": ".cache/tck/TestCases/compliance-level-3/0020-vacation-days/0020-vacation-days.dmn",
+  "tests": ".cache/tck/TestCases/compliance-level-3/0020-vacation-days/0020-vacation-days-test-01.xml",
+  "outputs": {
+   "Base Vacation Days": "base_vacation_days",
+   "Extra days case 1": "extra_days_case_1",
+   "Extra days case 2": "extra_days_case_2",
+   "Extra days case 3": "extra_days_case_3",
+   "Total Vacation Days": "total_vacation_days"
+  }
+ },
+ "fields": [
+  {"name": "base_vacation_days", "compare": "exact"},
+  {"name": "extra_days_case_1", "compare": "exact"},
+  {"name": "extra_days_case_2", "compare": "exact"},
+  {"name": "extra_days_case_3", "compare": "exact"},
+  {"name": "total_vacation_days", "compare": "exact"}
+ ]
+}

@@ -1,0 +1,17 @@
+[
+{"function": "extra_days_case_1", "args": [16, 1], "expected": 5},
+{"function": "extra_days_case_1", "args": [25, 5], "expected": 0},
+{"function": "extra_days_case_1", "args": [44, 30], "expected": 5},
+{"function": "extra_days_case_2", "args": [25, 20], "expected": 0},
+{"function": "extra_days_case_2", "args": [60, 20], "expected": 3},
+{"function": "extra_days_case_3", "args": [25, 20], "expected": 2},
+{"function": "extra_days_case_3", "args": [50, 30], "expected": 2},
+{"function": "extra_days_case_3", "args": [25, 5], "expected": 0},
+{"function": "vacation_days", "args": [16, 1], "expected": {"base_vacation_days": 22, "extra_days_case_1": 5, "extra_days_case_2": 0, "extra_days_case_3": 0, "total_vacation_days": 27}},
+{"function": "vacation_days", "args": [25, 5], "expected": {"base_vacation_days": 22, "extra_days_case_1": 0, "extra_days_case_2": 0, "extra_days_case_3": 0, "total_vacation_days": 22}},
+{"function": "vacation_days", "args": [25, 20], "expected": {"base_vacation_days": 22, "extra_days_case_1": 0, "extra_days_case_2": 0, "extra_days_case_3": 2, "total_vacation_days": 24}},
+{"function": "vacation_days", "args": [44, 30], "expected": {"base_vacation_days": 22, "extra_days_case_1": 5, "extra_days_case_2": 3, "extra_days_case_3": 0, "total_vacation_days": 30}},
+{"function": "vacation_days", "args": [50, 20], "expected": {"base_vacation_days": 22, "extra_days_case_1": 0, "extra_days_case_2": 0, "extra_days_case_3": 2, "total_vacation_days": 24}},
+{"function": "vacation_days", "args": [50, 30], "expected": {"base_vacation_days": 22, "extra_days_case_1": 5, "extra_days_case_2": 3, "extra_days_case_3": 2, "total_vacation_days": 30}},
+{"function": "vacation_days", "args": [60, 20], "expected": {"base_vacation_days": 22, "extra_days_case_1": 5, "extra_days_case_2": 3, "extra_days_case_3": 2, "total_vacation_days": 30}}
+]

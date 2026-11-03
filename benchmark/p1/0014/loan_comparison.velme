@@ -1,0 +1,105 @@
+language: velme/0.2
+
+# P1 benchmark, DMN TCK 0014 (loan comparison). Plan text restates requirements.md section by section;
+# the examples are the same ones the Python baseline gets (examples.json). Velme examples are exact, so the
+# metrics-table examples, whose payment and equity values do not terminate, are given in the plan text instead.
+
+type Amount = Number where value >= 5000 and value <= 1500000 and (value * 100) is whole
+type Rate = Number where value > 0 and value <= 1
+type Points = Number where value >= 0 and value <= 100
+type Fee = Number where value >= 0 and value <= 100000
+
+type LoanProduct:
+    lender_name: Text
+    rate: Rate
+    points: Points
+    fee: Fee
+
+type Metric:
+    lender_name: Text
+    rate: Number
+    points: Number
+    fee: Number
+    loan_amt: Number
+    down_pmt_amt: Number
+    payment_amt: Number
+    equity_36_mo_pct: Number
+
+type RankedProducts:
+    metrics_table: List<Metric>
+    rank_by_down_pmt: List<Metric>
+    rank_by_monthly_pmt: List<Metric>
+    rank_by_equity_pct: List<Metric>
+
+goal Bankrates() -> List<LoanProduct>:
+    plan: "The lender table: ten loan products, always in this order (lender name, rate, points, fee): \"Oceans Capital\" 0.03500 0 0; \"eClick Lending\" 0.03200 1.1 2700; \"eClickLending\" 0.03375 0.1 1200; \"AimLoan\" 0.03000 1.1 3966; \"Home Loans Today\" 0.03125 1.1 285; \"Sebonic\" 0.03125 0.1 4028; \"AimLoan\" 0.03125 0.1 4317; \"eRates Mortgage\" 0.03125 1.1 2518; \"Home Loans Today\" 0.03250 0.1 822; \"AimLoan\" 0.03250 0 1995."
+    examples:
+        - Bankrates() == [
+            LoanProduct(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0),
+            LoanProduct(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700),
+            LoanProduct(lender_name: "eClickLending", rate: 0.03375, points: 0.1, fee: 1200),
+            LoanProduct(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966),
+            LoanProduct(lender_name: "Home Loans Today", rate: 0.03125, points: 1.1, fee: 285),
+            LoanProduct(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028),
+            LoanProduct(lender_name: "AimLoan", rate: 0.03125, points: 0.1, fee: 4317),
+            LoanProduct(lender_name: "eRates Mortgage", rate: 0.03125, points: 1.1, fee: 2518),
+            LoanProduct(lender_name: "Home Loans Today", rate: 0.03250, points: 0.1, fee: 822),
+            LoanProduct(lender_name: "AimLoan", rate: 0.03250, points: 0, fee: 1995),
+        ]
+
+goal MetricsTable(products: List<LoanProduct>, requested_amt: Amount) -> List<Metric>:
+    plan: "One Metric per product, in the products' order. With A the requested amount and r the product's rate: lender name, rate, points and fee are copied from the product; loan amount L = A * (1 + points / 100) + fee; down payment amount = 0.2 * L; payment amount P = L * r / 12 / (1 - (1 + r / 12)^(-360)); equity 36-month percentage = 1 - (B / A) * 0.8, where B = L * (1 + r / 12)^36 - P * ((1 + r / 12)^36 - 1) / r (the last division is by the annual rate r, not by r / 12). All arithmetic is exact decimal; nothing is rounded. Payment amount and equity percentage do not terminate; these examples show them rounded to 8 places: for A = 330000, \"Oceans Capital\" 0.03500 0 0 gives loan amount 330000, down payment 66000, payment 1481.84746977, equity 0.12291308, and \"eClick Lending\" 0.03200 1.1 2700 gives loan amount 336330, down payment 67266, payment 1454.51580776, equity 0.11370297; for A = 5000, \"AimLoan\" 0.03250 0 1995 gives loan amount 6995, down payment 1399, payment 30.44268202, equity -0.21832949."
+    check:
+        - result.length == products.length
+
+goal RankMetrics(table: List<Metric>) -> RankedProducts:
+    plan: "Return RankedProducts with metrics_table the table itself, and three rankings of the same records: rank_by_down_pmt lowest down payment amount first, rank_by_monthly_pmt lowest payment amount first, rank_by_equity_pct highest equity 36-month percentage first. Records equal on the value a list ranks by keep their order in the table, in all three ranked lists. Works on any list of metric records, whatever their values."
+    examples:
+        - RankMetrics([
+            Metric(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0, loan_amt: 330000, down_pmt_amt: 66000.0, payment_amt: 1481.84746977, equity_36_mo_pct: 0.12291308),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 336330.000, down_pmt_amt: 67266.0000, payment_amt: 1454.51580776, equity_36_mo_pct: 0.11370297),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 337596.000, down_pmt_amt: 67519.2000, payment_amt: 1423.31835371, equity_36_mo_pct: 0.11542980),
+        ]) == RankedProducts(metrics_table: [
+            Metric(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0, loan_amt: 330000, down_pmt_amt: 66000.0, payment_amt: 1481.84746977, equity_36_mo_pct: 0.12291308),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 336330.000, down_pmt_amt: 67266.0000, payment_amt: 1454.51580776, equity_36_mo_pct: 0.11370297),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 337596.000, down_pmt_amt: 67519.2000, payment_amt: 1423.31835371, equity_36_mo_pct: 0.11542980),
+        ], rank_by_down_pmt: [
+            Metric(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0, loan_amt: 330000, down_pmt_amt: 66000.0, payment_amt: 1481.84746977, equity_36_mo_pct: 0.12291308),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 336330.000, down_pmt_amt: 67266.0000, payment_amt: 1454.51580776, equity_36_mo_pct: 0.11370297),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 337596.000, down_pmt_amt: 67519.2000, payment_amt: 1423.31835371, equity_36_mo_pct: 0.11542980),
+        ], rank_by_monthly_pmt: [
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 337596.000, down_pmt_amt: 67519.2000, payment_amt: 1423.31835371, equity_36_mo_pct: 0.11542980),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 336330.000, down_pmt_amt: 67266.0000, payment_amt: 1454.51580776, equity_36_mo_pct: 0.11370297),
+            Metric(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0, loan_amt: 330000, down_pmt_amt: 66000.0, payment_amt: 1481.84746977, equity_36_mo_pct: 0.12291308),
+        ], rank_by_equity_pct: [
+            Metric(lender_name: "Oceans Capital", rate: 0.03500, points: 0, fee: 0, loan_amt: 330000, down_pmt_amt: 66000.0, payment_amt: 1481.84746977, equity_36_mo_pct: 0.12291308),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 337596.000, down_pmt_amt: 67519.2000, payment_amt: 1423.31835371, equity_36_mo_pct: 0.11542980),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 336330.000, down_pmt_amt: 67266.0000, payment_amt: 1454.51580776, equity_36_mo_pct: 0.11370297),
+        ])
+        - RankMetrics([
+            Metric(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.84080049, equity_36_mo_pct: -0.43238750),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.14780002, equity_36_mo_pct: -0.42728651),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 8968.20000, down_pmt_amt: 1793.640000, payment_amt: 38.78449341, equity_36_mo_pct: -0.25788582),
+        ]) == RankedProducts(metrics_table: [
+            Metric(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.84080049, equity_36_mo_pct: -0.43238750),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.14780002, equity_36_mo_pct: -0.42728651),
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 8968.20000, down_pmt_amt: 1793.640000, payment_amt: 38.78449341, equity_36_mo_pct: -0.25788582),
+        ], rank_by_down_pmt: [
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 8968.20000, down_pmt_amt: 1793.640000, payment_amt: 38.78449341, equity_36_mo_pct: -0.25788582),
+            Metric(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.84080049, equity_36_mo_pct: -0.43238750),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.14780002, equity_36_mo_pct: -0.42728651),
+        ], rank_by_monthly_pmt: [
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 8968.20000, down_pmt_amt: 1793.640000, payment_amt: 38.78449341, equity_36_mo_pct: -0.25788582),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.14780002, equity_36_mo_pct: -0.42728651),
+            Metric(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.84080049, equity_36_mo_pct: -0.43238750),
+        ], rank_by_equity_pct: [
+            Metric(lender_name: "eClick Lending", rate: 0.03200, points: 1.1, fee: 2700, loan_amt: 8968.20000, down_pmt_amt: 1793.640000, payment_amt: 38.78449341, equity_36_mo_pct: -0.25788582),
+            Metric(lender_name: "AimLoan", rate: 0.03000, points: 1.1, fee: 3966, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.14780002, equity_36_mo_pct: -0.42728651),
+            Metric(lender_name: "Sebonic", rate: 0.03125, points: 0.1, fee: 4028, loan_amt: 10234.20000, down_pmt_amt: 2046.840000, payment_amt: 43.84080049, equity_36_mo_pct: -0.43238750),
+        ])
+
+goal RankProducts(requested_amt: Amount) -> RankedProducts:
+    call:
+        products = Bankrates()
+        table = MetricsTable(products, requested_amt)
+        result = RankMetrics(table)
