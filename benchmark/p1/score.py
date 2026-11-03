@@ -1,21 +1,21 @@
-"""Score runs against the oracle's expected.jsonl.
+"""Score runs against each program's expected.jsonl.
 
-  python score.py runs/a runs/b ... [--price-in 3] [--price-out 15]
+  python score.py runs [runs2 ...]
 
-A case passes when all 10 fields match: Text and Boolean exactly, numbers as exact Decimal, except
-required_monthly_installment, which is compared after quantizing both sides to 8 decimal places (ROUND_HALF_EVEN):
-the DMN engine evaluates with 34 significant digits and Velme with 28, so the long irrational tails differ.
-A float anywhere in a B2 output fails the case and is counted in its own column. Prints one markdown table per
-run directory and writes them all to <parent of first run>/report.md.
+A run root holds `<program>/<arm>/<model>/trial-N/` (the layout every runner writes). Cases pass when every descriptor
+field matches: Text and Boolean exactly, numbers as exact Decimal, except fields marked `decimals` (0087's installment
+to 8 places, the DMN engine's 34 significant digits against Velme's 28). A float anywhere in an output fails the case
+and gets its own column. A failed Velme build counts as 0 held-out cases for that trial, not as a missing trial.
+
+Prints pooled metrics per model across all programs and trials, then per program, then the P1 go/no-go line per model;
+writes the same text to <first root>/report.md.
 """
 import argparse
 import json
 from decimal import ROUND_HALF_EVEN, Decimal
 from pathlib import Path
 
-from common import FIELDS, HELDOUT, loads
-
-Q8 = Decimal("1e-8")
+from common import cost, cost_uncached, field_names, load_expected, load_kinds, load_program, loads, program_dir, read_jsonl
 
 
 def is_num(v):
@@ -29,32 +29,39 @@ def field_ok(field, got, want):
         return isinstance(got, str) and got == want
     if not is_num(got):
         return False
-    got = Decimal(got)
-    if field == "required_monthly_installment":
-        return got.quantize(Q8, ROUND_HALF_EVEN) == want.quantize(Q8, ROUND_HALF_EVEN)
+    got, want = Decimal(got), Decimal(want)
+    if field.get("compare") == "decimals":
+        q = Decimal(1).scaleb(-field.get("decimals", 0))
+        return got.quantize(q, ROUND_HALF_EVEN) == want.quantize(q, ROUND_HALF_EVEN)
     return got == want
 
 
-def score_case(row, want):
-    """(failed fields, has float). A row with no output fails every field and is reported as 'no output' by the caller."""
+def score_case(row, want, fields):
+    """(failed field names, has float). A row with no output fails every field."""
     out = row.get("output")
-    bad = [f for f in FIELDS if not isinstance(out, dict) or f not in out or not field_ok(f, out[f], want[f])]
+    bad = [f["name"] for f in fields
+           if not isinstance(out, dict) or f["name"] not in out or not field_ok(f, out[f["name"]], want[f["name"]])]
     return bad, bool(row.get("float"))
 
 
-def read_jsonl(path):
-    return [loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
-
-
-def score_trial(trial_dir, expected, boundary_ids):
-    rows = {r["id"]: r for r in read_jsonl(trial_dir / "results.jsonl")}
+def score_trial(program, trial_dir, expected, kinds, failed=False):
+    """Counts for one trial. `failed` forces a build failure to 0/N even if the runner left partial rows."""
+    path = Path(trial_dir) / "results.jsonl"
+    rows = {r["id"]: r for r in read_jsonl(path)} if path.exists() else {}
+    fields = program["fields"]
     res = {"passed": 0, "total": len(expected), "b_pass": 0, "b_total": 0, "r_pass": 0, "r_total": 0,
-           "float": 0, "no_output": 0, "fields": {f: 0 for f in FIELDS}}
+           "float": 0, "no_output": 0, "fields": {f["name"]: 0 for f in fields}}
     for id_, want in expected.items():
         row = rows.get(id_, {"output": None})
-        bad, has_float = score_case(row, want)
+        if failed:
+            bad, has_float = field_names(program), False
+        else:
+            bad, has_float = score_case(row, want, fields)
         ok = not bad and not has_float
-        kind = "b" if id_ in boundary_ids else "r"
+        kind = kinds.get(id_)
+        if kind not in ("boundary", "random"):
+            raise ValueError(f"{program['id']} case {id_}: kind must be boundary or random, got {kind!r}")
+        kind = "b" if kind == "boundary" else "r"
         res["passed"] += ok
         res[kind + "_pass"] += ok
         res[kind + "_total"] += 1
@@ -62,59 +69,125 @@ def score_trial(trial_dir, expected, boundary_ids):
         if not isinstance(row.get("output"), dict):
             res["no_output"] += 1
         else:
-            for f in bad:
-                res["fields"][f] += 1
+            for name in bad:
+                res["fields"][name] += 1
     return res
 
 
-def cost(meta, pin, pout):
-    m = meta
-    return (m["tokens_in"] * pin + m["tokens_out"] * pout + m.get("cache_read", 0) * 0.1 * pin + m.get("cache_write", 0) * 1.25 * pin) / 1e6
+def discover(root):
+    """Every trial under `<root>/<program>/<arm>/<model>/trial-N`, with its meta and score."""
+    records = []
+    for prog_dir in sorted(Path(root).iterdir()):
+        if not prog_dir.is_dir() or not (program_dir(prog_dir.name) / "program.json").exists():
+            continue
+        program = load_program(prog_dir.name)
+        expected, kinds = load_expected(prog_dir.name), load_kinds(prog_dir.name)
+        for arm_dir in sorted(p for p in prog_dir.iterdir() if p.is_dir()):
+            for model_dir in sorted(p for p in arm_dir.iterdir() if p.is_dir()):
+                for trial in sorted(model_dir.glob("trial-*")):
+                    meta = json.loads((trial / "meta.json").read_text())
+                    failed = arm_dir.name == "velme" and not meta.get("build_ok", True)
+                    records.append({"program": prog_dir.name, "arm": arm_dir.name, "model": model_dir.name,
+                                    "trial": trial.name, "meta": meta,
+                                    "score": score_trial(program, trial, expected, kinds, failed)})
+    return records
 
 
-def mean(xs):
-    return sum(xs) / len(xs) if xs else 0.0
+def metrics(records):
+    n = len(records)
+    mean = lambda xs: sum(xs) / len(xs) if xs else 0.0  # noqa: E731
+    sum_s = lambda k: sum(r["score"][k] for r in records)  # noqa: E731
+    return {
+        "trials": n,
+        "passed": sum_s("passed"), "total": sum_s("total"),
+        "b_pass": sum_s("b_pass"), "b_total": sum_s("b_total"),
+        "r_pass": sum_s("r_pass"), "r_total": sum_s("r_total"),
+        "float": sum_s("float"), "no_output": sum_s("no_output"),
+        "builds_failed": sum(not r["meta"].get("build_ok", True) for r in records),
+        "cost": mean([cost(r["meta"], r["meta"].get("model", r["model"])) for r in records]),
+        "cost_uncached": mean([cost_uncached(r["meta"], r["meta"].get("model", r["model"])) for r in records]),
+        "tokens_in": mean([r["meta"].get("tokens_in", 0) for r in records]),
+        "tokens_out": mean([r["meta"].get("tokens_out", 0) for r in records]),
+        "calls": mean([r["meta"].get("calls", 0) for r in records]),
+        "wall": mean([r["meta"].get("wall_s", 0) for r in records]),
+    }
 
 
-def report(run_dir, expected, boundary_ids, pin, pout):
-    trials = sorted(Path(run_dir).glob("trial-*"))
-    scores = [score_trial(t, expected, boundary_ids) for t in trials]
-    metas = [json.loads((t / "meta.json").read_text()) for t in trials]
-    rate = [s["passed"] / s["total"] for s in scores]
-    pct = lambda x: f"{100 * x:.1f}%"  # noqa: E731
-    sum_r = lambda k: sum(s[k] for s in scores)  # noqa: E731
-    rows = [
-        ("trials", len(trials)),
-        ("held-out pass rate mean / min / max", f"{pct(mean(rate))} / {pct(min(rate, default=0))} / {pct(max(rate, default=0))}"),
-        ("boundary-tagged pass rate", pct(sum_r("b_pass") / max(1, sum_r("b_total")))),
-        ("random-tagged pass rate", pct(sum_r("r_pass") / max(1, sum_r("r_total")))),
-        ("trials whose build / tests never passed", sum(not m["build_ok"] for m in metas)),
-        ("cases with a float (failed)", sum_r("float")),
-        ("cases with no output (error)", sum_r("no_output")),
-    ]
-    rows += [(f"field failures: {f}", sum(s["fields"][f] for s in scores)) for f in FIELDS]
-    rows += [
-        ("mean model calls", f"{mean([m['calls'] for m in metas]):.2f}"),
-        ("mean tokens in", f"{mean([m['tokens_in'] for m in metas]):.0f}"),
-        ("mean tokens out", f"{mean([m['tokens_out'] for m in metas]):.0f}"),
-        ("mean cost $", f"{mean([cost(m, pin, pout) for m in metas]):.4f}"),
-        ("mean wall time s", f"{mean([m['wall_s'] for m in metas]):.1f}"),
-    ]
-    head = f"### {run_dir} ({metas[0]['arm']}, {metas[0]['model']})" if metas else f"### {run_dir} (no trials)"
-    return head + "\n\n| metric | value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows) + "\n"
+def group(records, key):
+    out = {}
+    for r in records:
+        out.setdefault(key(r), []).append(r)
+    return {k: metrics(v) for k, v in out.items()}
+
+
+def pct(a, b):
+    return f"{100 * a / b:.1f}%" if b else "-"
+
+
+def table(title, rows):
+    head = ("| group | trials | pass | boundary | random | floats | no output | failed builds | cost $ | uncached $ | "
+            "tokens in/out | calls | wall s |")
+    lines = [f"### {title}", "", head, "|" + "---|" * 13]
+    for name, m in rows:
+        lines.append(f"| {name} | {m['trials']} | {pct(m['passed'], m['total'])} | {pct(m['b_pass'], m['b_total'])} | "
+                     f"{pct(m['r_pass'], m['r_total'])} | {m['float']} | {m['no_output']} | {m['builds_failed']} | "
+                     f"{m['cost']:.4f} | {m['cost_uncached']:.4f} | {m['tokens_in']:.0f}/{m['tokens_out']:.0f} | "
+                     f"{m['calls']:.2f} | {m['wall']:.1f} |")
+    return "\n".join(lines)
+
+
+def go_lines(pooled, coverage):
+    """Per model, compare Velme and B2 only when both cover the same (program, trial) set; else INCOMPLETE."""
+    lines = []
+    for model in sorted({m for m, _ in pooled} | {m for m, _ in coverage}):
+        v, b = pooled.get((model, "velme")), pooled.get((model, "b2"))
+        vset, bset = coverage.get((model, "velme"), set()), coverage.get((model, "b2"), set())
+        missing_v, missing_b = sorted(bset - vset), sorted(vset - bset)
+        if not v or not b or missing_v or missing_b:
+            details = []
+            if not v:
+                details.append("no Velme trials")
+            if not b:
+                details.append("no B2 trials")
+            if missing_v:
+                details.append("Velme missing " + ", ".join(f"{p}/{t}" for p, t in missing_v))
+            if missing_b:
+                details.append("B2 missing " + ", ".join(f"{p}/{t}" for p, t in missing_b))
+            lines.append(f"- **{model}: INCOMPLETE** ({'; '.join(details)})")
+            continue
+        vp, bp = v["passed"] / v["total"] if v["total"] else 0, b["passed"] / b["total"] if b["total"] else 0
+        vfail, bfail = v["b_total"] - v["b_pass"], b["b_total"] - b["b_pass"]
+        cheaper = v["cost"] <= 1.5 * b["cost"]
+        fewer = vfail < bfail
+        if (vp >= bp and cheaper) or (vp == bp and fewer):
+            verdict = "GO"
+        else:
+            verdict = "NO-GO"
+        lines.append(f"- **{model}: {verdict}** (Velme {pct(v['passed'], v['total'])} at ${v['cost']:.4f} vs B2 "
+                     f"{pct(b['passed'], b['total'])} at ${b['cost']:.4f}; boundary failures {vfail} vs {bfail})")
+    return lines
+
+
+def report(roots):
+    records = [r for root in roots for r in discover(root)]
+    pooled = group(records, lambda r: (r["model"], r["arm"]))
+    per_program = group(records, lambda r: (r["program"], r["model"], r["arm"]))
+    coverage = {}
+    for r in records:
+        coverage.setdefault((r["model"], r["arm"]), set()).add((r["program"], r["trial"]))
+    parts = ["# P1 score", "", table("pooled by model", [(f"{m} / {a}", v) for (m, a), v in sorted(pooled.items())]), "",
+             table("per program", [(f"{p} / {m} / {a}", v) for (p, m, a), v in sorted(per_program.items())]), "",
+             "### go / no-go per model", ""] + go_lines(pooled, coverage)
+    return "\n".join(parts) + "\n"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("runs", nargs="+")
-    ap.add_argument("--price-in", type=float, default=3.0, help="$ per million input tokens")
-    ap.add_argument("--price-out", type=float, default=15.0, help="$ per million output tokens")
+    ap.add_argument("runs", nargs="+", help="run root(s) holding <program>/<arm>/<model>/trial-N")
     args = ap.parse_args()
-    expected = {r["id"]: r for r in read_jsonl(HELDOUT / "expected.jsonl")}
-    boundary_ids = {c["id"] for c in read_jsonl(HELDOUT / "inputs.jsonl") if c["tags"] != ["random"]}
-    text = "\n".join(report(r, expected, boundary_ids, args.price_in, args.price_out) for r in args.runs)
+    text = report(args.runs)
     print(text)
-    (Path(args.runs[0]).parent / "report.md").write_text(text)
+    (Path(args.runs[0]) / "report.md").write_text(text)
 
 
 if __name__ == "__main__":

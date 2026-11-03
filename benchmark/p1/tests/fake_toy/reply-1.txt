@@ -1,0 +1,10 @@
+Here is the solution.
+
+```python
+from decimal import Decimal
+
+
+def decide(value):
+    value = Decimal(value)
+    return {"doubled": value * 2, "half": value / 2}
+```

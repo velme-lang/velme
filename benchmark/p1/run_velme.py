@@ -1,22 +1,24 @@
-"""Velme arm: `velme build` the plan in 0087/loan.velme, then run every held-out input through `velme run`.
+"""Velme arm: `velme build` one program's plan, then run every held-out input through `velme run`.
 
-  python run_velme.py --model ID --trials N --out runs/NAME [--velme PATH] [--jobs 8] [--no-prompt-cache]
+  python run_velme.py --program 0087 --model ID --trials N --out runs [--velme PATH] [--jobs 8] [--no-prompt-cache]
 
-Each trial gets a fresh project dir (loan.velme + velme.toml) and a fresh isolated home (HOME and the XDG dirs,
-so no user config and no WASM cache is shared). The API key is taken from the environment (ANTHROPIC_API_KEY
-or VELME_API_KEY) and never written anywhere. Output: <out>/trial-K/{results.jsonl,meta.json}.
+Each trial gets a fresh project dir (the program's .velme file + velme.toml) and a fresh isolated home (HOME and the
+XDG dirs, so no user config and no WASM cache is shared). The API key is taken from the environment (ANTHROPIC_API_KEY
+or VELME_API_KEY) and never written anywhere. Output: <out>/<program>/velme/<model>/trial-K/{results.jsonl,meta.json}.
+
+`cache_read`/`cache_write` come from the synth log's `cache_read_tokens`/`cache_write_tokens`. Its `tokens_in` is the
+provider's `input_tokens`, which excludes cached tokens, so every arm counts uncached input there and cache apart.
 """
 import argparse
-import json
 import os
-import subprocess
 import shutil
+import subprocess
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from common import CASE, HERE, dumps, load_inputs, loads, write_trial
+from common import HERE, dumps, load_inputs, load_program, loads, prices, trial_dir, write_trial
 
 DEFAULT_VELME = HERE.parent.parent / "target/release/velme"
 
@@ -37,25 +39,27 @@ def parse_run(stdout, exit_code):
 
 def read_synth_log(project):
     log = project / ".velme/synth-log.jsonl"
-    lines = [json.loads(l) for l in log.read_text().splitlines() if l.strip()] if log.exists() else []
+    lines = [loads(line) for line in log.read_text().splitlines() if line.strip()] if log.exists() else []
     return {
-        "tokens_in": sum(l.get("tokens_in") or 0 for l in lines),
-        "tokens_out": sum(l.get("tokens_out") or 0 for l in lines),
-        "cache_read": 0, "cache_write": 0,  # the synth log does not record cache tokens
+        "tokens_in": sum(line.get("tokens_in") or 0 for line in lines),
+        "tokens_out": sum(line.get("tokens_out") or 0 for line in lines),
+        "cache_read": sum(line.get("cache_read_tokens") or 0 for line in lines),
+        "cache_write": sum(line.get("cache_write_tokens") or 0 for line in lines),
         "calls": len(lines),
-        "failed_attempts": sum(l.get("outcome") != "ok" for l in lines),
-        "retries": sum(l.get("attempt", 0) > 0 for l in lines),
+        "failed_attempts": sum(line.get("outcome") != "ok" for line in lines),
+        "retries": sum(line.get("attempt", 0) > 0 for line in lines),
     }
 
 
-def trial(args, k):
-    cases = load_inputs()
+def trial(args, program, k):
+    cases = load_inputs(program["id"])
+    source = Path(program["source"]).name
     with tempfile.TemporaryDirectory(prefix="velme-p1-") as tmp:
         tmp = Path(tmp)
         project, home = tmp / "project", tmp / "home"
         project.mkdir()
         home.mkdir()
-        (project / "loan.velme").write_text((CASE / "loan.velme").read_text())
+        (project / source).write_text((HERE / program["id"] / program["source"]).read_text())
         toml = f'[synthesis]\nprovider = "anthropic"\nmodel = "{args.model}"\n'
         if args.no_prompt_cache:
             toml += "prompt_cache = false\n"
@@ -69,12 +73,13 @@ def trial(args, k):
 
         t0 = time.monotonic()
         try:
-            b = velme("build", "loan.velme", "--json")
+            b = velme("build", source, "--json")
         except subprocess.TimeoutExpired:
             b = subprocess.CompletedProcess([], -1)  # a build that never finished is a failed build
-        meta = {"arm": "velme", "model": args.model, "trial": k, "build_ok": b.returncode == 0, "build_exit": b.returncode,
+        meta = {"program": program["id"], "arm": "velme", "model": args.model, "trial": k,
+                "build_ok": b.returncode == 0, "build_exit": b.returncode,
                 "wall_s": round(time.monotonic() - t0, 2), **read_synth_log(project)}
-        keep = Path(args.out) / f"trial-{k}" / "build"  # what the build said, for diagnosing a failed trial
+        keep = trial_dir(args.out, program["id"], "velme", args.model, k) / "build"  # what the build said, for diagnosis
         keep.mkdir(parents=True, exist_ok=True)
         (keep / "stdout.json").write_text(b.stdout or "")
         (keep / "stderr.txt").write_text(b.stderr or "")
@@ -87,9 +92,9 @@ def trial(args, k):
 
         def one(c):
             f = tmp / f"in-{c['id']}.json"
-            f.write_text(dumps({x: c[x] for x in ("applicant", "product", "bureau")}))
+            f.write_text(dumps({x: c[x] for x in program["inputs"]}))
             try:
-                r = velme("run", "loan.velme", "--goal", "DecideLoan", "--input", str(f), "--json", "--locked", "--offline")
+                r = velme("run", source, "--goal", program["goal"], "--input", str(f), "--json", "--locked", "--offline")
             except subprocess.TimeoutExpired:
                 return {"id": c["id"], "output": None, "error": "timeout"}
             out, err = parse_run(r.stdout, r.returncode)
@@ -102,20 +107,23 @@ def trial(args, k):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--program", required=True, help="folder name under benchmark/p1, e.g. 0087")
     ap.add_argument("--model", required=True)
     ap.add_argument("--trials", type=int, default=1)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="run root; trials go to <out>/<program>/velme/<model>/trial-N")
     ap.add_argument("--velme", type=Path, default=DEFAULT_VELME)
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--no-prompt-cache", action="store_true", help="velme.toml prompt_cache = false, so the log's tokens_in is the full input")
     ap.add_argument("--reply-format", choices=["ir-json", "notation"], help="velme.toml reply_format (default: Velme's own)")
     args = ap.parse_args()
+    prices(args.model)  # fail before paying for a run whose cost cannot be reported
+    program = load_program(args.program)
     for k in range(1, args.trials + 1):
-        rows, meta = trial(args, k)
-        write_trial(args.out, k, rows, meta)
+        rows, meta = trial(args, program, k)
+        write_trial(trial_dir(args.out, program["id"], "velme", args.model, k), rows, meta)
         ok = sum(r["error"] is None for r in rows)
         print(f"trial {k}: build_ok={meta['build_ok']} calls={meta['calls']} tokens={meta['tokens_in']}/{meta['tokens_out']} "
-              f"wall={meta['wall_s']}s ran_ok={ok}/{len(rows)}")
+              f"cache={meta['cache_read']}/{meta['cache_write']} wall={meta['wall_s']}s ran_ok={ok}/{len(rows)}")
 
 
 if __name__ == "__main__":

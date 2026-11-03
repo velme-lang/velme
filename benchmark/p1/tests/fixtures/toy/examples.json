@@ -1,0 +1,4 @@
+[
+{"function": "decide", "args": [1], "expected": {"doubled": 2, "half": 0.5}},
+{"function": "decide", "args": [10], "expected": {"doubled": 20, "half": 5}}
+]
