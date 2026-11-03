@@ -1,9 +1,11 @@
-"""Run solution.decide_loan on every held-out input; used by run_b2.py in a subprocess so a crash or a hang
-cannot take the harness down.  python b2_exec.py SOLUTION_DIR INPUTS.jsonl OUT.jsonl [PER_CASE_SECONDS]
+"""Run a Python solution's entry function on every held-out input, in a subprocess so a crash or hang cannot take the
+harness down.  python b2_exec.py SOLUTION_DIR INPUTS.jsonl OUT.jsonl --entry NAME --in-key KEY [--in-key KEY ...]
+[--limit SECONDS]
 
 Writes one line per case, flushed as it goes: {"id", "output", "error", "float"}.  "float" is true when any float
 appears in the output; those floats are written as their repr text so the line stays valid JSON.
 """
+import argparse
 import copy
 import signal
 import sys
@@ -30,25 +32,34 @@ def alarm(signum, frame):
 
 
 def main():
-    sol_dir, inputs, out_path = sys.argv[1:4]
-    limit = float(sys.argv[4]) if len(sys.argv) > 4 else 10.0
-    sys.path.append(sol_dir)
-    cases = [loads(l) for l in open(inputs).read().splitlines() if l.strip()]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("solution_dir")
+    ap.add_argument("inputs")
+    ap.add_argument("out")
+    ap.add_argument("--entry", required=True, help="function in solution.py")
+    ap.add_argument("--in-key", action="append", required=True, help="case key to pass as the next argument, in order")
+    ap.add_argument("--limit", type=float, default=10.0, help="seconds per case")
+    args = ap.parse_args()
+    sys.path.append(args.solution_dir)
+    cases = [loads(line) for line in open(args.inputs).read().splitlines() if line.strip()]
     if hasattr(signal, "setitimer"):
         signal.signal(signal.SIGALRM, alarm)
-    with open(out_path, "w") as out:
+    with open(args.out, "w") as out:
         try:
             import solution
             err0 = None
         except BaseException as e:  # noqa: BLE001 - any import failure fails every case
             err0 = f"import failed: {type(e).__name__}: {e}"
+        entry = getattr(solution, args.entry, None) if err0 is None else None
+        if err0 is None and entry is None:
+            err0 = f"solution has no {args.entry}"
         for c in cases:
             row = {"id": c["id"], "output": None, "error": err0, "float": False}
             if err0 is None:
                 try:
                     if hasattr(signal, "setitimer"):
-                        signal.setitimer(signal.ITIMER_REAL, limit)
-                    res = solution.decide_loan(*copy.deepcopy([c["applicant"], c["product"], c["bureau"]]))
+                        signal.setitimer(signal.ITIMER_REAL, args.limit)
+                    res = entry(*copy.deepcopy([c[k] for k in args.in_key]))
                     row["output"], row["float"] = strip_floats(res)
                     dumps(row)
                 except BaseException as e:  # noqa: BLE001 - a crash is a failed case, not a harness error

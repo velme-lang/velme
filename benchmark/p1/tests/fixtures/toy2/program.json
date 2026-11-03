@@ -1,0 +1,13 @@
+{
+ "id": "toy2",
+ "title": "Second tiny fixture, so scoring pools more than one program",
+ "goal": "ToyGoal2",
+ "source": "toy2.velme",
+ "entry": "decide",
+ "inputs": ["value"],
+ "oracle": "python",
+ "fields": [
+  {"name": "tripled", "compare": "exact"},
+  {"name": "tenth", "compare": "decimals", "decimals": 2}
+ ]
+}

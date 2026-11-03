@@ -1,17 +1,12 @@
-"""Oracle: the original DMN model evaluated by Drools in the Kogito JIT runner container.
+"""Oracle: expected outputs from a reference neither arm sees.
 
-  python oracle.py --start       docker run the container and wait until it answers (needs docker; not run by tests)
-  python oracle.py --stop
-  python oracle.py --selftest    run the TCK's own test cases for model 0087 through the container
-  python oracle.py               evaluate 0087/heldout/inputs.jsonl, write 0087/heldout/expected.jsonl
+  python oracle.py --program ID --start       docker run the Kogito JIT runner and wait until it answers (DMN only)
+  python oracle.py --program ID --stop
+  python oracle.py --program ID --selftest    the TCK's own test cases through the container (DMN only)
+  python oracle.py --program ID               evaluate heldout/inputs.jsonl, write heldout/expected.jsonl
 
-Endpoint shape, from the Kogito sources (apache/incubator-kie-kogito-apps,
-jitexecutor/jitexecutor-dmn/.../api/JITDMNResource.java and requests/JITDMNPayload.java):
-  POST /jitdmn, Content-Type application/json, body {"model": "<dmn xml as a string>", "context": {<input data name>: value}}
-  -> 200 and ONE FLAT JSON OBJECT: every input data name and every decision name -> its value (no decisionResults
-  there; POST /jitdmn/dmnresult returns the full DMNResult with decisionResults and messages instead).
-Numbers in `context` are parsed by Jackson into Double and turned back into BigDecimal by Drools through
-Double.toString (NumberEvalHelper.getBigDecimalOrNull), so decimals with <= 15 significant digits arrive exactly.
+A DMN program uses Drools over HTTP; its descriptor names the model, the TCK tests and the decision names. Any other
+program loads `<program>/oracle.py` and calls its `decide(case)`, which returns a dict of the descriptor's fields.
 """
 import argparse
 import json
@@ -22,47 +17,19 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from decimal import Decimal
-from pathlib import Path
 
-HERE = Path(__file__).parent
-sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE / "0087"))
-from common import dumps, loads  # noqa: E402
-import reference  # noqa: E402
+from common import dumps, field_names, heldout_path, load_inputs, load_module, load_program, loads, program_path
 
 URL = "http://localhost:8080/jitdmn"
 IMAGE = "quay.io/kiegroup/kogito-jit-runner:latest"
 NAME = "velme-p1-kogito"
-TCK = HERE / ".cache/tck/TestCases/compliance-level-3/0087-chapter-11-example"
-HELDOUT = HERE / "0087/heldout"
-FIELDS = {
-    "Application risk score": "application_risk_score", "Pre-bureau risk category": "pre_bureau_risk_category",
-    "Required monthly installment": "required_monthly_installment", "Pre-bureau affordability": "pre_bureau_affordability",
-    "Eligibility": "eligibility", "Bureau call type": "bureau_call_type", "Strategy": "strategy",
-    "Post-bureau risk category": "post_bureau_risk_category", "Post-bureau affordability": "post_bureau_affordability",
-    "Routing": "routing",
-}
 
 
 def evaluate(model_xml, context):
-    # The one input the model declares and no TCK case supplies; only the Adjudication decision (which has no logic) uses it.
-    context = {"Supporting documents": "", **context}
     body = '{"model": %s, "context": %s}' % (json.dumps(model_xml), dumps(context))
     req = urllib.request.Request(URL, body.encode(), {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return loads(r.read())
-
-
-def to_context(case):
-    a, p, b = case["applicant"], case["product"], case["bureau"]
-    return {
-        "Applicant data": {"Age": a["age"], "MartitalStatus": a["marital_status"], "EmploymentStatus": a["employment_status"],
-                           "ExistingCustomer": a["existing_customer"],
-                           "Monthly": {"Income": a["monthly_income"], "Repayments": a["monthly_repayments"],
-                                       "Expenses": a["monthly_expenses"]}},
-        "Requested product": {"ProductType": p["product_type"], "Rate": p["rate"], "Term": p["term"], "Amount": p["amount"]},
-        "Bureau data": {"Bankrupt": b["bankrupt"], "CreditScore": b["credit_score"]},
-    }
 
 
 def xml_value(node):
@@ -85,15 +52,18 @@ def has_null(v):
     return v is None or (isinstance(v, dict) and any(has_null(x) for x in v.values()))
 
 
-def selftest():
-    model = (TCK / "0087-chapter-11-example.dmn").read_text()
+def selftest(program):
+    dmn = program["dmn"]
+    model = program_path(program["id"], dmn["model"]).read_text()
+    adapter = load_module(program["id"], "oracle")
+    defaults = getattr(adapter, "context_defaults", {})
     bad = ran = 0
-    for tc in ET.parse(TCK / "0087-chapter-11-example-test-01.xml").getroot().findall("{*}testCase"):
+    for tc in ET.parse(program_path(program["id"], dmn["tests"])).getroot().findall("{*}testCase"):
         inputs = {n.get("name"): xml_value(n) for n in tc.findall("{*}inputNode")}
         if has_null(inputs):
             print(f"case {tc.get('id')}: skipped (null input)")
             continue
-        got = evaluate(model, inputs)
+        got = evaluate(model, {**defaults, **inputs})
         ran += 1
         for rn in tc.findall("{*}resultNode"):
             want = xml_value(rn.find("{*}expected"))
@@ -104,28 +74,39 @@ def selftest():
     return bad == 0
 
 
-def run_all():
-    model = (TCK / "0087-chapter-11-example.dmn").read_text()
-    cases = [loads(l) for l in (HELDOUT / "inputs.jsonl").read_text().splitlines()]
+def dmn_row(program, case, model, adapter):
+    context = {**getattr(adapter, "context_defaults", {}), **adapter.to_context(case)}
+    got = evaluate(model, context)
+    outputs = program["dmn"]["outputs"]
+    missing = [k for k in outputs if got.get(k) is None]
+    if missing:
+        sys.exit(f"case {case['id']}: oracle returned no value for {missing}: {got}")
+    return {"id": case["id"], **{outputs[k]: got[k] for k in outputs}}
+
+
+def run_all(program):
+    cases = load_inputs(program["id"])
+    adapter = load_module(program["id"], "oracle")
     out, diffs = [], 0
-    for c in cases:
-        got = evaluate(model, to_context(c))
-        missing = [k for k in FIELDS if got.get(k) is None]
-        if missing:
-            sys.exit(f"case {c['id']}: oracle returned no value for {missing}: {got}")
-        row = {"id": c["id"], **{FIELDS[k]: got[k] for k in FIELDS}}
+    model = program_path(program["id"], program["dmn"]["model"]).read_text() if program["oracle"] == "drools" else None
+    for case in cases:
+        if program["oracle"] == "drools":
+            row = dmn_row(program, case, model, adapter)
+            if hasattr(adapter, "check") and (diff := adapter.check(case, row)):
+                diffs += 1
+                print(f"case {case['id']} {case.get('tags')}: {diff}")
+        else:
+            got = adapter.decide(case)
+            row = {"id": case["id"], **{f: got[f] for f in field_names(program)}}
         out.append(row)
-        # sanity: requirements.md (the reference implementation) vs the DMN; installment at 8 places, see score.py
-        want = reference.decide_loan(c["applicant"], c["product"], c["bureau"])
-        q = lambda d: d["required_monthly_installment"].quantize(Decimal("1e-8"))  # noqa: E731
-        if {**want, "required_monthly_installment": q(want)} != {**{k: row[k] for k in want}, "required_monthly_installment": q(row)}:
-            diffs += 1
-            print(f"case {c['id']} {c['tags']}: reference and DMN differ:\n  dmn {row}\n  ref {want}")
-    (HELDOUT / "expected.jsonl").write_text("".join(dumps(r) + "\n" for r in out))
-    print(f"wrote {len(out)} rows to {HELDOUT / 'expected.jsonl'}; reference differs from DMN on {diffs}")
+    path = heldout_path(program["id"], "expected.jsonl")
+    path.write_text("".join(dumps(r) + "\n" for r in out))
+    print(f"wrote {len(out)} rows to {path}; reference differs on {diffs}")
 
 
-def start():
+def start(program):
+    if program["oracle"] != "drools":
+        sys.exit(f"{program['id']} has no Drools oracle")
     subprocess.run(["docker", "run", "-d", "--rm", "--name", NAME, "-p", "8080:8080", IMAGE], check=True)
     for _ in range(120):
         try:
@@ -141,17 +122,25 @@ def start():
     print("ready on http://localhost:8080")
 
 
-if __name__ == "__main__":
+def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--program", required=True, help="folder name under benchmark/p1, e.g. 0087")
     ap.add_argument("--start", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
+    program = load_program(args.program)
     if args.start:
-        start()
+        start(program)
     elif args.stop:
         subprocess.run(["docker", "stop", NAME], check=True)
     elif args.selftest:
-        sys.exit(0 if selftest() else 1)
+        if program["oracle"] != "drools":
+            sys.exit(f"--selftest is DMN-only; {program['id']} uses its Python oracle")
+        sys.exit(0 if selftest(program) else 1)
     else:
-        run_all()
+        run_all(program)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+goal ToyGoal2(value: Decimal) -> ToyResult2 {
+  tripled = value * 3
+  tenth = value / 10
+}

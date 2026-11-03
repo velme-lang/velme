@@ -1,0 +1,4 @@
+goal ToyGoal(value: Decimal) -> ToyResult {
+  doubled = value * 2
+  half = value / 2
+}

@@ -1,0 +1,37 @@
+{
+ "id": "0087",
+ "title": "DMN TCK 0087 chapter 11 example (loan origination)",
+ "goal": "DecideLoan",
+ "source": "loan.velme",
+ "entry": "decide_loan",
+ "inputs": ["applicant", "product", "bureau"],
+ "oracle": "drools",
+ "dmn": {
+  "model": ".cache/tck/TestCases/compliance-level-3/0087-chapter-11-example/0087-chapter-11-example.dmn",
+  "tests": ".cache/tck/TestCases/compliance-level-3/0087-chapter-11-example/0087-chapter-11-example-test-01.xml",
+  "outputs": {
+   "Application risk score": "application_risk_score",
+   "Pre-bureau risk category": "pre_bureau_risk_category",
+   "Required monthly installment": "required_monthly_installment",
+   "Pre-bureau affordability": "pre_bureau_affordability",
+   "Eligibility": "eligibility",
+   "Bureau call type": "bureau_call_type",
+   "Strategy": "strategy",
+   "Post-bureau risk category": "post_bureau_risk_category",
+   "Post-bureau affordability": "post_bureau_affordability",
+   "Routing": "routing"
+  }
+ },
+ "fields": [
+  {"name": "application_risk_score", "compare": "exact"},
+  {"name": "pre_bureau_risk_category", "compare": "exact"},
+  {"name": "required_monthly_installment", "compare": "decimals", "decimals": 8},
+  {"name": "pre_bureau_affordability", "compare": "exact"},
+  {"name": "eligibility", "compare": "exact"},
+  {"name": "bureau_call_type", "compare": "exact"},
+  {"name": "strategy", "compare": "exact"},
+  {"name": "post_bureau_risk_category", "compare": "exact"},
+  {"name": "post_bureau_affordability", "compare": "exact"},
+  {"name": "routing", "compare": "exact"}
+ ]
+}

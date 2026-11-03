@@ -1,12 +1,16 @@
 """B2 arm: Python + tests loop through the Anthropic Messages API.
 
-  python run_b2.py --model ID --trials N --out runs/NAME [--fake-reply DIR]
+  python run_b2.py --program 0087 --model ID --trials N --out runs [--fake-reply DIR] [--no-prompt-cache]
 
-The model gets requirements.md, signatures.py and examples.json verbatim and returns solution.py and
+The model gets the program's requirements.md, signatures.py and examples.json verbatim and returns solution.py and
 test_solution.py; pytest runs; failures go back (last 80 lines) for at most 3 fix rounds, so at most 4 model calls.
 The final solution.py is then run on every held-out input in a subprocess. ANTHROPIC_API_KEY is read from the
-environment and never printed. --fake-reply DIR reads canned replies reply-1.txt, reply-2.txt, ... instead of calling the API.
-Output: <out>/trial-K/{results.jsonl,meta.json} (+ solution.py, test_solution.py, last_pytest.txt).
+environment and never printed. --fake-reply DIR reads canned replies reply-1.txt, reply-2.txt, ... instead of calling
+the API. Output: <out>/<program>/b2/<model>/trial-K/{results.jsonl,meta.json} (+ solution.py, test_solution.py,
+last_pytest.txt).
+
+The prompt is built once, in build_system(program, include_tests); run_b1.py calls the same function with False.
+Prompt caching is on unless --no-prompt-cache; the cache_control breakpoint sits on the stable system prefix.
 """
 import argparse
 import json
@@ -20,23 +24,19 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from common import CASE, HELDOUT, HERE, load_inputs, loads, write_trial
+from common import HERE, heldout_path, load_inputs, load_program, loads, prices, program_path, trial_dir, write_trial
 
 API = "https://api.anthropic.com/v1/messages"
 MAX_TOKENS = 8192  # Velme's default max_output_tokens for anthropic
 FIX_ROUNDS = 3
 
-SYSTEM = """You are writing production Python (3.13, standard library only, plus pytest for tests).
+BASE = """You are writing production Python (3.13, standard library only).
 
 Implement the business rules in <requirements> exactly, as the functions declared in <signatures> (same names, \
 parameters and order, in one module). <examples> lists known input/output pairs as JSON: "function", "args", "expected". \
 JSON numbers are exact decimal text: read them with Decimal (for instance json.loads(text, parse_float=Decimal, \
 parse_int=Decimal)), never through float. Number inputs reach your functions as decimal.Decimal; return numbers as \
 Decimal or int, exact, never float, and round nothing.
-
-Reply with exactly two fenced code blocks and no other code: first the full contents of solution.py, then the full \
-contents of test_solution.py. test_solution.py is run with `python -m pytest -q` in the same directory as solution.py \
-and must contain a test for every example. Short notes outside the code blocks are fine.
 
 <requirements>
 {requirements}
@@ -50,6 +50,17 @@ and must contain a test for every example. Short notes outside the code blocks a
 {examples}
 </examples>"""
 
+TESTS_INSTRUCTION = """
+
+Also write test_solution.py, with one pytest test for every example. Reply with exactly two fenced code blocks and no \
+other code: first the full contents of solution.py, then the full contents of test_solution.py. test_solution.py runs \
+with `python -m pytest -q` in the same directory as solution.py. Short notes outside the code blocks are fine."""
+
+SOLUTION_INSTRUCTION = """
+
+Reply with exactly one fenced code block and no other code: the full contents of solution.py. Short notes outside the \
+code block are fine."""
+
 FEEDBACK = """The tests failed (`python -m pytest -q`, exit code {code}). Last lines of the output:
 
 <pytest_output>
@@ -60,8 +71,30 @@ Fix the problem, whether it is in solution.py or in the tests, and return both f
 format: exactly two fenced code blocks, solution.py then test_solution.py."""
 
 
-def call_api(model, system, messages):
-    body = json.dumps({"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages}).encode()
+def build_system(program, include_tests):
+    """The single prompt builder: B2 adds the tests instruction, B1 keeps the same prefix without it."""
+    system = BASE.format(requirements=program_path(program["id"], "requirements.md").read_text(),
+                         signatures=program_path(program["id"], "signatures.py").read_text(),
+                         examples=program_path(program["id"], "examples.json").read_text())
+    return system + (TESTS_INSTRUCTION if include_tests else SOLUTION_INSTRUCTION)
+
+
+def first_message(include_tests):
+    return {"role": "user", "content": "Write solution.py and test_solution.py." if include_tests else "Write solution.py."}
+
+
+def request_payload(model, system, messages, cache):
+    """The Messages API body. The cache breakpoint is on the stable system prefix (requirements + signatures + examples)."""
+    payload = {"model": model, "max_tokens": MAX_TOKENS, "messages": messages}
+    if cache:
+        payload["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    else:
+        payload["system"] = system
+    return payload
+
+
+def call_api(model, system, messages, cache):
+    body = json.dumps(request_payload(model, system, messages, cache)).encode()
     headers = {"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01", "content-type": "application/json"}
     for attempt in range(6):  # transport-level retries for overload / rate limits; not counted as calls
         try:
@@ -81,6 +114,11 @@ def extract_files(text):
     return (blocks[0], blocks[1]) if len(blocks) >= 2 else None
 
 
+def extract_solution(text):
+    blocks = re.findall(r"```[\w.+-]*\n(.*?)```", text, re.S)
+    return blocks[0] if blocks else None
+
+
 def run_pytest(solution, tests):
     with tempfile.TemporaryDirectory(prefix="b2-pytest-") as d:
         (Path(d) / "solution.py").write_text(solution)
@@ -93,10 +131,22 @@ def run_pytest(solution, tests):
             return -1, "pytest timed out after 60 s"
 
 
-def model_loop(args, system):
+def imports_ok(solution):
+    with tempfile.TemporaryDirectory(prefix="b1-import-") as d:
+        (Path(d) / "solution.py").write_text(solution)
+        try:
+            r = subprocess.run([sys.executable, "-c", "import solution"], cwd=d, capture_output=True, text=True, timeout=60,
+                               env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+            return r.returncode == 0
+        except subprocess.TimeoutExpired:
+            return False
+
+
+def model_loop(args, program, system):
     """Up to 1 + FIX_ROUNDS calls. Returns (solution, tests, tests_passed, usage totals, last pytest output)."""
-    messages = [{"role": "user", "content": "Write solution.py and test_solution.py."}]
+    messages = [first_message(True)]
     use = {"tokens_in": 0, "tokens_out": 0, "cache_read": 0, "cache_write": 0, "calls": 0}
+    cache = not args.no_prompt_cache
     solution = tests = None
     passed, output = False, ""
     for rnd in range(FIX_ROUNDS + 1):
@@ -106,7 +156,7 @@ def model_loop(args, system):
                 sys.exit(f"fake reply {f} is missing")
             text, u = f.read_text(), {}
         else:
-            resp = call_api(args.model, system, messages)
+            resp = call_api(args.model, system, messages, cache)
             text = "".join(b.get("text", "") for b in resp["content"] if b["type"] == "text")
             u = resp["usage"]
         use["calls"] += 1
@@ -132,16 +182,19 @@ def model_loop(args, system):
     return solution, tests, passed, use, output
 
 
-def run_heldout(solution, timeout=300):
-    cases = load_inputs()
+def run_heldout(program, solution, timeout=300):
+    cases = load_inputs(program["id"])
     if solution is None:
         return [{"id": c["id"], "output": None, "error": "no solution.py produced"} for c in cases]
-    with tempfile.TemporaryDirectory(prefix="b2-exec-") as d:
+    with tempfile.TemporaryDirectory(prefix="python-exec-") as d:
         (Path(d) / "solution.py").write_text(solution)
         out = Path(d) / "out.jsonl"
+        cmd = [sys.executable, str(HERE / "b2_exec.py"), d, str(heldout_path(program["id"], "inputs.jsonl")), str(out),
+               "--entry", program["entry"], "--limit", "10"]
+        for key in program["inputs"]:
+            cmd += ["--in-key", key]
         try:
-            subprocess.run([sys.executable, str(HERE / "b2_exec.py"), d, str(HELDOUT / "inputs.jsonl"), str(out)],
-                           capture_output=True, text=True, timeout=timeout, cwd=d)
+            subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=d)
         except subprocess.TimeoutExpired:
             pass  # the cases written so far stay; the rest are marked below
         done = {}
@@ -154,37 +207,41 @@ def run_heldout(solution, timeout=300):
     return [done.get(c["id"], {"id": c["id"], "output": None, "error": "not run (overall timeout)"}) for c in cases]
 
 
-def trial(args, k, system):
+def trial(args, program, k, system):
     t0 = time.monotonic()
-    solution, tests, passed, use, last = model_loop(args, system)
+    solution, tests, passed, use, last = model_loop(args, program, system)
     wall = round(time.monotonic() - t0, 2)
-    rows = run_heldout(solution)
-    meta = {"arm": "b2", "model": args.model, "trial": k, "build_ok": passed, "wall_s": wall, **use,
-            "fix_rounds": use["calls"] - 1}
+    rows = run_heldout(program, solution)
+    meta = {"program": program["id"], "arm": "b2", "model": args.model, "trial": k, "build_ok": passed, "wall_s": wall,
+            **use, "fix_rounds": use["calls"] - 1}
     return rows, meta, solution, tests, last
 
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--program", required=True, help="folder name under benchmark/p1, e.g. 0087")
     ap.add_argument("--model", required=True)
     ap.add_argument("--trials", type=int, default=1)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", required=True, help="run root; trials go to <out>/<program>/b2/<model>/trial-N")
     ap.add_argument("--fake-reply", help="directory with reply-1.txt, reply-2.txt, ... instead of calling the API")
+    ap.add_argument("--no-prompt-cache", action="store_true")
     args = ap.parse_args()
+    if not args.fake_reply:
+        prices(args.model)  # fail before paying for a run whose cost cannot be reported
     if not args.fake_reply and not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ANTHROPIC_API_KEY is not set")
-    system = SYSTEM.format(requirements=(CASE / "requirements.md").read_text(), signatures=(CASE / "signatures.py").read_text(),
-                           examples=(CASE / "examples.json").read_text())
+    program = load_program(args.program)
+    system = build_system(program, True)
     for k in range(1, args.trials + 1):
-        rows, meta, solution, tests, last = trial(args, k, system)
-        write_trial(args.out, k, rows, meta)
-        d = Path(args.out) / f"trial-{k}"
+        rows, meta, solution, tests, last = trial(args, program, k, system)
+        d = trial_dir(args.out, program["id"], "b2", args.model, k)
+        write_trial(d, rows, meta)
         (d / "solution.py").write_text(solution or "")
         (d / "test_solution.py").write_text(tests or "")
         (d / "last_pytest.txt").write_text(last)
         ok = sum(r["error"] is None for r in rows)
         print(f"trial {k}: tests_passed={meta['build_ok']} calls={meta['calls']} tokens={meta['tokens_in']}/{meta['tokens_out']} "
-              f"wall={meta['wall_s']}s ran_ok={ok}/{len(rows)}")
+              f"cache={meta['cache_read']}/{meta['cache_write']} wall={meta['wall_s']}s ran_ok={ok}/{len(rows)}")
 
 
 if __name__ == "__main__":

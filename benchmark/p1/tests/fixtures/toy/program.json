@@ -1,0 +1,13 @@
+{
+ "id": "toy",
+ "title": "Tiny fixture used by the offline harness tests",
+ "goal": "ToyGoal",
+ "source": "toy.velme",
+ "entry": "decide",
+ "inputs": ["value"],
+ "oracle": "python",
+ "fields": [
+  {"name": "doubled", "compare": "exact"},
+  {"name": "half", "compare": "decimals", "decimals": 2}
+ ]
+}
