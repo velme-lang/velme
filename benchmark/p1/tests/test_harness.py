@@ -13,6 +13,7 @@ import common  # noqa: E402
 import gen_inputs  # noqa: E402
 import oracle  # noqa: E402
 import run_b1  # noqa: E402
+import run_velme  # noqa: E402
 import run_b2  # noqa: E402
 import run_velme  # noqa: E402
 import score  # noqa: E402
@@ -65,8 +66,8 @@ def test_trial_scoring(tmp_path):
 
 def test_cost_cached_and_uncached():
     m = {"tokens_in": 1_000_000, "tokens_out": 1_000_000, "cache_read": 1_000_000, "cache_write": 1_000_000}
-    assert abs(common.cost(m, MODEL) - (3 + 15 + 0.3 + 3.75)) < 1e-9
-    assert abs(common.cost_uncached(m, MODEL) - ((1 + 1 + 1) * 3 + 15)) < 1e-9
+    assert abs(common.cost(m, MODEL) - (2 + 10 + 0.2 + 2.5)) < 1e-9
+    assert abs(common.cost_uncached(m, MODEL) - ((1 + 1 + 1) * 2 + 10)) < 1e-9
 
 
 def b2_args(name):
@@ -453,3 +454,13 @@ def test_velme_parse_run():
     bad = '{"status":"failed","results":[{"status":"failed","diagnostics":[{"code":"VL0702"}]}],"diagnostics":[]}'
     assert run_velme.parse_run(bad, 4) == (None, "exit 4: VL0702")
     assert run_velme.parse_run("oops", 70)[1].startswith("exit 70")
+
+
+def test_synth_log_meta_is_json(tmp_path):
+    """P1e smoke: token counts read with the Decimal loader made meta.json fail to serialize."""
+    log = tmp_path / ".velme/synth-log.jsonl"
+    log.parent.mkdir()
+    log.write_text('{"tokens_in": 10, "tokens_out": 5, "cache_read_tokens": 100, "outcome": "ok", "attempt": 0}\n')
+    meta = run_velme.read_synth_log(tmp_path)
+    json.dumps(meta)
+    assert (meta["tokens_in"], meta["cache_read"], meta["calls"]) == (10, 100, 1)

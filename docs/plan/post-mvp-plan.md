@@ -50,7 +50,8 @@ generator, prompt and request field; `pow`; the notation as default if P0e passe
 
 ### P1 — Real-goals benchmark (go/no-go)
 
-Answers: does Velme write real business logic more correctly than the obvious alternative, at a similar LLM cost?
+Answers: does choosing Velme for its guarantees (checks run by the runtime, a validated sandbox, reproducible
+builds) cost correctness or LLM spend against the obvious alternative of a model writing Python?
 A live, manual run, never part of `cargo xtask verify` (D-13); the harness lives in `benchmark/p1/`, outside the CLI,
 and the results are committed as a report.
 
@@ -78,7 +79,7 @@ exact decimals; a float in the baseline counts as a failure and is reported in i
 - **B2, Python plus tests in a loop:** the model writes the function and pytest tests from the examples, runs them,
   and fixes up to 3 times. The bar: beating only B1 proves nothing.
 
-Models: Haiku and Sonnet decide; one local model is reported only.
+Models: Haiku and Sonnet decide.
 
 **Metrics:** held-out pass rate (boundary and random cases apart), $ and tokens per program, provider calls, wall
 time, goals that never built.
