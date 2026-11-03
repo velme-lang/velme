@@ -537,3 +537,31 @@ fn gate_f1_sema_accepted_programs_lower() {
     }
     assert!(lowered >= 3, "the goldens and examples were found");
 }
+
+/// Gate R1 (R-TYP-31): a budget or size failure while testing a literal in a domain condition keeps its code, where
+/// a non-member is `VL0209`.
+#[test]
+fn gate_r1_a_condition_literal_failure_keeps_its_code() {
+    let text = "language: velme/0.2
+
+type Slow = Number where range(10000000).length > value
+type Holder:
+    a: Slow
+type Tagged = Number where Holder(a: 1).a == value
+";
+    let program = program(text);
+    let diags = check_literals(&program, text);
+    assert_eq!(diags.len(), 1, "{diags:#?}");
+    assert_eq!(diags[0].code, Code::SizeLimitExceeded, "{diags:#?}");
+    let member = "language: velme/0.2
+
+type Even = Number where floor(value / 2) * 2 == value
+type Holder:
+    a: Even
+type Tagged = Number where Holder(a: 3).a == value
+";
+    let program = velme_test_support::program(member);
+    let diags = check_literals(&program, member);
+    assert_eq!(diags.len(), 1, "{diags:#?}");
+    assert_eq!(diags[0].code, Code::InvalidDomain);
+}

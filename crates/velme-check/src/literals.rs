@@ -87,7 +87,11 @@ pub fn check_literals(program: &Program, source: &str) -> Vec<Diagnostic> {
         };
         let mut inside = Vec::new();
         pass.literals_in(condition, &mut inside);
-        found.extend(inside.into_iter().map(|d| reissued(&declared.name, d)));
+        // A type mismatch is `VL0209` in a condition; a budget or internal failure keeps its code (R-TYP-31).
+        found.extend(inside.into_iter().map(|d| match d.code {
+            Code::TypeMismatch => reissued(&declared.name, d),
+            _ => d,
+        }));
     }
     velme_diagnostics::sort(&mut found);
     found

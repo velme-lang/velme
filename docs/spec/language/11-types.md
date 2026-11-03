@@ -165,7 +165,8 @@ literals are fully constant by `language/10` §4's literal grammar, so this is a
 validation or a run-time cast. Use fresh system budgets per literal; budget/internal failures keep their codes.
 This makes source literal arguments members before inter-goal execution, without a call-boundary check.
 The constant record and list literals inside a `check` item or a domain condition are domain positions for their
-domain-typed fields and items too (D-171): both passes apply, reported as `VL0204`, or `VL0209` inside a condition. A
+domain-typed fields and items too (D-171): both passes apply, reported as `VL0204`, or `VL0209` inside a condition (a budget or internal failure keeps its own code there too;
+the simple pass sees every domain's extracted constraints whichever is declared first). A
 record-domain constructor there still yields its underlying record and asserts no membership of its own (R-TYP-28).
 A list item that is a direct value of a different domain than the list's element is `VL0204` ("Expected Age, but got
 Score."), never widened to the base by a join (R-TYP-30, D-163).
